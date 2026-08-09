@@ -3,53 +3,80 @@ instance:
   name: "Дом Леонида"
   timezone: Europe/Moscow
   locale: ru-RU
-  version: "1.0.0"
+  version: "1.1.0"
   metadata:
     customer: "Леонид"
-    platform_version: "0.2.0"
-    notes: "Пилот: климат гостиной, shadow mode"
+    platform_version: "0.3.0"
+    notes: "Климат: гостиная + санузел + спальня + кабинет, shadow mode"
 
 devices:
   sensors:
     - id: temp_gostinnaia
       entity: sensor.datchik_temperatury_gostinnaia_temperature
       role: climate_zone
+    - id: temp_sanuzel
+      entity: sensor.datchik_temperatury_sanuzel_temperature
+      role: climate_zone
+    - id: temp_spalnia
+      entity: sensor.datchik_temperatury_spalnia_temperature
+      role: climate_zone
+    - id: temp_kabinet
+      entity: sensor.datchik_temperatury_kabinet_temperature
+      role: climate_zone
     - id: temp_outdoor
       entity: sensor.temperatura_na_ulitse_srednee
       role: climate_reference
 
   actuators:
-    # Тёплый пол — глобальный, управляется внешними автоматизациями.
-    # Платформа его НЕ трогает (managed_by_platform: false).
+    # Тёплый пол — глобальный, платформа не управляет
     - id: floor_heating_global
       entity: climate.termostat_gostinaia
       type: climate_device
       managed_by_platform: false
 
-    # Конвектор гостиной — догрев. Платформа управляет.
+    # Гостиная
     - id: convector_gostinnaia
       entity: switch.obogrevatel_gostinnaia
       type: relay
       managed_by_platform: true
       min_cycle_minutes: 5
-
-    # Кондиционер AUX — охлаждение. Платформа управляет.
     - id: ac_gostinnaia
       entity: climate.esphome_web_0d22a4_ac_name
       type: climate_device
       managed_by_platform: true
 
+    # Санузел
+    - id: convector_sanuzel
+      entity: switch.obogrevatel_sanuzel
+      type: relay
+      managed_by_platform: true
+      min_cycle_minutes: 5
+
+    # Спальня
+    - id: convector_spalnia
+      entity: switch.obogrevatel_spalnia
+      type: relay
+      managed_by_platform: true
+      min_cycle_minutes: 5
+
+    # Кабинет
+    - id: convector_kabinet
+      entity: switch.obogrevatel_kabinet
+      type: relay
+      managed_by_platform: true
+      min_cycle_minutes: 5
+
 features:
   climate:
     enabled: true
-    mode: shadow # сначала только логируем решения
+    mode: shadow
 
     season:
-      source: input_boolean.zima # ручной флаг сезона
+      source: input_boolean.zima
       heating_when: "on"
 
     safety:
-      min_setpoint: 16 # аварийный минимум
+      min_setpoint: 16
 
     zones:
       - id: gostinnaia
@@ -65,6 +92,36 @@ features:
           - ref: ac_gostinnaia
             role: primary_cool
             priority: 2
+
+      - id: sanuzel
+        temp_sensor_ref: temp_sanuzel
+        setpoints:
+          heat: { source: input_number.temperatura_v_sanuzle }
+          deadband: 0.5
+        actuators:
+          - ref: convector_sanuzel
+            role: secondary_heat
+            priority: 1
+
+      - id: spalnia
+        temp_sensor_ref: temp_spalnia
+        setpoints:
+          heat: { source: input_number.temperatura }
+          deadband: 0.5
+        actuators:
+          - ref: convector_spalnia
+            role: secondary_heat
+            priority: 1
+
+      - id: kabinet
+        temp_sensor_ref: temp_kabinet
+        setpoints:
+          heat: { source: input_number.temperatura }
+          deadband: 0.5
+        actuators:
+          - ref: convector_kabinet
+            role: secondary_heat
+            priority: 1
 
 globals:
   modes:

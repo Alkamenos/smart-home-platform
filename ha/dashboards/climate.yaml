@@ -1,0 +1,90 @@
+ - title: Климат
+    path: climate
+    icon: mdi:thermometer
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: >
+              ## 🏠 Управление домом
+
+              **Режим платформы:** {{ states('sensor.platform_climate_mode') }}
+
+              **Сезон:** {% if is_state('input_boolean.zima', 'on') %}❄️ Зима
+              (отопление) {% else %}☀️ Лето (охлаждение) {% endif %}
+      - type: entities
+        title: ⚙️ Управление
+        show_header_toggle: false
+        entities:
+          - entity: input_boolean.feature_climate
+            name: Климат (платформа)
+          - entity: input_boolean.climate_shadow_mode
+            name: Режим наблюдения (shadow)
+          - entity: input_boolean.zima
+            name: Сезон (зима)
+      - type: entities
+        title: 🎯 Уставки температуры
+        entities:
+          - entity: input_number.temperatura
+            name: Целевая (гостиная/спальня/кабинет)
+          - entity: input_number.maksimalno_komfortnaia_temperatura
+            name: Максимум комфорта (лето)
+          - entity: input_number.temperatura_v_sanuzle
+            name: Целевая санузла
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 🛋️ Гостиная
+              {{ states('sensor.climate_gostinnaia_status') }}
+          - type: glance
+            entities:
+              - entity: sensor.datchik_temperatury_gostinnaia_temperature
+                name: Сейчас
+              - entity: switch.obogrevatel_gostinnaia
+                name: Конвектор
+              - entity: climate.esphome_web_0d22a4_ac_name
+                name: Кондиционер
+            columns: 3
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 🚿 Санузел
+              {{ states('sensor.climate_sanuzel_status') }}
+          - type: glance
+            entities:
+              - entity: sensor.datchik_temperatury_sanuzel_temperature
+                name: Сейчас
+              - entity: switch.obogrevatel_sanuzel
+                name: Конвектор
+            columns: 2
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 🛏️ Спальня
+              {{ states('sensor.climate_spalnia_status') }}
+          - type: glance
+            entities:
+              - entity: sensor.datchik_temperatury_spalnia_temperature
+                name: Сейчас
+              - entity: switch.obogrevatel_spalnia
+                name: Конвектор
+            columns: 2
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 💼 Кабинет
+              {{ states('sensor.climate_kabinet_status') }}
+          - type: glance
+            entities:
+              - entity: sensor.datchik_temperatury_kabinet_temperature
+                name: Сейчас
+              - entity: switch.obogrevatel_kabinet
+                name: Конвектор
+            columns: 2
+      - type: entity
+        entity: sensor.platform_climate_mode
+        name: Статус платформы

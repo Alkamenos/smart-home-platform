@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Деплой платформы в Home Assistant.
-# Копирует runtime-файлы из структуры репо в структуру HA.
 set -euo pipefail
 
-# ---------- аргументы ----------
 HA_CONFIG="${HA_CONFIG:-}"
-MANIFEST_SRC="manifests/ivanov_dacha.yaml"
+MANIFEST_SRC="manifests/leonid_house.yaml"
 RELOAD=false
 HA_URL=""
 HA_TOKEN=""
@@ -16,17 +14,12 @@ usage() {
   ./deploy.sh --ha-config <путь к конфигу HA> [опции]
 
 Опции:
-  --ha-config PATH     Путь к конфигу HA (обязательно, либо переменная HA_CONFIG)
-  --manifest PATH      Манифест-источник (по умолчанию manifests/ivanov_dacha.yaml)
-  --reload             Перезагрузить pyscript через REST API после деплоя
-  --ha-url URL         Адрес HA, напр. http://homeassistant.local:8123
-  --token TOKEN        Long-lived access token HA (для --reload)
-  -h, --help           Эта справка
-
-Примеры:
-  ./deploy.sh --ha-config /config
-  ./deploy.sh --ha-config /opt/homeassistant/config --manifest manifests/ivanov_dacha.yaml
-  ./deploy.sh --ha-config /config --reload --ha-url http://192.168.1.10:8123 --token XXX
+  --ha-config PATH   Путь к конфигу HA (обязательно, либо переменная HA_CONFIG)
+  --manifest PATH    Манифест-источник (по умолчанию manifests/leonid_house.yaml)
+  --reload           Перезагрузить pyscript через REST API (рекомендуется полный рестарт HA)
+  --ha-url URL       Адрес HA, напр. http://homeassistant.local:8123
+  --token TOKEN      Long-lived access token (для --reload)
+  -h, --help         Справка
 USAGE
 }
 
@@ -42,22 +35,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$HA_CONFIG" ]]; then
-  echo "✗ Не указан --ha-config"; usage; exit 1
-fi
-if [[ ! -d "$HA_CONFIG" ]]; then
-  echo "✗ Директория конфига не найдена: $HA_CONFIG"; exit 1
-fi
+[[ -z "$HA_CONFIG" ]] && { echo "✗ Не указан --ha-config"; usage; exit 1; }
+[[ -d "$HA_CONFIG" ]] || { echo "✗ Директория конфига не найдена: $HA_CONFIG"; exit 1; }
 
-# ---------- исходные файлы в репо ----------
 REGISTRY_SRC="shplatform/loader/registry.py"
 LOADER_SRC="ha/pyscript/manifest_loader.py"
+ORCHESTRATOR_SRC="ha/pyscript/climate_orchestrator.py"
 
-for f in "$REGISTRY_SRC" "$LOADER_SRC" "$MANIFEST_SRC"; do
+for f in "$REGISTRY_SRC" "$LOADER_SRC" "$ORCHESTRATOR_SRC" "$MANIFEST_SRC"; do
   [[ -f "$f" ]] || { echo "✗ Не найден файл в репо: $f"; exit 1; }
 done
 
-# ---------- целевые пути в HA ----------
 PYSCRIPT_DIR="$HA_CONFIG/pyscript"
 MANIFESTS_DIR="$HA_CONFIG/manifests"
 mkdir -p "$PYSCRIPT_DIR" "$MANIFESTS_DIR"
@@ -76,41 +64,29 @@ backup_if_exists() {
 
 echo "==> Деплой в $HA_CONFIG"
 
-ORCHESTRATOR_SRC="ha/pyscript/climate_orchestrator.py"
-
 echo "--> конкатенация registry + manifest_loader + climate_orchestrator"
 backup_if_exists "$PYSCRIPT_DIR/manifest_loader.py"
 { cat "$REGISTRY_SRC"; echo ""; cat "$LOADER_SRC"; echo ""; cat "$ORCHESTRATOR_SRC"; } \
   > "$PYSCRIPT_DIR/manifest_loader.py"
-
 rm -f "$PYSCRIPT_DIR/registry.py" "$PYSCRIPT_DIR/climate_orchestrator.py"
 
-# registry.py отдельным файлом больше не нужен — всё в одном файле
-rm -f "$PYSCRIPT_DIR/registry.py"
 echo "--> $MANIFEST_SRC -> $MANIFESTS_DIR/active.yaml"
 backup_if_exists "$MANIFESTS_DIR/active.yaml"
 cp "$MANIFEST_SRC" "$MANIFESTS_DIR/active.yaml"
 
 echo "==> Файлы скопированы."
 
-# ---------- опциональный reload через REST API ----------
 if [[ "$RELOAD" == true ]]; then
   if [[ -z "$HA_URL" || -z "$HA_TOKEN" ]]; then
     echo "✗ Для --reload нужны --ha-url и --token"; exit 1
   fi
   echo "==> Перезагрузка pyscript через REST API..."
   HTTP_CODE=$(curl -s -o /tmp/pyscript_reload.json -w "%{http_code}" \
-    -X POST \
-    -H "Authorization: Bearer $HA_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{}' \
+    -X POST -H "Authorization: Bearer $HA_TOKEN" \
+    -H "Content-Type: application/json" -d '{}' \
     "$HA_URL/api/services/pyscript/reload")
-  if [[ "$HTTP_CODE" == "200" ]]; then
-    echo "    pyscript перезагружен."
-  else
-    echo "    ⚠ reload вернул HTTP $HTTP_CODE:"; cat /tmp/pyscript_reload.json; echo
-  fi
+  [[ "$HTTP_CODE" == "200" ]] && echo "    pyscript перезагружен." \
+    || { echo "    ⚠ reload вернул HTTP $HTTP_CODE"; cat /tmp/pyscript_reload.json; }
 fi
 
-echo "==> Готово."
-echo "    Проверьте: Developer Tools -> Services -> pyscript.manifest_status"
+echo "==> Готово. Рекомендуется ПОЛНЫЙ перезапуск HA (избегает дублей фоновых циклов)."

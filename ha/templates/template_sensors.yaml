@@ -1,0 +1,91 @@
+template:
+  - sensor:
+      # Статус зоны гостиной
+      - name: "Climate Gostinnaia Status"
+        unique_id: climate_gostinnaia_status
+        state: >
+          {% set cur = states('sensor.datchik_temperatury_gostinnaia_temperature') | float(0) %}
+          {% set heat = states('input_number.temperatura') | float(0) %}
+          {% set cool = states('input_number.maksimalno_komfortnaia_temperatura') | float(0) %}
+          {% set season = is_state('input_boolean.zima', 'on') %}
+          {% if season %}
+            {% if cur < heat - 0.5 %}
+              🔥 Нагрев ({{ cur }}°C → {{ heat }}°C)
+            {% elif cur > heat + 0.5 %}
+              🌡️ Теплее цели ({{ cur }}°C)
+            {% else %}
+              ✅ В норме ({{ cur }}°C)
+            {% endif %}
+          {% else %}
+            {% if cur > cool + 0.5 %}
+              ❄️ Охлаждение ({{ cur }}°C → {{ cool }}°C)
+            {% elif cur < cool - 0.5 %}
+              🌡️ Прохладнее цели ({{ cur }}°C)
+            {% else %}
+              ✅ В норме ({{ cur }}°C)
+            {% endif %}
+          {% endif %}
+        attributes:
+          current_temp: "{{ states('sensor.datchik_temperatury_gostinnaia_temperature') | float(0) }}"
+          heat_target: "{{ states('input_number.temperatura') | float(0) }}"
+          cool_target: "{{ states('input_number.maksimalno_komfortnaia_temperatura') | float(0) }}"
+
+      - name: "Climate Sanuzel Status"
+        unique_id: climate_sanuzel_status
+        state: >
+          {% set cur = states('sensor.datchik_temperatury_sanuzel_temperature') | float(0) %}
+          {% set heat = states('input_number.temperatura_v_sanuzle') | float(0) %}
+          {% if cur < heat - 0.5 %}
+            🔥 Нагрев ({{ cur }}°C → {{ heat }}°C)
+          {% elif cur > heat + 0.5 %}
+            🌡️ Теплее цели ({{ cur }}°C)
+          {% else %}
+            ✅ В норме ({{ cur }}°C)
+          {% endif %}
+        attributes:
+          current_temp: "{{ states('sensor.datchik_temperatury_sanuzel_temperature') | float(0) }}"
+          heat_target: "{{ states('input_number.temperatura_v_sanuzle') | float(0) }}"
+
+      - name: "Climate Spalnia Status"
+        unique_id: climate_spalnia_status
+        state: >
+          {% set cur = states('sensor.datchik_temperatury_spalnia_temperature') | float(0) %}
+          {% set heat = states('input_number.temperatura') | float(0) %}
+          {% if cur < heat - 0.5 %}
+            🔥 Нагрев ({{ cur }}°C → {{ heat }}°C)
+          {% elif cur > heat + 0.5 %}
+            🌡️ Теплее цели ({{ cur }}°C)
+          {% else %}
+            ✅ В норме ({{ cur }}°C)
+          {% endif %}
+        attributes:
+          current_temp: "{{ states('sensor.datchik_temperatury_spalnia_temperature') | float(0) }}"
+          heat_target: "{{ states('input_number.temperatura') | float(0) }}"
+
+      - name: "Climate Kabinet Status"
+        unique_id: climate_kabinet_status
+        state: >
+          {% set cur = states('sensor.datchik_temperatury_kabinet_temperature') | float(0) %}
+          {% set heat = states('input_number.temperatura') | float(0) %}
+          {% if cur < heat - 0.5 %}
+            🔥 Нагрев ({{ cur }}°C → {{ heat }}°C)
+          {% elif cur > heat + 0.5 %}
+            🌡️ Теплее цели ({{ cur }}°C)
+          {% else %}
+            ✅ В норме ({{ cur }}°C)
+          {% endif %}
+        attributes:
+          current_temp: "{{ states('sensor.datchik_temperatury_kabinet_temperature') | float(0) }}"
+          heat_target: "{{ states('input_number.temperatura') | float(0) }}"
+
+      # Общий статус платформы
+      - name: "Platform Climate Mode"
+        unique_id: platform_climate_mode
+        state: >
+          {% if not is_state('input_boolean.feature_climate', 'on') %}
+            ⛔ Отключено
+          {% elif is_state('input_boolean.climate_shadow_mode', 'on') %}
+            👁️ Shadow (наблюдение)
+          {% else %}
+            ⚡ Real (управление)
+          {% endif %}

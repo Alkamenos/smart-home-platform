@@ -1,6 +1,8 @@
 /.idea/
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
 schema.json
+.deploy_backup/
