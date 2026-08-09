@@ -1,13 +1,23 @@
 """Manifest Loader для Home Assistant (pyscript).
 
+Загружает провалидированный манифест, строит runtime-реестр, проверяет
+наличие helper-сущностей и предоставляет сервисы управления.
+
 Требования:
   1. Интеграция pyscript (HACS) установлена.
   2. В configuration.yaml:
         pyscript:
           allow_all_imports: true
           hass_is_global: true
-  3. registry.py лежит в <config>/pyscript_lib/registry.py
-     и НЕ в папке pyscript/.
+  3. В папке <config>/pyscript/ рядом лежит registry.py
+     (копия shplatform/loader/registry.py).
+
+Предоставляемые сервисы (домен pyscript):
+  - pyscript.manifest_load(path=None)
+  - pyscript.manifest_reload()
+  - pyscript.manifest_status()
+  - pyscript.manifest_provision_helpers()
+  - pyscript.feature_set_enabled(feature, enabled)
 """
 import os
 import sys
@@ -15,23 +25,36 @@ import sys
 import yaml
 
 # ---------------------------------------------------------------------------
-# Конфигурация путей
+# Пути
 # ---------------------------------------------------------------------------
 try:
     CONFIG_DIR = hass.config.config_dir  # noqa: F821 (hass_is_global: true)
 except NameError:
     CONFIG_DIR = "/config"
 
-# Подключаем папку с чистыми модулями платформы
-LIB_DIR = os.path.join(CONFIG_DIR, "pyscript_lib")
-if LIB_DIR not in sys.path:
-    sys.path.insert(0, LIB_DIR)
-
-from registry import build_registry, ManifestError  # noqa: E402
-
+PYSCRIPT_DIR = os.path.join(CONFIG_DIR, "pyscript")
 DEFAULT_MANIFEST_PATH = os.path.join(CONFIG_DIR, "manifests", "active.yaml")
 
+# Делаем папку pyscript/ видимой для import
+if PYSCRIPT_DIR not in sys.path:
+    sys.path.insert(0, PYSCRIPT_DIR)
+
+# Импортируем registry как обычный модуль.
+# Сбрасываем кэш, чтобы при pyscript.reload подхватывались изменения registry.py
+try:
+    if "registry" in sys.modules:
+        del sys.modules["registry"]
+    from registry import build_registry, ManifestError
+    _REGISTRY_OK = True
+except Exception as exc:
+    log.error(f"[manifest] Не удалось импортировать registry.py: {exc}")
+    build_registry = None
+    ManifestError = Exception
+    _REGISTRY_OK = False
+
+# ---------------------------------------------------------------------------
 # Глобальное runtime-состояние модуля
+# ---------------------------------------------------------------------------
 _REGISTRY = None
 _MANIFEST_PATH = DEFAULT_MANIFEST_PATH
 
@@ -49,6 +72,9 @@ def _check_helpers(registry):
 
 def _do_load(path=None):
     global _REGISTRY, _MANIFEST_PATH
+
+    if not _REGISTRY_OK:
+        return None, {"ok": False, "error": "registry.py import failed"}
 
     if path:
         _MANIFEST_PATH = path
