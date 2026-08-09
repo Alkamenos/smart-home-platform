@@ -76,9 +76,14 @@ backup_if_exists() {
 
 echo "==> Деплой в $HA_CONFIG"
 
-echo "--> конкатенация registry.py + manifest_loader.py -> $PYSCRIPT_DIR/manifest_loader.py"
+ORCHESTRATOR_SRC="ha/pyscript/climate_orchestrator.py"
+
+echo "--> конкатенация registry + manifest_loader + climate_orchestrator"
 backup_if_exists "$PYSCRIPT_DIR/manifest_loader.py"
-cat "$REGISTRY_SRC" "$LOADER_SRC" > "$PYSCRIPT_DIR/manifest_loader.py"
+{ cat "$REGISTRY_SRC"; echo ""; cat "$LOADER_SRC"; echo ""; cat "$ORCHESTRATOR_SRC"; } \
+  > "$PYSCRIPT_DIR/manifest_loader.py"
+
+rm -f "$PYSCRIPT_DIR/registry.py" "$PYSCRIPT_DIR/climate_orchestrator.py"
 
 # registry.py отдельным файлом больше не нужен — всё в одном файле
 rm -f "$PYSCRIPT_DIR/registry.py"

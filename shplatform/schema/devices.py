@@ -37,10 +37,10 @@ class Sensor(DeviceBase):
 class Actuator(DeviceBase):
     entity: str
     type: str = Field(..., description="relay | climate_device | recuperator | ...")
+    managed_by_platform: bool = True          # ← НОВОЕ: false = платформа не трогает
     safety_max_temp_entity: str | None = None
     safety_max_temp: float | None = None
     min_cycle_minutes: int | None = None
-
 
 class Valve(DeviceBase):
     entity: str

@@ -42,6 +42,17 @@ class ClimateActuatorRef(BaseModel):
     role: str
     priority: int
 
+class ClimateSeason(BaseModel):
+    """Сезонность от внешнего флага (напр. input_boolean.zima)."""
+    model_config = ConfigDict(extra="allow")
+    source: str | None = None        # entity_id флага сезона
+    heating_when: str = "on"         # значение флага = сезон нагрева
+
+
+class ClimateGlobalSafety(BaseModel):
+    """Глобальные предохранители климата."""
+    model_config = ConfigDict(extra="allow")
+    min_setpoint: float | None = None   # аварийный минимум, ниже не опускаемся
 
 class ClimateSafety(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -69,9 +80,11 @@ class SeasonDetection(BaseModel):
 
 
 class Climate(FeatureBase):
+    mode: str = "real"                 # shadow | real
     season_detection: SeasonDetection = Field(default_factory=SeasonDetection)
+    season: ClimateSeason | None = None
+    safety: ClimateGlobalSafety | None = None
     zones: list[ClimateZone] = Field(default_factory=list)
-
 
 class FeaturesConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")

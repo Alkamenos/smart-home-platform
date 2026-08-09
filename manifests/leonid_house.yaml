@@ -1,0 +1,78 @@
+instance:
+  id: leonid_house
+  name: "Дом Леонида"
+  timezone: Europe/Moscow
+  locale: ru-RU
+  version: "1.0.0"
+  metadata:
+    customer: "Леонид"
+    platform_version: "0.2.0"
+    notes: "Пилот: климат гостиной, shadow mode"
+
+devices:
+  sensors:
+    - id: temp_gostinnaia
+      entity: sensor.datchik_temperatury_gostinnaia_temperature
+      role: climate_zone
+    - id: temp_outdoor
+      entity: sensor.temperatura_na_ulitse_srednee
+      role: climate_reference
+
+  actuators:
+    # Тёплый пол — глобальный, управляется внешними автоматизациями.
+    # Платформа его НЕ трогает (managed_by_platform: false).
+    - id: floor_heating_global
+      entity: climate.termostat_gostinaia
+      type: climate_device
+      managed_by_platform: false
+
+    # Конвектор гостиной — догрев. Платформа управляет.
+    - id: convector_gostinnaia
+      entity: switch.obogrevatel_gostinnaia
+      type: relay
+      managed_by_platform: true
+      min_cycle_minutes: 5
+
+    # Кондиционер AUX — охлаждение. Платформа управляет.
+    - id: ac_gostinnaia
+      entity: climate.esphome_web_0d22a4_ac_name
+      type: climate_device
+      managed_by_platform: true
+
+features:
+  climate:
+    enabled: true
+    mode: shadow # сначала только логируем решения
+
+    season:
+      source: input_boolean.zima # ручной флаг сезона
+      heating_when: "on"
+
+    safety:
+      min_setpoint: 16 # аварийный минимум
+
+    zones:
+      - id: gostinnaia
+        temp_sensor_ref: temp_gostinnaia
+        setpoints:
+          heat: { source: input_number.temperatura }
+          cool: { source: input_number.maksimalno_komfortnaia_temperatura }
+          deadband: 0.5
+        actuators:
+          - ref: convector_gostinnaia
+            role: secondary_heat
+            priority: 1
+          - ref: ac_gostinnaia
+            role: primary_cool
+            priority: 2
+
+globals:
+  modes:
+    zima:
+      entity: input_boolean.zima
+      affects: [climate]
+  override_policy:
+    physical_switch: { priority: highest, duration: indefinite }
+    voice_assistant: { priority: medium, default_timeout_min: 120 }
+  evaluation_intervals:
+    climate_sec: 30

@@ -3,6 +3,7 @@ cli/__init__.py
 cli/main.py
 shplatform/__init__.py
 shplatform/loader/__init__.py
+shplatform/loader/registry.py
 shplatform/schema/__init__.py
 shplatform/schema/devices.py
 shplatform/schema/features.py
@@ -17,4 +18,5 @@ smart_home_platform.egg-info/dependency_links.txt
 smart_home_platform.egg-info/entry_points.txt
 smart_home_platform.egg-info/requires.txt
 smart_home_platform.egg-info/top_level.txt
+tests/test_registry.py
 tests/test_schema.py
