@@ -1,25 +1,16 @@
 """Manifest Loader для Home Assistant (pyscript).
 
-Загружает провалидированный манифест, строит runtime-реестр, проверяет
-наличие helper-сущностей и предоставляет сервисы управления.
-
 Требования:
   1. Интеграция pyscript (HACS) установлена.
   2. В configuration.yaml:
         pyscript:
           allow_all_imports: true
           hass_is_global: true
-  3. В папке <config>/pyscript/ рядом лежит registry.py
-     (копия shplatform/loader/registry.py).
-
-Предоставляемые сервисы (домен pyscript):
-  - pyscript.manifest_load(path=None)
-  - pyscript.manifest_reload()
-  - pyscript.manifest_status()
-  - pyscript.manifest_provision_helpers()
-  - pyscript.feature_set_enabled(feature, enabled)
+  3. registry.py лежит в <config>/pyscript_lib/registry.py
+     и НЕ в папке pyscript/.
 """
 import os
+import sys
 
 import yaml
 
@@ -31,6 +22,13 @@ try:
 except NameError:
     CONFIG_DIR = "/config"
 
+# Подключаем папку с чистыми модулями платформы
+LIB_DIR = os.path.join(CONFIG_DIR, "pyscript_lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+from registry import build_registry, ManifestError  # noqa: E402
+
 DEFAULT_MANIFEST_PATH = os.path.join(CONFIG_DIR, "manifests", "active.yaml")
 
 # Глобальное runtime-состояние модуля
@@ -41,11 +39,6 @@ _MANIFEST_PATH = DEFAULT_MANIFEST_PATH
 # ---------------------------------------------------------------------------
 # Внутренние функции
 # ---------------------------------------------------------------------------
-def _registry_available():
-    """registry.py загружен в общий namespace pyscript."""
-    return "build_registry" in globals()
-
-
 def _check_helpers(registry):
     existing = set(state.names())
     missing = [h for h in registry.required_helpers() if h not in existing]
@@ -56,11 +49,6 @@ def _check_helpers(registry):
 
 def _do_load(path=None):
     global _REGISTRY, _MANIFEST_PATH
-
-    if not _registry_available():
-        log.error("[manifest] registry.py не загружен. "
-                  "Положите его в папку pyscript/ рядом с manifest_loader.py")
-        return None, {"ok": False, "error": "registry.py not loaded"}
 
     if path:
         _MANIFEST_PATH = path
@@ -79,8 +67,8 @@ def _do_load(path=None):
         return None, {"ok": False, "error": f"yaml parse: {exc}"}
 
     try:
-        registry = build_registry(raw)  # глобальная из registry.py
-    except ManifestError as exc:        # глобальная из registry.py
+        registry = build_registry(raw)
+    except ManifestError as exc:
         log.error(f"[manifest] Ошибка построения реестра: {exc}")
         return None, {"ok": False, "error": f"registry: {exc}"}
 
