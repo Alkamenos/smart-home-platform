@@ -76,14 +76,12 @@ backup_if_exists() {
 
 echo "==> Деплой в $HA_CONFIG"
 
-echo "--> $REGISTRY_SRC -> $PYSCRIPT_DIR/registry.py"
-backup_if_exists "$PYSCRIPT_DIR/registry.py"
-cp "$REGISTRY_SRC" "$PYSCRIPT_DIR/registry.py"
-
-echo "--> $LOADER_SRC -> $PYSCRIPT_DIR/manifest_loader.py"
+echo "--> конкатенация registry.py + manifest_loader.py -> $PYSCRIPT_DIR/manifest_loader.py"
 backup_if_exists "$PYSCRIPT_DIR/manifest_loader.py"
-cp "$LOADER_SRC" "$PYSCRIPT_DIR/manifest_loader.py"
+cat "$REGISTRY_SRC" "$LOADER_SRC" > "$PYSCRIPT_DIR/manifest_loader.py"
 
+# registry.py отдельным файлом больше не нужен — всё в одном файле
+rm -f "$PYSCRIPT_DIR/registry.py"
 echo "--> $MANIFEST_SRC -> $MANIFESTS_DIR/active.yaml"
 backup_if_exists "$MANIFESTS_DIR/active.yaml"
 cp "$MANIFEST_SRC" "$MANIFESTS_DIR/active.yaml"

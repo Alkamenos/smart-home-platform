@@ -5,7 +5,6 @@
   - в CLI-тестах (как модуль пакета),
   - внутри pyscript (копируется в <config>/pyscript/ и работает глобально).
 """
-from __future__ import annotations
 
 
 class ManifestError(Exception):
