@@ -1,0 +1,919 @@
+{
+  "$defs": {
+    "Actuator": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "description": "Логический ID устройства",
+          "pattern": "^[a-z0-9_]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "entity": {
+          "title": "Entity",
+          "type": "string"
+        },
+        "type": {
+          "description": "relay | climate_device | recuperator | ...",
+          "title": "Type",
+          "type": "string"
+        },
+        "safety_max_temp_entity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safety Max Temp Entity"
+        },
+        "safety_max_temp": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safety Max Temp"
+        },
+        "min_cycle_minutes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Cycle Minutes"
+        }
+      },
+      "required": [
+        "id",
+        "entity",
+        "type"
+      ],
+      "title": "Actuator",
+      "type": "object"
+    },
+    "Climate": {
+      "additionalProperties": true,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "season_detection": {
+          "$ref": "#/$defs/SeasonDetection"
+        },
+        "zones": {
+          "items": {
+            "$ref": "#/$defs/ClimateZone"
+          },
+          "title": "Zones",
+          "type": "array"
+        }
+      },
+      "title": "Climate",
+      "type": "object"
+    },
+    "ClimateActuatorRef": {
+      "additionalProperties": true,
+      "properties": {
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "priority": {
+          "title": "Priority",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ref",
+        "role",
+        "priority"
+      ],
+      "title": "ClimateActuatorRef",
+      "type": "object"
+    },
+    "ClimateSafety": {
+      "additionalProperties": true,
+      "properties": {
+        "floor_max_temp_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Max Temp Ref"
+        },
+        "floor_max_temp": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Max Temp"
+        },
+        "sensor_unavailable_timeout_min": {
+          "default": 5,
+          "title": "Sensor Unavailable Timeout Min",
+          "type": "integer"
+        },
+        "emergency_off_on_sensor_loss": {
+          "default": true,
+          "title": "Emergency Off On Sensor Loss",
+          "type": "boolean"
+        }
+      },
+      "title": "ClimateSafety",
+      "type": "object"
+    },
+    "ClimateZone": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "temp_sensor_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temp Sensor Ref"
+        },
+        "setpoints": {
+          "additionalProperties": true,
+          "title": "Setpoints",
+          "type": "object"
+        },
+        "actuators": {
+          "items": {
+            "$ref": "#/$defs/ClimateActuatorRef"
+          },
+          "title": "Actuators",
+          "type": "array"
+        },
+        "safety": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClimateSafety"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ClimateZone",
+      "type": "object"
+    },
+    "DashboardConfig": {
+      "additionalProperties": true,
+      "properties": {
+        "template_engine": {
+          "default": "jinja2",
+          "title": "Template Engine",
+          "type": "string"
+        },
+        "templates_dir": {
+          "default": "templates/dashboards/",
+          "title": "Templates Dir",
+          "type": "string"
+        },
+        "pages": {
+          "items": {
+            "$ref": "#/$defs/DashboardPage"
+          },
+          "title": "Pages",
+          "type": "array"
+        }
+      },
+      "title": "DashboardConfig",
+      "type": "object"
+    },
+    "DashboardPage": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "sections": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Sections",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "title": "DashboardPage",
+      "type": "object"
+    },
+    "DevicesConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "hybrid_switches": {
+          "items": {
+            "$ref": "#/$defs/HybridSwitch"
+          },
+          "title": "Hybrid Switches",
+          "type": "array"
+        },
+        "lights": {
+          "items": {
+            "$ref": "#/$defs/Light"
+          },
+          "title": "Lights",
+          "type": "array"
+        },
+        "sensors": {
+          "items": {
+            "$ref": "#/$defs/Sensor"
+          },
+          "title": "Sensors",
+          "type": "array"
+        },
+        "actuators": {
+          "items": {
+            "$ref": "#/$defs/Actuator"
+          },
+          "title": "Actuators",
+          "type": "array"
+        },
+        "valves": {
+          "items": {
+            "$ref": "#/$defs/Valve"
+          },
+          "title": "Valves",
+          "type": "array"
+        }
+      },
+      "title": "DevicesConfig",
+      "type": "object"
+    },
+    "FeatureBase": {
+      "additionalProperties": true,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "FeatureBase",
+      "type": "object"
+    },
+    "FeaturesConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "lighting": {
+          "$ref": "#/$defs/Lighting"
+        },
+        "irrigation": {
+          "$ref": "#/$defs/Irrigation"
+        },
+        "climate": {
+          "$ref": "#/$defs/Climate"
+        },
+        "security": {
+          "$ref": "#/$defs/FeatureBase"
+        },
+        "energy": {
+          "$ref": "#/$defs/FeatureBase"
+        }
+      },
+      "title": "FeaturesConfig",
+      "type": "object"
+    },
+    "GlobalMode": {
+      "additionalProperties": true,
+      "properties": {
+        "entity": {
+          "title": "Entity",
+          "type": "string"
+        },
+        "affects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "entity"
+      ],
+      "title": "GlobalMode",
+      "type": "object"
+    },
+    "GlobalsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "modes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/GlobalMode"
+          },
+          "title": "Modes",
+          "type": "object"
+        },
+        "override_policy": {
+          "additionalProperties": {
+            "$ref": "#/$defs/OverridePolicy"
+          },
+          "title": "Override Policy",
+          "type": "object"
+        },
+        "evaluation_intervals": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Evaluation Intervals",
+          "type": "object"
+        }
+      },
+      "title": "GlobalsConfig",
+      "type": "object"
+    },
+    "HybridSwitch": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "description": "Логический ID устройства",
+          "pattern": "^[a-z0-9_]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "adapter": {
+          "description": "Имя адаптера, напр. z2m_aqara_h1m",
+          "title": "Adapter",
+          "type": "string"
+        },
+        "relay_entity": {
+          "title": "Relay Entity",
+          "type": "string"
+        },
+        "button_event_sensor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Button Event Sensor"
+        },
+        "initial_mode": {
+          "default": "control_relay",
+          "title": "Initial Mode",
+          "type": "string"
+        },
+        "modes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/HybridSwitchMode"
+          },
+          "title": "Modes",
+          "type": "object"
+        },
+        "auto_mode_switch": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Auto Mode Switch",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "adapter",
+        "relay_entity"
+      ],
+      "title": "HybridSwitch",
+      "type": "object"
+    },
+    "HybridSwitchMode": {
+      "additionalProperties": true,
+      "properties": {
+        "physical_override": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Physical Override"
+        },
+        "button_actions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Button Actions"
+        }
+      },
+      "title": "HybridSwitchMode",
+      "type": "object"
+    },
+    "InstanceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Уникальный ID, только snake_case",
+          "pattern": "^[a-z0-9_]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "timezone": {
+          "title": "Timezone",
+          "type": "string"
+        },
+        "locale": {
+          "default": "ru-RU",
+          "title": "Locale",
+          "type": "string"
+        },
+        "version": {
+          "description": "Версия манифеста для миграций",
+          "title": "Version",
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "#/$defs/InstanceMetadata"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "timezone",
+        "version"
+      ],
+      "title": "InstanceConfig",
+      "type": "object"
+    },
+    "InstanceMetadata": {
+      "additionalProperties": true,
+      "properties": {
+        "customer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer"
+        },
+        "installed_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Installed Date"
+        },
+        "platform_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Platform Version"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "title": "InstanceMetadata",
+      "type": "object"
+    },
+    "Integration": {
+      "additionalProperties": true,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "Integration",
+      "type": "object"
+    },
+    "IntegrationsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "yandex_dialogs": {
+          "$ref": "#/$defs/Integration"
+        },
+        "telegram_bot": {
+          "$ref": "#/$defs/Integration"
+        },
+        "mqtt_broker": {
+          "$ref": "#/$defs/Integration"
+        }
+      },
+      "title": "IntegrationsConfig",
+      "type": "object"
+    },
+    "Irrigation": {
+      "additionalProperties": true,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "zones": {
+          "items": {
+            "$ref": "#/$defs/IrrigationZone"
+          },
+          "title": "Zones",
+          "type": "array"
+        }
+      },
+      "title": "Irrigation",
+      "type": "object"
+    },
+    "IrrigationZone": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "valve_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valve Ref"
+        },
+        "schedule_calendar": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule Calendar"
+        },
+        "moisture_sensor_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Moisture Sensor Ref"
+        },
+        "overrides": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Overrides",
+          "type": "array"
+        },
+        "conditions": {
+          "additionalProperties": true,
+          "title": "Conditions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "IrrigationZone",
+      "type": "object"
+    },
+    "Light": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "description": "Логический ID устройства",
+          "pattern": "^[a-z0-9_]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "entity": {
+          "title": "Entity",
+          "type": "string"
+        },
+        "type": {
+          "default": "zigbee_switch",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "entity"
+      ],
+      "title": "Light",
+      "type": "object"
+    },
+    "Lighting": {
+      "additionalProperties": true,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "zones": {
+          "items": {
+            "$ref": "#/$defs/LightingZone"
+          },
+          "title": "Zones",
+          "type": "array"
+        }
+      },
+      "title": "Lighting",
+      "type": "object"
+    },
+    "LightingZone": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "device_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Device Refs",
+          "type": "array"
+        },
+        "schedule_calendar": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule Calendar"
+        },
+        "overrides": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Overrides",
+          "type": "array"
+        },
+        "conditions": {
+          "additionalProperties": true,
+          "title": "Conditions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "LightingZone",
+      "type": "object"
+    },
+    "OverridePolicy": {
+      "additionalProperties": true,
+      "properties": {
+        "priority": {
+          "default": "lowest",
+          "title": "Priority",
+          "type": "string"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration"
+        },
+        "default_timeout_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Timeout Min"
+        }
+      },
+      "title": "OverridePolicy",
+      "type": "object"
+    },
+    "SeasonDetection": {
+      "additionalProperties": true,
+      "properties": {
+        "mode": {
+          "default": "auto",
+          "title": "Mode",
+          "type": "string"
+        },
+        "heating_threshold": {
+          "default": 15,
+          "title": "Heating Threshold",
+          "type": "number"
+        },
+        "cooling_threshold": {
+          "default": 20,
+          "title": "Cooling Threshold",
+          "type": "number"
+        },
+        "hysteresis_hours": {
+          "default": 24,
+          "title": "Hysteresis Hours",
+          "type": "integer"
+        }
+      },
+      "title": "SeasonDetection",
+      "type": "object"
+    },
+    "Sensor": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "description": "Логический ID устройства",
+          "pattern": "^[a-z0-9_]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "entity": {
+          "title": "Entity",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        }
+      },
+      "required": [
+        "id",
+        "entity"
+      ],
+      "title": "Sensor",
+      "type": "object"
+    },
+    "Valve": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "description": "Логический ID устройства",
+          "pattern": "^[a-z0-9_]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "entity": {
+          "title": "Entity",
+          "type": "string"
+        },
+        "type": {
+          "default": "zigbee_valve",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "entity"
+      ],
+      "title": "Valve",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "instance": {
+      "$ref": "#/$defs/InstanceConfig"
+    },
+    "devices": {
+      "$ref": "#/$defs/DevicesConfig"
+    },
+    "features": {
+      "$ref": "#/$defs/FeaturesConfig"
+    },
+    "globals": {
+      "$ref": "#/$defs/GlobalsConfig"
+    },
+    "integrations": {
+      "$ref": "#/$defs/IntegrationsConfig"
+    },
+    "dashboard": {
+      "$ref": "#/$defs/DashboardConfig"
+    }
+  },
+  "required": [
+    "instance",
+    "devices",
+    "features",
+    "globals"
+  ],
+  "title": "Manifest",
+  "type": "object"
+}

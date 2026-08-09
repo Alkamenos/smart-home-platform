@@ -1,0 +1,127 @@
+instance:
+  id: ivanov_dacha
+  name: "Дача Ивановых"
+  timezone: Europe/Moscow
+  locale: ru-RU
+  version: "1.0.0"
+  metadata:
+    customer: "Иванов А.С."
+    platform_version: "0.1.0"
+
+devices:
+  hybrid_switches:
+    - id: lr_main_switch
+      adapter: z2m_aqara_h1m
+      z2m_friendly_name: living_room_h1m
+      relay_entity: switch.living_room_h1m_l1
+      button_event_sensor: sensor.living_room_h1m_action
+      initial_mode: control_relay
+
+  lights:
+    - id: lr_main
+      entity: light.living_room_main
+      type: zigbee_dimmer
+    - id: terrace
+      entity: light.terrace_main
+      type: zigbee_switch
+
+  sensors:
+    - id: outdoor_temp
+      entity: sensor.outdoor_temperature
+      role: climate_reference
+    - id: lr_temp
+      entity: sensor.living_room_temp
+      role: climate_zone_lr
+    - id: lr_floor_temp
+      entity: sensor.floor_temp_lr
+      role: safety_floor_lr
+
+  actuators:
+    - id: floor_heating_lr
+      entity: switch.floor_heating_lr
+      type: relay
+      safety_max_temp_entity: sensor.floor_temp_lr
+      safety_max_temp: 28
+      min_cycle_minutes: 30
+    - id: convector_lr
+      entity: switch.convector_lr
+      type: relay
+      min_cycle_minutes: 5
+    - id: ac_lr
+      entity: climate.ac_living_room
+      type: climate_device
+    - id: vakio_lr
+      entity: fan.vakio_base_lr
+      type: recuperator
+
+  valves:
+    - id: front_lawn_valve
+      entity: switch.valve_front_zb
+      type: zigbee_valve
+
+features:
+  lighting:
+    enabled: true
+    zones:
+      - id: lr_lighting
+        device_refs: [lr_main]
+        schedule_calendar: calendar.lighting_lr
+      - id: terrace_lighting
+        device_refs: [terrace]
+
+  irrigation:
+    enabled: true
+    zones:
+      - id: front_lawn
+        valve_ref: front_lawn_valve
+        schedule_calendar: calendar.irrigation_front
+        conditions:
+          min_moisture: 30
+          rain_delay_hours: 6
+
+  climate:
+    enabled: true
+    season_detection:
+      mode: auto
+      heating_threshold: 15
+      cooling_threshold: 20
+      hysteresis_hours: 24
+    zones:
+      - id: lr_climate
+        temp_sensor_ref: lr_temp
+        setpoints:
+          heat: { source: input_number.lr_heat_target }
+          cool: { source: input_number.lr_cool_target }
+          deadband: 0.5
+        actuators:
+          - { ref: vakio_lr, role: free_cooling, priority: 1 }
+          - { ref: floor_heating_lr, role: primary_heat, priority: 2 }
+          - { ref: convector_lr, role: secondary_heat, priority: 3 }
+          - { ref: ac_lr, role: primary_cool, priority: 4 }
+        safety:
+          floor_max_temp_ref: lr_floor_temp
+          floor_max_temp: 28
+
+globals:
+  modes:
+    party:
+      entity: input_boolean.party_mode
+      affects: [lighting, climate]
+  override_policy:
+    physical_switch: { priority: highest, duration: indefinite }
+    voice_assistant: { priority: medium, default_timeout_min: 120 }
+  evaluation_intervals:
+    climate_sec: 60
+    lighting_sec: 30
+
+integrations:
+  yandex_dialogs: { enabled: false }
+  telegram_bot: { enabled: false }
+
+dashboard:
+  pages:
+    - id: main
+      title: "Главная"
+      sections:
+        - { feature: climate }
+        - { feature: lighting }
