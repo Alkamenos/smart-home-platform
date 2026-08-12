@@ -49,28 +49,28 @@ devices:
     - id: convector_sanuzel
       entity: switch.obogrevatel_sanuzel
       type: relay
-      managed_by_platform: true
+      managed_by_platform: false
       min_cycle_minutes: 5
 
     # Спальня
     - id: convector_spalnia
       entity: switch.obogrevatel_spalnia
       type: relay
-      managed_by_platform: true
+      managed_by_platform: false
       min_cycle_minutes: 5
 
     # Кабинет
     - id: convector_kabinet
       entity: switch.obogrevatel_kabinet
       type: relay
-      managed_by_platform: true
+      managed_by_platform: false
       min_cycle_minutes: 5
 
 features:
   climate:
     enabled: true
     mode: shadow
-
+    override_timeout_min: 120   # сколько минут платформа не спорит с ручным управлением
     season:
       source: input_boolean.zima
       heating_when: "on"
