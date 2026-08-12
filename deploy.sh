@@ -66,7 +66,10 @@ echo "==> Деплой в $HA_CONFIG"
 
 echo "--> конкатенация registry + manifest_loader + climate_orchestrator"
 backup_if_exists "$PYSCRIPT_DIR/manifest_loader.py"
-{ cat "$REGISTRY_SRC"; echo ""; cat "$LOADER_SRC"; echo ""; cat "$ORCHESTRATOR_SRC"; } \
+  
+VENT_SRC="ha/pyscript/ventilation_controller.py"
+
+{ cat "$REGISTRY_SRC"; echo ""; cat "$LOADER_SRC"; echo ""; cat "$ORCHESTRATOR_SRC"; echo ""; cat "$VENT_SRC"; } \
   > "$PYSCRIPT_DIR/manifest_loader.py"
 rm -f "$PYSCRIPT_DIR/registry.py" "$PYSCRIPT_DIR/climate_orchestrator.py"
 

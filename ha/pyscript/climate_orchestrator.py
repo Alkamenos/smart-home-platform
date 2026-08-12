@@ -59,6 +59,7 @@ def _clim_is_on(entity):
 # OVERRIDE MANAGER (опросный, без event_trigger)
 # ============================================================
 _CLIM_LAST = {}
+_AC_WARN_LAST = {}
 _PLATFORM_CMD = {}
 _OVERRIDE = {}
 _PREV_STATE = {}
@@ -172,44 +173,59 @@ def _clim_switch(mode, entity, target_state, zone_id, kind, cur, target):
     _clim_record_cmd(entity)
     log.warning("[climate][REAL] " + msg)
 
+def _clim_free_heat():
+    try:
+        return bool(_FREE_HEAT_ACTIVE)
+    except NameError:
+        return False
 
 def _clim_eval_heat_actuator(mode, dev, cur_temp, heat_target, deadband, zone_id):
     entity = dev.get("entity")
     if not entity or _clim_override_active(entity):
         return
+    free = _clim_free_heat()
     domain = str(entity).split(".")[0]
+
+    # switch (конвектор)
     if domain != "climate":
         is_on = _clim_is_on(entity)
-        if cur_temp < (heat_target - deadband) and not is_on:
-            _clim_switch(mode, entity, "on", zone_id, "HEAT", cur_temp, heat_target)
-        elif cur_temp > (heat_target + deadband) and is_on:
+        if is_on and (free or cur_temp > (heat_target + deadband)):
+            # выключить: либо слишком тепло, либо греем уличным теплом
             _clim_switch(mode, entity, "off", zone_id, "HEAT", cur_temp, heat_target)
+        elif (not is_on) and (not free) and cur_temp < (heat_target - deadband):
+            _clim_switch(mode, entity, "on", zone_id, "HEAT", cur_temp, heat_target)
         return
+
+    # climate (heat-устройство)
     cur_mode, cur_set = _clim_state(entity)
     is_on = _clim_is_on(entity)
-    should_on = cur_temp < (heat_target - deadband)
-    should_off = cur_temp > (heat_target + deadband)
+    should_on = (not free) and (cur_temp < (heat_target - deadband))
+    should_off = is_on and (free or cur_temp > (heat_target + deadband))
+
     if mode == "shadow":
         if should_on and not is_on:
             log.warning("[climate][SHADOW] [" + str(zone_id) + "] HEAT " + entity + " -> on")
         elif should_off and is_on:
             log.warning("[climate][SHADOW] [" + str(zone_id) + "] HEAT " + entity + " -> off")
         return
+
     desired = {"mode": "heat", "temp": heat_target}
     last = _CLIM_LAST.get(entity)
-    if should_on:
+    if should_on and not is_on:
         already_there = (cur_mode == "heat") and (cur_set == heat_target)
         wrong_mode = is_on and (cur_mode != "heat")
-        if (not is_on) or wrong_mode or ((last != desired) and not already_there):
+        if wrong_mode or ((last != desired) and not already_there):
             _clim_send_on(entity, "heat", heat_target)
     elif should_off and is_on:
         _clim_send_off(entity)
-
 
 def _clim_eval_cool_actuator(mode, dev, cur_temp, cool_target, deadband, zone_id):
     entity = dev.get("entity")
     if not entity or _clim_override_active(entity):
         return
+    if _clim_ac_lockout():
+        return
+
     domain = str(entity).split(".")[0]
     if domain != "climate":
         is_on = _clim_is_on(entity)
@@ -261,22 +277,20 @@ def _clim_eval_zone(zone, mode, min_setpoint, heating_season):
         log.warning("[climate][" + str(zone_id) + "] setpoint ниже минимума, использую "
                     + str(min_setpoint))
         heat_target = min_setpoint
-
+    
     for act in zone.get("actuators", []):
         dev = _REGISTRY.device(act.get("ref")) or {}
         if not dev.get("managed_by_platform", True):
             continue
         role = act.get("role", "")
-                if role in ("primary_heat", "secondary_heat"):
+        if role in ("primary_heat", "secondary_heat"):
             if heat_target is not None:
                 _clim_eval_heat_actuator(mode, dev, cur_temp, heat_target, deadband, zone_id)
         elif role in ("primary_cool", "free_cooling"):
             if cool_target is not None:
                 _clim_eval_cool_actuator(mode, dev, cur_temp, cool_target, deadband, zone_id)
-            if cool_target is not None:
-                _clim_eval_cool_actuator(mode, dev, cur_temp, cool_target, deadband, zone_id)
 
-
+    
 def _clim_current_mode(climate_cfg):
     shadow_helper = state.get("input_boolean.climate_shadow_mode")
     if shadow_helper == "on":
@@ -285,6 +299,91 @@ def _clim_current_mode(climate_cfg):
         return "real"
     return climate_cfg.get("mode", "real")
 
+def _clim_safety_cfg():
+    if _REGISTRY is None:
+        return {}
+    c = _REGISTRY.feature("climate") or {}
+    return c.get("safety", {}) or {}
+
+
+def _clim_ac_lockout():
+    safety = _clim_safety_cfg()
+    if not safety.get("ac_winter_lockout", True):
+        return False
+    if state.get("input_boolean.zima") == "on":
+        return True
+    outdoor = _clim_get_float("sensor.temperatura_na_ulitse_srednee")
+    mx = safety.get("ac_lockout_outdoor_max", 5)
+    return outdoor is not None and outdoor < mx
+
+
+def _clim_safety_tick(mode):
+    if not _clim_ac_lockout():
+        return
+    safety = _clim_safety_cfg()
+    climate_cfg = _REGISTRY.feature("climate") or {}
+    for zone in climate_cfg.get("zones", []):
+        for act in zone.get("actuators", []):
+            if act.get("role") != "primary_cool":
+                continue
+            dev = _REGISTRY.device(act.get("ref")) or {}
+            entity = dev.get("entity")
+            if not entity or str(entity).split(".")[0] != "climate":
+                continue
+            if not dev.get("managed_by_platform", True):
+                continue
+            if _clim_is_on(entity):
+                if mode == "shadow":
+                    log.warning("[climate][SHADOW][lockout] " + entity + " on зимой -> был бы выключен")
+                else:
+                    _clim_send_off(entity)
+                    log.warning("[climate][REAL][lockout] " + entity + " выключен (зима)")
+                now = time.monotonic()
+                if now - _AC_WARN_LAST.get(entity, 0) > 600:
+                    _AC_WARN_LAST[entity] = now
+                    warn = safety.get("ac_lockout_warn")
+                    if warn:
+                        service.call("script", "turn_on", entity_id=warn)
+
+def _clim_dry_tick(mode):
+    safety = _clim_safety_cfg()
+    if not safety.get("ac_dry_summer", True):
+        return
+    if _clim_ac_lockout():
+        return
+    hum = _clim_get_float("input_number.vlazhnost_v_dome")
+    if hum is None:
+        return
+    thr = safety.get("ac_dry_humidity", 60)
+    climate_cfg = _REGISTRY.feature("climate") or {}
+    for zone in climate_cfg.get("zones", []):
+        for act in zone.get("actuators", []):
+            if act.get("role") != "primary_cool":
+                continue
+            dev = _REGISTRY.device(act.get("ref")) or {}
+            entity = dev.get("entity")
+            if not entity or str(entity).split(".")[0] != "climate":
+                continue
+            if not dev.get("managed_by_platform", True):
+                continue
+            cur_mode, _t = _clim_state(entity)
+            try:
+                modes = (hass.states.get(entity).attributes or {}).get("hvac_modes", []) or []
+            except Exception:
+                modes = []
+            if "dry" not in modes:
+                continue
+            if hum > thr and cur_mode == "off":
+                if mode == "shadow":
+                    log.warning("[climate][SHADOW][dry] " + entity + " -> dry (hum=" + str(hum) + ")")
+                else:
+                    service.call("climate", "set_hvac_mode", entity_id=entity, hvac_mode="dry")
+                    log.warning("[climate][REAL][dry] " + entity + " -> dry")
+            elif cur_mode == "dry" and hum < (thr - 5):
+                if mode == "shadow":
+                    log.warning("[climate][SHADOW][dry] " + entity + " -> off")
+                else:
+                    _clim_send_off(entity)
 
 def climate_orchestrator_tick():
     if _REGISTRY is None:
@@ -303,6 +402,9 @@ def climate_orchestrator_tick():
     heating_season = _clim_season_is_heating(season_cfg)
     for zone in climate_cfg.get("zones", []):
         _clim_eval_zone(zone, mode, min_setpoint, heating_season)
+    
+    _clim_safety_tick(mode)
+    _clim_dry_tick(mode)
 
 
 @time_trigger("startup")

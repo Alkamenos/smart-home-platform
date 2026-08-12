@@ -77,6 +77,11 @@ features:
 
     safety:
       min_setpoint: 16
+      ac_winter_lockout: true
+      ac_lockout_outdoor_max: 5        # ниже этой уличной t кондей запрещён
+      ac_lockout_warn: script.ac_lockout_warning   # озвучить через Яндекс
+      ac_dry_summer: true
+      ac_dry_humidity: 60
 
     zones:
       - id: gostinnaia
@@ -122,6 +127,62 @@ features:
           - ref: convector_kabinet
             role: secondary_heat
             priority: 1
+  ventilation:
+    enabled: true
+    mode: shadow                      # старт в наблюдении
+    override_timeout_min: 60
+
+    devices:
+      - id: rek_spalnia
+        entity: fan.base_smart
+      - id: rek_kabinet
+        entity: fan.base_smart_2
+
+    sensors:
+      outdoor_temp: sensor.temperatura_na_ulitse_srednee
+      outdoor_humidity: sensor.datchik_temperatury_terassa_humidity
+      house_humidity: input_number.vlazhnost_v_dome
+
+    rooms:
+      - id: spalnia
+        temp: sensor.datchik_temperatury_spalnia_temperature
+      - id: kabinet
+        temp: sensor.datchik_temperatury_kabinet_temperature
+
+    setpoints_ref:
+      heat: input_number.temperatura
+      cool: input_number.maksimalno_komfortnaia_temperatura
+
+    speeds: { day: 40, away: 20 }   # percentage 0-100
+    deltas: { free_cool: 2, free_heat: 2, humidity: 5 }
+    boost_minutes: 60
+    winter_pause_outdoor_max: -5
+
+    flags:
+      night: input_boolean.vecher
+      away_home: input_boolean.my_doma      # on = дома
+      boost_intake: input_boolean.provetrivanie
+      boost_exhaust: input_boolean.provetrivanie_vytyazhka
+
+    open_doors:
+      enabled_flag: input_boolean.feature_open_doors   # флаг отключения фичи
+      mock: true                                        # пока нет датчиков — mock
+      mock_state: input_boolean.open_doors_mock_state
+      sensors:                                          # будущие реальные датчики
+        - { entity: binary_sensor.gostinnaia_window }
+        - { entity: binary_sensor.gostinnaia_door }
+        - { entity: binary_sensor.gostevaia_spalnia_window }
+        - { entity: binary_sensor.sanuzel_window }
+        - { entity: binary_sensor.sanuzel_interroom_door }
+
+    bathroom_fan:
+      enabled_flag: input_boolean.feature_bathroom_fan
+      entity: fan.vykliuchatel_sanuzel_switch2
+      temp_sensor: sensor.datchik_temperatury_sanuzel_temperature
+      humidity_sensor: sensor.datchik_temperatury_sanuzel_humidity
+      temp_min: 26
+      humidity_min: 60
+      run_minutes: 15
 
 globals:
   modes:
