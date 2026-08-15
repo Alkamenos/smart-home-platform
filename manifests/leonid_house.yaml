@@ -49,28 +49,170 @@ devices:
     - id: convector_sanuzel
       entity: switch.obogrevatel_sanuzel
       type: relay
-      managed_by_platform: false
+      managed_by_platform: true
       min_cycle_minutes: 5
 
     # Спальня
     - id: convector_spalnia
       entity: switch.obogrevatel_spalnia
       type: relay
-      managed_by_platform: false
+      managed_by_platform: true
       min_cycle_minutes: 5
 
     # Кабинет
     - id: convector_kabinet
       entity: switch.obogrevatel_kabinet
       type: relay
-      managed_by_platform: false
+      managed_by_platform: true
       min_cycle_minutes: 5
 
 features:
+  
+  lighting:
+    enabled: true
+    mode: shadow
+    override_timeout_min: 60
+    anti_cycle_min: 2
+    dark:
+      illuminance_sensor: sensor.datchik_osveshchennosti_illuminance
+      dark_lux: 20
+      light_lux: 40
+      sun_dark_elevation: -3
+      sun_light_elevation: 1
+    night_flag: input_boolean.vecher
+    presence_imitation:
+      enabled_flag: input_boolean.feature_imitation
+      # поведение добавим в подшаге 2
+
+    groups:
+      - id: yard_floodlights
+        name: "Улица/двор основное"
+        lights: [switch.group_lights_outdoor_floodlights]
+        profile: dusk_till_time
+        on: sunset
+        off: "23:00"
+        require_dark: true
+        feature_flag: input_boolean.feature_yard
+
+      - id: street_night
+        name: "Уличное ночное"
+        lights: [light.night_light]
+        profile: dusk_till_dawn
+        feature_flag: input_boolean.feature_street_night
+
+      - id: office
+        name: "Кабинет"
+        lights: [light.workroom_lights]
+        profile: dusk_till_time
+        on: sunset
+        off: "23:00"
+        require_dark: true
+        follow_global_ct: true
+        feature_flag: input_boolean.feature_office
+
+      - id: bedroom
+        name: "Спальня"
+        lights: [light.svet_v_spalne_right]
+        profile: dusk_till_time
+        on: sunset
+        off: "22:30"
+        require_dark: true
+        feature_flag: input_boolean.feature_bedroom
+
+      - id: kitchen_work
+        name: "Кухня рабочая"
+        lights: [switch.kitchen_lights]
+        profile: manual_auto
+        on: "18:00"
+        off: "23:00"
+        auto_flag: input_boolean.feature_kitchen_work
+        feature_flag: input_boolean.feature_kitchen_work
+
+      - id: table
+        name: "Обеденный стол"
+        lights: [light.table_lights]
+        profile: manual_auto
+        on: sunset
+        off: "23:00"
+        motion_sensor: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy
+        auto_flag: input_boolean.feature_table
+        feature_flag: input_boolean.feature_table
+        nightlight: { brightness: 40, color: [255,150,60] }
+
+      - id: container
+        name: "Контейнер"
+        lights: [light.svet_v_konteinere]
+        profile: motion
+        motion_sensor: binary_sensor.datchik_dvizheniia_konteiner_occupancy
+        no_motion_day_min: 5
+        no_motion_night_min: 2
+        feature_flag: input_boolean.feature_container
+
+      - id: bathroom
+        name: "Санузел"
+        lights: [light.vykliuchatel_sanuzel_switch1]
+        profile: motion
+        motion_sensor: binary_sensor.vykliuchatel_sanuzel_presence
+        no_motion_day_min: 5
+        no_motion_night_min: 2
+        feature_flag: input_boolean.feature_bathroom_light
+
+      - id: garland_terrace
+        name: "Гирлянда терраса"
+        lights: [light.girlianda_terassa]
+        profile: dusk_till_time
+        on: sunset
+        off: "23:00"
+        tolerate_unavailable: true
+        feature_flag: input_boolean.feature_garland_terrace
+
+      - id: garland_street
+        name: "Гирлянда уличная"
+        lights: [light.ulichnaia_girlianda]
+        profile: dusk_till_time
+        on: sunset
+        off: "23:00"
+        tolerate_unavailable: true
+        feature_flag: input_boolean.feature_garland_street
+
+      - id: garland_windows
+        name: "Окна (лето антимоскитная / зима гирлянда)"
+        lights: [light.girlianda_na_oknakh]
+        profile: dusk_till_dawn
+        tolerate_unavailable: true
+        feature_flag: input_boolean.feature_garland_windows
+        season:
+          summer: { profile: dusk_till_dawn }
+          winter: { profile: dusk_till_time, off: "23:00" }
+
+      - id: xmas_a2
+        name: "Рождественская уличная"
+        lights: [light.girlianda_a2]
+        profile: dusk_till_time
+        on: sunset
+        off: "23:00"
+        tolerate_unavailable: true
+        feature_flag: input_boolean.feature_xmas_a2
+  
+  sensor_health:
+    enabled: true
+    check_interval_min: 10
+    battery_threshold: 20
+    sensors:
+      - { entity: sensor.datchik_temperatury_gostinnaia_temperature, battery: CR2450, count: 1 }
+      - { entity: sensor.datchik_temperatury_spalnia_temperature, battery: CR2450, count: 1 }
+      - { entity: sensor.datchik_temperatury_kabinet_temperature, battery: CR2450, count: 1 }
+      - { entity: sensor.datchik_temperatury_sanuzel_temperature, battery: CR2450, count: 1 }
+      - { entity: sensor.datchik_temperatury_gostevaia_spalnia_temperature, battery: CR2450, count: 1 }
+      - { entity: sensor.datchik_temperatury_terassa_temperature, battery: CR2450, count: 1 }
+      - { entity: sensor.temperatura_v_teplitse_tomaty_temperature, battery: CR2450, count: 1 }
+      - { entity: sensor.temperatura_v_teplitse_ogurtsy_temperature, battery: CR2450, count: 1 }
+      - { entity: sensor.temperatura_v_teni_temperature, battery: CR2450, count: 1 }
+  
   climate:
     enabled: true
     mode: shadow
-    override_timeout_min: 120   # сколько минут платформа не спорит с ручным управлением
+    override_timeout_min: 120 # сколько минут платформа не спорит с ручным управлением
     season:
       source: input_boolean.zima
       heating_when: "on"
@@ -78,8 +220,8 @@ features:
     safety:
       min_setpoint: 16
       ac_winter_lockout: true
-      ac_lockout_outdoor_max: 5        # ниже этой уличной t кондей запрещён
-      ac_lockout_warn: script.ac_lockout_warning   # озвучить через Яндекс
+      ac_lockout_outdoor_max: 5 # ниже этой уличной t кондей запрещён
+      ac_lockout_warn: script.ac_lockout_warning # озвучить через Яндекс
       ac_dry_summer: true
       ac_dry_humidity: 60
 
@@ -129,7 +271,7 @@ features:
             priority: 1
   ventilation:
     enabled: true
-    mode: shadow                      # старт в наблюдении
+    mode: shadow # старт в наблюдении
     override_timeout_min: 60
 
     devices:
@@ -153,22 +295,22 @@ features:
       heat: input_number.temperatura
       cool: input_number.maksimalno_komfortnaia_temperatura
 
-    speeds: { day: 40, away: 20 }   # percentage 0-100
+    speeds: { day: 40, away: 20 } # percentage 0-100
     deltas: { free_cool: 2, free_heat: 2, humidity: 5 }
     boost_minutes: 60
     winter_pause_outdoor_max: -5
 
     flags:
       night: input_boolean.vecher
-      away_home: input_boolean.my_doma      # on = дома
+      away_home: input_boolean.my_doma # on = дома
       boost_intake: input_boolean.provetrivanie
       boost_exhaust: input_boolean.provetrivanie_vytyazhka
 
     open_doors:
-      enabled_flag: input_boolean.feature_open_doors   # флаг отключения фичи
-      mock: true                                        # пока нет датчиков — mock
+      enabled_flag: input_boolean.feature_open_doors # флаг отключения фичи
+      mock: true # пока нет датчиков — mock
       mock_state: input_boolean.open_doors_mock_state
-      sensors:                                          # будущие реальные датчики
+      sensors: # будущие реальные датчики
         - { entity: binary_sensor.gostinnaia_window }
         - { entity: binary_sensor.gostinnaia_door }
         - { entity: binary_sensor.gostevaia_spalnia_window }
