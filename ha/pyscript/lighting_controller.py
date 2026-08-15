@@ -2,6 +2,8 @@
 # LIGHTING CONTROLLER v1
 # ============================================================
 import time
+import random
+
 
 _LG_PREV = {}
 _LG_OVERRIDE = {}
@@ -9,6 +11,59 @@ _LG_LAST_CHANGE = {}
 _LG_LAST_LOG = {}
 _LG_MOTION_LAST = {}
 _DARK = None
+_CT_LAST = {}
+_CT_APPLIED = {}
+
+
+def _lg_ct_target(cfg):
+    ct = cfg.get("color_temp", {}) or {}
+    day = ct.get("day_kelvin", 5000)
+    night = ct.get("night_kelvin", 2200)
+    warm = _lg_hm(ct.get("warm_from", "21:00"))
+    nightf = _lg_hm(ct.get("night_from", "23:00"))
+    now = _lg_now_min()
+    if warm is None or nightf is None or now <= warm:
+        return day
+    if now >= nightf:
+        return night
+    frac = (now - warm) / max(1, (nightf - warm))
+    return int(day + (night - day) * frac)
+
+
+def _lg_ct_tick(cfg, mode):
+    ct = cfg.get("color_temp", {}) or {}
+    flag = ct.get("enabled_flag")
+    if flag and state.get(flag) != "on":
+        return
+    target = _lg_ct_target(cfg)
+    for g in cfg.get("groups", []) or []:
+        if not g.get("follow_global_ct"):
+            continue
+        gf = g.get("feature_flag")
+        if gf and state.get(gf) != "on":
+            continue
+        for e in g.get("lights", []) or []:
+            if not e or str(e).split(".")[0] != "light":
+                continue
+            if not _lg_is_on(e):
+                continue
+            try:
+                cur = hass.states.get(e).attributes.get("color_temp_kelvin")
+            except Exception:
+                cur = None
+            if cur is None:
+                continue
+            if abs(cur - target) < 200:
+                continue
+            last = _CT_LAST.get(e, 0)
+            if (time.monotonic() - last) < 300:   # не чаще 5 мин
+                continue
+            _CT_LAST[e] = time.monotonic()
+            if mode == "shadow":
+                log.warning("[light][SHADOW][ct] " + e + " -> " + str(target) + "K")
+            else:
+                service.call("light", "turn_on", entity_id=e, color_temp_kelvin=target)
+                log.warning("[light][REAL][ct] " + e + " -> " + str(target) + "K")
 
 
 def _lg_cfg():
@@ -217,6 +272,98 @@ def _lg_apply_group(g, cfg, mode):
             log.warning("[light][REAL] " + e + " -> " + ("on" if desired else "off"))
 
 
+def _lg_backlight_tick(cfg, mode):
+    bl = cfg.get("backlight", {}) or {}
+    flag = bl.get("enabled_flag")
+    if flag and state.get(flag) != "on":
+        return
+    now = _lg_now_min()
+    for it in bl.get("items", []) or []:
+        e = it.get("entity")
+        if not e:
+            continue
+        m = it.get("mode", "always")
+        if m == "always":
+            desired = True
+        elif m == "off":
+            desired = False
+        elif m == "schedule":
+            off = _lg_hm(it.get("off", "23:00"))
+            on = _lg_hm(it.get("on", "07:00"))
+            if off is None or on is None:
+                continue
+            inwin = (now >= off or now < on) if off > on else (now >= off and now < on)
+            desired = not inwin
+        else:
+            continue
+        cur = _lg_is_on(e)
+        if cur == desired:
+            continue
+        if mode == "shadow":
+            log.warning("[light][SHADOW][backlight] " + e + " -> " + ("on" if desired else "off"))
+        else:
+            service.call(str(e).split(".")[0], "turn_on" if desired else "turn_off", entity_id=e)
+            log.warning("[light][REAL][backlight] " + e + " -> " + ("on" if desired else "off"))
+
+
+_LG_IM_ACTIVE = {}
+
+
+def _lg_dt_min(entity):
+    s = state.get(entity)
+    if not s:
+        return None
+    try:
+        return _lg_hm(str(s).split(" ")[1][:5])
+    except Exception:
+        return None
+
+
+def _lg_imitation_tick(cfg, mode):
+    im = cfg.get("imitation", {}) or {}
+    flag = im.get("enabled_flag")
+    if flag and state.get(flag) != "on":
+        return
+    home = state.get(im.get("away_flag", "input_boolean.my_doma")) == "on"
+    # гасим имитацию, если дома или флаг выкл
+    if home or not bool(_DARK):
+        for e in list(_LG_IM_ACTIVE):
+            if mode == "real" and _lg_is_on(e):
+                service.call(str(e).split(".")[0], "turn_off", entity_id=e)
+                log.warning("[light][REAL][imit] " + e + " -> off")
+            _LG_IM_ACTIVE.pop(e, None)
+        return
+    ws = _lg_dt_min(im.get("window_start"))
+    we = _lg_dt_min(im.get("window_end"))
+    now = _lg_now_min()
+    if ws is not None and we is not None:
+        inwin = (ws <= now < we) if we > ws else (now >= ws or now < we)
+        if not inwin:
+            return
+    # гасим просроченные
+    for e, exp in list(_LG_IM_ACTIVE.items()):
+        if time.monotonic() >= exp:
+            if mode == "real" and _lg_is_on(e):
+                service.call(str(e).split(".")[0], "turn_off", entity_id=e)
+                log.warning("[light][REAL][imit] " + e + " -> off")
+            _LG_IM_ACTIVE.pop(e, None)
+    # случайно включаем одну группу
+    if not _LG_IM_ACTIVE and random.random() < 0.3:
+        groups = {g["id"]: g for g in cfg.get("groups", []) or []}
+        ids = [i for i in im.get("groups", []) or [] if i in groups]
+        if ids:
+            gid = random.choice(ids)
+            lights = groups[gid].get("lights", []) or []
+            if lights:
+                e = lights[0]
+                mins = random.randint(im.get("min_on_min", 10), im.get("max_on_min", 30))
+                if mode == "real":
+                    service.call(str(e).split(".")[0], "turn_on", entity_id=e)
+                    log.warning("[light][REAL][imit] " + e + " -> on (" + str(mins) + "m)")
+                else:
+                    log.warning("[light][SHADOW][imit] " + e + " -> on (" + str(mins) + "m)")
+                _LG_IM_ACTIVE[e] = time.monotonic() + mins * 60
+
 def _lg_tick():
     if _REGISTRY is None:
         return
@@ -232,6 +379,9 @@ def _lg_tick():
             _lg_apply_group(g, cfg, mode)
         except Exception as exc:
             log.error("[light] group " + str(g.get("id")) + " error: " + str(exc))
+    _lg_ct_tick(cfg, mode)
+    _lg_backlight_tick(cfg, mode)
+    _lg_imitation_tick(cfg, mode)
 
 
 @time_trigger("startup")
@@ -256,4 +406,12 @@ def light_debug():
     for g in cfg.get("groups", []) or []:
         d = _lg_decide(_lg_season(g), cfg)
         log.warning("[light][debug] " + str(g.get("id")) + " desired=" + str(d))
+    return {"ok": True}
+
+@service
+def light_override_clear(entity=None):
+    if entity:
+        _LG_OVERRIDE.pop(entity, None)
+    else:
+        _LG_OVERRIDE.clear()
     return {"ok": True}

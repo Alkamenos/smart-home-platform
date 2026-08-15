@@ -73,6 +73,29 @@ features:
     mode: shadow
     override_timeout_min: 60
     anti_cycle_min: 2
+    color_temp:
+      enabled_flag: input_boolean.feature_color_temp
+      day_kelvin: 5000
+      night_kelvin: 2200
+      warm_from: "21:00"   # начало плавного ухода в тёплый
+      night_from: "23:00"  # к этому времени уже тёплый
+  
+    backlight:
+      enabled_flag: input_boolean.feature_backlight
+      items:
+        - { entity: switch.svet_v_spalne_flip_indicator_light, mode: schedule, off: "23:00", on: "07:00" }
+        # остальные выключатели = always (платформа не трогает):
+        # - { entity: switch.<other>_indicator_light, mode: always }
+
+    imitation:
+      enabled_flag: input_boolean.feature_imitation
+      away_flag: input_boolean.my_doma      # имитация когда НЕ дома
+      window_start: input_datetime.imitation_start
+      window_end: input_datetime.imitation_end
+      groups: [table, kitchen_work]          # manual-группы, не конфликтуют с авто
+      min_on_min: 10
+      max_on_min: 30  
+
     dark:
       illuminance_sensor: sensor.datchik_osveshchennosti_illuminance
       dark_lux: 20
