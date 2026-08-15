@@ -1,0 +1,296 @@
+# Dashboard: Smart Home (Leonid's House)
+# Auto-generated from manifest v1.1.0
+
+title: "Умный дом"
+path: smart-home
+icon: mdi:home-assistant
+cards:
+  # =====================================================
+  # HEADER: Статус платформы
+  # =====================================================
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: >
+          ## 🏠 Дом Леонида
+
+          **Платформа:** {{ states('pyscript.manifest_status') }}
+
+          **Сезон:** {% if is_state('input_boolean.zima', 'on') %}❄️ Зима{% else %}☀️ Лето{% endif %}
+
+          **Дома:** {% if is_state('input_boolean.my_doma', 'on') %}🏡 Да{% else %}✈️ Нет{% endif %}
+
+          **Вечер:** {% if is_state('input_boolean.vecher', 'on') %}🌙 Да{% else %}☀️ Нет{% endif %}
+
+  # =====================================================
+  # CLIMATE CONTROL
+  # =====================================================
+  - type: entities
+    title: "🌡️ Климат"
+    show_header_toggle: true
+    toggle_entity: input_boolean.feature_climate
+    entities:
+      - entity: input_boolean.zima
+        name: Сезон (зима/лето)
+      - entity: input_number.temperatura
+        name: Целевая t° (гостиная/спальня/кабинет)
+      - entity: input_number.maksimalno_komfortnaia_temperatura
+        name: Макс. комфорт (лето)
+      - entity: input_number.temperatura_v_sanuzle
+        name: Целевая t° санузел
+
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ### 🛋️ Гостиная
+          {{ states('sensor.climate_gostinnaia_status') }}
+      - type: glance
+        entities:
+          - entity: sensor.datchik_temperatury_gostinnaia_temperature
+            name: Сейчас
+          - entity: switch.obogrevatel_gostinnaia
+            name: Конвектор
+          - entity: climate.esphome_web_0d22a4_ac_name
+            name: AC
+        columns: 3
+
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ### 🚿 Санузел
+          {{ states('sensor.climate_sanuzel_status') }}
+      - type: glance
+        entities:
+          - entity: sensor.datchik_temperatury_sanuzel_temperature
+            name: Сейчас
+          - entity: switch.obogrevatel_sanuzel
+            name: Конвектор
+        columns: 2
+
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ### 🛏️ Спальня
+          {{ states('sensor.climate_spalnia_status') }}
+      - type: glance
+        entities:
+          - entity: sensor.datchik_temperatury_spalnia_temperature
+            name: Сейчас
+          - entity: switch.obogrevatel_spalnia
+            name: Конвектор
+        columns: 2
+
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ### 💼 Кабинет
+          {{ states('sensor.climate_kabinet_status') }}
+      - type: glance
+        entities:
+          - entity: sensor.datchik_temperatury_kabinet_temperature
+            name: Сейчас
+          - entity: switch.obogrevatel_kabinet
+            name: Конвектор
+        columns: 2
+
+  # =====================================================
+  # VENTILATION
+  # =====================================================
+  - type: entities
+    title: "💨 Вентиляция"
+    show_header_toggle: true
+    toggle_entity: input_boolean.feature_ventilation
+    entities:
+      - entity: input_boolean.provetrivanie
+        name: Проветривание (приток boost)
+      - entity: input_boolean.provetrivanie_vytyazhka
+        name: Вытяжка boost
+      - entity: input_boolean.open_doors_mock_state
+        name: Mock: открытые двери/окна
+
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ### Спальня (Vakio)
+          Рекуператор: {{ states('fan.base_smart') }}
+      - type: glance
+        entities:
+          - entity: sensor.datchik_temperatury_spalnia_temperature
+            name: t°
+          - entity: fan.base_smart
+            name: Fan
+        columns: 2
+
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ### Кабинет (Vakio)
+          Рекуператор: {{ states('fan.base_smart_2') }}
+      - type: glance
+        entities:
+          - entity: sensor.datchik_temperatury_kabinet_temperature
+            name: t°
+          - entity: fan.base_smart_2
+            name: Fan
+        columns: 2
+
+  # =====================================================
+  # LIGHTING CONTROL (vlight + select+time UI)
+  # =====================================================
+  - type: entities
+    title: "💡 Освещение (общее)"
+    show_header_toggle: true
+    toggle_entity: input_boolean.feature_lighting
+    entities:
+      - entity: input_boolean.feature_color_temp
+        name: Авто color temp
+      - entity: input_boolean.feature_backlight
+        name: Backlight выключателей
+      - entity: input_boolean.feature_imitation
+        name: Имитация присутствия
+      - entity: input_datetime.imitation_start
+        name: Имитация: окно начало
+      - entity: input_datetime.imitation_end
+        name: Имитация: окно конец
+
+  # Динамические карточки для групп света
+  # Каждая группа: vlight toggle + select (Не включать/Закат/Время) + time
+  - type: vertical-stack
+    title: "Группы освещения"
+    cards:
+      # Улица/двор
+      - type: entities
+        title: "🏡 Улица/двор"
+        entities:
+          - entity: input_boolean.vlight_yard_floodlights
+            name: Вкл/Выкл
+          - entity: input_select.light_yard_floodlights_on
+            name: Режим включения
+          - entity: input_datetime.light_yard_floodlights_on_time
+            name: Время включения
+
+      # Уличное ночное
+      - type: entities
+        title: "🌙 Уличное ночное"
+        entities:
+          - entity: input_boolean.vlight_street_night
+            name: Вкл/Выкл
+          - entity: input_select.light_street_night_on
+            name: Режим включения
+          - entity: input_datetime.light_street_night_on_time
+            name: Время включения
+
+      # Кабинет
+      - type: entities
+        title: "💼 Кабинет"
+        entities:
+          - entity: input_boolean.vlight_office
+            name: Вкл/Выкл
+          - entity: input_select.light_office_on
+            name: Режим включения
+          - entity: input_datetime.light_office_on_time
+            name: Время включения
+
+      # Спальня
+      - type: entities
+        title: "🛏️ Спальня"
+        entities:
+          - entity: input_boolean.vlight_bedroom
+            name: Вкл/Выкл
+          - entity: input_select.light_bedroom_on
+            name: Режим включения
+          - entity: input_datetime.light_bedroom_on_time
+            name: Время включения
+
+      # Кухня рабочая
+      - type: entities
+        title: "🍳 Кухня рабочая"
+        entities:
+          - entity: input_boolean.vlight_kitchen_work
+            name: Вкл/Выкл
+          - entity: input_select.light_kitchen_work_on
+            name: Режим включения
+          - entity: input_datetime.light_kitchen_work_on_time
+            name: Время включения
+
+      # Обеденный стол
+      - type: entities
+        title: "🍽️ Обеденный стол"
+        entities:
+          - entity: input_boolean.vlight_table
+            name: Вкл/Выкл
+          - entity: input_select.light_table_on
+            name: Режим включения
+          - entity: input_datetime.light_table_on_time
+            name: Время включения
+
+      # Контейнер
+      - type: entities
+        title: "📦 Контейнер"
+        entities:
+          - entity: input_boolean.vlight_container
+            name: Вкл/Выкл
+          - entity: input_select.light_container_on
+            name: Режим включения
+          - entity: input_datetime.light_container_on_time
+            name: Время включения
+
+      # Санузел
+      - type: entities
+        title: "🚿 Санузел"
+        entities:
+          - entity: input_boolean.vlight_bathroom
+            name: Вкл/Выкл
+          - entity: input_select.light_bathroom_on
+            name: Режим включения
+          - entity: input_datetime.light_bathroom_on_time
+            name: Время включения
+
+      # Гирлянды
+      - type: entities
+        title: "🎄 Гирлянды"
+        entities:
+          - entity: input_boolean.vlight_garland_terrace
+            name: Терраса
+          - entity: input_boolean.vlight_garland_street
+            name: Уличная
+          - entity: input_boolean.vlight_garland_windows
+            name: Окна
+          - entity: input_boolean.vlight_xmas_a2
+            name: Рождественская A2
+
+  # =====================================================
+  # SENSOR HEALTH
+  # =====================================================
+  - type: entities
+    title: "🔋 Датчики (здоровье)"
+    entities:
+      - entity: sensor.sensor_health_status
+        name: Статус
+      - entity: sensor.battery_shopping_list
+        name: Список покупок (батарейки)
+
+  # =====================================================
+  # DEBUG & SERVICE CALLS
+  # =====================================================
+  - type: entities
+    title: "🔧 Отладка"
+    entities:
+      - entity: sensor.pyscript_manifest_status
+        name: Манифест загружен
+      - entity: sensor.pyscript_climate_debug
+        name: Климат debug
+      - entity: sensor.pyscript_vent_debug
+        name: Вентиляция debug
+      - entity: sensor.pyscript_light_debug
+        name: Свет debug
+      - entity: sensor.pyscript_override_status
+        name: Override статус
+      - entity: sensor.pyscript_sensor_health_status
+        name: Sensor health status

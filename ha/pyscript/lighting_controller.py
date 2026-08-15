@@ -1,5 +1,5 @@
 # ============================================================
-# LIGHTING CONTROLLER v1
+# LIGHTING CONTROLLER v2 (vlight + select+time UI)
 # ============================================================
 import time
 import random
@@ -13,6 +13,8 @@ _LG_MOTION_LAST = {}
 _DARK = None
 _CT_LAST = {}
 _CT_APPLIED = {}
+_VLIGHT_STATE = {}  # desired state для vlight
+_SELECT_TIME_CACHE = {}  # кэш решений select+time
 
 
 def _lg_ct_target(cfg):
@@ -187,6 +189,22 @@ def _lg_decide(g, cfg):
     if ov and state.get(ov) == "on":
         return {"on": True}
 
+    # Проверяем select+time UI
+    select_entity = "input_select.light_" + str(g.get("id")) + "_on"
+    time_entity = "input_datetime.light_" + str(g.get("id")) + "_on_time"
+    sel_val = state.get(select_entity)
+    
+    if sel_val == "Не включать":
+        return {"on": False}
+    elif sel_val == "Время":
+        t_val = _lg_dt_min(time_entity)
+        if t_val is not None:
+            if now >= t_val:
+                return {"on": True}
+            else:
+                return {"on": False}
+    # sunset / Закат обрабатывается ниже как on_mode="sunset"
+
     if prof == "motion":
         if motion:
             _LG_MOTION_LAST[g["id"]] = time.monotonic()
@@ -242,6 +260,40 @@ def _lg_apply_group(g, cfg, mode):
     if dec is None:
         return
     desired = dec["on"]
+    
+    # vlight-слой: обновляем виртуальную сущность
+    gid = g.get("id")
+    vlight_entity = "input_boolean.vlight_" + str(gid)
+    cur_vlight = state.get(vlight_entity)
+    if cur_vlight is not None:
+        vlight_on = (cur_vlight == "on")
+        # если vlight отличается от desired — это ручной override через UI/Алису
+        if vlight_on != desired:
+            # проверяем, не заблокированы ли мы
+            for e in g.get("lights", []) or []:
+                if not e:
+                    continue
+                if _lg_override_active(e):
+                    continue  # всё ещё в override
+            # это новая команда через vlight — применяем
+            for e in g.get("lights", []) or []:
+                if not e:
+                    continue
+                if g.get("tolerate_unavailable") and _lg_unavailable(e):
+                    continue
+                last_ch = _LG_LAST_CHANGE.get(e, 0)
+                if (time.monotonic() - last_ch) < cfg.get("anti_cycle_min", 2) * 60:
+                    continue
+                if mode == "shadow":
+                    log.warning("[light][SHADOW][vlight] " + e + " -> " + ("on" if desired else "off"))
+                else:
+                    _lg_set(e, desired, mode)
+                    _LG_LAST_CHANGE[e] = time.monotonic()
+                    log.warning("[light][REAL][vlight] " + e + " -> " + ("on" if desired else "off"))
+            # синхронизируем кэш
+            _VLIGHT_STATE[gid] = desired
+    
+    # основной цикл для реальных ламп (без vlight)
     for e in g.get("lights", []) or []:
         if not e:
             continue
@@ -405,7 +457,10 @@ def light_debug():
     log.warning("[light][debug] mode=" + str(_lg_mode(cfg)) + " dark=" + str(_DARK))
     for g in cfg.get("groups", []) or []:
         d = _lg_decide(_lg_season(g), cfg)
-        log.warning("[light][debug] " + str(g.get("id")) + " desired=" + str(d))
+        gid = g.get("id")
+        vlight_entity = "input_boolean.vlight_" + str(gid)
+        vlight_state = state.get(vlight_entity)
+        log.warning("[light][debug] " + str(gid) + " desired=" + str(d) + " vlight=" + str(vlight_state))
     return {"ok": True}
 
 @service
@@ -415,3 +470,21 @@ def light_override_clear(entity=None):
     else:
         _LG_OVERRIDE.clear()
     return {"ok": True}
+
+@service
+def vlight_toggle(group_id=None):
+    """Toggle vlight для группы. Вызывается кнопками."""
+    if group_id is None:
+        return {"error": "group_id required"}
+    cfg = _lg_cfg()
+    if not cfg:
+        return {"error": "no config"}
+    groups = {g["id"]: g for g in cfg.get("groups", []) or []}
+    if group_id not in groups:
+        return {"error": "group not found: " + str(group_id)}
+    vlight_entity = "input_boolean.vlight_" + str(group_id)
+    cur = state.get(vlight_entity)
+    new_state = "off" if cur == "on" else "on"
+    service.call("input_boolean", "turn_" + new_state, entity_id=vlight_entity)
+    log.warning("[vlight][toggle] " + vlight_entity + " -> " + new_state)
+    return {"ok": True, "entity": vlight_entity, "new_state": new_state}
