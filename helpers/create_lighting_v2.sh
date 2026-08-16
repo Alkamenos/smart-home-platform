@@ -27,12 +27,14 @@ create_bool() {
     -d "{\"entity_id\": \"$entity_id\", \"name\": \"$name\"}" \
     "$HA_URL/api/services/input_boolean/create")
   http_code=$(echo "$response" | tail -n1)
-  if [[ "$http_code" == "200" ]]; then
+  body=$(echo "$response" | head -n-1)
+  if [[ "$http_code" == "200" ]] || [[ "$http_code" == "201" ]]; then
     echo "  -> ✅ Создан"
-  elif [[ "$http_code" == "400" ]]; then
+  elif [[ "$http_code" == "409" ]]; then
     echo "  -> ⚠️  Уже существует"
   else
     echo "  -> ❌ Ошибка HTTP $http_code"
+    echo "     Ответ: $body"
   fi
 }
 
@@ -46,12 +48,14 @@ create_select() {
     -d "{\"entity_id\": \"$entity_id\", \"name\": \"$name\", \"options\": [\"Не включать\", \"Закат\", \"Время\"]}" \
     "$HA_URL/api/services/input_select/create")
   http_code=$(echo "$response" | tail -n1)
-  if [[ "$http_code" == "200" ]]; then
+  body=$(echo "$response" | head -n-1)
+  if [[ "$http_code" == "200" ]] || [[ "$http_code" == "201" ]]; then
     echo "  -> ✅ Создан"
-  elif [[ "$http_code" == "400" ]]; then
+  elif [[ "$http_code" == "409" ]]; then
     echo "  -> ⚠️  Уже существует"
   else
     echo "  -> ❌ Ошибка HTTP $http_code"
+    echo "     Ответ: $body"
   fi
 }
 
@@ -65,12 +69,14 @@ create_datetime() {
     -d "{\"entity_id\": \"$entity_id\", \"name\": \"$name\", \"has_date\": true, \"has_time\": true}" \
     "$HA_URL/api/services/input_datetime/create")
   http_code=$(echo "$response" | tail -n1)
-  if [[ "$http_code" == "200" ]]; then
+  body=$(echo "$response" | head -n-1)
+  if [[ "$http_code" == "200" ]] || [[ "$http_code" == "201" ]]; then
     echo "  -> ✅ Создан"
-  elif [[ "$http_code" == "400" ]]; then
+  elif [[ "$http_code" == "409" ]]; then
     echo "  -> ⚠️  Уже существует"
   else
     echo "  -> ❌ Ошибка HTTP $http_code"
+    echo "     Ответ: $body"
   fi
 }
 
