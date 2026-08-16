@@ -1,6 +1,22 @@
 #!/bin/bash
 # Скрипт создания helper-сущностей для lighting v2 (vlight + select+time UI)
 
+# Проверка переменных окружения
+if [ -z "$HA_URL" ]; then
+  echo "❌ Ошибка: HA_URL не установлен!"
+  echo "   Пример: export HA_URL=\"http://homeassistant.local:8123\""
+  exit 1
+fi
+
+if [ -z "$HA_TOKEN" ]; then
+  echo "❌ Ошибка: HA_TOKEN не установлен!"
+  echo "   Создайте токен в профиле HA и выполните: export HA_TOKEN=\"your_token\""
+  exit 1
+fi
+
+echo "✅ HA_URL: $HA_URL"
+echo "✅ HA_TOKEN: [скрыт]"
+
 # Функция создания input_boolean
 create_bool() {
   local entity="$1"
