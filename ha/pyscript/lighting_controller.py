@@ -328,7 +328,7 @@ def _lg_apply_group(g, cfg, mode):
     if dec is None:
         return
     desired = dec["on"]
-    if any(_lg_override_active(e) for e in lights):
+    if any([_lg_override_active(e) for e in lights]):
         return  # ручное действие свежее — автоматика не вмешивается
     if has_v:
         _lg_set_vlight(v, desired, mode)
@@ -567,7 +567,7 @@ def _lg_button_handler(var_name=None, **kwargs):
     v = _lg_vlight_entity(g)
     sv = state.get(v)
     cur_on = (sv == "on") if sv is not None else any(
-        _lg_is_on(e) for e in (g.get("lights", []) or []) if not _lg_unavailable(e))
+        [_lg_is_on(e) for e in (g.get("lights", []) or []) if not _lg_unavailable(e)])
     log.warning("[button] " + var_name + " " + str(action) + " -> toggle " + str(cmd.get("toggle")))
     _lg_manual_command(cfg, g, not cur_on, _lg_mode(cfg))
 
@@ -624,6 +624,6 @@ def vlight_toggle(group_id=None, on=None):
         v = _lg_vlight_entity(g)
         sv = state.get(v)
         on_val = (sv != "on") if sv is not None else not any(
-            _lg_is_on(e) for e in (g.get("lights", []) or []) if not _lg_unavailable(e))
+            [_lg_is_on(e) for e in (g.get("lights", []) or []) if not _lg_unavailable(e)])
     _lg_manual_command(cfg, g, on_val, _lg_mode(cfg))
     return {"ok": True}
