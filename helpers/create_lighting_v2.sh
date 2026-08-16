@@ -19,34 +19,53 @@ echo "✅ HA_TOKEN: [скрыт]"
 
 # Функция создания input_boolean
 create_bool() {
-  local entity="$1"
+  local entity_id="$1"
   local name="$2"
-  echo "Creating $entity ($name)"
+  echo "Creating $entity_id ($name)"
   curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
-    -H "Content-Type: application/json" -d "{\"name\": \"$name\"}" \
-    "$HA_URL/api/services/input_boolean/add" 2>/dev/null || echo "  -> exists or error"
+    -H "Content-Type: application/json" \
+    -d "{\"entity_id\": \"$entity_id\", \"name\": \"$name\"}" \
+    "$HA_URL/api/services/input_boolean/add" > /tmp/result_$$.txt 2>&1
+  if grep -q "400" /tmp/result_$$.txt; then
+    echo "  -> существует или ошибка формата"
+  else
+    echo "  -> создано"
+  fi
+  rm -f /tmp/result_$$.txt
 }
 
 # Функция создания input_select
 create_select() {
-  local entity="$1"
+  local entity_id="$1"
   local name="$2"
-  echo "Creating $entity ($name)"
+  echo "Creating $entity_id ($name)"
   curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"name\": \"$name\", \"options\": [\"Не включать\", \"Закат\", \"Время\"]}" \
-    "$HA_URL/api/services/input_select/add" 2>/dev/null || echo "  -> exists or error"
+    -d "{\"entity_id\": \"$entity_id\", \"name\": \"$name\", \"options\": [\"Не включать\", \"Закат\", \"Время\"]}" \
+    "$HA_URL/api/services/input_select/add" > /tmp/result_$$.txt 2>&1
+  if grep -q "400" /tmp/result_$$.txt; then
+    echo "  -> существует или ошибка формата"
+  else
+    echo "  -> создано"
+  fi
+  rm -f /tmp/result_$$.txt
 }
 
 # Функция создания input_datetime
 create_datetime() {
-  local entity="$1"
+  local entity_id="$1"
   local name="$2"
-  echo "Creating $entity ($name)"
+  echo "Creating $entity_id ($name)"
   curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"name\": \"$name\", \"has_date\": true, \"has_time\": true}" \
-    "$HA_URL/api/services/input_datetime/add" 2>/dev/null || echo "  -> exists or error"
+    -d "{\"entity_id\": \"$entity_id\", \"name\": \"$name\", \"has_date\": true, \"has_time\": true}" \
+    "$HA_URL/api/services/input_datetime/add" > /tmp/result_$$.txt 2>&1
+  if grep -q "400" /tmp/result_$$.txt; then
+    echo "  -> существует или ошибка формата"
+  else
+    echo "  -> создано"
+  fi
+  rm -f /tmp/result_$$.txt
 }
 
 # Группы из манифеста
