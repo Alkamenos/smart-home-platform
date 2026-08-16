@@ -1,5 +1,5 @@
 # ============================================================
-# LIGHTING CONTROLLER v2.4 (vlight bus + select/time UI + buttons)
+# LIGHTING CONTROLLER v2.6 (final: safe reads, no genexpr)
 # ============================================================
 import time
 import random
@@ -17,7 +17,22 @@ _BUTTON_MAP = {}
 _LG_IM_ACTIVE = {}
 
 
-# ---------------- утилиты ----------------
+# ---------------- безопасное чтение состояний ----------------
+
+def _lg_state(entity):
+    """Строка состояния или None, если сущности нет."""
+    st = hass.states.get(entity)
+    if st is None:
+        return None
+    return st.state
+
+
+def _lg_attr(entity, name):
+    st = hass.states.get(entity)
+    if st is None:
+        return None
+    return st.attributes.get(name)
+
 
 def _lg_cfg():
     if _REGISTRY is None:
@@ -26,11 +41,10 @@ def _lg_cfg():
 
 
 def _lg_get_float(entity):
-    v = state.get(entity)
-    if v is None:
+    s = _lg_state(entity)
+    if s is None:
         return None
-    s = str(v)
-    if s in ("unknown", "unavailable", "none", ""):
+    if str(s) in ("unknown", "unavailable", "none", ""):
         return None
     try:
         return float(s)
@@ -52,7 +66,7 @@ def _lg_hm(s):
 
 
 def _lg_dt_min(entity):
-    s = state.get(entity)
+    s = _lg_state(entity)
     if not s:
         return None
     try:
@@ -62,16 +76,16 @@ def _lg_dt_min(entity):
 
 
 def _lg_is_on(e):
-    return state.get(e) == "on"
+    return _lg_state(e) == "on"
 
 
 def _lg_unavailable(e):
-    s = state.get(e)
+    s = _lg_state(e)
     return s is None or str(s) in ("unknown", "unavailable")
 
 
 def _lg_mode(cfg):
-    sh = state.get("input_boolean.lighting_shadow_mode")
+    sh = _lg_state("input_boolean.lighting_shadow_mode")
     if sh == "on":
         return "shadow"
     if sh == "off":
@@ -80,14 +94,14 @@ def _lg_mode(cfg):
 
 
 def _lg_night(cfg):
-    return state.get(cfg.get("night_flag", "input_boolean.vecher")) == "on"
+    return _lg_state(cfg.get("night_flag", "input_boolean.vecher")) == "on"
 
 
 def _lg_season(g):
     s = g.get("season")
     if not s:
         return g
-    zima = state.get("input_boolean.zima") == "on"
+    zima = _lg_state("input_boolean.zima") == "on"
     var = s.get("winter") if zima else s.get("summer")
     if not var:
         return g
@@ -100,7 +114,7 @@ def _lg_motion(g):
     ms = g.get("motion_sensor")
     if not ms:
         return None
-    return state.get(ms) in ("on", "true", True)
+    return _lg_state(ms) in ("on", "true", True)
 
 
 # ---------------- темнота (гистерезис) ----------------
@@ -134,7 +148,6 @@ def _lg_update_dark(cfg):
 # ---------------- guards / vlight ----------------
 
 def _lg_vlight_entity(g):
-    """vlight группы: свой helper или усыновлённый легаси-boolean."""
     return g.get("vlight_entity") or ("input_boolean.vlight_" + str(g.get("id")))
 
 
@@ -158,7 +171,10 @@ def _lg_vlight_guard_active(v):
 
 def _lg_set_vlight(v, on, mode):
     want = "on" if on else "off"
-    if state.get(v) == want:
+    cur = _lg_state(v)
+    if cur is None:
+        return
+    if cur == want:
         return
     _VLIGHT_SYNC_GUARD[v] = time.monotonic() + 10
     if mode == "shadow":
@@ -195,9 +211,8 @@ def _lg_set_real(e, on, mode, cfg, force=False):
 
 
 def _lg_manual_command(cfg, g, on, mode):
-    """Ручная команда (vlight из UI/Алисы/кнопки): override + применение."""
     v = _lg_vlight_entity(g)
-    if state.get(v) is not None:
+    if _lg_state(v) is not None:
         _VLIGHT_PREV[v] = "on" if on else "off"
         _lg_set_vlight(v, on, mode)
     for e in (g.get("lights", []) or []):
@@ -219,11 +234,11 @@ def _lg_decide(g, cfg):
     night = _lg_night(cfg)
     motion = _lg_motion(g)
     ov = g.get("override_flag")
-    if ov and state.get(ov) == "on":
+    if ov and _lg_state(ov) == "on":
         return {"on": True}
 
     gid = str(g.get("id"))
-    sel_val = state.get("input_select.light_" + gid + "_on")
+    sel_val = _lg_state("input_select.light_" + gid + "_on")
     if sel_val == "Не включать":
         return {"on": False}
 
@@ -237,10 +252,9 @@ def _lg_decide(g, cfg):
 
     if prof == "manual_auto":
         af = g.get("auto_flag")
-        if not (af and state.get(af) == "on"):
-            return None  # ручной режим, платформа не решает on/off
+        if not (af and _lg_state(af) == "on"):
+            return None
 
-    # условие ВЫКЛ
     keep = bool(motion)
     off_mode = g.get("off", "23:00")
     if off_mode == "sunrise":
@@ -251,7 +265,6 @@ def _lg_decide(g, cfg):
         if off_min is not None and now >= off_min and not keep:
             return {"on": False}
 
-    # условие ВКЛ
     if sel_val == "Время":
         t_val = _lg_dt_min("input_datetime.light_" + gid + "_on_time")
         if t_val is not None and now >= t_val:
@@ -275,22 +288,22 @@ def _lg_decide(g, cfg):
 # ---------------- тик группы ----------------
 
 def _lg_handle_vlight_change(g, cfg, mode, v, has_v):
-    """Реагирует только на ФАКТ изменения vlight (ручная команда)."""
     if not has_v:
         return
-    cur = state.get(v)
+    cur = _lg_state(v)
+    if cur is None:
+        return
     prev = _VLIGHT_PREV.get(v)
     _VLIGHT_PREV[v] = cur
     if prev is None or prev == cur:
         return
     if _lg_vlight_guard_active(v):
-        return  # наша синхронизация
+        return
     log.warning("[light][manual] " + v + " -> " + cur)
     _lg_manual_command(cfg, g, cur == "on", mode)
 
 
 def _lg_track_real(g, cfg, mode, v, has_v):
-    """Детект внешних изменений реальных ламп (физ. выключатель и т.п.)."""
     for e in (g.get("lights", []) or []):
         if not e:
             continue
@@ -302,7 +315,7 @@ def _lg_track_real(g, cfg, mode, v, has_v):
         exp = _lg_expected_guard(e)
         if exp is not None:
             if exp == cur:
-                _EXPECTED_REAL_STATE.pop(e, None)  # наша команда подтверждена
+                _EXPECTED_REAL_STATE.pop(e, None)
             continue
         _LG_OVERRIDE[e] = time.monotonic() + cfg.get("override_timeout_min", 60) * 60
         log.warning("[light][override-manual] " + e + " external -> block")
@@ -313,13 +326,13 @@ def _lg_track_real(g, cfg, mode, v, has_v):
 def _lg_apply_group(g, cfg, mode):
     g = _lg_season(g)
     flag = g.get("feature_flag")
-    if flag and state.get(flag) != "on":
+    if flag and _lg_state(flag) != "on":
         return
     if g.get("shadow"):
-        mode = "shadow"  # персональный shadow для постепенной миграции
+        mode = "shadow"
     lights = [e for e in (g.get("lights", []) or []) if e]
     v = _lg_vlight_entity(g)
-    has_v = state.get(v) is not None
+    has_v = _lg_state(v) is not None
 
     _lg_handle_vlight_change(g, cfg, mode, v, has_v)
     _lg_track_real(g, cfg, mode, v, has_v)
@@ -329,7 +342,7 @@ def _lg_apply_group(g, cfg, mode):
         return
     desired = dec["on"]
     if any([_lg_override_active(e) for e in lights]):
-        return  # ручное действие свежее — автоматика не вмешивается
+        return
     if has_v:
         _lg_set_vlight(v, desired, mode)
     for e in lights:
@@ -361,25 +374,24 @@ def _lg_ct_target(cfg):
 def _lg_ct_tick(cfg, mode):
     ct = cfg.get("color_temp", {}) or {}
     flag = ct.get("enabled_flag")
-    if flag and state.get(flag) != "on":
+    if flag and _lg_state(flag) != "on":
         return
     target = _lg_ct_target(cfg)
     for g in (cfg.get("groups", []) or []):
         if not g.get("follow_global_ct"):
             continue
         gf = g.get("feature_flag")
-        if gf and state.get(gf) != "on":
+        if gf and _lg_state(gf) != "on":
             continue
         for e in (g.get("lights", []) or []):
             if not e or str(e).split(".")[0] != "light":
                 continue
             if not _lg_is_on(e):
                 continue
-            try:
-                cur = hass.states.get(e).attributes.get("color_temp_kelvin")
-            except Exception:
-                cur = None
-            if cur is None or abs(cur - target) < 200:
+            cur = _lg_attr(e, "color_temp_kelvin")
+            if cur is None:
+                continue
+            if abs(cur - target) < 200:
                 continue
             last = _CT_LAST.get(e, 0)
             if (time.monotonic() - last) < 300:
@@ -397,7 +409,7 @@ def _lg_ct_tick(cfg, mode):
 def _lg_backlight_tick(cfg, mode):
     bl = cfg.get("backlight", {}) or {}
     flag = bl.get("enabled_flag")
-    if flag and state.get(flag) != "on":
+    if flag and _lg_state(flag) != "on":
         return
     now = _lg_now_min()
     for it in (bl.get("items", []) or []):
@@ -433,26 +445,28 @@ def _lg_backlight_tick(cfg, mode):
 def _lg_imitation_tick(cfg, mode):
     im = cfg.get("imitation", {}) or {}
     flag = im.get("enabled_flag")
-    if flag and state.get(flag) != "on":
+    if flag and _lg_state(flag) != "on":
         return
-    home = state.get(im.get("away_flag", "input_boolean.my_doma")) == "on"
-    groups = {str(g["id"]): g for g in (cfg.get("groups", []) or [])}
-
-    def _kill(e, gid, why):
-        g = groups.get(str(gid))
-        v = _lg_vlight_entity(g) if g else None
-        if mode == "real":
-            _lg_set_real(e, False, mode, cfg, force=True)
-        _LG_OVERRIDE.pop(e, None)
-        if v and state.get(v) is not None:
-            _VLIGHT_PREV[v] = "off"
-            _lg_set_vlight(v, False, mode)
-        log.warning("[light][imit] " + e + " off (" + why + ")")
+    home = _lg_state(im.get("away_flag", "input_boolean.my_doma")) == "on"
+    groups = {}
+    for g in (cfg.get("groups", []) or []):
+        groups[str(g["id"])] = g
 
     if home or not bool(_DARK):
-        for e, (exp, gid) in list(_LG_IM_ACTIVE.items()):
-            _kill(e, gid, "home/light")
-        _LG_IM_ACTIVE.clear()
+        for e in list(_LG_IM_ACTIVE.keys()):
+            pair = _LG_IM_ACTIVE.pop(e, None)
+            if pair is None:
+                continue
+            if mode == "real":
+                _lg_set_real(e, False, mode, cfg, force=True)
+            _LG_OVERRIDE.pop(e, None)
+            g = groups.get(str(pair[1]))
+            if g is not None:
+                v = _lg_vlight_entity(g)
+                if _lg_state(v) is not None:
+                    _VLIGHT_PREV[v] = "off"
+                    _lg_set_vlight(v, False, mode)
+            log.warning("[light][imit] " + e + " off (home/light)")
         return
 
     ws = _lg_dt_min(im.get("window_start"))
@@ -463,10 +477,20 @@ def _lg_imitation_tick(cfg, mode):
         if not inwin:
             return
 
-    for e, (exp, gid) in list(_LG_IM_ACTIVE.items()):
-        if time.monotonic() >= exp:
-            _kill(e, gid, "expired")
+    for e in list(_LG_IM_ACTIVE.keys()):
+        pair = _LG_IM_ACTIVE.get(e)
+        if pair is not None and time.monotonic() >= pair[0]:
             _LG_IM_ACTIVE.pop(e, None)
+            if mode == "real":
+                _lg_set_real(e, False, mode, cfg, force=True)
+            _LG_OVERRIDE.pop(e, None)
+            g = groups.get(str(pair[1]))
+            if g is not None:
+                v = _lg_vlight_entity(g)
+                if _lg_state(v) is not None:
+                    _VLIGHT_PREV[v] = "off"
+                    _lg_set_vlight(v, False, mode)
+            log.warning("[light][imit] " + e + " off (expired)")
 
     if not _LG_IM_ACTIVE and random.random() < 0.3:
         ids = [i for i in (im.get("groups", []) or []) if str(i) in groups]
@@ -481,7 +505,7 @@ def _lg_imitation_tick(cfg, mode):
                 _LG_OVERRIDE[e] = time.monotonic() + mins * 60
                 if mode == "real":
                     _lg_set_real(e, True, mode, cfg, force=True)
-                if v and state.get(v) is not None:
+                if _lg_state(v) is not None:
                     _VLIGHT_PREV[v] = "on"
                     _lg_set_vlight(v, True, mode)
                 _LG_IM_ACTIVE[e] = (time.monotonic() + mins * 60, gid)
@@ -493,7 +517,7 @@ def _lg_imitation_tick(cfg, mode):
 def _lg_tick():
     if _REGISTRY is None:
         return
-    if state.get("input_boolean.feature_lighting") == "off":
+    if _lg_state("input_boolean.feature_lighting") == "off":
         return
     cfg = _lg_cfg()
     if not cfg or not cfg.get("enabled", True):
@@ -524,7 +548,7 @@ def lighting_controller_loop():
         task.sleep(30)
 
 
-# ---------------- кнопки (future: entity появится позже) ----------------
+# ---------------- кнопки ----------------
 
 def _btn_build():
     global _BUTTON_MAP
@@ -560,12 +584,14 @@ def _lg_button_handler(var_name=None, **kwargs):
     cfg = _lg_cfg()
     if not cfg:
         return
-    groups = {str(g["id"]): g for g in (cfg.get("groups", []) or [])}
+    groups = {}
+    for g in (cfg.get("groups", []) or []):
+        groups[str(g["id"])] = g
     g = groups.get(str(cmd.get("toggle")))
     if not g:
         return
     v = _lg_vlight_entity(g)
-    sv = state.get(v)
+    sv = _lg_state(v)
     if sv is not None:
         cur_on = (sv == "on")
     else:
@@ -575,7 +601,7 @@ def _lg_button_handler(var_name=None, **kwargs):
     _lg_manual_command(cfg, g, not cur_on, _lg_mode(cfg))
 
 
-# ---------------- сервисы диагностики ----------------
+# ---------------- сервисы ----------------
 
 @service
 def light_debug():
@@ -600,9 +626,14 @@ def light_debug():
                 reals_parts.append("on" if _lg_is_on(e) else "off")
         reals = ",".join(reals_parts)
         ovr = [e for e in (g2.get("lights", []) or []) if e and _lg_override_active(e)]
-        sel = state.get("input_select.light_" + gid + "_on")
+        sel = _lg_state("input_select.light_" + gid + "_on")
+        if sel is None:
+            sel = "missing"
+        vstate = _lg_state(v)
+        if vstate is None:
+            vstate = "missing"
         log.warning("[light][debug] %s sel=%s vlight=%s real=[%s] desired=%s override=%s"
-                    % (gid, sel, state.get(v), reals, dec, ovr))
+                    % (gid, sel, vstate, reals, dec, ovr))
     return {"ok": True}
 
 
@@ -623,7 +654,9 @@ def vlight_toggle(group_id=None, on=None):
     cfg = _lg_cfg()
     if not cfg:
         return {"error": "no config"}
-    groups = {str(g["id"]): g for g in (cfg.get("groups", []) or [])}
+    groups = {}
+    for g in (cfg.get("groups", []) or []):
+        groups[str(g["id"])] = g
     g = groups.get(str(group_id))
     if not g:
         return {"error": "group not found: " + str(group_id)}
@@ -631,12 +664,11 @@ def vlight_toggle(group_id=None, on=None):
         on_val = str(on) in ("on", "true", "1", "True")
     else:
         v = _lg_vlight_entity(g)
-        sv = state.get(v)
-
-    if sv is not None:
-        on_val = (sv != "on")
-    else:
-        lights_list = [e for e in (g.get("lights", []) or []) if e and not _lg_unavailable(e)]
-        on_val = not any([_lg_is_on(e) for e in lights_list])
+        sv = _lg_state(v)
+        if sv is not None:
+            on_val = (sv != "on")
+        else:
+            lights_list = [e for e in (g.get("lights", []) or []) if e and not _lg_unavailable(e)]
+            on_val = not any([_lg_is_on(e) for e in lights_list])
     _lg_manual_command(cfg, g, on_val, _lg_mode(cfg))
     return {"ok": True}
