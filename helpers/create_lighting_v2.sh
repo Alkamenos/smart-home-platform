@@ -76,38 +76,43 @@ create_datetime() {
 
 # Группы из манифеста (явный список для надёжности)
 # Формат: "group_id:Group Name"
-GROUPS=(
-  "yard_floodlights:Улица/двор"
-  "front_door:Входная дверь"
-  "garage_gate:Ворота гаража"
-  "garden_path:Садовая дорожка"
-  "terrace:Терраса"
-  "balcony:Балкон"
-  "bedroom:Спальня"
-  "nursery:Детская"
-  "office:Кабинет"
-  "kitchen:Кухня"
-  "bathroom:Санузел"
-  "hallway:Коридор"
-)
+# Используем построчное чтение для максимальной совместимости
+GROUPS_LIST="yard_floodlights:Улица/двор
+front_door:Входная дверь
+garage_gate:Ворота гаража
+garden_path:Садовая дорожка
+terrace:Терраса
+balcony:Балкон
+bedroom:Спальня
+nursery:Детская
+office:Кабинет
+kitchen:Кухня
+bathroom:Санузел
+hallway:Коридор"
 
-echo "=== Создание vlight и select+time UI для освещения (${#GROUPS[@]} групп) ==="
+echo "=== Создание vlight и select+time UI для освещения ==="
+echo ""
 
-for item in "${GROUPS[@]}"; do
-  gid="${item%%:*}"
-  gname="${item#*:}"
+# Подсчёт количества групп
+GROUP_COUNT=$(echo "$GROUPS_LIST" | wc -l)
+echo "Найдено групп: $GROUP_COUNT"
+echo ""
+
+# Обработка каждой группы через while read
+echo "$GROUPS_LIST" | while IFS=: read -r group_id group_name; do
+  # Пропускаем пустые строки
+  [ -z "$group_id" ] && continue
   
-  echo ""
-  echo "Группа: $gid ($gname)"
+  echo "Группа: $group_id ($group_name)"
   
   # vlight toggle
-  create_bool "input_boolean.vlight_${gid}" "vlight: $gname"
+  create_bool "input_boolean.vlight_${group_id}" "vlight: $group_name"
   
   # select for on-mode
-  create_select "input_select.light_${gid}_on" "Режим включения: $gname"
+  create_select "input_select.light_${group_id}_on" "Режим включения: $group_name"
   
   # datetime for scheduled time
-  create_datetime "input_datetime.light_${gid}_on_time" "Время включения: $gname"
+  create_datetime "input_datetime.light_${group_id}_on_time" "Время включения: $group_name"
 done
 
 echo ""
