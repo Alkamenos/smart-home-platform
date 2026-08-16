@@ -1,0 +1,167 @@
+# Файл декларативных helper-сущностей для освещения (vlight + select + time)
+# Добавьте в configuration.yaml:
+# input_boolean: !include helpers/input_helpers.yaml
+# input_select: !include helpers/input_selects.yaml
+# input_datetime: !include helpers/input_datetimes.yaml
+
+input_boolean:
+  - name: "VLight: Улица/двор"
+    id: vlight_yard_floodlights
+  - name: "VLight: Входная дверь"
+    id: vlight_front_door
+  - name: "VLight: Ворота гаража"
+    id: vlight_garage_gate
+  - name: "VLight: Садовая дорожка"
+    id: vlight_garden_path
+  - name: "VLight: Терраса"
+    id: vlight_terrace
+  - name: "VLight: Балкон"
+    id: vlight_balcony
+  - name: "VLight: Спальня"
+    id: vlight_bedroom
+  - name: "VLight: Детская"
+    id: vlight_nursery
+  - name: "VLight: Кабинет"
+    id: vlight_office
+  - name: "VLight: Кухня"
+    id: vlight_kitchen
+  - name: "VLight: Санузел"
+    id: vlight_bathroom
+  - name: "VLight: Коридор"
+    id: vlight_hallway
+
+input_select:
+  - name: "Режим включения: Улица/двор"
+    id: light_yard_floodlights_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Входная дверь"
+    id: light_front_door_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Ворота гаража"
+    id: light_garage_gate_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Садовая дорожка"
+    id: light_garden_path_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Терраса"
+    id: light_terrace_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Балкон"
+    id: light_balcony_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Спальня"
+    id: light_bedroom_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Детская"
+    id: light_nursery_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Кабинет"
+    id: light_office_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Кухня"
+    id: light_kitchen_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Санузел"
+    id: light_bathroom_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+  - name: "Режим включения: Коридор"
+    id: light_hallway_on
+    options:
+      - "Не включать"
+      - "Закат"
+      - "Время"
+    initial: "Не включать"
+
+input_datetime:
+  - name: "Время включения: Улица/двор"
+    id: light_yard_floodlights_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Входная дверь"
+    id: light_front_door_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Ворота гаража"
+    id: light_garage_gate_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Садовая дорожка"
+    id: light_garden_path_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Терраса"
+    id: light_terrace_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Балкон"
+    id: light_balcony_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Спальня"
+    id: light_bedroom_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Детская"
+    id: light_nursery_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Кабинет"
+    id: light_office_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Кухня"
+    id: light_kitchen_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Санузел"
+    id: light_bathroom_on_time
+    has_date: true
+    has_time: true
+  - name: "Время включения: Коридор"
+    id: light_hallway_on_time
+    has_date: true
+    has_time: true
