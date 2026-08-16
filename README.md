@@ -1,22 +1,33 @@
 # Smart Home Platform
 
-Data-driven платформа поверх Home Assistant: логика отделена от данных.
-Весь инстанс описывается манифестом (YAML), движок читает его в runtime.
+Data-driven платформа умного дома поверх Home Assistant. Единый источник правды —
+YAML-манифест инстанса; UI — через HA helpers; логика — pyscript (один склеенный файл).
 
 ## Структура
-- `shplatform/schema/` — Pydantic-схема манифеста (единый источник правды)
-- `shplatform/validator/` — проверки связности (cross-references)
-- `shplatform/loader/registry.py` — runtime-реестр (без зависимостей)
-- `ha/pyscript/manifest_loader.py` — загрузчик манифеста в HA
-- `ha/pyscript/climate_orchestrator.py` — климат (shadow/real)
-- `manifests/` — манифесты инстансов
-- `cli/` — `shplatform validate` / `schema`
-- `tests/` — тесты схемы и реестра
 
-## Workflow
-1. `shplatform validate manifests/<name>.yaml`
-2. `./deploy.sh --ha-config /config`
-3. Полный перезапуск HA
+- `shplatform/` — CLI-валидатор и Pydantic-схема манифеста (runtime НЕ использует Pydantic)
+- `shplatform/loader/registry.py` — runtime-загрузчик манифеста
+- `ha/pyscript/*.py` — контроллеры (climate, ventilation, sensor_health, lighting),
+  конкатенируются в один `/config/pyscript/manifest_loader.py` (порядок важен!)
+- `manifests/leonid_house.yaml` — манифест инстанса
+- `docs/` — SPEC, HANDOFF, правила pyscript, формат provisioning
+- `tools/` — deploy.sh, smoke_light.py, gen_helpers.py
+
+## Quickstart
+
+```bash
+source .venv/bin/activate
+./tools/deploy.sh            # validate + склейка + sanity + sync манифеста + рестарт HA
+./tools/deploy.sh --smoke    # после рестарта: таблица состояния освещения
+python3 tools/gen_helpers.py --start-id 61   # JSON для создания недостающих helpers
+```
+
+## Документация
+
+- `docs/SPEC.md` — контракты платформы (vlight, override, shadow)
+- `docs/HANDOFF.md` — текущее состояние инстанса и roadmap (обновлять каждый сеанс!)
+- `docs/PYSCRIPT_RULES.md` — ограничения pyscript, обязательны к прочтению перед правкой кода
+- `docs/ENTITY_PROVISIONING.md` — формат массового создания helper-сущностей
 
 ## Текущий статус (Leonid's House)
 ✅ **Климат**: 4 зоны (гостиная/санузел/спальня/кабинет), shadow/real, safety (AC winter lockout, dry mode), free-heat координация

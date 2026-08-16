@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+HA_URL="${HA_URL:-http://homeassistant.local:8123}"
+HA_TOKEN="${HA_TOKEN:-$(cat ~/.ha_token 2>/dev/null || true)}"
+HA_CONFIG="${HA_CONFIG:-/config}"
+
+echo "== 1. validate =="
+shplatform validate manifests/leonid_house.yaml
+
+echo "== 2. concat =="
+{ cat shplatform/loader/registry.py; echo ""; \
+  cat ha/pyscript/manifest_loader.py; echo ""; \
+  cat ha/pyscript/climate_orchestrator.py; echo ""; \
+  cat ha/pyscript/ventilation_controller.py; echo ""; \
+  cat ha/pyscript/sensor_health.py; echo ""; \
+  cat ha/pyscript/lighting_controller.py; } > "$HA_CONFIG/pyscript/manifest_loader.py"
+
+echo "== 3. sanity: generator expressions запрещены =="
+if grep -nE "\b(any|all|sum|min|max|join)\(" "$HA_CONFIG/pyscript/manifest_loader.py" \
+    | grep " for " | grep -v "\["; then
+  echo "FAIL: найдены generator expressions (см. docs/PYSCRIPT_RULES.md)"; exit 1
+fi
+echo "OK"
+
+echo "== 4. sync manifest =="
+mkdir -p "$HA_CONFIG/manifests"
+cp manifests/leonid_house.yaml "$HA_CONFIG/manifests/active.yaml"
+
+if [ "${1:-}" = "--smoke" ]; then exec python3 tools/smoke_light.py; fi
+
+echo "== 5. restart HA =="
+if [ -n "$HA_TOKEN" ]; then
+  read -r -p "Перезапустить HA сейчас? [y/N] " a
+  if [ "$a" = "y" ]; then
+    curl -fs -X POST "$HA_URL/api/services/homeassistant/restart" \
+      -H "Authorization: Bearer $HA_TOKEN" -H "Content-Type: application/json" > /dev/null
+    echo "Рестарт запрошен. После подъёма: ./tools/deploy.sh --smoke"
+  fi
+else
+  echo "HA_TOKEN не задан (создай long-lived token в ~/.ha_token). Рестартни HA вручную, затем ./tools/deploy.sh --smoke"
+fi
