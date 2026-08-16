@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 cli/__init__.py
 cli/main.py
