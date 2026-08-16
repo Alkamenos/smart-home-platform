@@ -2,50 +2,80 @@
 
 ---
 
-# ПРОМТ: Возобновление проекта «Smart Home Platform» (Home Assistant)
+# HANDOFF: Smart Home Platform (Leonid's House)
 
 ## Цель
-Строим **data-driven платформу умного дома** поверх Home Assistant как **продукт для тиражирования у заказчиков**. Ключевые требования: лёгкая модификация без монолита; миграция с легаси-автоматизаций без поломок; удобная настройка интервалов/режимов через UI; учёт внешних условий (не светить днём, не поливать в дождь); распознавание источника команды (физический выключатель / Алиса / автоматика) чтобы не конфликтовать с ручным управлением.
+Строим **data-driven платформу умного дома** поверх Home Assistant как продукт для тиражирования. Ключевые требования: лёгкая модификация; миграция с легаси без поломок; настройка через UI (без YAML); учёт внешних условий; распознавание источника команды (физический выключатель/Алиса/автоматика) для отсутствия конфликтов.
 
 ## Окружение
-- HA на Raspberry Pi 4, доступ через веб + аддон VS Code (git). Репозиторий: `/config/.platform`.
-- ZigBee через Zigbee2MQTT + Wi‑Fi устройства. Яндекс Станции.
-- Устройства: конвекторы `switch.obogrevatel_{gostinnaia,sanuzel,spalnia,kabinet}`; тёплый пол = глобальный термостат `climate.termostat_gostinaia` (managed_by_platform=false); кондиционер AUX через ESPHome `climate.esphome_web_0d22a4_ac_name`; датчики `sensor.datchik_temperatury_{room}_temperature`; рекуператоры Vakio `fan.base_smart`, `fan.base_smart_2` (спальня/кабинет, ещё не подключены); выключатели Aqara H1M.
-- Существующие helpers (переиспользуем, не создаём): `input_number.temperatura` (глобальный setpoint), `input_number.maksimalno_komfortnaia_temperatura` (порог охлаждения), `input_number.temperatura_v_sanuzle`, `input_boolean.zima` (сезон). Созданы: `input_boolean.feature_climate`, `input_boolean.climate_shadow_mode`.
-- Легаси: автоматизация «Управление климатом» управляет конвекторами/рекуператорами/масляным радиатором; «Управление термостатом» синхронизирует setpoint→тёплый пол.
+- HA на Raspberry Pi 4, аддон VS Code (git), репо `/config/.platform`
+- ZigBee (Zigbee2MQTT) + Wi-Fi + Яндекс Станции
+- Репозиторий уже содержит рабочие модули: climate, ventilation, sensor_health, lighting v2
 
 ## Архитектура (принятые решения)
-- **Манифест (YAML) = единый источник правды** инстанса. Pydantic-схема + валидатор (CLI, pre-deploy). Runtime-лоадер НЕ использует Pydantic (читает сырой dict).
+- **Манифест (YAML)** = единый источник правды инстанса. Pydantic-схема + валидатор CLI, runtime-лоадер НЕ использует Pydantic.
 - **Разделение**: HA-native (helpers, Lovelace) для UI; **pyscript** для логики.
-- **Конкатенация**: pyscript изолирует файлы (нет общего namespace) → деплой склеивает `registry.py + manifest_loader.py + climate_orchestrator.py` в один `/config/pyscript/manifest_loader.py` (скрипт `deploy.sh`).
-- **Climate Orchestrator**: polling ~30с; сезон из `input_boolean.zima`; heat/cool setpoints из input_number; deadband 0.5; safety min_setpoint=16; флаг `managed_by_platform`; режимы **shadow/real** через helper.
-- **Override Manager (MVP)**: слушает `state_changed` управляемых устройств; если изменение не совпадает с недавней командой платформы → временный блок (`override_timeout_min`, умолч. 60).
-- **Climate-устройства**: только конкретные режимы (cool/heat/off), никогда auto; команды только при переходе; уважение ручных правок.
+- **Конкатенация** 7 файлов в один `/config/pyscript/manifest_loader.py`:
+  `registry.py` → `manifest_loader.py` → `climate_orchestrator.py` → `ventilation_controller.py` → `sensor_health.py` → `lighting_controller.py`
+- **Shadow/real** у каждой фичи через master-выключатель и shadow-тумблер.
+- **Override Manager**: слушает `state_changed` управляемых устройств, отличает «команда платформы» от внешнего и ставит временный блок. Реализован опросно (не глобальным event_trigger) из-за нагрузки на RPi4.
+- **Команды только при переходе** + уважение ручных правок + анти-цикл (мин. 2 мин между командами).
 
-## Критичные ограничения pyscript (выучены на ошибках)
-- Нет общего namespace между файлами → конкатенация.
-- Нет builtin `open` → `import builtins; builtins.open(...)`.
-- Избегать `with` и `return` изнутри `with` (теряется значение).
-- `@time_trigger("period=30")` не парсится → `@time_trigger("startup")` + бесконечный цикл с `task.sleep(30)`.
-- После `pyscript.reload` могут остаться дубли фоновых циклов → **рекомендуется полный перезапуск HA**.
-- Состояние `climate` = hvac_mode (cool/off/…), НЕ on/off → отдельная проверка `_clim_is_on`.
+## Критичные ограничения pyscript (важно!)
+- Нет общего namespace между файлами → **обязательна склейка**.
+- `@time_trigger("period=30")` не парсится → `@time_trigger("startup")` + бесконечный цикл `task.sleep(30)`.
+- После `pyscript.reload` дубли фоновых циклов → **всегда полный перезапуск HA**.
+- `climate` state = hvac_mode (cool/off/…), НЕ on/off → `_clim_is_on` отдельно.
+- `@event_trigger("state_changed")` глобально = спам/перегрев event loop → только целевые подписки (`@state_trigger` по списку entity).
 
-## Что ГОТОВО (работает)
-- Часть A: схема+валидатор+CLI+тесты (зелёные). Часть B: лоадер в HA.
-- Манифест `manifests/leonid_house.yaml`: 4 зоны (гостиная/санузел/спальня/кабинет).
-- Дашборд Lovelace «Климат» (master-тумблер, shadow/real, уставки, статусы зон) + template-sensors в configuration.yaml.
-- Climate Orchestrator (shadow проверен, real протестирован на кондиционере) + Override Manager (работает).
-- Всё в git; `deploy.sh` (validate→concat→copy manifest).
+## Что ГОТОВО (работает в real)
 
-## Следующие шаги (по порядку)
-1. **Поэтапный real**: гостиная уже переведена (остальные конвекторы `managed_by_platform:false`); отключить блок «Гостинная» в легаси; наблюдать; затем по одной комнате.
-2. Подключить **рекуператоры** как актуаторы (preset-режимы) и вентиляцию.
-3. Фичи **освещение** и **полив** (с учётом внешних условий: люкс/дождь).
-4. Расширить **Override Manager** (физ. выключатели H1M, голос Алиса) с приоритетами.
-5. **Яндекс Диалоги** (голосовой интерфейс климата) — зарезервировано.
-6. **Автогенерация дашборда** из манифеста (для тиражирования).
+### Climate (4 зоны: гостиная/санузел/спальня/кабинет)
+- Heat/Cool оцениваются ВСЕГДА (не привязаны к сезону) — двунаправленно.
+- Конкретные hvac-режимы (`cool`/`heat`/`off`), никогда `auto`.
+- Safety: AC winter lockout + голосовое предупреждение через Яндекс; AC dry летом при влажности; вентилятор санузла.
+- Free-heat координация: когда рекуператоры греют уличным воздухом — климат не включает электрообогрев.
 
-## Как продолжать
-Репозиторий `/config/.platform`. Workflow: `shplatform validate manifests/leonid_house.yaml` → `./deploy.sh --ha-config /config` → полный перезапуск HA. Диагностика: сервисы `pyscript.manifest_status`, `pyscript.climate_debug`, `pyscript.override_status`; логи фильтр `[climate]`/`[override]`/`[manifest]`.
+### Ventilation (Vakio Base Smart × 2: спальня, кабинет)
+- Пресеты: `Приток / Приток MAX / Рекуперация (лето) / Рекуперация (зима) / Вытяжка / Вытяжка MAX / Ночной`. Скорость через `percentage` 0–100.
+- Профили: boost (приток/вытяжка) с авто-выклом, зимняя пауза (если конвекторы греют), free cooling/heating, ночной режим, away-режим.
+- Open-doors: сейчас mock через `input_boolean.open_doors_mock_state` + `feature_open_doors` флаг; реальные датчики — future.
+
+### Sensor health
+- Детект `unavailable` + низкая батарея; одно обновляемое persistent-уведомление; **агрегированный список покупок** вида «Батарейка CR2450 - 2 шт».
+- Тип и количество батарейки в манифесте для каждого датчика.
+- Контроллеры безопасно пропускают мёртвые датчики (зона на паузе).
+
+### Lighting v2 (12 групп + vlight-слой + select+time UI)
+- **vlight-слой**: Виртуальные `input_boolean.vlight_<group_id>` для управления кнопками/дашбордом/Алисой
+  - Синхронизация с реальными лампами
+  - Учет ручных изменений vlight как override
+  - Сервис `pyscript.vlight_toggle(group_id)` для кнопок
+- **Select+Time UI**: `input_select.light_<id>_on` (Не включать/Закат/Время) + `input_datetime.light_<id>_on_time`
+- **Профили**: `dusk_till_time`, `dusk_till_dawn`, `motion`, `manual_auto` (+ future `nightlight`, `backlight`)
+- **Цветовая температура**: кривая 2000–6000K (day_kelvin → night_kelvin с warm_from/night_from)
+- **Backlight выключателей**: schedule/always/off, в спальне — inverse/motion
+- **Имитация присутствия**: случайно вкл 1–2 manual-группы на 10–30 мин (окно input_datetime, при my_doma=off)
+- **Сезонные варианты**: напр. `garland_windows`: лето = dusk_till_dawn антимоскитная, зима = dusk_till_time гирлянда
+- **Free-heat координация** с климатом
+- **Дашборд**: полный UI для управления освещением (12 групп с toggle/select/time)
+
+### Дашборд Smart Home
+- Статус платформы (сезон, дома/нет, вечер)
+- Климат (4 зоны + уставки)
+- Вентиляция (2 рекуператора + boost режимы)
+- Освещение (12 групп с vlight toggle + select + time UI)
+- Sensor health (статус + список покупок батареек)
+- Debug сенсоры
+
+## Следующие шаги (roadmap)
+- **Кнопки управления освещением**: маппинг «кнопка → toggle vlight» (ждём entity_id кнопок)
+- **Полив**: не поливать в дождь, влажность почвы, календарь
+- **Реальные датчики дверей/окон**: замена open-doors mock
+- **Ночное окно**: `input_datetime` + override «вечеринка»/«спим сейчас»
+- **Яндекс Диалоги**: голосовой интерфейс
+- **Автогенерация дашборда** из манифеста (для тиражирования)
+- **Сенсор `torsher`**: починить ссылку во внешней автоматизации (гостевая, сейчас unavailable)
+- **Замена обычных выключателей на умные**: future-группы в манифесте уже объявлены с `entity: null`
 
 ---
