@@ -566,8 +566,11 @@ def _lg_button_handler(var_name=None, **kwargs):
         return
     v = _lg_vlight_entity(g)
     sv = state.get(v)
-    cur_on = (sv == "on") if sv is not None else any(
-        [_lg_is_on(e) for e in (g.get("lights", []) or []) if not _lg_unavailable(e)])
+    if sv is not None:
+        cur_on = (sv == "on")
+    else:
+        lights_list = [e for e in (g.get("lights", []) or []) if e and not _lg_unavailable(e)]
+        cur_on = any([_lg_is_on(e) for e in lights_list])
     log.warning("[button] " + var_name + " " + str(action) + " -> toggle " + str(cmd.get("toggle")))
     _lg_manual_command(cfg, g, not cur_on, _lg_mode(cfg))
 
@@ -587,9 +590,15 @@ def light_debug():
         gid = str(g.get("id"))
         v = _lg_vlight_entity(g2)
         dec = _lg_decide(g2, cfg)
-        reals = ",".join(
-            ("on" if _lg_is_on(e) else "off") if not _lg_unavailable(e) else "unavail"
-            for e in (g2.get("lights", []) or []) if e)
+        reals_parts = []
+        for e in (g2.get("lights", []) or []):
+            if not e:
+                continue
+            if _lg_unavailable(e):
+                reals_parts.append("unavail")
+            else:
+                reals_parts.append("on" if _lg_is_on(e) else "off")
+        reals = ",".join(reals_parts)
         ovr = [e for e in (g2.get("lights", []) or []) if e and _lg_override_active(e)]
         sel = state.get("input_select.light_" + gid + "_on")
         log.warning("[light][debug] %s sel=%s vlight=%s real=[%s] desired=%s override=%s"
@@ -623,7 +632,11 @@ def vlight_toggle(group_id=None, on=None):
     else:
         v = _lg_vlight_entity(g)
         sv = state.get(v)
-        on_val = (sv != "on") if sv is not None else not any(
-            [_lg_is_on(e) for e in (g.get("lights", []) or []) if not _lg_unavailable(e)])
+
+    if sv is not None:
+        on_val = (sv != "on")
+    else:
+        lights_list = [e for e in (g.get("lights", []) or []) if e and not _lg_unavailable(e)]
+        on_val = not any([_lg_is_on(e) for e in lights_list])
     _lg_manual_command(cfg, g, on_val, _lg_mode(cfg))
     return {"ok": True}
