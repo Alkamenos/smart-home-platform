@@ -258,12 +258,39 @@ cards:
         entities:
           - entity: input_boolean.vlight_garland_terrace
             name: Терраса
+          - entity: input_select.light_garland_terrace_on
+            name: Режим включения
+          - entity: input_datetime.light_garland_terrace_on_time
+            name: Время включения
           - entity: input_boolean.vlight_garland_street
             name: Уличная
+          - entity: input_select.light_garland_street_on
+            name: Режим включения
+          - entity: input_datetime.light_garland_street_on_time
+            name: Время включения
           - entity: input_boolean.vlight_garland_windows
             name: Окна
+          - entity: input_select.light_garland_windows_on
+            name: Режим включения
+          - entity: input_datetime.light_garland_windows_on_time
+            name: Время включения
           - entity: input_boolean.vlight_xmas_a2
             name: Рождественская A2
+          - entity: input_select.light_xmas_a2_on
+            name: Режим включения
+          - entity: input_datetime.light_xmas_a2_on_time
+            name: Время включения
+
+      # Улица ночное
+      - type: entities
+        title: "🌙 Улица ночное"
+        entities:
+          - entity: input_boolean.vlight_street_night
+            name: Ночное освещение
+          - entity: input_select.light_street_night_on
+            name: Режим включения
+          - entity: input_datetime.light_street_night_on_time
+            name: Время включения
 
   # =====================================================
   # SENSOR HEALTH
