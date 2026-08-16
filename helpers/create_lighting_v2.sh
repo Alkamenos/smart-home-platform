@@ -75,24 +75,27 @@ create_datetime() {
 }
 
 # Группы из манифеста (явный список для надёжности)
-declare -A GROUPS
-GROUPS["yard_floodlights"]="Улица/двор"
-GROUPS["front_door"]="Входная дверь"
-GROUPS["garage_gate"]="Ворота гаража"
-GROUPS["garden_path"]="Садовая дорожка"
-GROUPS["terrace"]="Терраса"
-GROUPS["balcony"]="Балкон"
-GROUPS["bedroom"]="Спальня"
-GROUPS["nursery"]="Детская"
-GROUPS["office"]="Кабинет"
-GROUPS["kitchen"]="Кухня"
-GROUPS["bathroom"]="Санузел"
-GROUPS["hallway"]="Коридор"
+# Формат: "group_id:Group Name"
+GROUPS=(
+  "yard_floodlights:Улица/двор"
+  "front_door:Входная дверь"
+  "garage_gate:Ворота гаража"
+  "garden_path:Садовая дорожка"
+  "terrace:Терраса"
+  "balcony:Балкон"
+  "bedroom:Спальня"
+  "nursery:Детская"
+  "office:Кабинет"
+  "kitchen:Кухня"
+  "bathroom:Санузел"
+  "hallway:Коридор"
+)
 
 echo "=== Создание vlight и select+time UI для освещения (${#GROUPS[@]} групп) ==="
 
-for gid in "${!GROUPS[@]}"; do
-  gname="${GROUPS[$gid]}"
+for item in "${GROUPS[@]}"; do
+  gid="${item%%:*}"
+  gname="${item#*:}"
   
   echo ""
   echo "Группа: $gid ($gname)"
