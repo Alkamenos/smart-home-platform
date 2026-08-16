@@ -86,11 +86,88 @@ class Climate(FeatureBase):
     safety: ClimateGlobalSafety | None = None
     zones: list[ClimateZone] = Field(default_factory=list)
 
+
+# ============================================================
+# SENSOR HEALTH
+# ============================================================
+class SensorHealthSensor(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    entity: str
+    battery: str | None = None
+    count: int = 1
+
+
+class SensorHealth(FeatureBase):
+    check_interval_min: int = 10
+    battery_threshold: int = 20
+    sensors: list[SensorHealthSensor] = Field(default_factory=list)
+
+
+# ============================================================
+# VENTILATION
+# ============================================================
+class VentilationDevice(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    id: str
+    entity: str
+
+
+class VentilationRoom(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    id: str
+    temp: str | None = None
+
+
+class VentilationOpenDoorsSensor(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    entity: str
+
+
+class VentilationOpenDoors(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    enabled_flag: str | None = None
+    mock: bool = False
+    mock_state: str | None = None
+    sensors: list[VentilationOpenDoorsSensor] = Field(default_factory=list)
+
+
+class VentilationBathroomFan(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    enabled_flag: str | None = None
+    entity: str
+    temp_sensor: str | None = None
+    humidity_sensor: str | None = None
+    temp_min: float = 26
+    humidity_min: float = 60
+    run_minutes: int = 15
+
+
+class Ventilation(FeatureBase):
+    mode: str = "real"
+    override_timeout_min: int = 60
+    devices: list[VentilationDevice] = Field(default_factory=list)
+    sensors: dict = Field(default_factory=dict)
+    rooms: list[VentilationRoom] = Field(default_factory=list)
+    setpoints_ref: dict = Field(default_factory=dict)
+    speeds: dict = Field(default_factory=dict)
+    deltas: dict = Field(default_factory=dict)
+    boost_minutes: int = 60
+    winter_pause_outdoor_max: float | None = None
+    flags: dict = Field(default_factory=dict)
+    open_doors: VentilationOpenDoors | None = None
+    bathroom_fan: VentilationBathroomFan | None = None
+
+
+# ============================================================
+# FEATURES CONFIG
+# ============================================================
 class FeaturesConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     lighting: Lighting = Field(default_factory=Lighting)
     irrigation: Irrigation = Field(default_factory=Irrigation)
     climate: Climate = Field(default_factory=Climate)
+    sensor_health: SensorHealth = Field(default_factory=SensorHealth)
+    ventilation: Ventilation = Field(default_factory=Ventilation)
     security: FeatureBase = Field(default_factory=lambda: FeatureBase(enabled=False))
     energy: FeatureBase = Field(default_factory=lambda: FeatureBase(enabled=False))
