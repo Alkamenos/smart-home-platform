@@ -15,7 +15,9 @@ _VLIGHT_SYNC_GUARD = {}
 _EXPECTED_REAL_STATE = {}
 _BUTTON_MAP = {}
 _LG_IM_ACTIVE = {}
-
+_RGB_SCENES = {"Красный": [255, 0, 0], "Оранжевый": [255, 120, 0], "Зелёный": [0, 255, 0],
+               "Синий": [0, 0, 255], "Фиолетовый": [160, 0, 255], "Розовый": [255, 60, 140]}
+_RGB_APPLIED = {}
 
 # ---------------- безопасное чтение состояний ----------------
 
@@ -194,6 +196,28 @@ def _lg_expected_guard(e):
     return exp["state"]
 
 
+def _lg_num(entity, default):
+    s = _lg_state(entity)
+    if s is None:
+        return default
+    try:
+        return float(s)
+    except Exception:
+        return default
+
+
+_LIGHT2GID = {}
+
+def _lg_rebuild_light_map(cfg):
+    global _LIGHT2GID
+    m = {}
+    for g in (cfg.get("groups", []) or []):
+        for e in (g.get("lights", []) or []):
+            if e:
+                m[e] = str(g.get("id"))
+    _LIGHT2GID = m
+
+
 def _lg_set_real(e, on, mode, cfg, force=False):
     if _lg_is_on(e) == on:
         return
@@ -205,7 +229,16 @@ def _lg_set_real(e, on, mode, cfg, force=False):
     if mode == "shadow":
         log.warning("[light][SHADOW] " + e + " -> " + ("on" if on else "off"))
     else:
-        service.call(str(e).split(".")[0], "turn_on" if on else "turn_off", entity_id=e)
+        dom = str(e).split(".")[0]
+        if on and dom == "light":
+            gid = _LIGHT2GID.get(e)
+            b = _lg_num("input_number.light_%s_brightness" % gid, 100) if gid else 100
+            if b < 100:
+                service.call(dom, "turn_on", entity_id=e, brightness_pct=int(b))
+            else:
+                service.call(dom, "turn_on", entity_id=e)
+        else:
+            service.call(dom, "turn_on" if on else "turn_off", entity_id=e)
         _LG_LAST_CHANGE[e] = time.monotonic()
         log.warning("[light][REAL] " + e + " -> " + ("on" if on else "off"))
 
@@ -232,57 +265,69 @@ def _lg_decide(g, cfg):
     dark = bool(_DARK)
     now = _lg_now_min()
     night = _lg_night(cfg)
-    motion = _lg_motion(g)
+    gid = str(g.get("id"))
+
+    ms = g.get("motion_sensor")
+    men = ms is not None and _lg_state("input_boolean.light_%s_motion" % gid) != "off"
+    mday = _lg_state("input_boolean.light_%s_motion_day" % gid) == "on"
+    motion = _lg_motion(g) if ms else None
+    presence = False
+    if ms and men:
+        if motion:
+            _LG_MOTION_LAST[gid] = time.monotonic()
+        last = _LG_MOTION_LAST.get(gid)
+        if last is not None:
+            mins = _lg_num("input_number.light_%s_motion_night_min" % gid,
+                           g.get("no_motion_night_min", 2)) if night else \
+                   _lg_num("input_number.light_%s_motion_day_min" % gid,
+                           g.get("no_motion_day_min", 5))
+            presence = (time.monotonic() - last) < mins * 60
+
     ov = g.get("override_flag")
     if ov and _lg_state(ov) == "on":
         return {"on": True}
 
-    gid = str(g.get("id"))
-    sel_val = _lg_state("input_select.light_" + gid + "_on")
-    if sel_val == "Не включать":
+    sel_on = _lg_state("input_select.light_%s_on" % gid)
+    if sel_on == "Не включать":
         return {"on": False}
 
     if prof == "motion":
-        if motion:
-            _LG_MOTION_LAST[gid] = time.monotonic()
-        last = _LG_MOTION_LAST.get(gid)
-        mins = g.get("no_motion_night_min", 2) if night else g.get("no_motion_day_min", 5)
-        hold = last is not None and (time.monotonic() - last) < mins * 60
-        return {"on": bool(motion) or hold}
+        if not (dark or mday):
+            return {"on": False}
+        return {"on": presence}
 
     if prof == "manual_auto":
         af = g.get("auto_flag")
         if not (af and _lg_state(af) == "on"):
             return None
 
-    keep = bool(motion)
-    off_mode = g.get("off", "23:00")
-    if off_mode == "sunrise":
-        if not dark and not keep:
+    # условие ВЫКЛ (настраивается с дашборда)
+    sel_off = _lg_state("input_select.light_%s_off" % gid)
+    if sel_off is None:
+        sel_off = "Рассвет" if g.get("off") == "sunrise" else "Время"
+    if sel_off == "Рассвет":
+        if not dark and not presence:
             return {"on": False}
-    else:
-        off_min = _lg_hm(off_mode)
-        if off_min is not None and now >= off_min and not keep:
+    elif sel_off == "Время":
+        off_min = _lg_dt_min("input_datetime.light_%s_off_time" % gid)
+        if off_min is None:
+            off_min = _lg_hm(g.get("off", "23:00"))
+        if off_min is not None and now >= off_min and not presence:
             return {"on": False}
+    # «Не выключать» — не выключаем
 
-    if sel_val == "Время":
-        t_val = _lg_dt_min("input_datetime.light_" + gid + "_on_time")
+    # условие ВКЛ
+    if sel_on == "Время":
+        t_val = _lg_dt_min("input_datetime.light_%s_on_time" % gid)
         if t_val is not None and now >= t_val:
             return {"on": True}
-        if motion and dark:
+        if presence and dark:
             return {"on": True}
         return {"on": False}
-
-    on_mode = g.get("on", "sunset")
-    if on_mode == "sunset":
-        return {"on": dark}
-    on_min = _lg_hm(on_mode)
-    if on_min is not None:
-        if now >= on_min and ((not g.get("require_dark", True)) or dark):
-            return {"on": True}
-        if motion and dark:
-            return {"on": True}
+    if dark:
+        return {"on": True}
     return {"on": False}
+
 
 
 # ---------------- тик группы ----------------
@@ -325,17 +370,20 @@ def _lg_track_real(g, cfg, mode, v, has_v):
 
 def _lg_apply_group(g, cfg, mode):
     g = _lg_season(g)
-    flag = g.get("feature_flag")
-    if flag and _lg_state(flag) != "on":
-        return
     if g.get("shadow"):
         mode = "shadow"
     lights = [e for e in (g.get("lights", []) or []) if e]
     v = _lg_vlight_entity(g)
     has_v = _lg_state(v) is not None
 
+    # ручное управление и трекинг работают ВСЕГДА (даже до миграции)
     _lg_handle_vlight_change(g, cfg, mode, v, has_v)
     _lg_track_real(g, cfg, mode, v, has_v)
+
+    # автоматика — только для мигрированных групп
+    flag = g.get("feature_flag")
+    if flag and _lg_state(flag) != "on":
+        return
 
     dec = _lg_decide(g, cfg)
     if dec is None:
@@ -353,15 +401,15 @@ def _lg_apply_group(g, cfg, mode):
         if _lg_is_on(e) != desired:
             _lg_set_real(e, desired, mode, cfg)
 
-
 # ---------------- color temp ----------------
+
 
 def _lg_ct_target(cfg):
     ct = cfg.get("color_temp", {}) or {}
-    day = ct.get("day_kelvin", 5000)
-    night = ct.get("night_kelvin", 2200)
-    warm = _lg_hm(ct.get("warm_from", "21:00"))
-    nightf = _lg_hm(ct.get("night_from", "23:00"))
+    day = int(_lg_num("input_number.ct_day_kelvin", ct.get("day_kelvin", 5000)))
+    night = int(_lg_num("input_number.ct_night_kelvin", ct.get("night_kelvin", 2200)))
+    warm = _lg_dt_min("input_datetime.ct_warm_from") or _lg_hm(ct.get("warm_from", "21:00"))
+    nightf = _lg_dt_min("input_datetime.ct_night_from") or _lg_hm(ct.get("night_from", "23:00"))
     now = _lg_now_min()
     if warm is None or nightf is None or now <= warm:
         return day
@@ -370,6 +418,32 @@ def _lg_ct_target(cfg):
     frac = (now - warm) / max(1, (nightf - warm))
     return int(day + (night - day) * frac)
 
+
+
+def _lg_rgb_tick(cfg, mode):
+    if _lg_state("input_boolean.feature_rgb") != "on":
+        return
+    scene = _lg_state("input_select.light_rgb_scene") or "Белый"
+    for g in (cfg.get("groups", []) or []):
+        for e in (g.get("lights", []) or []):
+            if not e or str(e).split(".")[0] != "light":
+                continue
+            if not _lg_is_on(e):
+                _RGB_APPLIED.pop(e, None)
+                continue
+            st = hass.states.get(e)
+            modes = (st.attributes.get("supported_color_modes", []) or []) if st else []
+            if not any([("rgb" in mm) for mm in modes]):
+                continue
+            if _RGB_APPLIED.get(e) == scene:
+                continue
+            _RGB_APPLIED[e] = scene
+            rgb = _RGB_SCENES.get(scene, [255, 255, 255])
+            if mode == "shadow":
+                log.warning("[light][SHADOW][rgb] " + e + " -> " + scene)
+            else:
+                service.call("light", "turn_on", entity_id=e, rgb_color=rgb)
+                log.warning("[light][REAL][rgb] " + e + " -> " + scene)
 
 def _lg_ct_tick(cfg, mode):
     ct = cfg.get("color_temp", {}) or {}
@@ -523,6 +597,7 @@ def _lg_tick():
     if not cfg or not cfg.get("enabled", True):
         return
     _lg_update_dark(cfg)
+    _lg_rebuild_light_map(cfg)
     mode = _lg_mode(cfg)
     for g in (cfg.get("groups", []) or []):
         try:
@@ -531,6 +606,7 @@ def _lg_tick():
             log.error("[light] group " + str(g.get("id")) + " error: " + str(exc))
     try:
         _lg_ct_tick(cfg, mode)
+        _lg_rgb_tick(cfg, mode)
         _lg_backlight_tick(cfg, mode)
         _lg_imitation_tick(cfg, mode)
     except Exception as exc:
@@ -601,6 +677,35 @@ def _lg_button_handler(var_name=None, **kwargs):
     _lg_manual_command(cfg, g, not cur_on, _lg_mode(cfg))
 
 
+# ---------------- мгновенная реакция на vlight ----------------
+
+def _vlight_build_list():
+    cfg = _lg_cfg() or {}
+    out = []
+    for g in (cfg.get("groups", []) or []):
+        out.append(_lg_vlight_entity(g))
+    return out if out else ["input_boolean.feature_lighting"]
+
+
+_VLIGHT_LIST = _vlight_build_list()
+
+
+@state_trigger(*_VLIGHT_LIST)
+def _lg_vlight_handler(var_name=None, **kwargs):
+    if _lg_state("input_boolean.feature_lighting") == "off":
+        return
+    cfg = _lg_cfg()
+    if not cfg:
+        return
+    mode = _lg_mode(cfg)
+    for g in (cfg.get("groups", []) or []):
+        v = _lg_vlight_entity(g)
+        if v != var_name:
+            continue
+        g2 = _lg_season(g)
+        m = "shadow" if (mode == "shadow" or g2.get("shadow")) else "real"
+        _lg_handle_vlight_change(g2, cfg, m, v, True)
+        return
 # ---------------- сервисы ----------------
 
 @service
@@ -632,8 +737,10 @@ def light_debug():
         vstate = _lg_state(v)
         if vstate is None:
             vstate = "missing"
-        log.warning("[light][debug] %s sel=%s vlight=%s real=[%s] desired=%s override=%s"
-                    % (gid, sel, vstate, reals, dec, ovr))
+        flag = g2.get("feature_flag")
+        auto = "on" if (not flag or _lg_state(flag) == "on") else "off"
+        log.warning("[light][debug] %s auto=%s sel=%s vlight=%s real=[%s] desired=%s override=%s"
+                    % (gid, auto, sel, vstate, reals, dec, ovr))
     return {"ok": True}
 
 

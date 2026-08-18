@@ -2,6 +2,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# venv: CLI shplatform и pyyaml живут там
+if [ -f ".venv/bin/activate" ]; then
+  # shellcheck disable=SC1091
+  . ".venv/bin/activate"
+fi
+
 HA_URL="${HA_URL:-http://homeassistant.local:8123}"
 HA_TOKEN="${HA_TOKEN:-$(cat ~/.ha_token 2>/dev/null || true)}"
 HA_CONFIG="${HA_CONFIG:-/config}"
