@@ -1,6 +1,6 @@
-# ============================================================
-# LIGHTING CONTROLLER v2.8 (nightlight, motion dropdown, motion logging)
-# ============================================================
+============================================================
+LIGHTING CONTROLLER v2.7 (fixed syntax, safe reads, no genexpr)
+============================================================
 import time
 import random
 
@@ -121,17 +121,8 @@ def _lg_season(g):
     return merged
 
 
-def _lg_motion_sensor(g, gid):
-    """Прочитать текущий датчик движения из helper'а или манифеста."""
-    helper = "input_select.light_%s_motion_sensor" % gid
-    val = _lg_state(helper)
-    if val and val not in ("unknown", "unavailable", ""):
-        return val
-    return g.get("motion_sensor")
-
-
-def _lg_motion(g, gid):
-    ms = _lg_motion_sensor(g, gid)
+def _lg_motion(g):
+    ms = g.get("motion_sensor")
     if not ms:
         return None
     return _lg_state(ms) in ("on", "true", True)
@@ -237,7 +228,7 @@ def _lg_rebuild_light_map(cfg):
     _LIGHT2GID = m
 
 
-def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
+def _lg_set_real(e, on, mode, cfg, force=False):
     if _lg_is_on(e) == on:
         return
     if not force:
@@ -250,20 +241,12 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
     else:
         dom = str(e).split(".")[0]
         if on and dom == "light":
-            if nightlight and gid:
-                b = int(_lg_num("input_number.light_%s_nightlight_brightness" % gid, 40))
-                r = int(_lg_num("input_number.light_%s_nightlight_r" % gid, 255))
-                g_val = int(_lg_num("input_number.light_%s_nightlight_g" % gid, 150))
-                bl = int(_lg_num("input_number.light_%s_nightlight_b" % gid, 60))
-                service.call(dom, "turn_on", entity_id=e, brightness_pct=b, rgb_color=[r, g_val, bl])
-                log.warning("[light][REAL][nightlight] " + e + " -> on b=" + str(b) + " rgb=[" + str(r) + "," + str(g_val) + "," + str(bl) + "]")
+            gid = _LIGHT2GID.get(e)
+            b = _lg_num("input_number.light_%s_brightness" % gid, 100) if gid else 100
+            if b < 100:
+                service.call(dom, "turn_on", entity_id=e, brightness_pct=int(b))
             else:
-                gid_real = _LIGHT2GID.get(e)
-                b = _lg_num("input_number.light_%s_brightness" % gid_real, 100) if gid_real else 100
-                if b < 100:
-                    service.call(dom, "turn_on", entity_id=e, brightness_pct=int(b))
-                else:
-                    service.call(dom, "turn_on", entity_id=e)
+                service.call(dom, "turn_on", entity_id=e)
         else:
             service.call(dom, "turn_on" if on else "turn_off", entity_id=e)
     _LG_LAST_CHANGE[e] = time.monotonic()
@@ -298,10 +281,10 @@ def _lg_decide(g, cfg):
     night = _lg_night(cfg)
     gid = str(g.get("id"))
 
-    ms = _lg_motion_sensor(g, gid)
+    ms = g.get("motion_sensor")
     men = ms is not None and _lg_state("input_boolean.light_%s_motion" % gid) != "off"
     mday = _lg_state("input_boolean.light_%s_motion_day" % gid) == "on"
-    motion = _lg_motion(g, gid) if ms else None
+    motion = _lg_motion(g) if ms else None
 
     presence = False
     if ms and men:
@@ -322,19 +305,6 @@ def _lg_decide(g, cfg):
     sel_on = _lg_state("input_select.light_%s_on" % gid)
     if sel_on == "Не включать":
         return {"on": False}
-
-    # Новая опция: Датчик движения
-    if sel_on == "Датчик движения":
-        if not ms:
-            return {"on": False}
-        # Nightlight активен когда: vecher=on + feature_nightlight=on
-        nightlight_active = (
-            night
-            and _lg_state("input_boolean.feature_%s_nightlight" % gid) == "on"
-        )
-        if nightlight_active and presence:
-            return {"on": True, "nightlight": True}
-        return {"on": presence}
 
     if prof == "motion":
         if not (dark or mday):
@@ -430,7 +400,6 @@ def _lg_apply_group(g, cfg, mode):
     lights = [e for e in (g.get("lights", []) or []) if e]
     v = lg_vlight_entity(g)
     has_v = _lg_state(v) is not None
-    gid = str(g.get("id"))
 
     _lg_handle_vlight_change(g, cfg, mode, v, has_v)
     _lg_track_real(g, cfg, mode, v, has_v)
@@ -443,7 +412,6 @@ def _lg_apply_group(g, cfg, mode):
     if dec is None:
         return
     desired = dec["on"]
-    nightlight = dec.get("nightlight", False)
 
     if any([_lg_override_active(e) for e in lights]):
         return
@@ -457,7 +425,7 @@ def _lg_apply_group(g, cfg, mode):
         if _lg_expected_guard(e) is not None:
             continue
         if _lg_is_on(e) != desired:
-            _lg_set_real(e, desired, mode, cfg, nightlight=nightlight, gid=gid)
+            _lg_set_real(e, desired, mode, cfg)
 
 
 # ---------------- color temp ----------------
@@ -783,10 +751,6 @@ _MOTION_LIST = _motion_build_list()
 
 @state_trigger(*_MOTION_LIST)
 def _lg_motion_handler(var_name=None, **kwargs):
-    # Логирование переключения датчика
-    cur_state = _lg_state(var_name)
-    log.warning("[motion] " + var_name + " -> " + str(cur_state))
-
     if _lg_state("input_boolean.feature_lighting") == "off":
         return
     cfg = _lg_cfg()
@@ -794,8 +758,7 @@ def _lg_motion_handler(var_name=None, **kwargs):
         return
     mode = _lg_mode(cfg)
     for g in (cfg.get("groups", []) or []):
-        ms = _lg_motion_sensor(g, str(g.get("id")))
-        if ms != var_name:
+        if g.get("motion_sensor") != var_name:
             continue
         gid = str(g.get("id"))
         _LG_MOTION_LAST[gid] = time.monotonic()
@@ -838,9 +801,8 @@ def light_debug():
             vstate = "missing"
         flag = g2.get("feature_flag")
         auto = "on" if (not flag or _lg_state(flag) == "on") else "off"
-        ms = _lg_motion_sensor(g2, gid)
-        log.warning("[light][debug] %s auto=%s sel=%s vlight=%s real=[%s] desired=%s override=%s motion_sensor=%s"
-                    % (gid, auto, sel, vstate, reals, dec, ovr, ms))
+        log.warning("[light][debug] %s auto=%s sel=%s vlight=%s real=[%s] desired=%s override=%s"
+                    % (gid, auto, sel, vstate, reals, dec, ovr))
     return {"ok": True}
 
 

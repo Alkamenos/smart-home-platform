@@ -4,10 +4,11 @@ instance:
   timezone: Europe/Moscow
   locale: ru-RU
   version: "1.1.0"
-  metadata:
-    customer: "Леонид"
-    platform_version: "0.3.0"
-    notes: "Климат: гостиная + санузел + спальня + кабинет, shadow mode"
+
+metadata:
+  customer: "Леонид"
+  platform_version: "0.3.0"
+  notes: "Климат: гостиная + санузел + спальня + кабинет, shadow mode"
 
 devices:
   sensors:
@@ -28,38 +29,34 @@ devices:
       role: climate_reference
 
   actuators:
-    # Тёплый пол — глобальный, платформа не управляет
     - id: floor_heating_global
       entity: climate.termostat_gostinaia
       type: climate_device
       managed_by_platform: false
 
-    # Гостиная
     - id: convector_gostinnaia
       entity: switch.obogrevatel_gostinnaia
       type: relay
       managed_by_platform: true
       min_cycle_minutes: 5
+
     - id: ac_gostinnaia
       entity: climate.esphome_web_0d22a4_ac_name
       type: climate_device
       managed_by_platform: true
 
-    # Санузел
     - id: convector_sanuzel
       entity: switch.obogrevatel_sanuzel
       type: relay
       managed_by_platform: true
       min_cycle_minutes: 5
 
-    # Спальня
     - id: convector_spalnia
       entity: switch.obogrevatel_spalnia
       type: relay
       managed_by_platform: true
       min_cycle_minutes: 5
 
-    # Кабинет
     - id: convector_kabinet
       entity: switch.obogrevatel_kabinet
       type: relay
@@ -67,34 +64,32 @@ devices:
       min_cycle_minutes: 5
 
 features:
-  
   lighting:
     enabled: true
     mode: shadow
     override_timeout_min: 60
     anti_cycle_min: 2
+
     color_temp:
       enabled_flag: input_boolean.feature_color_temp
       day_kelvin: 5000
       night_kelvin: 2200
-      warm_from: "21:00"   # начало плавного ухода в тёплый
-      night_from: "23:00"  # к этому времени уже тёплый
-  
+      warm_from: "21:00"
+      night_from: "23:00"
+
     backlight:
       enabled_flag: input_boolean.feature_backlight
       items:
         - { entity: switch.svet_v_spalne_flip_indicator_light, mode: schedule, off: "23:00", on: "07:00" }
-        # остальные выключатели = always (платформа не трогает):
-        # - { entity: switch.<other>_indicator_light, mode: always }
 
     imitation:
       enabled_flag: input_boolean.feature_imitation
-      away_flag: input_boolean.my_doma      # имитация когда НЕ дома
+      away_flag: input_boolean.my_doma
       window_start: input_datetime.imitation_start
       window_end: input_datetime.imitation_end
-      groups: [table, kitchen_work]          # manual-группы, не конфликтуют с авто
+      groups: [table, kitchen_work]
       min_on_min: 10
-      max_on_min: 30  
+      max_on_min: 30
 
     dark:
       illuminance_sensor: sensor.datchik_osveshchennosti_illuminance
@@ -102,10 +97,8 @@ features:
       light_lux: 40
       sun_dark_elevation: -3
       sun_light_elevation: 1
+
     night_flag: input_boolean.vecher
-    presence_imitation:
-      enabled_flag: input_boolean.feature_imitation
-      # поведение добавим в подшаге 2
 
     groups:
       - id: yard_floodlights
@@ -153,6 +146,7 @@ features:
 
       - id: table
         name: "Обеденный стол"
+        room: gostinnaia
         lights: [light.table_lights]
         profile: manual_auto
         on: sunset
@@ -160,10 +154,13 @@ features:
         motion_sensor: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy
         auto_flag: input_boolean.feature_table
         feature_flag: input_boolean.feature_table
-        nightlight: { brightness: 40, color: [255,150,60] }
+        nightlight:
+          brightness: 40
+          color: [255, 150, 60]
 
       - id: container
         name: "Контейнер"
+        room: container
         lights: [light.svet_v_konteinere]
         profile: motion
         motion_sensor: binary_sensor.datchik_dvizheniia_konteiner_occupancy
@@ -173,6 +170,7 @@ features:
 
       - id: bathroom
         name: "Санузел"
+        room: sanuzel
         lights: [light.vykliuchatel_sanuzel_switch1]
         profile: motion
         motion_sensor: binary_sensor.vykliuchatel_sanuzel_presence
@@ -216,7 +214,7 @@ features:
         off: "23:00"
         tolerate_unavailable: true
         feature_flag: input_boolean.feature_xmas_a2
-  
+
   sensor_health:
     enabled: true
     check_interval_min: 10
@@ -231,23 +229,21 @@ features:
       - { entity: sensor.temperatura_v_teplitse_tomaty_temperature, battery: CR2450, count: 1 }
       - { entity: sensor.temperatura_v_teplitse_ogurtsy_temperature, battery: CR2450, count: 1 }
       - { entity: sensor.temperatura_v_teni_temperature, battery: CR2450, count: 1 }
-  
+
   climate:
     enabled: true
     mode: shadow
-    override_timeout_min: 120 # сколько минут платформа не спорит с ручным управлением
+    override_timeout_min: 120
     season:
       source: input_boolean.zima
       heating_when: "on"
-
     safety:
       min_setpoint: 16
       ac_winter_lockout: true
-      ac_lockout_outdoor_max: 5 # ниже этой уличной t кондей запрещён
-      ac_lockout_warn: script.ac_lockout_warning # озвучить через Яндекс
+      ac_lockout_outdoor_max: 5
+      ac_lockout_warn: script.ac_lockout_warning
       ac_dry_summer: true
       ac_dry_humidity: 60
-
     zones:
       - id: gostinnaia
         temp_sensor_ref: temp_gostinnaia
@@ -262,7 +258,6 @@ features:
           - ref: ac_gostinnaia
             role: primary_cool
             priority: 2
-
       - id: sanuzel
         temp_sensor_ref: temp_sanuzel
         setpoints:
@@ -272,7 +267,6 @@ features:
           - ref: convector_sanuzel
             role: secondary_heat
             priority: 1
-
       - id: spalnia
         temp_sensor_ref: temp_spalnia
         setpoints:
@@ -282,7 +276,6 @@ features:
           - ref: convector_spalnia
             role: secondary_heat
             priority: 1
-
       - id: kabinet
         temp_sensor_ref: temp_kabinet
         setpoints:
@@ -292,54 +285,47 @@ features:
           - ref: convector_kabinet
             role: secondary_heat
             priority: 1
+
   ventilation:
     enabled: true
-    mode: shadow # старт в наблюдении
+    mode: shadow
     override_timeout_min: 60
-
     devices:
       - id: rek_spalnia
         entity: fan.base_smart
       - id: rek_kabinet
         entity: fan.base_smart_2
-
     sensors:
       outdoor_temp: sensor.temperatura_na_ulitse_srednee
       outdoor_humidity: sensor.datchik_temperatury_terassa_humidity
       house_humidity: input_number.vlazhnost_v_dome
-
     rooms:
       - id: spalnia
         temp: sensor.datchik_temperatury_spalnia_temperature
       - id: kabinet
         temp: sensor.datchik_temperatury_kabinet_temperature
-
     setpoints_ref:
       heat: input_number.temperatura
       cool: input_number.maksimalno_komfortnaia_temperatura
-
-    speeds: { day: 40, away: 20 } # percentage 0-100
+    speeds: { day: 40, away: 20 }
     deltas: { free_cool: 2, free_heat: 2, humidity: 5 }
     boost_minutes: 60
     winter_pause_outdoor_max: -5
-
     flags:
       night: input_boolean.vecher
-      away_home: input_boolean.my_doma # on = дома
+      away_home: input_boolean.my_doma
       boost_intake: input_boolean.provetrivanie
       boost_exhaust: input_boolean.provetrivanie_vytyazhka
-
     open_doors:
-      enabled_flag: input_boolean.feature_open_doors # флаг отключения фичи
-      mock: true # пока нет датчиков — mock
+      enabled_flag: input_boolean.feature_open_doors
+      mock: true
       mock_state: input_boolean.open_doors_mock_state
-      sensors: # будущие реальные датчики
+      sensors:
         - { entity: binary_sensor.gostinnaia_window }
         - { entity: binary_sensor.gostinnaia_door }
         - { entity: binary_sensor.gostevaia_spalnia_window }
         - { entity: binary_sensor.sanuzel_window }
         - { entity: binary_sensor.sanuzel_interroom_door }
-
     bathroom_fan:
       enabled_flag: input_boolean.feature_bathroom_fan
       entity: fan.vykliuchatel_sanuzel_switch2

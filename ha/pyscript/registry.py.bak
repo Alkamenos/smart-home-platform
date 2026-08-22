@@ -3,14 +3,17 @@
 Строит удобные структуры доступа из dict-манифеста.
 НЕ зависит от Pydantic и Home Assistant, поэтому используется:
   - в CLI-тестах (как модуль пакета),
-  - внутри pyscript (копируется в <config>/pyscript/ и работает глобально)."""
+  - внутри pyscript (копируется в <config>/pyscript/ и работает глобально).
+"""
 from __future__ import annotations
 
 
-class ManifestError(Exception):"""Ошибка при построении реестра из манифеста."""
+class ManifestError(Exception):
+    """Ошибка при построении реестра из манифеста."""
 
 
-class RuntimeRegistry:"""Развернутые ссылки манифеста для быстрого доступа в runtime."""
+class RuntimeRegistry:
+    """Развернутые ссылки манифеста для быстрого доступа в runtime."""
 
     def __init__(self, manifest: dict):
         self._raw = manifest or {}
@@ -63,7 +66,8 @@ class RuntimeRegistry:"""Развернутые ссылки манифеста 
         return dict(self._features)
 
     # ---- helpers provisioning ----
-    def required_helpers(self):"""helper entity_id, которые должны существовать в HA."""
+    def required_helpers(self):
+        """helper entity_id, которые должны существовать в HA."""
         helpers = set()
         # по одному toggle на фичу
         for fname in self._features:
@@ -72,18 +76,22 @@ class RuntimeRegistry:"""Развернутые ссылки манифеста 
         for zone in self.feature("climate").get("zones", []):
             for sp in (zone.get("setpoints") or {}).values():
                 if isinstance(sp, dict):
-                    src = sp.get("source","")
+                    src = sp.get("source", "")
                     if isinstance(src, str) and src.startswith("input_number."):
                         helpers.add(src)
         # глобальные режимы (input_boolean.*)
         for mode in (self._raw.get("globals", {}).get("modes", {}) or {}).values():
-            entity = (mode or {}).get("entity","")
+            entity = (mode or {}).get("entity", "")
             if isinstance(entity, str) and entity.startswith("input_boolean."):
                 helpers.add(entity)
         return sorted(helpers)
 
     def summary(self):
-        return {"instance": (self._raw.get("instance", {}) or {}).get("id"),"devices": len(self._devices_by_id),"features": {n: self.feature_enabled(n) for n in self._features},"required_helpers": self.required_helpers(),
+        return {
+            "instance": (self._raw.get("instance", {}) or {}).get("id"),
+            "devices": len(self._devices_by_id),
+            "features": {n: self.feature_enabled(n) for n in self._features},
+            "required_helpers": self.required_helpers(),
         }
 
 

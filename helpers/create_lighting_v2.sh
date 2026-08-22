@@ -119,6 +119,7 @@ echo "$GROUPS_LIST" | while IFS=: read -r group_id group_name; do
   
   # datetime for scheduled time
   create_datetime "input_datetime.light_${group_id}_on_time" "Время включения: $group_name"
+  create_datetime "input_datetime.light_${group_id}_off_end_time" "Конец окна выключения: $group_name"
 done
 
 echo ""
