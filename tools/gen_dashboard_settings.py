@@ -28,14 +28,27 @@ def light_settings_card(g):
                       {"entity": "input_datetime.light_%s_off_end_time" % gid, "name": "Конец окна"}]}})
     # Датчик движения
     if g.get("motion_sensor"):
-        motion_ents = [
-            {"entity": "input_select.light_%s_motion_sensor" % gid, "name": "Датчик"},
-            {"entity": "input_boolean.light_%s_motion" % gid, "name": "Учитывать"},
-            {"entity": "input_boolean.light_%s_motion_day" % gid, "name": "Включать днём"},
-            {"entity": "input_number.light_%s_motion_day_min" % gid, "name": "Таймаут день"},
-            {"entity": "input_number.light_%s_motion_night_min" % gid, "name": "Таймаут ночь"},
-        ]
-        cards.append({"type": "entities", "title": "Датчик движения", "entities": motion_ents})
+        # motion_ents = [
+        #     {"entity": "input_select.light_%s_motion_sensor" % gid, "name": "Датчик"},
+        #     {"entity": "input_boolean.light_%s_motion" % gid, "name": "Учитывать"},
+        #     {"entity": "input_boolean.light_%s_motion_day" % gid, "name": "Включать днём"},
+        #     {"entity": "input_number.light_%s_motion_day_min" % gid, "name": "Таймаут день"},
+        #     {"entity": "input_number.light_%s_motion_night_min" % gid, "name": "Таймаут ночь"},
+        # ]
+        # cards.append({"type": "entities", "title": "Датчик движения", "entities": motion_ents})
+        cards.append({"type": "custom:mushroom-select-card",
+                      "entity": "input_select.light_%s_motion_sensor" % gid,
+                      "name": "Датчик движения"})
+        ents = [{"entity": "input_boolean.light_%s_motion" % gid, "name": "Учитывать"},
+                {"entity": "input_boolean.light_%s_motion_day" % gid, "name": "Включать днём"}]
+        if g.get("no_night_auto_flag"):
+            ents.append({"entity": g["no_night_auto_flag"], "name": "Не включать ночью авто"})
+        if g.get("motion_timeouts") == "own":
+            ents += [{"entity": "input_number.light_%s_motion_day_min" % gid, "name": "Таймаут днём"},
+                     {"entity": "input_number.light_%s_motion_night_min" % gid, "name": "Таймаут ночью"}]
+        cards.append({"type": "entities", "title": "Датчик движения", "entities": ents})
+        
+        
         # Ночник
         if g.get("nightlight"):
             cards.append({"type": "conditional",
@@ -73,6 +86,8 @@ def main():
         {"entity": "input_boolean.feature_imitation", "name": "Имитация присутствия"},
         {"entity": "input_datetime.imitation_start", "name": "Имитация начало"},
         {"entity": "input_datetime.imitation_end", "name": "Имитация конец"},
+        {"entity": "input_number.motion_day_min", "name": "Таймаут движения днём (глобально)"},
+        {"entity": "input_number.motion_night_min", "name": "Таймаут движения ночью (глобально)"},
     ]})
 
     # --- Климат ---

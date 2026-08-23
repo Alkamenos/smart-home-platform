@@ -232,6 +232,10 @@ for g in groups:
     # Dropdown датчика движения + motion helpers
     ms = g.get("motion_sensor")
     if ms:
+        nnf = g.get("no_night_auto_flag", "")
+        if nnf.startswith("input_boolean."):
+            entries.append(bool_(i, nnf.split(".", 1)[1], "off", "mdi:weather-night"))
+            i += 1
         room = g.get("room")
         options = motion_by_room.get(room, [ms]) if room else [ms]
         entries.append(sel(i, "light_%s_motion_sensor" % gid,
@@ -278,8 +282,10 @@ entries += [
     bool_(i + 10, "feature_imitation", "off", "mdi:account-eye"),
     dt(i + 11, "imitation_start", "20:00", "mdi:clock-start"),
     dt(i + 12, "imitation_end", "07:00", "mdi:clock-end"),
+    num(i + 13, "motion_day_min", 1, 120, 1, 5, "mdi:timer-outline"),
+    num(i + 14, "motion_night_min", 1, 60, 1, 2, "mdi:timer-outline")
 ]
-i += 13
+i += 15
 
 # ============================================================
 # CLIMATE

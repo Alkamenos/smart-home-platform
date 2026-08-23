@@ -146,6 +146,7 @@ features:
       - id: table
         name: "Обеденный стол"
         room: gostinnaia
+        motion_mode: keepalive
         lights: [light.table_lights]
         profile: manual_auto
         on: sunset
@@ -170,6 +171,8 @@ features:
       - id: bathroom
         name: "Санузел"
         room: sanuzel
+        motion_timeouts: own
+        no_night_auto_flag: input_boolean.light_bathroom_no_night_auto
         lights: [light.vykliuchatel_sanuzel_switch1]
         profile: motion
         motion_sensor: binary_sensor.vykliuchatel_sanuzel_presence

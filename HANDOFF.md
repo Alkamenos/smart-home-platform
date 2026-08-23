@@ -79,3 +79,109 @@
 - **Замена обычных выключателей на умные**: future-группы в манифесте уже объявлены с `entity: null`
 
 ---
+
+
+## 2. HANDOFF.md — инструкции для нового чата
+
+```markdown
+# Передача контекста в новый чат
+
+## Что работает
+
+### Освещение
+- ✅ 14 групп света с vlight + auto/manual
+- ✅ Мгновенная реакция на датчики движения через `@state_trigger`
+- ✅ Ночник (table) с RGB и отдельным таймаутом
+- ✅ Dropdown выбор датчика движения per group
+- ✅ Режим "Датчик движения" в `input_select.light_*_on`
+- ✅ Feature/shadow семантика: ручное всегда работает в real
+- ✅ Имитация присутствия, RGB сцены, color temp
+
+### Климат
+- ✅ 4 зоны (гостиная, санузел, спальня, кабинет)
+- ✅ Конвекторы + AC с deadband
+- ✅ Season (зима/лето) через `input_boolean.zima`
+- ✅ Safety: lockout AC зимой, осушение летом
+- ✅ Override 120 мин после ручного управления
+
+### Вентиляция
+- ✅ 2× Vakio рекуператора
+- ✅ Режимы: base, night, boost (intake/exhaust)
+- ✅ Free heating/cooling (уличным воздухом)
+- ✅ Вентилятор санузла (temp + humidity)
+- ✅ Open doors lockout
+
+### Дашборды
+- ✅ 3 дашборда (home, settings, admin) через генераторы
+- ✅ Mushroom cards
+- ✅ Conditional карточки (показывать по условию)
+
+## В процессе
+
+### Освещение
+- ⏳ Режим "Party" — должен держать включённое до рассвета, не включать выключенное
+- ⏳ Keepalive для table — держать включённый при движении N мин, не включать выключенный днём
+- ⏳ Глобальные таймауты движения (день/ночь) для всех групп кроме санузла
+- ⏳ Санузел: запрет авто-включения ночью, свои таймауты
+
+### Дашборды
+- ⏳ Кнопки (Zigbee) — пока через legacy device triggers, не мигрированы
+
+## Как работать
+
+### Добавление новой группы света
+1. Добавить в `manifests/leonid_house.yaml` → `features.lighting.groups`
+2. `python3 tools/gen_helpers.py --apply`
+3. `python3 tools/gen_dashboard_settings.py`
+4. `pyscript.reload`
+
+### Изменение логики контроллера
+1. Редактировать `ha/pyscript/*.py`
+2. `./tools/deploy.sh` (склеит в `/config/pyscript/manifest_loader.py`)
+3. `pyscript.reload`
+
+### Проверка работы
+```bash
+# Логи pyscript (фильтр: light, climate, vent)
+tail -f /config/home-assistant.log | grep -E "\[light\]|\[climate\]|\[vent\]"
+
+# Debug сервисы
+```bash
+curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
+  -H "Content-Type: application/json" -d '{}' \
+  "$HA_URL/api/services/pyscript/light_debug"
+```
+## Известные проблемы
+Mushroom cards
+Требуют resources в configuration.yaml:
+
+```yaml
+lovelace:
+  resources:
+    - url: /hacsfiles/lovelace-mushroom/mushroom.js
+      type: module
+```
+
+## Дубли helpers
+Если в HA появились _2, _3:
+```python3 tools/cleanup_helpers.py --manifest manifests/leonid_house.yaml --confirm```
+
+## Shadow mode
+При lighting_shadow_mode: on автоматика только логирует. Для реального управления:
+```bash
+curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"entity_id": "input_boolean.lighting_shadow_mode"}' \
+  "$HA_URL/api/services/input_boolean/turn_off"
+  ```
+## Следующие шаги
+Party режим — не включать выключенное, держать включённое до рассвета
+Keepalive table — motion_mode: keepalive в манифесте
+Глобальные таймауты — input_number.motion_day_min, motion_night_min
+Санузел — no_night_auto_flag, свои таймауты
+Кнопки — мигрировать device triggers на event entity (sensor.*_action)
+
+## Контакты
+Манифест: manifests/leonid_house.yaml
+Логи: /config/home-assistant.log
+Pyscript: /config/pyscript/manifest_loader.py (склейка из ha/pyscript/*.py)
