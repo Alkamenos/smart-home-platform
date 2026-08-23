@@ -245,8 +245,9 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
         if (time.monotonic() - last) < cfg.get("anti_cycle_min", 2) * 60:
             return
     _EXPECTED_REAL_STATE[e] = {"state": on, "until": time.monotonic() + 30}
-    if mode == "shadow":
+    if mode == "shadow" and not force:
         log.warning("[light][SHADOW] " + e + " -> " + ("on" if on else "off"))
+        return
     else:
         dom = str(e).split(".")[0]
         if on and dom == "light":
@@ -274,15 +275,14 @@ def _lg_manual_command(cfg, g, on, mode):
     v = lg_vlight_entity(g)
     if _lg_state(v) is not None:
         _VLIGHT_PREV[v] = "on" if on else "off"
-        _lg_set_vlight(v, on, mode)
+        _lg_set_vlight(v, on, "real")   # было: mode
     for e in (g.get("lights", []) or []):
         if not e:
             continue
         if g.get("tolerate_unavailable") and _lg_unavailable(e):
             continue
         _LG_OVERRIDE[e] = time.monotonic() + cfg.get("override_timeout_min", 60) * 60
-        _lg_set_real(e, on, mode, cfg, force=True)
-
+        _lg_set_real(e, on, "real", cfg, force=True)   # было: mode
 
 # ---------------- решение автоматики ----------------
 
@@ -290,7 +290,7 @@ def _lg_decide(g, cfg):
     g = _lg_season(g)
 
     if _lg_state("input_boolean.party_mode") == "on":
-        return {"on": True}
+        return {"on": True, "why": "party_mode"}
 
     prof = g.get("profile", "dusk_till_time")
     dark = bool(_DARK)
@@ -317,11 +317,11 @@ def _lg_decide(g, cfg):
 
     ov = g.get("override_flag")
     if ov and _lg_state(ov) == "on":
-        return {"on": True}
+        return {"on": True, "why": "override_flag"}
 
     sel_on = _lg_state("input_select.light_%s_on" % gid)
     if sel_on == "Не включать":
-        return {"on": False}
+        return {"on": False, "why": "sel_on=Не включать"}
 
     # Новая опция: Датчик движения
     if sel_on == "Датчик движения":
@@ -338,8 +338,8 @@ def _lg_decide(g, cfg):
 
     if prof == "motion":
         if not (dark or mday):
-            return {"on": False}
-        return {"on": presence}
+            return {"on": False, "why": "motion: светло и motion_day=off"}
+        return {"on": presence, "why": "motion: presence=" + str(presence)}
 
     if prof == "manual_auto":
         af = g.get("auto_flag")
@@ -367,7 +367,7 @@ def _lg_decide(g, cfg):
                 else:
                     in_off = now >= off_min or now < end_min
                 if in_off:
-                    return {"on": False}
+                    return {"on": False, "why": "окно выкл %s-%s" % (str(off_min), str(end_min))}
             else:
                 if now >= off_min:
                     return {"on": False}
@@ -381,8 +381,8 @@ def _lg_decide(g, cfg):
         return {"on": False}
 
     if dark:
-        return {"on": True}
-    return {"on": False}
+        return {"on": True, "why": "темно (закат)"}
+    return {"on": False, "why": "светло"}
 
 
 # ---------------- тик группы ----------------
@@ -443,6 +443,12 @@ def _lg_apply_group(g, cfg, mode):
     if dec is None:
         return
     desired = dec["on"]
+    if mode == "shadow":
+        cur = [_lg_is_on(e) for e in lights]
+        if any([c != desired for c in cur]):
+            log.warning("[light][SHADOW][decide] %s desired=%s why=%s dark=%s"
+                        % (str(g.get("id")), str(desired), str(dec.get("why", "")), str(bool(_DARK))))
+    
     nightlight = dec.get("nightlight", False)
 
     if any([_lg_override_active(e) for e in lights]):
@@ -750,8 +756,8 @@ _VLIGHT_LIST = _vlight_build_list()
 
 @state_trigger(*_VLIGHT_LIST)
 def _lg_vlight_handler(var_name=None, **kwargs):
-    if _lg_state("input_boolean.feature_lighting") == "off":
-        return
+    #if _lg_state("input_boolean.feature_lighting") == "off":
+    #    return
     cfg = _lg_cfg()
     if not cfg:
         return
@@ -783,10 +789,9 @@ _MOTION_LIST = _motion_build_list()
 
 @state_trigger(*_MOTION_LIST)
 def _lg_motion_handler(var_name=None, **kwargs):
-    # Логирование переключения датчика
     cur_state = _lg_state(var_name)
-    log.warning("[motion] " + var_name + " -> " + str(cur_state))
-
+    log.warning("[motion] " + str(var_name) + " -> " + str(cur_state))
+    
     if _lg_state("input_boolean.feature_lighting") == "off":
         return
     cfg = _lg_cfg()
@@ -794,16 +799,18 @@ def _lg_motion_handler(var_name=None, **kwargs):
         return
     mode = _lg_mode(cfg)
     for g in (cfg.get("groups", []) or []):
-        ms = _lg_motion_sensor(g, str(g.get("id")))
+        gid = str(g.get("id"))
+        # Читаем датчик из dropdown helper'а, если есть, иначе из манифеста
+        ms = _lg_state("input_select.light_%s_motion_sensor" % gid)
+        if not ms or ms in ("unknown", "unavailable"):
+            ms = g.get("motion_sensor")
         if ms != var_name:
             continue
-        gid = str(g.get("id"))
         _LG_MOTION_LAST[gid] = time.monotonic()
         g2 = _lg_season(g)
         m = "shadow" if (mode == "shadow" or g2.get("shadow")) else "real"
         _lg_apply_group(g2, cfg, m)
         return
-
 
 # ---------------- сервисы ----------------
 

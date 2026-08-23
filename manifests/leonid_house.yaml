@@ -4,11 +4,10 @@ instance:
   timezone: Europe/Moscow
   locale: ru-RU
   version: "1.1.0"
-
-metadata:
-  customer: "Леонид"
-  platform_version: "0.3.0"
-  notes: "Климат: гостиная + санузел + спальня + кабинет, shadow mode"
+  metadata:
+    customer: "Леонид"
+    platform_version: "0.3.0"
+    notes: "Климат: гостиная + санузел + спальня + кабинет, shadow mode"
 
 devices:
   sensors:
