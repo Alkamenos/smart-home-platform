@@ -5,6 +5,7 @@
 --delete --confirm: удаляет orphan'ы (с защитой).
 """
 import argparse
+import feature_helpers as FH
 import json
 import os
 import urllib.request
@@ -170,7 +171,9 @@ lighting = features.get("lighting", {}) or {}
 climate = features.get("climate", {}) or {}
 ventilation = features.get("ventilation", {}) or {}
 sensor_health = features.get("sensor_health", {}) or {}
-groups = lighting.get("groups", []) or []
+groups = features.get("groups") or lighting.get("groups", []) or []
+import resolve_features as RF
+groups = [RF.resolve_group(g) for g in groups]
 want = [s.strip() for s in args.groups.split(",")] if args.groups else None
 
 SEL_ON = ["Не включать", "Закат", "Время", "Датчик движения"]
@@ -229,41 +232,8 @@ for g in groups:
     ]
     i += 8
 
-    # Dropdown датчика движения + motion helpers
-    ms = g.get("motion_sensor")
-    if ms:
-        nnf = g.get("no_night_auto_flag", "")
-        if nnf.startswith("input_boolean."):
-            entries.append(bool_(i, nnf.split(".", 1)[1], "off", "mdi:weather-night"))
-            i += 1
-        room = g.get("room")
-        options = motion_by_room.get(room, [ms]) if room else [ms]
-        entries.append(sel(i, "light_%s_motion_sensor" % gid,
-                           options, ms, "mdi:motion-sensor"))
-        i += 1
-
-        entries += [
-            bool_(i, "light_%s_motion" % gid, "on", "mdi:motion-sensor"),
-            bool_(i + 1, "light_%s_motion_day" % gid, "off", "mdi:weather-sunny"),
-            num(i + 2, "light_%s_motion_day_min" % gid, 1, 120, 1, 5, "mdi:timer-outline"),
-            num(i + 3, "light_%s_motion_night_min" % gid, 1, 60, 1, 2, "mdi:timer-outline"),
-        ]
-        i += 4
-
-    # Nightlight helpers
-    if g.get("nightlight"):
-        nl = g.get("nightlight") or {}
-        nl_b = nl.get("brightness", 40)
-        nl_c = nl.get("color", [255, 150, 60])
-        entries += [
-            bool_(i, "feature_%s_nightlight" % gid, "off", "mdi:weather-night"),
-            num(i + 1, "light_%s_nightlight_brightness" % gid, 1, 100, 1, nl_b, "mdi:brightness-percent"),
-            num(i + 2, "light_%s_nightlight_off_min" % gid, 1, 30, 1, 3, "mdi:timer-outline"),
-            num(i + 3, "light_%s_nightlight_r" % gid, 0, 255, 1, nl_c[0] if len(nl_c) > 0 else 255, "mdi:palette"),
-            num(i + 4, "light_%s_nightlight_g" % gid, 0, 255, 1, nl_c[1] if len(nl_c) > 1 else 150, "mdi:palette"),
-            num(i + 5, "light_%s_nightlight_b" % gid, 0, 255, 1, nl_c[2] if len(nl_c) > 2 else 60, "mdi:palette"),
-        ]
-        i += 6
+    add, i = FH.group_feature_helpers(g, gid, i, {"motion_by_room": motion_by_room})
+    entries += add
 
 # ============================================================
 # LIGHTING: глобальные (color temp, RGB, imitation, backlight)
@@ -347,6 +317,8 @@ if bf.get("enabled_flag", "").startswith("input_boolean."):
 # ============================================================
 created_names = set([e["name"] for e in entries])
 for fname in features.keys():
+    if fname == "groups":
+        continue
     f_name = "feature_" + fname
     if f_name not in created_names:
         entries.append(bool_(i, f_name, "on", "mdi:toggle-switch"))

@@ -78,10 +78,24 @@ curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
 │   ├── gen_dashboard_settings.py
 │   ├── gen_dashboard_admin.py
 │   ├── gen_all_dashboards.sh
-│   └── cleanup_helpers.py
+│   ├── cleanup_helpers.py
+│   ├── resolve_features.py
+│   ├── feature_helpers.py
+│   ├── feature_ui.py
+│   └── group_card.py
 ├── manifests/
 │   └── leonid_house.yaml
 ├── docs/
 │   ├── HANDOFF.md
 │   └── CHANGELOG.md
 └── README.md
+
+## Фич-архитектура (2026-08-24)
+Фича = 4 артефакта:
+- schema: `tools/resolve_features.py` (манифест → legacy-поля, обратная совместимость)
+- helpers: `tools/feature_helpers.py`
+- UI: `tools/feature_ui.py` + цельная карточка `tools/group_card.py` (vertical-stack-in-card)
+- decide: `_fd_*` в цепочке `_FD_CHAIN` (`ha/pyscript/lighting_controller.py`)
+
+Фичи: party, schedule, dusk, motion, nightlight, ct, imitation.
+Манифест: группы в `features.groups`; у группы блок `features:`.

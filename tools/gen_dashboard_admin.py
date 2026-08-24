@@ -11,11 +11,13 @@ def main():
     p.add_argument("--out", default="/config/dashboards/admin-dashboard.yaml")
     args = p.parse_args()
     m = yaml.safe_load(open(args.manifest))
-    features = m.get("features", {})
+    features = m.get("features", m)
 
     # --- Фичи ---
     feature_ents = []
     for fname in sorted(features.keys()):
+        if fname == "groups":
+            continue
         feature_ents.append({"entity": "input_boolean.feature_%s" % fname, "name": nice(fname)})
         shadow = "input_boolean.%s_shadow_mode" % fname
         feature_ents.append({"entity": shadow, "name": nice(fname) + " (shadow)"})
@@ -57,7 +59,7 @@ def main():
     # --- Группы света (быстрый доступ) ---
     lighting = features.get("lighting", {}) or {}
     light_flags = []
-    for g in lighting.get("groups", []):
+    for g in (features.get("groups") or lighting.get("groups", []) or []):
         gid = str(g.get("id"))
         light_flags.append({"entity": "input_boolean.feature_%s" % gid,
                             "name": g.get("name", nice(gid))})

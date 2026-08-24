@@ -69,8 +69,11 @@ def main():
     p.add_argument("--out", default="/config/dashboards/home-dashboard.yaml")
     args = p.parse_args()
     m = yaml.safe_load(open(args.manifest))
-    features = m.get("features", {})
+    features = m.get("features", m)
     lighting = features.get("lighting", {}) or {}
+    import resolve_features as RF
+    lighting = dict(lighting)
+    lighting["groups"] = [RF.resolve_group(g) for g in (lighting.get("groups", []) or [])]
     climate = features.get("climate", {}) or {}
     ventilation = features.get("ventilation", {}) or {}
     devices = m.get("devices", {})
@@ -79,7 +82,7 @@ def main():
 
     # Группировка света по комнатам
     rooms_light = {r: [] for r in ROOM_ORDER}
-    for g in lighting.get("groups", []):
+    for g in (features.get("groups") or lighting.get("groups", []) or []):
         gid = str(g.get("id"))
         room = g.get("room") or DEFAULT_ROOM.get(gid, "outdoor")
         if room in rooms_light:

@@ -35,3 +35,8 @@
 - feature-флаги выключают только автоматику; `_lg_vlight_handler` НЕ блокируется мастер-флагом.
 - Первый toggle vlight после рестарта съедается инициализацией `_VLIGHT_PREV` — тестировать вторым.
 - Кнопки Zigbee: легаси device triggers, НЕ мигрировать на event-entity (сломает автоматизации).
+Манифест/фичи
+Группы света в `features.groups` (не `features.lighting.groups`); генераторы и контроллер
+читают с фолбэком на старый формат. Resolver раскрывает `features:`→legacy.
+Decide = цепочка voters `_FD_CHAIN` (приоритет фиксирован); `why` = победившая фича.
+Закат без темноты: `sun.sun` elevation < 0 (не трогать `_lg_update_dark`).

@@ -34,3 +34,8 @@ globals: `zima`, `vecher`, `my_doma`, `party_mode`;
    (whitelist: `zima`, `vecher`, `my_doma`, `party_mode`).
 4. После provisioning: перегенерировать дашборды, полный рестарт HA (не `pyscript.reload` —
    дублируются фоновые циклы).
+если фича party (всегда): `input_select.light_<gid>_party_role`
+(Как обычно/Включить/Выключить/Держать включённым)
+если фича dusk: `input_boolean.light_<gid>_require_dark`
+если фича ct: `input_boolean.light_<gid>_ct_follow`
+если фича imitation: `input_boolean.light_<gid>_imitation`

@@ -3,6 +3,23 @@
 
 ```markdown
 # Changelog
+## 2026-08-24
+### Добавлено
+- Фич-архитектура: фича = 4 артефакта (schema/helpers/UI/decide)
+- Новый формат манифеста: группы в `features.groups`, блок `features:` у группы;
+  resolver `tools/resolve_features.py` (обратная совместимость)
+- Party-роли per group (`input_select.light_<gid>_party_role`)
+- Keepalive table: не включает выключенный днём, держит включённый N мин, ночью ночник
+- Глобальные таймауты движения `motion_day_min|motion_night_min`
+- Санузел: свои таймауты + запрет авто ночью
+- Хелперы dusk/ct/imitation на карточке, подключены к контроллеру
+- Настройки по зонам; цельная карточка группы `group_card.py`
+### Изменено
+- `_lg_decide` → цепочка voters `_FD_CHAIN`; `why` = имя фичи
+### Известные проблемы
+- Кнопки Zigbee — legacy device triggers (осознанно)
+- Монолит manifest_loader.py ~1900 строк; voters в одном файле (рефакторинг)
+
 
 ## 2026-08-22
 

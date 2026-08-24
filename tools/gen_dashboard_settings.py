@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Манифест -> дашборд "Настройки" (свет по зонам, климат, вентиляция, датчики, цвет)."""
 import argparse, os, yaml
+import feature_ui as FU
+import group_card as GC
 
 ZONE_TITLES = {"street": "Улица", "garden": "Сад", "house": "Дом"}
 
@@ -34,62 +36,17 @@ def bool_card(entity, name):
 # КАРТОЧКА ГРУППЫ СВЕТА
 # ============================================================
 def group_settings_card(g):
-    gid = str(g.get("id"))
-    sel_on = "input_select.light_%s_on" % gid
-    sel_off = "input_select.light_%s_off" % gid
-    cards = [
-        title("💡 " + g.get("name", nice(gid))),
-        grid([sel_card(sel_on, "Включение"),
-              sel_card(sel_off, "Выключение")], 2),
-        num_card("input_number.light_%s_brightness" % gid, "Яркость %"),
-    ]
-    cards.append({"type": "conditional",
-                  "conditions": [{"entity": sel_on, "state": "Время"}],
-                  "card": {"type": "entities", "entities": [
-                      {"entity": "input_datetime.light_%s_on_time" % gid, "name": "Включить в"}]}})
-    cards.append({"type": "conditional",
-                  "conditions": [{"entity": sel_off, "state": "Время"}],
-                  "card": {"type": "entities", "entities": [
-                      {"entity": "input_datetime.light_%s_off_time" % gid, "name": "Выключить в"},
-                      {"entity": "input_datetime.light_%s_off_end_time" % gid, "name": "Конец окна"}]}})
+    return GC.group_card(g)
 
-    if g.get("motion_sensor"):
-        cards.append(title("📡 Движение"))
-        cards.append(sel_card("input_select.light_%s_motion_sensor" % gid, "Датчик"))
-        cards.append(grid([
-            bool_card("input_boolean.light_%s_motion" % gid, "Учитывать"),
-            bool_card("input_boolean.light_%s_motion_day" % gid, "Включать днём"),
-        ], 2))
-        if g.get("no_night_auto_flag"):
-            cards.append(bool_card(g["no_night_auto_flag"], "Ночью авто — выкл"))
-        if g.get("motion_timeouts") == "own":
-            cards.append(grid([
-                num_card("input_number.light_%s_motion_day_min" % gid, "Таймаут день"),
-                num_card("input_number.light_%s_motion_night_min" % gid, "Таймаут ночь"),
-            ], 2))
-        if g.get("nightlight"):
-            nl_on = "input_boolean.feature_%s_nightlight" % gid
-            cards.append(bool_card(nl_on, "🌙 Ночник"))
-            cards.append({"type": "conditional",
-                          "conditions": [{"entity": nl_on, "state": "on"}],
-                          "card": {"type": "vertical-stack", "cards": [
-                              grid([
-                                  num_card("input_number.light_%s_nightlight_brightness" % gid, "Яркость"),
-                                  num_card("input_number.light_%s_nightlight_off_min" % gid, "Таймаут, мин"),
-                              ], 2),
-                              grid([
-                                  num_card("input_number.light_%s_nightlight_r" % gid, "R"),
-                                  num_card("input_number.light_%s_nightlight_g" % gid, "G"),
-                                  num_card("input_number.light_%s_nightlight_b" % gid, "B"),
-                              ], 3),
-                          ]}})
-    return {"type": "vertical-stack", "cards": cards}
+
 
 # ============================================================
 # ВКЛАДКИ СВЕТА: Общее + зоны
 # ============================================================
 def light_views(lighting):
     groups = lighting.get("groups", []) or []
+    import resolve_features as RF
+    groups = [RF.resolve_group(g) for g in groups]
     zones = {}
     for g in groups:
         z = g.get("zone") or default_zone(str(g.get("id")))
@@ -127,7 +84,7 @@ def main():
     p.add_argument("--out", default="/config/dashboards/settings-dashboard.yaml")
     args = p.parse_args()
     m = yaml.safe_load(open(args.manifest))
-    features = m.get("features", {})
+    features = m.get("features", m)
     lighting = features.get("lighting", {}) or {}
     climate = features.get("climate", {}) or {}
     ventilation = features.get("ventilation", {}) or {}
@@ -187,7 +144,7 @@ def main():
         {"entity": "input_select.light_rgb_scene", "name": "Сцена"},
     ]}]
 
-    views = light_views(lighting) + [
+    views = light_views({"groups": features.get("groups") or lighting.get("groups") or []}) + [
         {"title": "🌡️ Климат", "path": "climate", "icon": "mdi:thermometer", "cards": climate_cards},
         {"title": "💨 Вентиляция", "path": "vent", "icon": "mdi:fan", "cards": vent_cards},
         {"title": "📡 Датчики", "path": "sensors", "icon": "mdi:access-point", "cards": sensor_cards},

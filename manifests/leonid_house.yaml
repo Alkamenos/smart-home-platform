@@ -99,123 +99,113 @@ features:
 
     night_flag: input_boolean.vecher
 
-    groups:
-      - id: yard_floodlights
-        name: "Улица/двор основное"
-        lights: [switch.group_lights_outdoor_floodlights]
-        profile: dusk_till_time
-        on: sunset
-        off: "23:00"
-        require_dark: true
-        feature_flag: input_boolean.feature_yard
+  groups:
+  - id: yard_floodlights
+    name: "Улица/двор основное"
+    lights: [switch.group_lights_outdoor_floodlights]
+    flag: input_boolean.feature_yard
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
 
-      - id: street_night
-        name: "Уличное ночное"
-        lights: [light.night_light]
-        profile: dusk_till_dawn
-        feature_flag: input_boolean.feature_street_night
+  - id: street_night
+    name: "Уличное ночное"
+    lights: [light.night_light]
+    flag: input_boolean.feature_street_night
+    features:
+      dusk: {}
+      schedule: { off: sunrise }
 
-      - id: office
-        name: "Кабинет"
-        lights: [light.workroom_lights]
-        profile: dusk_till_time
-        on: sunset
-        off: "23:00"
-        require_dark: true
-        follow_global_ct: true
-        feature_flag: input_boolean.feature_office
+  - id: office
+    name: "Кабинет"
+    lights: [light.workroom_lights]
+    flag: input_boolean.feature_office
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
+      ct: { follow: true }
+      party: { role: off }
 
-      - id: bedroom
-        name: "Спальня"
-        lights: [light.svet_v_spalne_right]
-        profile: dusk_till_time
-        on: sunset
-        off: "22:30"
-        require_dark: true
-        feature_flag: input_boolean.feature_bedroom
+  - id: bedroom
+    name: "Спальня"
+    lights: [light.svet_v_spalne_right]
+    flag: input_boolean.feature_bedroom
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "22:30" }
 
-      - id: kitchen_work
-        name: "Кухня рабочая"
-        lights: [switch.kitchen_lights]
-        profile: manual_auto
-        on: "18:00"
-        off: "23:00"
-        auto_flag: input_boolean.feature_kitchen_work
-        feature_flag: input_boolean.feature_kitchen_work
+  - id: kitchen_work
+    name: "Кухня рабочая"
+    lights: [switch.kitchen_lights]
+    flag: input_boolean.feature_kitchen_work
+    features:
+      schedule: { on: "18:00", off: "23:00", auto_flag: input_boolean.feature_kitchen_work }
+      imitation: { participate: true }
 
-      - id: table
-        name: "Обеденный стол"
-        room: gostinnaia
-        motion_mode: keepalive
-        lights: [light.table_lights]
-        profile: manual_auto
-        on: sunset
-        off: "23:00"
-        motion_sensor: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy
-        auto_flag: input_boolean.feature_table
-        feature_flag: input_boolean.feature_table
-        nightlight:
-          brightness: 40
-          color: [255, 150, 60]
+  - id: table
+    name: "Обеденный стол"
+    lights: [light.table_lights]
+    flag: input_boolean.feature_table
+    features:
+      schedule: { on: sunset, off: "23:00", auto_flag: input_boolean.feature_table }
+      motion: { sensor: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy, mode: keepalive }
+      nightlight: { brightness: 40, color: [255,150,60], off_min: 3 }
+      imitation: { participate: true }
 
-      - id: container
-        name: "Контейнер"
-        room: container
-        lights: [light.svet_v_konteinere]
-        profile: motion
-        motion_sensor: binary_sensor.datchik_dvizheniia_konteiner_occupancy
-        no_motion_day_min: 5
-        no_motion_night_min: 2
-        feature_flag: input_boolean.feature_container
+  - id: container
+    name: "Контейнер"
+    lights: [light.svet_v_konteinere]
+    flag: input_boolean.feature_container
+    features:
+      motion: { sensor: binary_sensor.datchik_dvizheniia_konteiner_occupancy, mode: trigger }
 
-      - id: bathroom
-        name: "Санузел"
-        room: sanuzel
-        motion_timeouts: own
-        no_night_auto_flag: input_boolean.light_bathroom_no_night_auto
-        lights: [light.vykliuchatel_sanuzel_switch1]
-        profile: motion
-        motion_sensor: binary_sensor.vykliuchatel_sanuzel_presence
-        no_motion_day_min: 5
-        no_motion_night_min: 2
-        feature_flag: input_boolean.feature_bathroom_light
+  - id: bathroom
+    name: "Санузел"
+    lights: [light.vykliuchatel_sanuzel_switch1]
+    flag: input_boolean.feature_bathroom_light
+    features:
+      motion: { sensor: binary_sensor.vykliuchatel_sanuzel_presence, mode: trigger,
+                timeouts: own, no_night_auto: input_boolean.light_bathroom_no_night_auto }
 
-      - id: garland_terrace
-        name: "Гирлянда терраса"
-        lights: [light.girlianda_terassa]
-        profile: dusk_till_time
-        on: sunset
-        off: "23:00"
-        tolerate_unavailable: true
-        feature_flag: input_boolean.feature_garland_terrace
+  - id: garland_terrace
+    name: "Гирлянда терраса"
+    lights: [light.girlianda_terassa]
+    flag: input_boolean.feature_garland_terrace
+    tolerate_unavailable: true
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
 
-      - id: garland_street
-        name: "Гирлянда уличная"
-        lights: [light.ulichnaia_girlianda]
-        profile: dusk_till_time
-        on: sunset
-        off: "23:00"
-        tolerate_unavailable: true
-        feature_flag: input_boolean.feature_garland_street
+  - id: garland_street
+    name: "Гирлянда уличная"
+    lights: [light.ulichnaia_girlianda]
+    flag: input_boolean.feature_garland_street
+    tolerate_unavailable: true
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
 
-      - id: garland_windows
-        name: "Окна (лето антимоскитная / зима гирлянда)"
-        lights: [light.girlianda_na_oknakh]
-        profile: dusk_till_dawn
-        tolerate_unavailable: true
-        feature_flag: input_boolean.feature_garland_windows
-        season:
-          summer: { profile: dusk_till_dawn }
-          winter: { profile: dusk_till_time, off: "23:00" }
+  - id: garland_windows
+    name: "Окна"
+    lights: [light.girlianda_na_oknakh]
+    flag: input_boolean.feature_garland_windows
+    tolerate_unavailable: true
+    features:
+      dusk: {}
+      schedule: { off: sunrise }
+      party: { role: on }
+    season:
+      summer: { features: { schedule: { off: sunrise } } }
+      winter: { features: { dusk: { require_dark: true }, schedule: { off: "23:00" } } }
 
-      - id: xmas_a2
-        name: "Рождественская уличная"
-        lights: [light.girlianda_a2]
-        profile: dusk_till_time
-        on: sunset
-        off: "23:00"
-        tolerate_unavailable: true
-        feature_flag: input_boolean.feature_xmas_a2
+  - id: xmas_a2
+    name: "Рождественская уличная"
+    lights: [light.girlianda_a2]
+    flag: input_boolean.feature_xmas_a2
+    tolerate_unavailable: true
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
 
   sensor_health:
     enabled: true

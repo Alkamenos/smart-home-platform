@@ -185,3 +185,15 @@ Keepalive table — motion_mode: keepalive в манифесте
 Манифест: manifests/leonid_house.yaml
 Логи: /config/home-assistant.log
 Pyscript: /config/pyscript/manifest_loader.py (склейка из ha/pyscript/*.py)
+## СОСТОЯНИЕ НА 2026-08-24 (актуально, читать первым)
+### Готово (сверх предыдущего)
+- Party-роли: не включает выключенное, держит включённое до рассвета; роль на группу
+- Keepalive table + глобальные таймауты движения + санузел (свои таймауты, запрет ночью)
+- Фич-архитектура (4 артефакта); resolver; новый манифест (`features.groups`)
+- `_lg_decide` = цепочка `_FD_CHAIN`; хелперы dusk/ct/imitation подключены
+- Настройки по зонам; цельные карточки (vertical-stack-in-card)
+### Следующие шаги: РЕФАКТОРИНГ
+1. Реестр фич `_FD_REGISTRY` вместо жёсткого `_FD_CHAIN`
+2. Единый `features.py`-словарь (schema+helpers+ui+decide в одной записи)
+3. `tools/build_pyscript.py` вместо ручной склейки
+4. Smoke-тест: diff `light_debug` до/после
