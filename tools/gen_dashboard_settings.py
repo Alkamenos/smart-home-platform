@@ -1,71 +1,126 @@
 #!/usr/bin/env python3
-"""Манифест -> дашборд "Настройки" (свет, климат, вентиляция, датчики, цвет)."""
+"""Манифест -> дашборд "Настройки" (свет по зонам, климат, вентиляция, датчики, цвет)."""
 import argparse, os, yaml
+
+ZONE_TITLES = {"street": "Улица", "garden": "Сад", "house": "Дом"}
+
+def default_zone(gid):
+    if any([k in gid for k in ("yard", "street", "flood", "container", "xmas")]):
+        return "street"
+    if any([k in gid for k in ("terrace", "garden", "path")]):
+        return "garden"
+    return "house"
 
 def nice(gid):
     return gid.replace("_", " ").capitalize()
 
-def light_settings_card(g):
+# ---- карточки-кирпичики ----
+def title(t):
+    return {"type": "custom:mushroom-title-card", "title": t}
+
+def grid(cards, cols):
+    return {"type": "grid", "columns": cols, "square": False, "cards": cards}
+
+def sel_card(entity, name):
+    return {"type": "custom:mushroom-select-card", "entity": entity, "name": name}
+
+def num_card(entity, name):
+    return {"type": "custom:mushroom-number-card", "entity": entity, "name": name}
+
+def bool_card(entity, name):
+    return {"type": "custom:mushroom-entity-card", "entity": entity, "name": name}
+
+# ============================================================
+# КАРТОЧКА ГРУППЫ СВЕТА
+# ============================================================
+def group_settings_card(g):
     gid = str(g.get("id"))
     sel_on = "input_select.light_%s_on" % gid
     sel_off = "input_select.light_%s_off" % gid
-    ents = [
-        {"entity": sel_on, "name": "Включение"},
-        {"entity": sel_off, "name": "Выключение"},
-        {"entity": "input_number.light_%s_brightness" % gid, "name": "Яркость"},
+    cards = [
+        title("💡 " + g.get("name", nice(gid))),
+        grid([sel_card(sel_on, "Включение"),
+              sel_card(sel_off, "Выключение")], 2),
+        num_card("input_number.light_%s_brightness" % gid, "Яркость %"),
     ]
-    cards = [{"type": "entities", "title": g.get("name", nice(gid)), "entities": ents}]
-    # Время включения
     cards.append({"type": "conditional",
                   "conditions": [{"entity": sel_on, "state": "Время"}],
                   "card": {"type": "entities", "entities": [
                       {"entity": "input_datetime.light_%s_on_time" % gid, "name": "Включить в"}]}})
-    # Время выключения + окно
     cards.append({"type": "conditional",
                   "conditions": [{"entity": sel_off, "state": "Время"}],
                   "card": {"type": "entities", "entities": [
                       {"entity": "input_datetime.light_%s_off_time" % gid, "name": "Выключить в"},
                       {"entity": "input_datetime.light_%s_off_end_time" % gid, "name": "Конец окна"}]}})
-    # Датчик движения
+
     if g.get("motion_sensor"):
-        # motion_ents = [
-        #     {"entity": "input_select.light_%s_motion_sensor" % gid, "name": "Датчик"},
-        #     {"entity": "input_boolean.light_%s_motion" % gid, "name": "Учитывать"},
-        #     {"entity": "input_boolean.light_%s_motion_day" % gid, "name": "Включать днём"},
-        #     {"entity": "input_number.light_%s_motion_day_min" % gid, "name": "Таймаут день"},
-        #     {"entity": "input_number.light_%s_motion_night_min" % gid, "name": "Таймаут ночь"},
-        # ]
-        # cards.append({"type": "entities", "title": "Датчик движения", "entities": motion_ents})
-        cards.append({"type": "custom:mushroom-select-card",
-                      "entity": "input_select.light_%s_motion_sensor" % gid,
-                      "name": "Датчик движения"})
-        ents = [{"entity": "input_boolean.light_%s_motion" % gid, "name": "Учитывать"},
-                {"entity": "input_boolean.light_%s_motion_day" % gid, "name": "Включать днём"}]
+        cards.append(title("📡 Движение"))
+        cards.append(sel_card("input_select.light_%s_motion_sensor" % gid, "Датчик"))
+        cards.append(grid([
+            bool_card("input_boolean.light_%s_motion" % gid, "Учитывать"),
+            bool_card("input_boolean.light_%s_motion_day" % gid, "Включать днём"),
+        ], 2))
         if g.get("no_night_auto_flag"):
-            ents.append({"entity": g["no_night_auto_flag"], "name": "Не включать ночью авто"})
+            cards.append(bool_card(g["no_night_auto_flag"], "Ночью авто — выкл"))
         if g.get("motion_timeouts") == "own":
-            ents += [{"entity": "input_number.light_%s_motion_day_min" % gid, "name": "Таймаут днём"},
-                     {"entity": "input_number.light_%s_motion_night_min" % gid, "name": "Таймаут ночью"}]
-        cards.append({"type": "entities", "title": "Датчик движения", "entities": ents})
-        
-        
-        # Ночник
+            cards.append(grid([
+                num_card("input_number.light_%s_motion_day_min" % gid, "Таймаут день"),
+                num_card("input_number.light_%s_motion_night_min" % gid, "Таймаут ночь"),
+            ], 2))
         if g.get("nightlight"):
+            nl_on = "input_boolean.feature_%s_nightlight" % gid
+            cards.append(bool_card(nl_on, "🌙 Ночник"))
             cards.append({"type": "conditional",
-                          "conditions": [{"entity": "input_boolean.feature_%s_nightlight" % gid, "state": "on"}],
-                          "card": {"type": "entities", "title": "🌙 Ночник", "entities": [
-                              {"entity": "input_boolean.feature_%s_nightlight" % gid, "name": "Включено"},
-                              {"entity": "input_number.light_%s_nightlight_brightness" % gid, "name": "Яркость"},
-                              {"entity": "input_number.light_%s_nightlight_off_min" % gid, "name": "Таймаут"},
-                              {"entity": "input_number.light_%s_nightlight_r" % gid, "name": "R"},
-                              {"entity": "input_number.light_%s_nightlight_g" % gid, "name": "G"},
-                              {"entity": "input_number.light_%s_nightlight_b" % gid, "name": "B"},
+                          "conditions": [{"entity": nl_on, "state": "on"}],
+                          "card": {"type": "vertical-stack", "cards": [
+                              grid([
+                                  num_card("input_number.light_%s_nightlight_brightness" % gid, "Яркость"),
+                                  num_card("input_number.light_%s_nightlight_off_min" % gid, "Таймаут, мин"),
+                              ], 2),
+                              grid([
+                                  num_card("input_number.light_%s_nightlight_r" % gid, "R"),
+                                  num_card("input_number.light_%s_nightlight_g" % gid, "G"),
+                                  num_card("input_number.light_%s_nightlight_b" % gid, "B"),
+                              ], 3),
                           ]}})
-            cards.append({"type": "custom:mushroom-entity-card",
-                          "entity": "input_boolean.feature_%s_nightlight" % gid,
-                          "name": "Ночник вкл/выкл"})
     return {"type": "vertical-stack", "cards": cards}
 
+# ============================================================
+# ВКЛАДКИ СВЕТА: Общее + зоны
+# ============================================================
+def light_views(lighting):
+    groups = lighting.get("groups", []) or []
+    zones = {}
+    for g in groups:
+        z = g.get("zone") or default_zone(str(g.get("id")))
+        zones.setdefault(z, []).append(g)
+    views = [{
+        "title": "💡 Общее", "path": "light_general", "icon": "mdi:lightbulb-group",
+        "cards": [{"type": "entities", "title": "Глобально", "entities": [
+            {"entity": "input_number.motion_day_min", "name": "Таймаут движения днём"},
+            {"entity": "input_number.motion_night_min", "name": "Таймаут движения ночью"},
+            {"entity": "input_boolean.feature_color_temp", "name": "Авто color temp"},
+            {"entity": "input_boolean.feature_backlight", "name": "Подсветка выключателей"},
+            {"entity": "input_boolean.feature_imitation", "name": "Имитация присутствия"},
+            {"entity": "input_datetime.imitation_start", "name": "Имитация: начало"},
+            {"entity": "input_datetime.imitation_end", "name": "Имитация: конец"},
+        ]}],
+    }]
+    for z in ("street", "garden", "house"):
+        gs = zones.get(z, [])
+        if not gs:
+            continue
+        views.append({
+            "title": "💡 " + ZONE_TITLES.get(z, z),
+            "path": "light_" + z,
+            "icon": "mdi:lightbulb",
+            "cards": [group_settings_card(g) for g in gs],
+        })
+    return views
+
+# ============================================================
+# MAIN
+# ============================================================
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--manifest", default="manifests/leonid_house.yaml")
@@ -77,18 +132,6 @@ def main():
     climate = features.get("climate", {}) or {}
     ventilation = features.get("ventilation", {}) or {}
     sensor_health = features.get("sensor_health", {}) or {}
-
-    # --- Свет ---
-    light_cards = [light_settings_card(g) for g in lighting.get("groups", [])]
-    light_cards.insert(0, {"type": "entities", "title": "Общие", "entities": [
-        {"entity": "input_boolean.feature_color_temp", "name": "Авто color temp"},
-        {"entity": "input_boolean.feature_backlight", "name": "Подсветка выключателей"},
-        {"entity": "input_boolean.feature_imitation", "name": "Имитация присутствия"},
-        {"entity": "input_datetime.imitation_start", "name": "Имитация начало"},
-        {"entity": "input_datetime.imitation_end", "name": "Имитация конец"},
-        {"entity": "input_number.motion_day_min", "name": "Таймаут движения днём (глобально)"},
-        {"entity": "input_number.motion_night_min", "name": "Таймаут движения ночью (глобально)"},
-    ]})
 
     # --- Климат ---
     climate_cards = [{"type": "entities", "title": "Управление", "entities": [
@@ -104,8 +147,7 @@ def main():
                     seen_sp.add(src)
                     sp_ents.append({"entity": src})
     climate_cards.append({"type": "entities", "title": "Уставки", "entities": sp_ents})
-    safety = climate.get("safety", {})
-    if safety:
+    if climate.get("safety"):
         climate_cards.append({"type": "entities", "title": "Безопасность", "entities": [
             {"entity": "input_number.vlazhnost_v_dome", "name": "Влажность в доме"},
         ]})
@@ -145,8 +187,7 @@ def main():
         {"entity": "input_select.light_rgb_scene", "name": "Сцена"},
     ]}]
 
-    views = [
-        {"title": "💡 Свет", "path": "light", "icon": "mdi:lightbulb", "cards": light_cards},
+    views = light_views(lighting) + [
         {"title": "🌡️ Климат", "path": "climate", "icon": "mdi:thermometer", "cards": climate_cards},
         {"title": "💨 Вентиляция", "path": "vent", "icon": "mdi:fan", "cards": vent_cards},
         {"title": "📡 Датчики", "path": "sensors", "icon": "mdi:access-point", "cards": sensor_cards},
