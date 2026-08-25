@@ -13,6 +13,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import ha
 rest_get = ha.rest_get
+from core.builders import num, bool_, dt, sel
+from features.climate import helpers as clim_h
+from features.ventilation import helpers as vent_h
 get_state = ha.state
 exists = ha.exists
 list_all_states = ha.list_all_states
@@ -123,26 +126,6 @@ SEL_OFF = ["Время", "Рассвет", "Не выключать", "Датч�
 RGB = ["Белый", "Красный", "Оранжевый", "Зелёный", "Синий", "Фиолетовый", "Розовый"]
 
 
-def num(i, name, mn, mx, step, init, icon):
-    return {"id": i, "type": "input_number/create", "name": name,
-            "min": mn, "max": mx, "step": step, "initial": init, "icon": icon}
-
-
-def bool_(i, name, init, icon):
-    return {"id": i, "type": "input_boolean/create", "name": name,
-            "initial": init, "icon": icon}
-
-
-def dt(i, name, init, icon):
-    return {"id": i, "type": "input_datetime/create", "name": name,
-            "has_date": False, "has_time": True, "initial": init, "icon": icon}
-
-
-def sel(i, name, options, init, icon):
-    return {"id": i, "type": "input_select/create", "name": name,
-            "options": options, "initial": init, "icon": icon}
-
-
 # Собрать motion_sensor по комнатам (для dropdown)
 motion_by_room = {}
 for g in groups:
@@ -199,60 +182,11 @@ entries += [
 ]
 i += 15
 
-# ============================================================
-# CLIMATE
-# ============================================================
-entries += [
-    bool_(i, "feature_climate", "on", "mdi:thermometer"),
-    bool_(i + 1, "climate_shadow_mode", "off", "mdi:eye-off-outline"),
-]
-i += 2
+add, i = clim_h.climate_entries(climate, i)
+entries += add
 
-# Setpoints из зон
-seen_sp = set()
-for zone in (climate.get("zones", []) or []):
-    for sp in (zone.get("setpoints") or {}).values():
-        if isinstance(sp, dict):
-            src = sp.get("source", "")
-            if isinstance(src, str) and src.startswith("input_number.") and src not in seen_sp:
-                seen_sp.add(src)
-                name = src.split(".", 1)[1]
-                entries.append(num(i, name, 5, 35, 0.5, 22, "mdi:thermometer"))
-                i += 1
-
-entries.append(num(i, "vlazhnost_v_dome", 0, 100, 1, 50, "mdi:water-percent"))
-i += 1
-
-# ============================================================
-# VENTILATION
-# ============================================================
-flags = (ventilation.get("flags", {}) or {})
-entries += [
-    bool_(i, "feature_ventilation", "on", "mdi:fan"),
-    bool_(i + 1, "ventilation_shadow_mode", "off", "mdi:eye-off-outline"),
-]
-i += 2
-
-for key in ("boost_intake", "boost_exhaust", "night", "away_home"):
-    ent = flags.get(key)
-    if ent and ent.startswith("input_boolean."):
-        name = ent.split(".", 1)[1]
-        init = "off" if key.startswith("boost") else ("on" if key == "away_home" else "off")
-        entries.append(bool_(i, name, init, "mdi:fan"))
-        i += 1
-
-od = (ventilation.get("open_doors", {}) or {})
-if od.get("enabled_flag", "").startswith("input_boolean."):
-    entries.append(bool_(i, od["enabled_flag"].split(".", 1)[1], "on", "mdi:door-open"))
-    i += 1
-if od.get("mock_state", "").startswith("input_boolean."):
-    entries.append(bool_(i, od["mock_state"].split(".", 1)[1], "off", "mdi:door"))
-    i += 1
-
-bf = (ventilation.get("bathroom_fan", {}) or {})
-if bf.get("enabled_flag", "").startswith("input_boolean."):
-    entries.append(bool_(i, bf["enabled_flag"].split(".", 1)[1], "on", "mdi:fan"))
-    i += 1
+add, i = vent_h.vent_entries(ventilation, i)
+entries += add
 
 # ============================================================
 # FEATURES & SHADOW MODES (для дашборда)
