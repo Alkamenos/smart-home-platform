@@ -35,7 +35,7 @@ def cmd_validate(args):
     return 0
 
 def cmd_build(args):
-    rc = run(["bash", "tools/deploy.sh"])
+    rc = run([PY, "build/build_pyscript.py"])
     if rc != 0:
         return rc
     return run([PY, "-m", "py_compile", "/config/pyscript/manifest_loader.py"])
