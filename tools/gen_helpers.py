@@ -8,8 +8,15 @@ import argparse
 import feature_helpers as FH
 import json
 import os
-import urllib.request
 import yaml
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core import ha
+rest_get = ha.rest_get
+get_state = ha.state
+exists = ha.exists
+list_all_states = ha.list_all_states
+WS = ha.WS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--start-id", type=int, default=1)
@@ -26,71 +33,6 @@ HA_URL = os.environ.get("HA_URL", "http://homeassistant.local:8123")
 tok = os.path.expanduser("~/.ha_token")
 HA_TOKEN = os.environ.get("HA_TOKEN") or (open(tok).read().strip() if os.path.exists(tok) else "")
 
-
-def rest_get(path):
-    r = urllib.request.Request(HA_URL + path,
-        headers={"Authorization": "Bearer " + HA_TOKEN})
-    with urllib.request.urlopen(r, timeout=10) as resp:
-        return json.load(resp)
-
-
-def exists(eid):
-    try:
-        rest_get("/api/states/" + eid)
-        return True
-    except Exception:
-        return False
-
-
-def get_state(eid):
-    try:
-        return rest_get("/api/states/" + eid)
-    except Exception:
-        return None
-
-
-def list_all_states():
-    return rest_get("/api/states")
-
-
-class WS:
-    def __init__(self):
-        import websocket
-        url = HA_URL.replace("https://", "wss://").replace("http://", "ws://") + "/api/websocket"
-        self.ws = websocket.create_connection(url, timeout=15)
-        assert json.loads(self.ws.recv()).get("type") == "auth_required"
-        self.ws.send(json.dumps({"type": "auth", "access_token": HA_TOKEN}))
-        ok = json.loads(self.ws.recv())
-        assert ok.get("type") == "auth_ok", ok
-        self.mid = 0
-
-    def _recv(self, mid):
-        while True:
-            msg = json.loads(self.ws.recv())
-            if msg.get("id") == mid:
-                return msg
-
-    def send(self, cmd):
-        self.mid += 1
-        cmd = dict(cmd)
-        cmd["id"] = self.mid
-        self.ws.send(json.dumps(cmd))
-        return self._recv(self.mid)
-
-    def call_service(self, domain, service, data):
-        return self.send({"type": "call_service", "domain": domain,
-                          "service": service, "service_data": data})
-
-    def delete_entity(self, entity_id):
-        """Удалить helper через domain/delete."""
-        dom = entity_id.split(".")[0]
-        name = entity_id.split(".", 1)[1]
-        r = self.send({"type": dom + "/delete", "name": name})
-        if r.get("success"):
-            print("  deleted:", entity_id)
-            return True
-        print("  FAILED delete:", entity_id, r.get("error"))
-        return False
 
 
 def needs_update(ws, e):

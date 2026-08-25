@@ -32,6 +32,14 @@ def rest_get(path):
 def all_entity_ids():
     return set(s["entity_id"] for s in rest_get("/api/states"))
 
+def list_all_states():
+    return rest_get("/api/states")
+
+
+def exists(eid):
+    return state(eid) is not None
+
+
 def state(eid):
     try:
         return rest_get("/api/states/" + eid)
@@ -77,6 +85,8 @@ class WS:
             if self.send(payload).get("success"):
                 return True
         return False
+
+    delete_entity = delete
 
     def set_options(self, eid, options):
         self.call_service("input_select", "set_options", {"entity_id": eid, "options": options})
