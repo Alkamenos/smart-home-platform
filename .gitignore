@@ -30,8 +30,12 @@ venv/
 .venv/
 .conda/
 
-# Build artifacts
-build/
+# Build artifacts (except build_pyscript.py which is tracked)
+build/*.pyc
+build/__pycache__/
+
+# Distribution / packaging
+develop-eggs/
 dist/
 *.egg-info/
 
