@@ -48,11 +48,23 @@ def _resolve_group(g):
         return g
     r = dict(g)
     f = g.get("features") or {}
+    if not isinstance(f, dict):
+        return g
     dusk = f.get("dusk")
+    if dusk is not None and not isinstance(dusk, dict):
+        dusk = {}
     sch = f.get("schedule") or {}
+    if not isinstance(sch, dict):
+        sch = {}
     mo = f.get("motion")
+    if mo is not None and not isinstance(mo, dict):
+        mo = None
     nl = f.get("nightlight")
+    if nl is not None and not isinstance(nl, dict):
+        nl = None
     ct = f.get("ct")
+    if ct is not None and not isinstance(ct, dict):
+        ct = None
 
     if dusk is not None:
         r.setdefault("require_dark", bool((dusk or {}).get("require_dark", False)))
@@ -92,7 +104,7 @@ def _resolve_group(g):
         se = dict(r["season"])
         for k in ("summer", "winter"):
             if isinstance(se.get(k), dict) and "features" in se[k]:
-                se[k] = resolve_group(se[k])
+                se[k] = _resolve_group(se[k])
         r["season"] = se
     return r
 
@@ -104,7 +116,14 @@ def _lg_cfg():
         return None
     out = dict(cfg)
     raw_groups = _REGISTRY.feature("groups") or out.get("groups") or []
-    groups = [_resolve_group(g) for g in raw_groups]
+    groups = []
+    for g in raw_groups:
+        if not isinstance(g, dict):
+            continue
+        try:
+            groups.append(_resolve_group(g))
+        except Exception as ex:
+            log.warning("[light] resolve failed: %s: %s" % (str(g.get("id")), str(ex)))
     out["groups"] = groups
     im_cfg = out.get("imitation")
     if im_cfg:

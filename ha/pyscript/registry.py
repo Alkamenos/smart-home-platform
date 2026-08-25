@@ -59,7 +59,10 @@ class RuntimeRegistry:
         return self._features.get(name, {})
 
     def feature_enabled(self, name):
-        return bool(self._features.get(name, {}).get("enabled", True))
+        f = self._features.get(name)
+        if not isinstance(f, dict):
+            return True
+        return bool(f.get("enabled", True))
 
     def features(self):
         return dict(self._features)
@@ -70,6 +73,8 @@ class RuntimeRegistry:
         helpers = set()
         # по одному toggle на фичу
         for fname in self._features:
+            if not isinstance(self._features[fname], dict):
+                continue
             helpers.add(f"input_boolean.feature_{fname}")
         # setpoints климата (input_number.*)
         for zone in self.feature("climate").get("zones", []):
