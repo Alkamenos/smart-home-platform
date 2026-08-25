@@ -3,6 +3,16 @@
 
 ```markdown
 # Changelog
+## 2026-08-25
+### Добавлено
+- CLI `./shp` (validate/build/deploy/helpers/dashboards/check/cleanup/new)
+- Feature-sliced: `features/lighting/{schema,helpers,ui,card,decide}`
+- `build/build_pyscript.py` (детерминированная склейка)
+- `instances/<id>/manifest.yaml` (канонический манифест) + scaffold
+- Party-роли, keepalive, глобальные таймауты, санузел-настройки, хелперы dusk/ct/imitation
+### Изменено
+- `_lg_decide` → цепочка `_FD_CHAIN`; генераторы читают `features.groups`
+
 ## 2026-08-24
 ### Добавлено
 - Фич-архитектура: фича = 4 артефакта (schema/helpers/UI/decide)

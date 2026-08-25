@@ -197,3 +197,9 @@ Pyscript: /config/pyscript/manifest_loader.py (склейка из ha/pyscript/*
 2. Единый `features.py`-словарь (schema+helpers+ui+decide в одной записи)
 3. `tools/build_pyscript.py` вместо ручной склейки
 4. Smoke-тест: diff `light_debug` до/после
+
+## РЕФАКТОРИНГ ЗАВЕРШЁН (2026-08-25, читать первым)
+Слайсы 1-5: core+cli (`./shp`), features/lighting (schema/helpers/ui/card/decide),
+build/build_pyscript.py, instances/<id>/manifest.yaml, scaffold `new feature|instance|group`.
+Поведение не менялось (diff-тесты). Старые tools = шимы/legacy.
+Следующие шаги: реестр фич `_FD_REGISTRY`; климат/вентиляция в features/; docs-генерация.

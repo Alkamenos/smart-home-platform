@@ -7,10 +7,12 @@
 from __future__ import annotations
 
 
-class ManifestError(Exception):"""Ошибка при построении реестра из манифеста."""
+class ManifestError(Exception):
+    """Ошибка при построении реестра из манифеста."""
 
 
-class RuntimeRegistry:"""Развернутые ссылки манифеста для быстрого доступа в runtime."""
+class RuntimeRegistry:
+    """Развернутые ссылки манифеста для быстрого доступа в runtime."""
 
     def __init__(self, manifest: dict):
         self._raw = manifest or {}
@@ -63,7 +65,8 @@ class RuntimeRegistry:"""Развернутые ссылки манифеста 
         return dict(self._features)
 
     # ---- helpers provisioning ----
-    def required_helpers(self):"""helper entity_id, которые должны существовать в HA."""
+    def required_helpers(self):
+        """helper entity_id, которые должны существовать в HA."""
         helpers = set()
         # по одному toggle на фичу
         for fname in self._features:

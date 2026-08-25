@@ -85,6 +85,13 @@ def cmd_check(args):
     print("check OK: helpers на месте")
     return 0
 
+def cmd_new(args):
+    from cli import scaffold
+    {"instance": scaffold.new_instance, "feature": scaffold.new_feature,
+     "group": scaffold.new_group}[args.kind](args.id)
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(prog="shp")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -108,6 +115,11 @@ def main():
     sp.add_argument("--confirm", action="store_true"); sp.set_defaults(fn=cmd_cleanup)
     sp = sub.add_parser("check", help="validate + helpers на месте"); common(sp)
     sp.set_defaults(fn=cmd_check)
+
+    sp = sub.add_parser("new", help="scaffold feature/instance/group")
+    sp.add_argument("kind", choices=["feature", "instance", "group"])
+    sp.add_argument("id")
+    sp.set_defaults(fn=cmd_new)
 
     args = p.parse_args()
     sys.exit(args.fn(args))

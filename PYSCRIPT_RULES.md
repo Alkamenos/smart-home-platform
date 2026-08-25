@@ -40,3 +40,9 @@
 читают с фолбэком на старый формат. Resolver раскрывает `features:`→legacy.
 Decide = цепочка voters `_FD_CHAIN` (приоритет фиксирован); `why` = победившая фича.
 Закат без темноты: `sun.sun` elevation < 0 (не трогать `_lg_update_dark`).
+
+Сборка (2026-08-25)
+Склейка = `build/build_pyscript.py` (ORDER: registry→manifest_loader→climate→vent→health→
+features/lighting/decide.py→lighting_controller). Править только исходники, затем `./shp build`.
+Decide-voters освещения живут в `features/lighting/decide.py` (цепочка `_FD_CHAIN`).
+Манифест runtime читает из `$HA_CONFIG/manifests/active.yaml` (копию кладёт deploy).

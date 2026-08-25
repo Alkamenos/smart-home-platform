@@ -39,3 +39,10 @@ globals: `zima`, `vecher`, `my_doma`, `party_mode`;
 если фича dusk: `input_boolean.light_<gid>_require_dark`
 если фича ct: `input_boolean.light_<gid>_ct_follow`
 если фича imitation: `input_boolean.light_<gid>_imitation`
+
+Актуально 2026-08-25: манифест в `instances/<id>/manifest.yaml`; генераторы читают
+`features.groups`. Новые per-group хелперы:
+всегда: `input_select.light_<gid>_party_role`;
+если фича dusk: `light_<gid>_require_dark`; ct: `light_<gid>_ct_follow`;
+imitation: `light_<gid>_imitation`.
+CLI: `./shp helpers --apply [--confirm]`, `./shp cleanup --confirm`.

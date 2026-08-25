@@ -99,3 +99,15 @@ curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
 
 Фичи: party, schedule, dusk, motion, nightlight, ct, imitation.
 Манифест: группы в `features.groups`; у группы блок `features:`.
+
+## Структура и CLI (актуально 2026-08-25)
+.platform/
+├── shp, cli/ # CLI: validate/build/deploy/helpers/dashboards/check/new
+├── core/ # ha.py (REST+WS), manifest.py (instances/), resolve
+├── features/ # feature-sliced: lighting/{schema,helpers,ui,card,decide,runtime}
+├── build/ # build_pyscript.py (детерминированная склейка)
+├── instances/ # <id>/manifest.yaml (канонический манифест)
+├── ha/pyscript/ # runtime-исходники (climate/vent/health/lighting)
+└── tools/ # legacy-генераторы (шимы -> features/)
+Новая фича = `./shp new feature <id>`; новое место = `./shp new instance <id>`;
+группа = `./shp new group <gid>`. Фича = 4 артефакта (schema/helpers/ui/decide).
