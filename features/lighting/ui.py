@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """UI-артефакт освещения: блоки карточки из подключённых фич."""
-from features.lighting.schema import _feats_of  # noqa: F401
+from features.lighting.schema import _feats_of
+from features.lighting import caps as CAPS  # noqa: F401
 
 
 def _title(t):
@@ -56,19 +57,20 @@ def ui_motion(g, gid):
 
 
 def ui_nightlight(g, gid):
+    caps = CAPS.group_caps(g)
     nl_on = "input_boolean.feature_%s_nightlight" % gid
+    inner = [_grid([_num("input_number.light_%s_nightlight_brightness" % gid, "Яркость"),
+                    _num("input_number.light_%s_nightlight_off_min" % gid, "Таймаут, мин")], 2)]
+    if caps.get("rgb"):
+        inner.append(_grid([_num("input_number.light_%s_nightlight_r" % gid, "R"),
+                            _num("input_number.light_%s_nightlight_g" % gid, "G"),
+                            _num("input_number.light_%s_nightlight_b" % gid, "B")], 3))
     return [
         _title("🌙 Ночник"),
         _bool(nl_on, "Включён"),
         {"type": "conditional",
          "conditions": [{"entity": nl_on, "state": "on"}],
-         "card": {"type": "vertical-stack", "cards": [
-             _grid([_num("input_number.light_%s_nightlight_brightness" % gid, "Яркость"),
-                    _num("input_number.light_%s_nightlight_off_min" % gid, "Таймаут, мин")], 2),
-             _grid([_num("input_number.light_%s_nightlight_r" % gid, "R"),
-                    _num("input_number.light_%s_nightlight_g" % gid, "G"),
-                    _num("input_number.light_%s_nightlight_b" % gid, "B")], 3),
-         ]}},
+         "card": {"type": "vertical-stack", "cards": inner}},
     ]
 
 
