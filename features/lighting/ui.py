@@ -1,3 +1,4 @@
+from features.lighting.schema import _feats_of  # noqa: F401
 #!/usr/bin/env python3
 """UI-блоки фич освещения для дашборда настроек.
 Фича подключена в манифесте -> её блок появляется в карточке группы."""

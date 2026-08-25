@@ -65,7 +65,7 @@ def room_view(room_id, title, light_groups, climate_zone=None, vent_devices=None
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--manifest", default="manifests/leonid_house.yaml")
+    p.add_argument("--manifest", default="instances/leonid_house/manifest.yaml")
     p.add_argument("--out", default="/config/dashboards/home-dashboard.yaml")
     args = p.parse_args()
     m = yaml.safe_load(open(args.manifest))

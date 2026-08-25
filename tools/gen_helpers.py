@@ -21,7 +21,7 @@ WS = ha.WS
 parser = argparse.ArgumentParser()
 parser.add_argument("--start-id", type=int, default=1)
 parser.add_argument("--groups", type=str, default=None)
-parser.add_argument("--manifest", default="manifests/leonid_house.yaml")
+parser.add_argument("--manifest", default="instances/leonid_house/manifest.yaml")
 parser.add_argument("--only-missing", action="store_true")
 parser.add_argument("--apply", action="store_true")
 parser.add_argument("--orphan", action="store_true")

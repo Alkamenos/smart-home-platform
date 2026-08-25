@@ -80,7 +80,7 @@ def light_views(lighting):
 # ============================================================
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--manifest", default="manifests/leonid_house.yaml")
+    p.add_argument("--manifest", default="instances/leonid_house/manifest.yaml")
     p.add_argument("--out", default="/config/dashboards/settings-dashboard.yaml")
     args = p.parse_args()
     m = yaml.safe_load(open(args.manifest))

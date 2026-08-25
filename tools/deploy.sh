@@ -13,7 +13,7 @@ HA_TOKEN="${HA_TOKEN:-$(cat ~/.ha_token 2>/dev/null || true)}"
 HA_CONFIG="${HA_CONFIG:-/config}"
 
 echo "== 1. validate =="
-shplatform validate manifests/leonid_house.yaml
+shplatform validate instances/${INSTANCE:-leonid_house}/manifest.yaml
 
 echo "== 2. concat =="
 { cat shplatform/loader/registry.py; echo ""; \
@@ -32,7 +32,7 @@ echo "OK"
 
 echo "== 4. sync manifest =="
 mkdir -p "$HA_CONFIG/manifests"
-cp manifests/leonid_house.yaml "$HA_CONFIG/manifests/active.yaml"
+cp instances/${INSTANCE:-leonid_house}/manifest.yaml "$HA_CONFIG/manifests/active.yaml"
 
 if [ "${1:-}" = "--smoke" ]; then exec python3 tools/smoke_light.py; fi
 

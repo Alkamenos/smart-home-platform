@@ -4,7 +4,7 @@ import argparse, json, os, re, urllib.request
 import yaml
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--manifest", default="manifests/leonid_house.yaml")
+parser.add_argument("--manifest", default="instances/leonid_house/manifest.yaml")
 parser.add_argument("--confirm", action="store_true")
 args = parser.parse_args()
 

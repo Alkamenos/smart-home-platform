@@ -7,7 +7,7 @@ def nice(name):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--manifest", default="manifests/leonid_house.yaml")
+    p.add_argument("--manifest", default="instances/leonid_house/manifest.yaml")
     p.add_argument("--out", default="/config/dashboards/admin-dashboard.yaml")
     args = p.parse_args()
     m = yaml.safe_load(open(args.manifest))

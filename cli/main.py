@@ -17,10 +17,11 @@ def run(cmd):
     return subprocess.call(cmd, cwd=REPO_ROOT)
 
 def mpath(args):
-    return args.manifest or CM.manifest_path(args.instance)
+    return (args.manifest or getattr(args, "manifest_pos", None)
+            or CM.manifest_path(args.instance))
 
 def cmd_validate(args):
-    m = CM.load_manifest(args.instance, args.manifest)
+    m = CM.load_manifest(args.instance, mpath(args))
     f = CM.features_root(m)
     groups = CM.lighting_groups(m)
     print("instance: %s" % args.instance)
@@ -93,6 +94,7 @@ def main():
         sp.add_argument("--manifest", default=None)
 
     sp = sub.add_parser("validate", help="проверка манифеста"); common(sp)
+    sp.add_argument("manifest_pos", nargs="?", default=None)
     sp.set_defaults(fn=cmd_validate)
     sp = sub.add_parser("build", help="склейка + py_compile"); sp.set_defaults(fn=cmd_build)
     sp = sub.add_parser("deploy", help="build + подсказка"); sp.set_defaults(fn=cmd_deploy)
@@ -112,3 +114,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+cli = main
