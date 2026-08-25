@@ -363,7 +363,7 @@ def _lg_decide(g, cfg):
     ov = g.get("override_flag")
     if ov and _lg_state(ov) == "on":
         return {"on": True, "why": "override_flag"}
-    for voter in _FD_CHAIN:
+    for voter in _FD_REGISTRY:
         vote = voter(g, cfg, ctx)
         if vote is _FD_ABORT:
             return None

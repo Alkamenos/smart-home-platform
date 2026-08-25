@@ -1,5 +1,13 @@
 # pyscript runtime: lighting decide-voters (склейка через build/build_pyscript.py)
 # Порядок: после utils освещения, до _lg_decide. Все ссылки — call-time.
+_FD_REGISTRY = []
+
+
+def _fd_register(fn):
+    _FD_REGISTRY.append(fn)
+    return fn
+
+
 def _lg_decide_ctx(g, cfg):
     prof = g.get("profile", "dusk_till_time")
     dark = bool(_DARK)
@@ -44,6 +52,7 @@ def _lg_feats(g):
     return g.get("features") or {}
 
 
+@_fd_register
 def _fd_party(g, cfg, ctx):
     if _lg_state("input_boolean.party_mode") != "on":
         return None
@@ -59,12 +68,14 @@ def _fd_party(g, cfg, ctx):
         return {"on": True, "why": "party: держим до рассвета"}
     return None
 
+@_fd_register
 def _fd_ne_vkl(g, cfg, ctx):
     if ctx["sel_on"] == "Не включать":
         return {"on": False, "why": "sel_on=Не включать"}
     return None
 
 
+@_fd_register
 def _fd_motion(g, cfg, ctx):
     gid = ctx["gid"]
     ms = ctx["ms"]
@@ -89,6 +100,7 @@ def _fd_motion(g, cfg, ctx):
     return {"on": ctx["presence"], "why": "motion: presence=" + str(ctx["presence"])}
 
 
+@_fd_register
 def _fd_manual_gate(g, cfg, ctx):
     if ctx["prof"] == "manual_auto":
         af = g.get("auto_flag")
@@ -97,6 +109,7 @@ def _fd_manual_gate(g, cfg, ctx):
     return None
 
 
+@_fd_register
 def _fd_off_window(g, cfg, ctx):
     now = ctx["now"]
     sel_off = ctx["sel_off"]
@@ -127,6 +140,7 @@ def _fd_off_window(g, cfg, ctx):
     return None
 
 
+@_fd_register
 def _fd_on_time(g, cfg, ctx):
     if ctx["sel_on"] != "Время":
         return None
@@ -138,6 +152,7 @@ def _fd_on_time(g, cfg, ctx):
     return {"on": False, "why": "время не пришло"}
 
 
+@_fd_register
 def _fd_dusk(g, cfg, ctx):
     gid = ctx["gid"]
     rd = _lg_state("input_boolean.light_%s_require_dark" % gid)
@@ -150,6 +165,5 @@ def _fd_dusk(g, cfg, ctx):
         return {"on": True, "why": "темно (закат)"}
     return {"on": False, "why": "светло"}
 
-_FD_CHAIN = [_fd_party, _fd_ne_vkl, _fd_motion, _fd_manual_gate,
-             _fd_off_window, _fd_on_time, _fd_dusk]
+_FD_CHAIN = list(_FD_REGISTRY)
 
