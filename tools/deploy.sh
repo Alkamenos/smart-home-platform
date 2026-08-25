@@ -18,9 +18,9 @@ shplatform validate instances/${INSTANCE:-leonid_house}/manifest.yaml
 echo "== 2. concat =="
 { cat shplatform/loader/registry.py; echo ""; \
   cat ha/pyscript/manifest_loader.py; echo ""; \
-  cat ha/pyscript/climate_orchestrator.py; echo ""; \
-  cat ha/pyscript/ventilation_controller.py; echo ""; \
-  cat ha/pyscript/sensor_health.py; echo ""; \
+  cat features/climate/runtime.py; echo ""; \
+  cat features/ventilation/runtime.py; echo ""; \
+  cat features/health/runtime.py; echo ""; \
   cat ha/pyscript/lighting_controller.py; } > "$HA_CONFIG/pyscript/manifest_loader.py"
 
 echo "== 3. sanity: generator expressions запрещены =="

@@ -203,3 +203,6 @@ Pyscript: /config/pyscript/manifest_loader.py (склейка из ha/pyscript/*
 build/build_pyscript.py, instances/<id>/manifest.yaml, scaffold `new feature|instance|group`.
 Поведение не менялось (diff-тесты). Старые tools = шимы/legacy.
 Следующие шаги: реестр фич `_FD_REGISTRY`; климат/вентиляция в features/; docs-генерация.
+## SLICE 6 (2026-08-25)
+climate/ventilation/health runtime переехали в features/<id>/runtime.py;
+build ORDER обновлён; FEATURE-записи в features/<id>/__init__.py.
