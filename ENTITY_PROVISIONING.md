@@ -1,51 +1,40 @@
+
 # Provisioning helper-сущностей
 
-CLI: `./shp helpers [--apply]`, дубли — `./shp cleanup --confirm`, orphans — `python3 tools/gen_helpers.py --orphan [--delete --confirm]`.
-Манифест: `instances/<id>/manifest.yaml` (группы в `features.groups`).
+Команды:
+- `./shp helpers --apply` — создать отсутствующие helpers (безопасно, только недостающие).
+- `./shp cleanup --confirm` — чистка дублей (`_2/_3`).
+- Сироты вне манифеста: `python3 tools/gen_helpers.py --orphan [--delete --confirm]`.
+- Манифест: `instances/<id>/manifest.yaml`; группы света в `features.groups`.
 
 ## Конвенция имён (строго)
-Per group (`<gid>` из манифеста):
-- `input_boolean.vlight_<gid>` — командная шина
-- `input_select.light_<gid>_on` — `["Не включать", "Закат", "Время", "Датчик движения"]`, initial `Закат`
+
+### Пер-группа (`<gid>`)
+- `input_boolean.vlight_<gid>` — командная шина (кнопки/дашборд/Алиса)
+- `input_select.light_<gid>_on` — `["Не включать", "Закат", "Время"]`, initial `Закат` (только расписание; датчик — отдельно)
 - `input_select.light_<gid>_off` — `["Время", "Рассвет", "Не выключать"]`, initial `Время`
 - `input_datetime.light_<gid>_on_time|off_time|off_end_time` — `has_date: false, has_time: true`
 - `input_number.light_<gid>_brightness` (1–100)
-- `input_boolean.feature_<gid>` (on)
-- если `motion_sensor`: `input_select.light_<gid>_motion_sensor` (опции = датчики той же `room`),
-  `light_<gid>_motion` (on), `light_<gid>_motion_day` (off),
-  `light_<gid>_motion_day_min` (5), `light_<gid>_motion_night_min` (2)
+- `input_boolean.feature_<gid>` (on) — автоматика группы
+- `input_select.light_<gid>_party_role` — `[Как обычно/Включить/Выключить/Держать включённым]` (всегда)
+- если фича `motion`: `light_<gid>_motion_sensor` (датчики той же комнаты), `light_<gid>_motion_mode` (`[Выкл/Включать и выключать/Держать включённым]`, из манифеста), `light_<gid>_motion` (on), `light_<gid>_motion_day` (off), `light_<gid>_motion_day_min` (5), `light_<gid>_motion_night_min` (2)
 - если `nightlight`: `feature_<gid>_nightlight` (off), `light_<gid>_nightlight_brightness|off_min|r|g|b`
-- если `no_night_auto_flag`: соответствующий boolean (off)
-всегда: `input_select.light_<gid>_party_role` (Как обычно/Включить/Выключить/Держать включённым)
-если фича dusk: `light_<gid>_require_dark`; ct: `light_<gid>_ct_follow`; imitation: `light_<gid>_imitation`
+- если ночной блок — соответствующий флаг (выкл)
+- если фича `dusk`: `light_<gid>_require_dark`; `ct`: `light_<gid>_ct_follow`; `imitation`: `light_<gid>_imitation`
 
-Глобальные: `motion_day_min|motion_night_min`, `ct_day_kelvin|ct_night_kelvin`,
-`ct_warm_from|ct_night_from`, `feature_rgb`, `light_rgb_scene`, `feature_lighting`,
-`lighting_shadow_mode`, `feature_color_temp|backlight|imitation`, `imitation_start|end`;
-climate: `feature_climate`, `climate_shadow_mode`, setpoints зон, `vlazhnost_v_dome`;
-ventilation: `feature_ventilation`, `ventilation_shadow_mode`, флаги;
-globals: `zima`, `vecher`, `my_doma`, `party_mode`;
-плюс `feature_<fname>` и `<fname>_shadow_mode` для каждого ключа `features:`.
+### Глобальные
+- Освещение: глобальные таймауты движения, цветовая температура (день/ночь/времена), флаг и сцена цвета, флаг света, теневой режим, флаги цветовой температуры/подсветки/имитации, времена имитации
+- Климат: флаг, теневой режим, уставки зон, влажность в доме
+- Вентиляция: флаг, теневой режим, усиления, открытые двери, вентилятор санузла
+- Глобалы: `зима`, `вечер`, `мы дома`, `вечеринка`
+- Плюс флаг и теневой режим для каждого ключа `фичи`
 
 ## Правила обновления (важно!)
-1. **HA создаёт `_2`, `_3` при коллизии object_id.** Никогда не «пересоздавай» для обновления:
-   - опции select'ов меняй через `input_select/set_options`;
-   - дубли чисти `tools/cleanup_helpers.py --confirm` (удаляет `_[2-9]` и boolean-мусор).
-2. **Websocket-удаление helper'а**: параметр зависит от версии HA — пробовать
-   `{"type": "<dom>/delete", "name": X}`, затем `"<dom>_id": X`.
-3. `--apply` создаёт только отсутствующие; `--orphan` / `--delete --confirm` — чистка вне манифеста
-   (whitelist: `zima`, `vecher`, `my_doma`, `party_mode`).
-4. После provisioning: перегенерировать дашборды, полный рестарт HA (не `pyscript.reload` —
-   дублируются фоновые циклы).
-если фича party (всегда): `input_select.light_<gid>_party_role`
-(Как обычно/Включить/Выключить/Держать включённым)
-если фича dusk: `input_boolean.light_<gid>_require_dark`
-если фича ct: `input_boolean.light_<gid>_ct_follow`
-если фича imitation: `input_boolean.light_<gid>_imitation`
+- Никогда не пересоздавать: опции менять через `set_options`; текущее значение обязано входить в новые опции (сначала миграция значений!).
+- `--apply` создаёт только отсутствующие; дубли чистит `./shp cleanup --confirm`.
+- Whitelist чистки сирот: глобалы.
+- После провизии: `./shp dashboards` + полный рестарт (не `перезагрузка` — дублируются фоновые циклы).
 
-Актуально 2026-08-25: манифест в `instances/<id>/manifest.yaml`; генераторы читают
-`features.groups`. Новые per-group хелперы:
-всегда: `input_select.light_<gid>_party_role`;
-если фича dusk: `light_<gid>_require_dark`; ct: `light_<gid>_ct_follow`;
-imitation: `light_<gid>_imitation`.
-CLI: `./shp helpers --apply [--confirm]`, `./shp cleanup --confirm`.
+## Возможности устройств (caps)
+`caps:` в манифесте группы — только override; по умолчанию авто по поддерживаемым режимам цвета: яркость/цветность/цвет. Проверка: сервис возможностей света → сенсор.
+Генераторы читают возможности из состояния и рисуют контролы только по возможностям (яркость — только диммируемым, цвет — только цветным).

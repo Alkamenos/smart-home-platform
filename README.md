@@ -1,87 +1,86 @@
 # Smart Home Platform (Leonid's House)
 
-Платформа умного дома на базе Home Assistant + pyscript + манифест-ориентированной архитектуры.
+Платформа умного дома на базе Home Assistant + pyscript + манифест-ориентированной архитектуры (feature-sliced).
 
 ## Архитектура
 
-### Компоненты
-- **Манифест** (`manifests/leonid_house.yaml`) — декларативное описание устройств, фич, зон
-- **Registry** (`registry.py`) — runtime-реестр, строит структуры из манифеста
-- **Контроллеры** (pyscript):
-  - `lighting_controller.py` — освещение (14 групп, motion, nightlight, RGB)
-  - `climate_orchestrator.py` — климат (4 зоны, конвекторы, AC)
-  - `ventilation_controller.py` — вентиляция (2× Vakio, рекуперация)
-  - `sensor_health.py` — мониторинг датчиков и батареек
-- **Дашборды** (Lovelace YAML):
-  - `home-dashboard.yaml` — повседневный (по комнатам)
-  - `settings-dashboard.yaml` — настройки (свет, климат, вентиляция)
-  - `admin-dashboard.yaml` — платформа (фичи, диагностика)
+- **Манифест** (`instances/<id>/manifest.yaml`) — единый источник правды инстанса: устройства, группы света, фичи, зоны.
+- **Фича = 4 артефакта**: `schema.py` (resolve), `helpers.py` (provisioning), `ui.py` (карточки), `decide.py` (voters); у контроллеров ещё `runtime.py`.
+- **Runtime**: склейка в `/config/pyscript/manifest_loader.py` через `build/build_pyscript.py` (детерминированный порядок).
+- **Семантика**: ручное ВСЕГДА в real; `feature_*` выключает только автоматику; `*_shadow_mode` — лог вместо исполнения; анти-цикл + блокировка 60 мин после ручного вмешательства; источник команды распознаётся.
 
-### Фичи
-- **Освещение**: vlight + auto/manual режимы, motion с таймаутами, ночник, RGB, имитация присутствия
-- **Климат**: зонное управление, сезонное поведение, safety (lockout AC зимой, осушение)
-- **Вентиляция**: рекуперация, free heating/cooling, boost режимы, вентилятор санузла
-- **Датчики движения**: мгновенная реакция через `@state_trigger`, dropdown выбор датчика
-- **Override**: 60-минутный lockout после ручного вмешательства
+## Структура
+```commandline
+.platform/
+├── shp, cli/ # CLI: validate/build/deploy/helpers/dashboards/check/cleanup/new
+├── core/ # ha.py (REST+WS), manifest.py (instances/), builders.py
+├── features/ # feature-sliced:
+│ ├── lighting/ # schema, helpers, ui, card, caps, decide (FD_REGISTRY)
+│ ├── climate/ # runtime, helpers, ui
+│ ├── ventilation/ # runtime, helpers, ui
+│ └── health/ # runtime
+├── build/ # build_pyscript.py — детерминированная склейка
+├── instances/ # <id>/manifest.yaml — канонический манифест
+├── ha/pyscript/ # registry.py, manifest_loader.py, lighting_controller.py
+├── tools/ # gen_helpers.py, gen_dashboard{home,settings,admin}.py, cleanup_helpers.py
+└── *.md # README, PYSCRIPT_RULES, HANDOFF, CHANGELOG, ENTITY_PROVISIONING
+```
+
 
 ## Установка
 
 ```bash
 # 1. Клонировать в /config/.platform
-cd /config
-git clone <repo> .platform
+cd /config && git clone <repo> .platform
 
-# 2. Развернуть pyscript
-./tools/deploy.sh
+# 2. Развернуть: валидация + склейка + копия манифеста в $HA_CONFIG/manifests/active.yaml
+./shp deploy
 
 # 3. Создать helpers
-python3 tools/gen_helpers.py --manifest manifests/leonid_house.yaml --apply
+./shp helpers --apply
 
 # 4. Сгенерировать дашборды
-./tools/gen_all_dashboards.sh
+./shp dashboards
 ```
-# 5. Добавить в configuration.yaml:
-# - pyscript: (см. docs/setup.md)
-# - lovelace: (с dashboards и resources)
-# - mushroom cards resources
 
-## Использование
-# Переключение feature/shadow
-feature_* — включает/выключает автоматику (ручное всегда работает)
-shadow — автоматика только логирует, не исполняет (ручное работает в real)
-# Диагностика
-```bash
-# Light debug
-curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" -d '{}' \
-  "$HA_URL/api/services/pyscript/light_debug"
+В configuration.yaml: pyscript: {allow_all_imports: true}, lovelace: с 3 дашбордами и ресурсами (mushroom + vertical-stack-in-card).
+## Фичи
 
-# Override clear
-curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" -d '{}' \
-  "$HA_URL/api/services/pyscript/override_clear"
+- Освещение (12 групп)
+- Расписание: Закат / Время / Не включать + времена вкл/выкл и окно выключения
+- Движение: режимы Выкл / Включать и выключать / Держать включённым — ортогонально расписанию; таймауты глобальные и свои (санузел + запрет авто ночью)
+- Вечеринка: роли на группу (не включать выключенное; держать включённое до рассвета)
+- Ночник = профиль того же устройства; после него авто-включение восстанавливает яркость/ct
+- Возможности устройств (dim/ct/rgb): авто по supported_color_modes + override caps:; applier применяет только поддерживаемые параметры; контролы на карточке только по возможностям
+- Имитация присутствия, цветовая температура по кривой день→ночь, сезонные варианты, подсветка выключателей, группы с tolerate_unavailable
+- Климат (4 зоны) — конвекторы + AC, двунаправленная оценка, safety (зимний lockout AC с голосовым предупреждением, осушение летом, вентилятор санузла), координация с рекуператорами.
+- Вентиляция (2× рекуператора) — пресеты приток/вытяжка/рекуперация, boost с авто-выключением, свободный нагрев/охлаждение, ночной/away, зимняя пауза, мок открытых дверей.
+- Датчики — недоступность/батарейки со списком покупок; зоны на паузе при мёртвых датчиках.
+
+## Диагностика
 ```
-## Движение
-- Датчик срабатывает → мгновенный @state_trigger → _lg_apply_group
-- Ночник: feature_<gid>_nightlight=on + vecher=on + sel_on="Датчик движения"
+# Решения света + причины
+curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
+-H "Content-Type: application/json" -d '{}' \
+"$HA_URL/api/services/pyscript/light_debug"
 
-## Troubleshooting
+# Возможности групп -> sensor.light_caps
+curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
+-H "Content-Type: application/json" -d '{}' \
+"$HA_URL/api/services/pyscript/light_caps"
 
+# Сброс блокировок
+curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
+-H "Content-Type: application/json" -d '{}' \
+"$HA_URL/api/services/pyscript/override_clear"
+```
 
-## Структура (актуально 2026-08-25)
-.platform/
-├── shp, cli/          # CLI: validate/build/deploy/helpers/dashboards/check/cleanup/new
-├── core/              # ha.py (REST+WS), manifest.py (instances/), builders.py
-├── features/          # feature-sliced слайсы:
-│   ├── lighting/      # schema, helpers, ui, card, decide (_FD_REGISTRY)
-│   ├── climate/       # runtime, helpers, ui
-│   ├── ventilation/   # runtime, helpers, ui
-│   └── health/        # runtime
-├── build/             # build_pyscript.py — детерминированная склейка
-├── instances/         # <id>/manifest.yaml — канонический манифест
-├── ha/pyscript/       # registry, manifest_loader, lighting_controller
-├── tools/             # gen_helpers, gen_dashboard_{home,settings,admin}, cleanup_helpers
-└── docs + *.md        # README, PYSCRIPT_RULES, HANDOFF, CHANGELOG, ENTITY_PROVISIONING
+## Логи:
+Настройки → Журнал, фильтры [light], [climate], [vent], [health].
 
-Фича = 4 артефакта (schema/helpers/ui/decide).
-Новая фича: `./shp new feature <id>`; новое место: `./shp new instance <id>`; группа: `./shp new group <gid>`.
+## Тиражирование и развитие
+```
+./shp new instance <id>   # новый инстанс из шаблона манифеста
+./shp new feature <id>    # новая фича (4 артефакта)
+./shp new group <gid>     # snippet группы для манифеста
+```
