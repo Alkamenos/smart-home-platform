@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Манифест -> дашборд "Дом" (повседневный, по комнатам)."""
 import argparse, os, yaml
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from features.lighting import schema as RF
 
 ROOM_ORDER = ["gostinnaia", "spalnia", "kabinet", "sanuzel", "outdoor"]
 ROOM_TITLES = {
@@ -70,10 +73,10 @@ def main():
     args = p.parse_args()
     m = yaml.safe_load(open(args.manifest))
     features = m.get("features", m)
-    lighting = features.get("lighting", {}) or {}
-    import resolve_features as RF
-    lighting = dict(lighting)
-    lighting["groups"] = [RF.resolve_group(g) for g in (lighting.get("groups", []) or [])]
+    lighting = dict(features.get("lighting", {}) or {})
+    groups = [RF.resolve_group(g) for g in
+              (features.get("groups") or lighting.get("groups", []) or [])]
+    lighting["groups"] = groups
     climate = features.get("climate", {}) or {}
     ventilation = features.get("ventilation", {}) or {}
     devices = m.get("devices", {})
@@ -82,7 +85,7 @@ def main():
 
     # Группировка света по комнатам
     rooms_light = {r: [] for r in ROOM_ORDER}
-    for g in (features.get("groups") or lighting.get("groups", []) or []):
+    for g in groups:
         gid = str(g.get("id"))
         room = g.get("room") or DEFAULT_ROOM.get(gid, "outdoor")
         if room in rooms_light:

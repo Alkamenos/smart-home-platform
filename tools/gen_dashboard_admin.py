@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Манифест -> дашборд "Платформа" (фичи, диагностика, здоровье)."""
 import argparse, os, yaml
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from features.lighting import schema as RF
 
 def nice(name):
     return name.replace("_", " ").capitalize()

@@ -206,3 +206,13 @@ build/build_pyscript.py, instances/<id>/manifest.yaml, scaffold `new feature|ins
 ## SLICE 6 (2026-08-25)
 climate/ventilation/health runtime переехали в features/<id>/runtime.py;
 build ORDER обновлён; FEATURE-записи в features/<id>/__init__.py.
+
+## АКТУАЛЬНО 2026-08-25 (читать первым)
+Рефакторинг завершён (слайсы 1-6c): FSD-структура features/, CLI ./shp, build/, instances/,
+core/, реестр _FD_REGISTRY. Поведение не менялось (diff-тесты на каждом слайсе).
+Работает: party-роли (не включает выключенное, держит включённое до рассвета), keepalive table,
+глобальные таймауты движения, санузел (свои таймауты + запрет авто ночью), хелперы dusk/ct/imitation
+на карточках, цельные карточки настроек (vertical-stack-in-card).
+Команды: ./shp validate|build|deploy|helpers --apply|dashboards|check|cleanup|new ...
+Следующие шаги: продуктовые фичи (сопровождение, полив, кнопки Zigbee, Яндекс-диалоги),
+тиражирование на второй инстанс.

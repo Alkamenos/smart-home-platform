@@ -5,6 +5,17 @@
 # Changelog
 ## 2026-08-25
 ### Добавлено
+- CLI `./shp` (validate/build/deploy/helpers/dashboards/check/cleanup/new feature|instance|group)
+- Feature-sliced: features/{lighting,climate,ventilation,health} (schema/helpers/ui/runtime)
+- Реестр voters `_FD_REGISTRY` (`@_fd_register`); party-роли; keepalive; глобальные таймауты
+- `instances/<id>/manifest.yaml`; `build/build_pyscript.py`; `core/{ha,manifest,builders}.py`
+### Изменено
+- Генераторы импортируют артефакты из features/; шимы, deploy.sh и gen_all_dashboards.sh удалены
+### Известные проблемы
+- Кнопки Zigbee — legacy device triggers (осознанно); helpers-оркестратор освещения в tools/gen_helpers.py
+
+## 2026-08-25
+### Добавлено
 - CLI `./shp` (validate/build/deploy/helpers/dashboards/check/cleanup/new)
 - Feature-sliced: `features/lighting/{schema,helpers,ui,card,decide}`
 - `build/build_pyscript.py` (детерминированная склейка)

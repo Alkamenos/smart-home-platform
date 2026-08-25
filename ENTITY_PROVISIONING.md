@@ -1,6 +1,7 @@
 # Provisioning helper-сущностей
 
-Генератор: `python3 tools/gen_helpers.py --manifest manifests/leonid_house.yaml [--apply] [--orphan] [--delete --confirm]`.
+CLI: `./shp helpers [--apply]`, дубли — `./shp cleanup --confirm`, orphans — `python3 tools/gen_helpers.py --orphan [--delete --confirm]`.
+Манифест: `instances/<id>/manifest.yaml` (группы в `features.groups`).
 
 ## Конвенция имён (строго)
 Per group (`<gid>` из манифеста):
@@ -15,6 +16,8 @@ Per group (`<gid>` из манифеста):
   `light_<gid>_motion_day_min` (5), `light_<gid>_motion_night_min` (2)
 - если `nightlight`: `feature_<gid>_nightlight` (off), `light_<gid>_nightlight_brightness|off_min|r|g|b`
 - если `no_night_auto_flag`: соответствующий boolean (off)
+всегда: `input_select.light_<gid>_party_role` (Как обычно/Включить/Выключить/Держать включённым)
+если фича dusk: `light_<gid>_require_dark`; ct: `light_<gid>_ct_follow`; imitation: `light_<gid>_imitation`
 
 Глобальные: `motion_day_min|motion_night_min`, `ct_day_kelvin|ct_night_kelvin`,
 `ct_warm_from|ct_night_from`, `feature_rgb`, `light_rgb_scene`, `feature_lighting`,

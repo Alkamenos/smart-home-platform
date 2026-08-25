@@ -3,10 +3,11 @@
 import argparse, os, yaml
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from features.lighting import schema as RF
 from features.climate import ui as clim_ui
 from features.ventilation import ui as vent_ui
-import feature_ui as FU
-import group_card as GC
+from features.lighting import ui as FU
+from features.lighting import card as GC
 
 ZONE_TITLES = {"street": "Улица", "garden": "Сад", "house": "Дом"}
 
@@ -49,7 +50,6 @@ def group_settings_card(g):
 # ============================================================
 def light_views(lighting):
     groups = lighting.get("groups", []) or []
-    import resolve_features as RF
     groups = [RF.resolve_group(g) for g in groups]
     zones = {}
     for g in groups:

@@ -22,6 +22,16 @@ def load_manifest(instance="leonid_house", path=None):
 def features_root(m):
     return m.get("features", m) or {}
 
+def deploy_active_manifest(instance="leonid_house", path=None):
+    import shutil
+    src = path or manifest_path(instance)
+    dst_dir = os.path.join(os.environ.get("HA_CONFIG", "/config"), "manifests")
+    os.makedirs(dst_dir, exist_ok=True)
+    dst = os.path.join(dst_dir, "active.yaml")
+    shutil.copyfile(src, dst)
+    return dst
+
+
 def lighting_groups(m):
     f = features_root(m)
     return f.get("groups") or (f.get("lighting") or {}).get("groups") or []

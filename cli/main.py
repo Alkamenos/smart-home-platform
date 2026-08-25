@@ -42,10 +42,16 @@ def cmd_build(args):
     return run([PY, "-m", "py_compile", "/config/pyscript/manifest_loader.py"])
 
 def cmd_deploy(args):
+    rc = cmd_validate(args)
+    if rc != 0:
+        return rc
     rc = cmd_build(args)
-    if rc == 0:
-        print("Готово. Нужен полный рестарт HA (не pyscript.reload).")
-    return rc
+    if rc != 0:
+        return rc
+    dst = CM.deploy_active_manifest(args.instance, args.manifest)
+    print("manifest ->", dst)
+    print("Готово. Нужен полный рестарт HA (не pyscript.reload).")
+    return 0
 
 def cmd_helpers(args):
     cmd = [PY, "tools/gen_helpers.py", "--manifest", mpath(args)]

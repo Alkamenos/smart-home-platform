@@ -5,7 +5,6 @@
 --delete --confirm: удаляет orphan'ы (с защитой).
 """
 import argparse
-import feature_helpers as FH
 import json
 import os
 import yaml
@@ -16,6 +15,7 @@ rest_get = ha.rest_get
 from core.builders import num, bool_, dt, sel
 from features.climate import helpers as clim_h
 from features.ventilation import helpers as vent_h
+from features.lighting import helpers as FH
 get_state = ha.state
 exists = ha.exists
 list_all_states = ha.list_all_states
@@ -117,7 +117,7 @@ climate = features.get("climate", {}) or {}
 ventilation = features.get("ventilation", {}) or {}
 sensor_health = features.get("sensor_health", {}) or {}
 groups = features.get("groups") or lighting.get("groups", []) or []
-import resolve_features as RF
+from features.lighting import schema as RF
 groups = [RF.resolve_group(g) for g in groups]
 want = [s.strip() for s in args.groups.split(",")] if args.groups else None
 

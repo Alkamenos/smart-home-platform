@@ -68,46 +68,20 @@ curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
 ## Troubleshooting
 
 
-## Структура
+## Структура (актуально 2026-08-25)
 .platform/
-├── ha/pyscript/           # исходники контроллеров
-├── tools/                 # скрипты генерации
-│   ├── deploy.sh
-│   ├── gen_helpers.py
-│   ├── gen_dashboard_home.py
-│   ├── gen_dashboard_settings.py
-│   ├── gen_dashboard_admin.py
-│   ├── gen_all_dashboards.sh
-│   ├── cleanup_helpers.py
-│   ├── resolve_features.py
-│   ├── feature_helpers.py
-│   ├── feature_ui.py
-│   └── group_card.py
-├── manifests/
-│   └── leonid_house.yaml
-├── docs/
-│   ├── HANDOFF.md
-│   └── CHANGELOG.md
-└── README.md
+├── shp, cli/          # CLI: validate/build/deploy/helpers/dashboards/check/cleanup/new
+├── core/              # ha.py (REST+WS), manifest.py (instances/), builders.py
+├── features/          # feature-sliced слайсы:
+│   ├── lighting/      # schema, helpers, ui, card, decide (_FD_REGISTRY)
+│   ├── climate/       # runtime, helpers, ui
+│   ├── ventilation/   # runtime, helpers, ui
+│   └── health/        # runtime
+├── build/             # build_pyscript.py — детерминированная склейка
+├── instances/         # <id>/manifest.yaml — канонический манифест
+├── ha/pyscript/       # registry, manifest_loader, lighting_controller
+├── tools/             # gen_helpers, gen_dashboard_{home,settings,admin}, cleanup_helpers
+└── docs + *.md        # README, PYSCRIPT_RULES, HANDOFF, CHANGELOG, ENTITY_PROVISIONING
 
-## Фич-архитектура (2026-08-24)
-Фича = 4 артефакта:
-- schema: `tools/resolve_features.py` (манифест → legacy-поля, обратная совместимость)
-- helpers: `tools/feature_helpers.py`
-- UI: `tools/feature_ui.py` + цельная карточка `tools/group_card.py` (vertical-stack-in-card)
-- decide: `_fd_*` в цепочке `_FD_CHAIN` (`ha/pyscript/lighting_controller.py`)
-
-Фичи: party, schedule, dusk, motion, nightlight, ct, imitation.
-Манифест: группы в `features.groups`; у группы блок `features:`.
-
-## Структура и CLI (актуально 2026-08-25)
-.platform/
-├── shp, cli/ # CLI: validate/build/deploy/helpers/dashboards/check/new
-├── core/ # ha.py (REST+WS), manifest.py (instances/), resolve
-├── features/ # feature-sliced: lighting/{schema,helpers,ui,card,decide,runtime}
-├── build/ # build_pyscript.py (детерминированная склейка)
-├── instances/ # <id>/manifest.yaml (канонический манифест)
-├── ha/pyscript/ # runtime-исходники (climate/vent/health/lighting)
-└── tools/ # legacy-генераторы (шимы -> features/)
-Новая фича = `./shp new feature <id>`; новое место = `./shp new instance <id>`;
-группа = `./shp new group <gid>`. Фича = 4 артефакта (schema/helpers/ui/decide).
+Фича = 4 артефакта (schema/helpers/ui/decide).
+Новая фича: `./shp new feature <id>`; новое место: `./shp new instance <id>`; группа: `./shp new group <gid>`.
