@@ -326,10 +326,22 @@ def _lg_rebuild_light_map(cfg):
     _LIGHT2GID = m
 
 
+_LG_NL_ACTIVE = set()
+
+
+def _lg_group(cfg, gid):
+    for g in (cfg.get("groups", []) or []):
+        if str(g.get("id")) == gid:
+            return g
+    return None
+
+
 def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
-    if _lg_is_on(e) == on:
+    already = _lg_is_on(e) == on
+    restoring = on and not nightlight and (e in _LG_NL_ACTIVE)
+    if already and not restoring:
         return
-    if not force:
+    if not force and not restoring:
         last = _LG_LAST_CHANGE.get(e, 0)
         if (time.monotonic() - last) < cfg.get("anti_cycle_min", 2) * 60:
             return
@@ -337,27 +349,53 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
     if mode == "shadow" and not force:
         log.warning("[light][SHADOW] " + e + " -> " + ("on" if on else "off"))
         return
-    else:
-        dom = str(e).split(".")[0]
-        if on and dom == "light":
-            if nightlight and gid:
-                b = int(_lg_num("input_number.light_%s_nightlight_brightness" % gid, 40))
-                r = int(_lg_num("input_number.light_%s_nightlight_r" % gid, 255))
-                g_val = int(_lg_num("input_number.light_%s_nightlight_g" % gid, 150))
-                bl = int(_lg_num("input_number.light_%s_nightlight_b" % gid, 60))
+    dom = str(e).split(".")[0]
+    if on and dom == "light":
+        if nightlight and gid:
+            gr = _lg_group(cfg, gid)
+            caps = _lg_caps(gr) if gr is not None else {"dim": True, "ct": False, "rgb": True}
+            b = int(_lg_num("input_number.light_%s_nightlight_brightness" % gid, 40))
+            r = int(_lg_num("input_number.light_%s_nightlight_r" % gid, 255))
+            g_val = int(_lg_num("input_number.light_%s_nightlight_g" % gid, 150))
+            bl = int(_lg_num("input_number.light_%s_nightlight_b" % gid, 60))
+            if caps.get("rgb") and caps.get("dim"):
                 service.call(dom, "turn_on", entity_id=e, brightness_pct=b, rgb_color=[r, g_val, bl])
-                log.warning("[light][REAL][nightlight] " + e + " -> on b=" + str(b) + " rgb=[" + str(r) + "," + str(g_val) + "," + str(bl) + "]")
+            elif caps.get("rgb"):
+                service.call(dom, "turn_on", entity_id=e, rgb_color=[r, g_val, bl])
+            elif caps.get("dim"):
+                service.call(dom, "turn_on", entity_id=e, brightness_pct=b)
             else:
-                gid_real = _LIGHT2GID.get(e)
-                b = _lg_num("input_number.light_%s_brightness" % gid_real, 100) if gid_real else 100
-                if b < 100:
+                service.call(dom, "turn_on", entity_id=e)
+            _LG_NL_ACTIVE.add(e)
+            log.warning("[light][REAL][nightlight] " + e + " -> on b=" + str(b))
+        else:
+            gid_real = _LIGHT2GID.get(e)
+            gr = _lg_group(cfg, gid_real) if gid_real else None
+            caps = _lg_caps(gr) if gr is not None else {"dim": True, "ct": False, "rgb": False}
+            b = _lg_num("input_number.light_%s_brightness" % gid_real, 100) if gid_real else 100
+            k = None
+            if caps.get("ct"):
+                k = _lg_ct_target(cfg)
+                if k is not None:
+                    k = int(k)
+            if caps.get("dim") and (b < 100 or restoring):
+                if k is not None:
+                    service.call(dom, "turn_on", entity_id=e, brightness_pct=int(b), color_temp_kelvin=k)
+                else:
                     service.call(dom, "turn_on", entity_id=e, brightness_pct=int(b))
+            else:
+                if k is not None:
+                    service.call(dom, "turn_on", entity_id=e, color_temp_kelvin=k)
                 else:
                     service.call(dom, "turn_on", entity_id=e)
-        else:
-            service.call(dom, "turn_on" if on else "turn_off", entity_id=e)
+            _LG_NL_ACTIVE.discard(e)
+    else:
+        service.call(dom, "turn_on" if on else "turn_off", entity_id=e)
+        if not on:
+            _LG_NL_ACTIVE.discard(e)
     _LG_LAST_CHANGE[e] = time.monotonic()
     log.warning("[light][REAL] " + e + " -> " + ("on" if on else "off"))
+
 
 
 def _lg_manual_command(cfg, g, on, mode):
@@ -374,6 +412,46 @@ def _lg_manual_command(cfg, g, on, mode):
         _lg_set_real(e, on, "real", cfg, force=True)   # было: mode
 
 # ---------------- решение автоматики ----------------
+
+
+_LG_CAPS = {}
+
+RGB_MODES = ["rgb", "hs", "xy", "rgbw", "rgbww"]
+
+
+def _lg_caps(g):
+    gid = str(g.get("id"))
+    if gid in _LG_CAPS:
+        return _LG_CAPS[gid]
+    caps = {}
+    ov = g.get("caps") or {}
+    for e in (g.get("lights", []) or []):
+        if not e or str(e).split(".")[0] != "light":
+            continue
+        scm = _lg_attr(e, "supported_color_modes") or []
+        caps = {"dim": any([m != "on_off" for m in scm]),
+                "ct": "color_temp" in scm,
+                "rgb": any([m in RGB_MODES for m in scm])}
+        break
+    if not caps:
+        caps = {"dim": False, "ct": False, "rgb": False}
+    for k in ("dim", "ct", "rgb"):
+        if k in ov:
+            caps[k] = bool(ov[k])
+    _LG_CAPS[gid] = caps
+    return caps
+
+
+@service
+def light_caps():
+    cfg = _lg_cfg()
+    if cfg is None:
+        return
+    out = {}
+    for g in (cfg.get("groups", []) or []):
+        out[str(g.get("id"))] = _lg_caps(g)
+    state.set("sensor.light_caps", "ok", caps=out)
+    log.warning("[light][caps] %s" % str(out))
 
 
 def _lg_decide(g, cfg):

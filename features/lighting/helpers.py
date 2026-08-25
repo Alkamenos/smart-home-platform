@@ -1,5 +1,7 @@
 from features.lighting.schema import _feats_of  # noqa: F401
 
+MOTION_MODES = ["Выкл", "Включать и выключать", "Держать включённым"]
+
 #!/usr/bin/env python3
 """Helpers-артефакт фич освещения: какие input_* создавать для подключённых фич."""
 
@@ -28,6 +30,18 @@ def helpers_motion(g, gid, i, ctx):
     room = g.get("room")
     options = ctx.get("motion_by_room", {}).get(room, [ms]) if room else [ms]
     out.append(_sel(i, "light_%s_motion_sensor" % gid, options, ms, "mdi:motion-sensor"))
+    i += 1
+    mmode = mo.get("mode", "trigger")
+    minit = "Держать включённым" if mmode == "keepalive" else "Включать и выключать"
+    out.append(_sel(i, "light_%s_motion_mode" % gid, MOTION_MODES, minit, "mdi:run"))
+    i += 1
+    mmode = mo.get("mode", "trigger")
+    minit = "Держать включённым" if mmode == "keepalive" else "Включать и выключать"
+    out.append(_sel(i, "light_%s_motion_mode" % gid, MOTION_MODES, minit, "mdi:run"))
+    i += 1
+    mmode = mo.get("mode", "trigger")
+    minit = "Держать включённым" if mmode == "keepalive" else "Включать и выключать"
+    out.append(_sel(i, "light_%s_motion_mode" % gid, MOTION_MODES, minit, "mdi:run"))
     i += 1
     out += [
         _bool(i, "light_%s_motion" % gid, "on", "mdi:motion-sensor"),

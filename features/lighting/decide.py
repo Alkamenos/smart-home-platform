@@ -71,6 +71,13 @@ def _fd_party(g, cfg, ctx):
 @_fd_register
 def _fd_ne_vkl(g, cfg, ctx):
     if ctx["sel_on"] == "Не включать":
+        gid = ctx["gid"]
+        if ctx["ms"] is not None:
+            mode = _lg_state("input_select.light_%s_motion_mode" % gid)
+            if mode not in (None, "unknown", "unavailable", "Выкл"):
+                return None
+            if ctx["prof"] == "motion":
+                return None
         return {"on": False, "why": "sel_on=Не включать"}
     return None
 
@@ -79,13 +86,17 @@ def _fd_ne_vkl(g, cfg, ctx):
 def _fd_motion(g, cfg, ctx):
     gid = ctx["gid"]
     ms = ctx["ms"]
-    active = (ctx["sel_on"] == "Датчик движения" and ms is not None) or ctx["prof"] == "motion"
-    if not active:
+    if ms is None:
         return None
-    nnf = g.get("no_night_auto_flag")
-    if nnf and ctx["night"] and _lg_state(nnf) == "on" and not ctx["any_on"]:
-        return {"on": False, "why": "авто ночью отключено"}
-    if g.get("motion_mode", "trigger") == "keepalive" and ctx["sel_on"] == "Датчик движения":
+    mode = _lg_state("input_select.light_%s_motion_mode" % gid)
+    if mode in (None, "unknown", "unavailable"):
+        legacy = (ctx["sel_on"] == "Датчик движения") or ctx["prof"] == "motion"
+        if not legacy:
+            return None
+        mode = "Держать включённым" if g.get("motion_mode", "trigger") == "keepalive" else "Включать и выключать"
+    if mode == "Выкл":
+        return None
+    if mode == "Держать включённым":
         if ctx["any_on"]:
             return {"on": ctx["presence"], "why": "keepalive: держим пока движение"}
         nl_ok = bool(g.get("nightlight")) and _lg_state("input_boolean.feature_%s_nightlight" % gid) == "on"
@@ -94,10 +105,15 @@ def _fd_motion(g, cfg, ctx):
             last = _LG_MOTION_LAST.get(gid)
             nl_on = last is not None and (time.monotonic() - last) < nl_min * 60
             return {"on": nl_on, "nightlight": True, "why": "keepalive: ночник"}
-        return {"on": False, "why": "keepalive: выключено - не включаем"}
-    if not (ctx["dark"] or ctx["mday"]):
-        return {"on": False, "why": "motion: светло и motion_day=off"}
-    return {"on": ctx["presence"], "why": "motion: presence=" + str(ctx["presence"])}
+        return None
+    if mode == "Включать и выключать":
+        nnf = g.get("no_night_auto_flag")
+        if nnf and ctx["night"] and _lg_state(nnf) == "on" and not ctx["any_on"]:
+            return {"on": False, "why": "авто ночью отключено"}
+        if not (ctx["dark"] or ctx["mday"]):
+            return {"on": False, "why": "motion: светло и днём выкл"}
+        return {"on": ctx["presence"], "why": "motion: presence=" + str(ctx["presence"])}
+    return None
 
 
 @_fd_register

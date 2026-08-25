@@ -4,6 +4,26 @@ import json
 import os
 import urllib.request
 
+
+
+def _load_env_file():
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if not os.path.exists(p):
+        return
+    for line in open(p, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:]
+        if "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_env_file()
+
 def ha_url():
     return os.environ.get("HA_URL", "http://homeassistant.local:8123")
 

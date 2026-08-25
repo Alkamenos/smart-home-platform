@@ -121,7 +121,7 @@ from features.lighting import schema as RF
 groups = [RF.resolve_group(g) for g in groups]
 want = [s.strip() for s in args.groups.split(",")] if args.groups else None
 
-SEL_ON = ["Не включать", "Закат", "Время", "Датчик движения"]
+SEL_ON = ["Не включать", "Закат", "Время"]
 SEL_OFF = ["Время", "Рассвет", "Не выключать", "Датчик движения"]
 RGB = ["Белый", "Красный", "Оранжевый", "Зелёный", "Синий", "Фиолетовый", "Розовый"]
 
