@@ -1,5 +1,2 @@
-FEATURE = {
-    "id": "ventilation",
-    "runtime": "features/ventilation/runtime.py",
-    # helpers/ui пока в tools/gen_helpers.py и gen_dashboard_settings.py (slice 6b)
-}
+from features.ventilation import ui  # noqa: F401
+FEATURE = {"id": "ventilation", "runtime": "features/ventilation/runtime.py", "ui": ui.vent_cards}

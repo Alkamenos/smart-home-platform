@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Манифест -> дашборд "Настройки" (свет по зонам, климат, вентиляция, датчики, цвет)."""
 import argparse, os, yaml
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from features.climate import ui as clim_ui
+from features.ventilation import ui as vent_ui
 import feature_ui as FU
 import group_card as GC
 
@@ -90,37 +94,9 @@ def main():
     ventilation = features.get("ventilation", {}) or {}
     sensor_health = features.get("sensor_health", {}) or {}
 
-    # --- Климат ---
-    climate_cards = [{"type": "entities", "title": "Управление", "entities": [
-        {"entity": "input_boolean.zima", "name": "Сезон (зима)"},
-    ]}]
-    seen_sp = set()
-    sp_ents = []
-    for zone in climate.get("zones", []):
-        for sp in (zone.get("setpoints") or {}).values():
-            if isinstance(sp, dict):
-                src = sp.get("source", "")
-                if src.startswith("input_number.") and src not in seen_sp:
-                    seen_sp.add(src)
-                    sp_ents.append({"entity": src})
-    climate_cards.append({"type": "entities", "title": "Уставки", "entities": sp_ents})
-    if climate.get("safety"):
-        climate_cards.append({"type": "entities", "title": "Безопасность", "entities": [
-            {"entity": "input_number.vlazhnost_v_dome", "name": "Влажность в доме"},
-        ]})
+    climate_cards = clim_ui.climate_cards(climate)
 
-    # --- Вентиляция ---
-    vent_cards = [{"type": "entities", "title": "Режимы", "entities": [
-        {"entity": "input_boolean.provetrivanie", "name": "Проветривание"},
-        {"entity": "input_boolean.provetrivanie_vytyazhka", "name": "Вытяжка"},
-        {"entity": "input_boolean.vecher", "name": "Ночной режим"},
-        {"entity": "input_boolean.my_doma", "name": "Дома"},
-    ]}]
-    od = ventilation.get("open_doors", {})
-    if od.get("mock_state"):
-        vent_cards.append({"type": "entities", "title": "Двери/окна", "entities": [
-            {"entity": od["mock_state"], "name": "Mock: открыты"},
-        ]})
+    vent_cards = vent_ui.vent_cards(ventilation)
 
     # --- Датчики ---
     sensor_cards = [{"type": "entities", "title": "Здоровье датчиков", "entities": [
