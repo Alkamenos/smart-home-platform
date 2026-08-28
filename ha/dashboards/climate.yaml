@@ -85,6 +85,19 @@
               - entity: switch.obogrevatel_kabinet
                 name: Конвектор
             columns: 2
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ### 🛏️ Гостевая спальня
+              {{ states('sensor.climate_gostevaia_spalnia_status') }}
+          - type: glance
+            entities:
+              - entity: sensor.datchik_temperatury_gostevaia_spalnia_temperature
+                name: Сейчас
+              - entity: switch.maslianyi_radiator
+                name: Обогреватель
+            columns: 2
       - type: entity
         entity: sensor.platform_climate_mode
         name: Статус платформы

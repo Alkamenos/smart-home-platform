@@ -197,6 +197,28 @@ cards:
           - entity: input_datetime.light_office_on_time
             name: Время включения
 
+      # Гостиная
+      - type: entities
+        title: "🛋️ Гостиная"
+        entities:
+          - entity: input_boolean.vlight_living_room
+            name: Вкл/Выкл
+          - entity: input_select.light_living_room_on
+            name: Режим включения
+          - entity: input_datetime.light_living_room_on_time
+            name: Время включения
+
+      # Гостевая спальня
+      - type: entities
+        title: "🛏️ Гостевая спальня"
+        entities:
+          - entity: input_boolean.vlight_guest_bedroom
+            name: Вкл/Выкл
+          - entity: input_select.light_guest_bedroom_on
+            name: Режим включения
+          - entity: input_datetime.light_guest_bedroom_on_time
+            name: Время включения
+
       # Спальня
       - type: entities
         title: "🛏️ Спальня"

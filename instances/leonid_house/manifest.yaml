@@ -31,6 +31,9 @@ devices:
     - id: temp_kabinet
       entity: sensor.datchik_temperatury_kabinet_temperature
       role: climate_zone
+    - id: temp_gostevaia_spalnia
+      entity: sensor.datchik_temperatury_gostevaia_spalnia_temperature
+      role: climate_zone
     - id: temp_outdoor
       entity: sensor.temperatura_na_ulitse_srednee
       role: climate_reference
@@ -66,6 +69,12 @@ devices:
 
     - id: convector_kabinet
       entity: switch.obogrevatel_kabinet
+      type: relay
+      managed_by_platform: true
+      min_cycle_minutes: 5
+
+    - id: convector_gostevaia_spalnia
+      entity: switch.maslianyi_radiator
       type: relay
       managed_by_platform: true
       min_cycle_minutes: 5
@@ -126,7 +135,7 @@ features:
 
   - id: office
     name: "Кабинет"
-    lights: [light.workroom_lights]
+    lights: [light.workroom_lights, light.nastolnaia_lampa, light.kus]
     flag: input_boolean.feature_office
     features:
       dusk: { require_dark: true }
@@ -141,6 +150,25 @@ features:
     features:
       dusk: { require_dark: true }
       schedule: { off: "22:30" }
+
+  - id: living_room
+    name: "Гостиная"
+    lights: [light.podsvetka_zerkala]
+    flag: input_boolean.feature_living_room
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
+      ct: { follow: true }
+
+  - id: guest_bedroom
+    name: "Гостевая спальня"
+    lights: [light.torsher]
+    flag: input_boolean.feature_guest_bedroom
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
+      ct: { follow: true }
+      party: { role: off }
 
   - id: kitchen_work
     name: "Кухня рабочая"
@@ -283,6 +311,15 @@ features:
           deadband: 0.5
         actuators:
           - ref: convector_kabinet
+            role: secondary_heat
+            priority: 1
+      - id: gostevaia_spalnia
+        temp_sensor_ref: temp_gostevaia_spalnia
+        setpoints:
+          heat: { source: input_number.temperatura }
+          deadband: 0.5
+        actuators:
+          - ref: convector_gostevaia_spalnia
             role: secondary_heat
             priority: 1
 
