@@ -36,11 +36,40 @@ cd /config && git clone <repo> .platform
 # 2. Развернуть: валидация + склейка + копия манифеста в $HA_CONFIG/manifests/active.yaml
 ./shp deploy
 
-# 3. Создать helpers
-./shp helpers --apply
+# 3. Создать helpers (input_boolean, input_select, input_number, input_datetime)
+./shp helpers --instance leonid_house --apply
 
 # 4. Сгенерировать дашборды
 ./shp dashboards
+```
+
+## CLI команды
+
+| Команда | Описание | Пример |
+|---------|----------|--------|
+| `validate` | Проверка манифеста на ошибки | `./shp validate` |
+| `build` | Сборка pyscript файлов в один | `./shp build` |
+| `deploy` | Валидация + сборка + копирование манифеста | `./shp deploy` |
+| `helpers` | Создание вспомогательных сущностей (input_*) | `./shp helpers --instance leonid_house --apply` |
+| `dashboards` | Генерация дашбордов из манифеста | `./shp dashboards` |
+| `cleanup` | Удаление устаревших сущностей | `./shp cleanup --confirm` |
+| `check` | Проверка состояния системы | `./shp check` |
+| `new instance <id>` | Создание нового инстанса из шаблона | `./shp new instance my_house` |
+| `new feature <id>` | Создание новой фичи (4 артефакта) | `./shp new feature irrigation` |
+| `new group <gid>` | Сниппет группы для манифеста | `./shp new group garden_lights` |
+
+**Флаги для `helpers`:**
+- `--instance <name>` — имя инстанса (по умолчанию: leonid_house)
+- `--manifest <path>` — путь к манифесту (альтернатива --instance)
+- `--apply` — применить изменения (без флага — только preview)
+- `--confirm` — подтвердить создание всех сущностей
+
+**Рабочий процесс обновления:**
+```bash
+git pull
+./shp build
+./shp deploy
+# Перезапуск Home Assistant
 ```
 
 В configuration.yaml: pyscript: {allow_all_imports: true}, lovelace: с 3 дашбордами и ресурсами (mushroom + vertical-stack-in-card).
