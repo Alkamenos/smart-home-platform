@@ -5,6 +5,7 @@ import time
 
 _VENT_BOOST_START = {}
 _VENT_FAN_START = {}
+_VENT_LAST = {}   # {entity: {"preset": ..., "pct": ...}} - последнее отправленное состояние
 _FREE_HEAT_ACTIVE = False   # читает климат-оркестратор
 
 V_BASE_SUMMER = "Рекуперация (лето)"
@@ -142,7 +143,7 @@ def _vent_decide(cfg):
     # Night mode: умный выбор режима на основе температуры и сезона
     if state.get(flags.get("night")) =="on":
         # Ночью минимальная вентиляция, но с учётом условий
-        night_speed = 1  # Минимальная скорость
+        night_speed = 10  # Минимальная скорость (10% вместо 1% для комфорта)
         if zima:
             # Зимой ночью: Рекуперация (зима) с минимальной скоростью
             return {"preset": V_BASE_WINTER, "pct": night_speed}
@@ -171,20 +172,38 @@ def _vent_apply(cfg, desired, mode):
         if not entity:
             continue
         cur_state, cur_preset, cur_pct, _a = _vent_current(entity)
+        
+        # Получаем последнее отправленное состояние для этого устройства
+        last = _VENT_LAST.get(entity, {})
+        last_preset = last.get("preset")
+        last_pct = last.get("pct")
+        last_action = last.get("action")
+        
         if desired.get("action") =="off":
-            if cur_state !="off":
+            # Проверяем, нужно ли выключать (сравниваем с последним состоянием)
+            should_turn_off = (cur_state != "off") and (last_action != "off")
+            if should_turn_off:
                 if mode =="shadow":
                     log.warning("[vent][SHADOW]" + entity + " -> off")
                 else:
                     service.call("fan","turn_off", entity_id=entity)
+                    _VENT_LAST[entity] = {"action": "off"}
                     log.warning("[vent][REAL]" + entity + " -> off")
             continue
+        
         preset = desired.get("preset")
         pct = desired.get("pct")
-        changed = (cur_state =="off") or (preset and preset != cur_preset) \
-            or (pct is not None and (cur_pct is None or abs(cur_pct - pct) > 2))
-        if not changed:
+        
+        # Проверяем, изменилось ли состояние по сравнению с последним отправленным
+        preset_changed = (preset is not None) and (preset != last_preset)
+        pct_changed = (pct is not None) and (last_pct is None or abs(pct - last_pct) > 2)
+        
+        # Также учитываем случай, когда устройство выключено
+        state_changed = (cur_state == "off")
+        
+        if not (state_changed or preset_changed or pct_changed):
             continue
+        
         if mode =="shadow":
             log.warning("[vent][SHADOW]" + entity + " ->" + str(preset) + " pct=" + str(pct))
         else:
@@ -192,6 +211,8 @@ def _vent_apply(cfg, desired, mode):
                 service.call("fan","set_preset_mode", entity_id=entity, preset_mode=preset)
             if pct is not None:
                 service.call("fan","set_percentage", entity_id=entity, percentage=int(pct))
+            # Обновляем последнее отправленное состояние
+            _VENT_LAST[entity] = {"preset": preset, "pct": pct}
             log.warning("[vent][REAL]" + entity + " ->" + str(preset) + " pct=" + str(pct))
 
 def _vent_bathroom_fan(cfg, mode):
