@@ -135,13 +135,33 @@ features:
 
   - id: office
     name: "Кабинет"
-    lights: [light.workroom_lights, light.nastolnaia_lampa, light.kus]
+    lights: [light.workroom_lights]
     flag: input_boolean.feature_office
     features:
       dusk: { require_dark: true }
       schedule: { off: "23:00" }
       ct: { follow: true }
       party: { role: off }
+  - id: office_lampa
+    name: "Кабинет (настольная лампа)"
+    lights: [light.nastolnaia_lampa]
+    flag: input_boolean.feature_office
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
+      ct: { follow: true }
+      party: { role: off }
+  - id: office_kus
+    name: "Кабинет (кусь)"
+    lights: [light.kus]
+    flag: input_boolean.feature_office
+    features:
+      dusk: { require_dark: true }
+      schedule: { off: "23:00" }
+      ct: { follow: true }
+      party: { role: off }
+
+
 
   - id: bedroom
     name: "Спальня"
@@ -152,7 +172,7 @@ features:
       schedule: { off: "22:30" }
 
   - id: living_room
-    name: "Гостиная"
+    name: "Гостиная (подсветка зеркала)"
     lights: [light.podsvetka_zerkala]
     flag: input_boolean.feature_living_room
     features:
@@ -161,7 +181,7 @@ features:
       ct: { follow: true }
 
   - id: guest_bedroom
-    name: "Гостевая спальня"
+    name: "Гостевая спальня (торшер)"
     lights: [light.torsher]
     flag: input_boolean.feature_guest_bedroom
     features:
@@ -171,7 +191,7 @@ features:
       party: { role: off }
 
   - id: kitchen_work
-    name: "Кухня рабочая"
+    name: "Кухня (рабочая поверхность)"
     lights: [switch.kitchen_lights]
     flag: input_boolean.feature_kitchen_work
     features:
@@ -179,7 +199,7 @@ features:
       imitation: { participate: true }
 
   - id: table
-    name: "Обеденный стол"
+    name: "Кухня (обеденный стол)"
     lights: [light.table_lights]
     flag: input_boolean.feature_table
     features:
