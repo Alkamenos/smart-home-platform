@@ -497,11 +497,12 @@ def _lg_decide(g, cfg):
     _lg_log("decide", "DEBUG", "gid=%s: started, prof=%s dark=%s night=%s any_on=%s" % (gid, ctx.get("prof"), ctx.get("dark"), ctx.get("night"), ctx.get("any_on")))
     for voter in _FD_REGISTRY:
         vote = voter(g, cfg, ctx)
+        voter_name = getattr(voter, "__name__", str(voter))
         if vote is _FD_ABORT:
-            _lg_log("decide", "DEBUG", "gid=%s: voter %s aborted" % (gid, voter.__name__))
+            _lg_log("decide", "DEBUG", "gid=%s: voter %s aborted" % (gid, voter_name))
             return None
         if vote is not None:
-            _lg_log("decide", "DEBUG", "gid=%s: voter %s returned %s" % (gid, voter.__name__, str(vote)))
+            _lg_log("decide", "DEBUG", "gid=%s: voter %s returned %s" % (gid, voter_name, str(vote)))
             return vote
     result = {"on": False, "why": "нет решения"}
     _lg_log("decide", "DEBUG", "gid=%s: no voters matched, result=%s" % (gid, str(result)))
