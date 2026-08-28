@@ -9,7 +9,6 @@ _FREE_HEAT_ACTIVE = False   # читает климат-оркестратор
 
 V_BASE_SUMMER = "Рекуперация (лето)"
 V_BASE_WINTER ="Рекуперация (зима)"
-V_NIGHT ="Ночной"
 V_BOOST_IN ="Приток MAX"
 V_BOOST_EX ="Вытяжка MAX"
 V_INTAKE ="Приток"
@@ -140,8 +139,21 @@ def _vent_decide(cfg):
         if max(temps) > cool_target and outdoor < min(temps) - deltas.get("free_cool", 2):
             return {"preset": V_INTAKE,"pct": _vent_free_pct(min(temps) - outdoor)}
 
+    # Night mode: умный выбор режима на основе температуры и сезона
     if state.get(flags.get("night")) =="on":
-        return {"preset": V_NIGHT}
+        # Ночью минимальная вентиляция, но с учётом условий
+        night_speed = 1  # Минимальная скорость
+        if zima:
+            # Зимой ночью: Рекуперация (зима) с минимальной скоростью
+            return {"preset": V_BASE_WINTER, "pct": night_speed}
+        else:
+            # Летом ночью: проверяем, нужно ли охлаждение или просто вентиляция
+            if temps and outdoor is not None:
+                # Если на улице прохладнее чем дома - свободное охлаждение
+                if max(temps) > (cool_target or 25) and outdoor < min(temps) - 2:
+                    return {"preset": V_INTAKE, "pct": night_speed}
+                # Иначе обычная рекуперация
+            return {"preset": V_BASE_SUMMER, "pct": night_speed}
     if zima:
         indoor = temps[0] if temps else None
         pct = _vent_winter_pct(cfg, outdoor, indoor)
