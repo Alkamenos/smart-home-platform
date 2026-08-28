@@ -372,8 +372,15 @@ def _lg_group(cfg, gid):
 def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
     already = _lg_is_on(e) == on
     restoring = on and not nightlight and (e in _LG_NL_ACTIVE)
-    if already and not restoring:
+    
+    # Если восстанавливаем свет после ночника - нужно применить профиль
+    if restoring:
+        log.warning("[light][REAL][restore] " + e + " applying profile after nightlight")
+        _LG_NL_ACTIVE.discard(e)
+        # Не возвращаем, продолжаем применять настройки профиля
+    elif already:
         return
+    
     if not force and not restoring:
         last = _LG_LAST_CHANGE.get(e, 0)
         if (time.monotonic() - last) < cfg.get("anti_cycle_min", 2) * 60:
@@ -411,7 +418,8 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
                 k = _lg_ct_target(cfg)
                 if k is not None:
                     k = int(k)
-            if caps.get("dim") and (b < 100 or restoring):
+            # Применяем яркость и температуру всегда при включении или восстановлении
+            if caps.get("dim"):
                 if k is not None:
                     service.call(dom, "turn_on", entity_id=e, brightness_pct=int(b), color_temp_kelvin=k)
                 else:
