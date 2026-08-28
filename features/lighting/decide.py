@@ -2,6 +2,37 @@
 # Порядок: после utils освещения, до _lg_decide. Все ссылки — call-time.
 _FD_REGISTRY = []
 
+# Глобальная настройка логирования
+_LOG_LEVELS = {"CRITICAL": 0, "ERROR": 1, "WARNING": 2, "INFO": 3, "DEBUG": 4}
+_LOG_LEVEL = _LOG_LEVELS.get("INFO", 3)  # по умолчанию
+_MODULE_LOG_LEVELS = {}
+
+
+def _lg_get_log_level():
+    """Получить уровень логирования из манифеста"""
+    global _LOG_LEVEL, _MODULE_LOG_LEVELS
+    if _REGISTRY is None:
+        return
+    cfg = _REGISTRY.feature("logging") or {}
+    level_name = cfg.get("level", "INFO")
+    _LOG_LEVEL = _LOG_LEVELS.get(level_name, 3)
+    modules = cfg.get("modules", {})
+    for mod, lvl in modules.items():
+        _MODULE_LOG_LEVELS[mod] = _LOG_LEVELS.get(lvl, 3)
+
+
+def _lg_log(module, level_name, msg):
+    """Логирование с проверкой уровня"""
+    level_val = _LOG_LEVELS.get(level_name, 3)
+    module_level = _MODULE_LOG_LEVELS.get(module, _LOG_LEVEL)
+    if level_val <= module_level:
+        if level_name == "DEBUG":
+            log.info("[light][DEBUG][" + module + "] " + msg)
+        elif level_name == "INFO":
+            log.info("[light][" + module + "] " + msg)
+        else:
+            log.warning("[light][" + module + "] " + msg)
+
 
 def _fd_register(fn):
     _FD_REGISTRY.append(fn)
@@ -92,27 +123,38 @@ def _fd_motion(g, cfg, ctx):
     if mode in (None, "unknown", "unavailable"):
         legacy = (ctx["sel_on"] == "Датчик движения") or ctx["prof"] == "motion"
         if not legacy:
+            _lg_log("motion", "DEBUG", "gid=%s: no legacy motion mode, skip" % gid)
             return None
         mode = "Держать включённым" if g.get("motion_mode", "trigger") == "keepalive" else "Включать и выключать"
     if mode == "Выкл":
+        _lg_log("motion", "DEBUG", "gid=%s: motion mode=Выкл, skip" % gid)
         return None
     if mode == "Держать включённым":
         if ctx["any_on"]:
-            return {"on": ctx["presence"], "why": "keepalive: держим пока движение"}
+            result = {"on": ctx["presence"], "why": "keepalive: держим пока движение"}
+            _lg_log("motion", "DEBUG", "gid=%s: keepalive any_on=%s presence=%s -> %s" % (gid, str(ctx["any_on"]), str(ctx["presence"]), str(result)))
+            return result
         nl_ok = bool(g.get("nightlight")) and _lg_state("input_boolean.feature_%s_nightlight" % gid) == "on"
         if ctx["night"] and nl_ok:
             nl_min = _lg_num("input_number.light_%s_nightlight_off_min" % gid, 3)
             last = _LG_MOTION_LAST.get(gid)
             nl_on = last is not None and (time.monotonic() - last) < nl_min * 60
-            return {"on": nl_on, "nightlight": True, "why": "keepalive: ночник"}
+            result = {"on": nl_on, "nightlight": True, "why": "keepalive: ночник"}
+            _lg_log("motion", "DEBUG", "gid=%s: nightlight nl_on=%s -> %s" % (gid, str(nl_on), str(result)))
+            return result
+        _lg_log("motion", "DEBUG", "gid=%s: keepalive but no nightlight/night, skip" % gid)
         return None
     if mode == "Включать и выключать":
         nnf = g.get("no_night_auto_flag")
         if nnf and ctx["night"] and _lg_state(nnf) == "on" and not ctx["any_on"]:
+            _lg_log("motion", "DEBUG", "gid=%s: auto ночью отключено" % gid)
             return {"on": False, "why": "авто ночью отключено"}
         if not (ctx["dark"] or ctx["mday"]):
+            _lg_log("motion", "DEBUG", "gid=%s: светло и днём выкл (dark=%s mday=%s)" % (gid, str(ctx["dark"]), str(ctx["mday"])))
             return {"on": False, "why": "motion: светло и днём выкл"}
-        return {"on": ctx["presence"], "why": "motion: presence=" + str(ctx["presence"])}
+        result = {"on": ctx["presence"], "why": "motion: presence=" + str(ctx["presence"])}
+        _lg_log("motion", "DEBUG", "gid=%s: trigger dark=%s mday=%s presence=%s -> %s" % (gid, str(ctx["dark"]), str(ctx["mday"]), str(ctx["presence"]), str(result)))
+        return result
     return None
 
 

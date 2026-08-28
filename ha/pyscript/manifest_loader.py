@@ -63,9 +63,21 @@ def _do_load(path=None):
 
     _REGISTRY = reg
     s = reg.summary()
+    
+    # Краткий лог о загрузке модулей
+    features_loaded = []
+    features_missing = []
+    for feat in ["lighting", "climate", "ventilation", "sensor_health"]:
+        if reg.feature(feat):
+            features_loaded.append(feat)
+        else:
+            features_missing.append(feat)
+    
     log.info("[manifest] Загружен инстанс:" + str(s.get("instance"))
-             +", устройств: " + str(s.get("devices")))
-    return {"ok": True,"summary": s}
+             + ", устройств: " + str(s.get("devices")))
+    log.info("[manifest] Модули: " + ", ".join(["%s: ок" % f for f in features_loaded])
+             + (", ".join(["%s: нет" % f for f in features_missing]) if features_missing else ""))
+    return {"ok": True, "summary": s}
 
 
 @service

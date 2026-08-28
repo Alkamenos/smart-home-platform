@@ -1,5 +1,5 @@
 # ============================================================
-# LIGHTING CONTROLLER v2.8 (nightlight, motion dropdown, motion logging)
+# LIGHTING CONTROLLER v2.9 (nightlight, motion dropdown, motion logging, debug logging)
 # ============================================================
 import time
 import random
@@ -15,6 +15,37 @@ _VLIGHT_SYNC_GUARD = {}
 _EXPECTED_REAL_STATE = {}
 _BUTTON_MAP = {}
 _LG_IM_ACTIVE = {}
+
+# Глобальная настройка логирования
+_LOG_LEVELS = {"CRITICAL": 0, "ERROR": 1, "WARNING": 2, "INFO": 3, "DEBUG": 4}
+_LOG_LEVEL = _LOG_LEVELS.get("INFO", 3)  # по умолчанию
+_MODULE_LOG_LEVELS = {}
+
+
+def _lg_init_logging():
+    """Инициализация уровней логирования из манифеста"""
+    global _LOG_LEVEL, _MODULE_LOG_LEVELS
+    if _REGISTRY is None:
+        return
+    cfg = _REGISTRY.feature("logging") or {}
+    level_name = cfg.get("level", "INFO")
+    _LOG_LEVEL = _LOG_LEVELS.get(level_name, 3)
+    modules = cfg.get("modules", {})
+    for mod, lvl in modules.items():
+        _MODULE_LOG_LEVELS[mod] = _LOG_LEVELS.get(lvl, 3)
+
+
+def _lg_log(module, level_name, msg):
+    """Логирование с проверкой уровня"""
+    level_val = _LOG_LEVELS.get(level_name, 3)
+    module_level = _MODULE_LOG_LEVELS.get(module, _LOG_LEVEL)
+    if level_val <= module_level:
+        if level_name == "DEBUG":
+            log.info("[light][DEBUG][" + module + "] " + msg)
+        elif level_name == "INFO":
+            log.info("[light][" + module + "] " + msg)
+        else:
+            log.warning("[light][" + module + "] " + msg)
 
 _RGB_SCENES = {
     "Красный": [255, 0, 0],
@@ -111,6 +142,8 @@ def _resolve_group(g):
 def _lg_cfg():
     if _REGISTRY is None:
         return None
+    # Инициализация логирования при первом вызове
+    _lg_init_logging()
     cfg = _REGISTRY.feature("lighting") or None
     if not cfg:
         return None
@@ -460,13 +493,19 @@ def _lg_decide(g, cfg):
     ov = g.get("override_flag")
     if ov and _lg_state(ov) == "on":
         return {"on": True, "why": "override_flag"}
+    gid = str(g.get("id"))
+    _lg_log("decide", "DEBUG", "gid=%s: started, prof=%s dark=%s night=%s any_on=%s" % (gid, ctx.get("prof"), ctx.get("dark"), ctx.get("night"), ctx.get("any_on")))
     for voter in _FD_REGISTRY:
         vote = voter(g, cfg, ctx)
         if vote is _FD_ABORT:
+            _lg_log("decide", "DEBUG", "gid=%s: voter %s aborted" % (gid, voter.__name__))
             return None
         if vote is not None:
+            _lg_log("decide", "DEBUG", "gid=%s: voter %s returned %s" % (gid, voter.__name__, str(vote)))
             return vote
-    return {"on": False, "why": "нет решения"}
+    result = {"on": False, "why": "нет решения"}
+    _lg_log("decide", "DEBUG", "gid=%s: no voters matched, result=%s" % (gid, str(result)))
+    return result
 
 
 
@@ -885,12 +924,14 @@ _MOTION_LIST = _motion_build_list()
 @state_trigger(*_MOTION_LIST)
 def _lg_motion_handler(var_name=None, **kwargs):
     cur_state = _lg_state(var_name)
-    log.warning("[motion] " + str(var_name) + " -> " + str(cur_state))
+    _lg_log("motion", "INFO", "sensor=%s state=%s" % (str(var_name), str(cur_state)))
     
     if _lg_state("input_boolean.feature_lighting") == "off":
+        _lg_log("motion", "DEBUG", "feature_lighting=off, skip")
         return
     cfg = _lg_cfg()
     if not cfg:
+        _lg_log("motion", "DEBUG", "no config, skip")
         return
     mode = _lg_mode(cfg)
     for g in (cfg.get("groups", []) or []):
@@ -902,6 +943,7 @@ def _lg_motion_handler(var_name=None, **kwargs):
         if ms != var_name:
             continue
         _LG_MOTION_LAST[gid] = time.monotonic()
+        _lg_log("motion", "DEBUG", "gid=%s: motion detected, last=%s" % (gid, str(_LG_MOTION_LAST[gid])))
         g2 = _lg_season(g)
         m = "shadow" if (mode == "shadow" or g2.get("shadow")) else "real"
         _lg_apply_group(g2, cfg, m)

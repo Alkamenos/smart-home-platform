@@ -9,6 +9,14 @@ instance:
     platform_version: "0.3.0"
     notes: "Климат: гостиная + санузел + спальня + кабинет, shadow mode"
 
+logging:
+  level: INFO  # CRITICAL, INFO, DEBUG
+  modules:
+    lighting: DEBUG
+    climate: INFO
+    ventilation: INFO
+    health: INFO
+
 devices:
   sensors:
     - id: temp_gostinnaia
