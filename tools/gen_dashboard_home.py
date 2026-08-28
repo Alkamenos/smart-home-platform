@@ -5,10 +5,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from features.lighting import schema as RF
 
-ROOM_ORDER = ["gostinnaia", "spalnia", "kabinet", "sanuzel", "outdoor"]
+ROOM_ORDER = ["gostinnaia", "spalnia", "gostevaia_spalnia", "kabinet", "sanuzel", "outdoor"]
 ROOM_TITLES = {
     "gostinnaia": "🛋️ Гостиная",
     "spalnia": "🛏️ Спальня",
+    "gostevaia_spalnia": "Гостевая спальня",
     "kabinet": "💼 Кабинет",
     "sanuzel": "🚿 Санузел",
     "outdoor": "🏡 Улица",

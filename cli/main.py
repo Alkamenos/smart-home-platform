@@ -91,6 +91,12 @@ def cmd_check(args):
     print("check OK: helpers на месте")
     return 0
 
+def cmd_add(args):
+    from cli import scaffold
+    scaffold.add_light(args.instance)
+    return 0
+
+
 def cmd_new(args):
     from cli import scaffold
     {"instance": scaffold.new_instance, "feature": scaffold.new_feature,
@@ -110,7 +116,7 @@ def main():
     sp.add_argument("manifest_pos", nargs="?", default=None)
     sp.set_defaults(fn=cmd_validate)
     sp = sub.add_parser("build", help="склейка + py_compile"); sp.set_defaults(fn=cmd_build)
-    sp = sub.add_parser("deploy", help="build + подсказка"); sp.set_defaults(fn=cmd_deploy)
+    sp = sub.add_parser("deploy", help="build + подсказка"); common(sp); sp.set_defaults(fn=cmd_deploy)
     sp = sub.add_parser("helpers", help="gen_helpers"); common(sp)
     sp.add_argument("--apply", action="store_true"); sp.add_argument("--confirm", action="store_true")
     sp.set_defaults(fn=cmd_helpers)
@@ -126,6 +132,11 @@ def main():
     sp.add_argument("kind", choices=["feature", "instance", "group"])
     sp.add_argument("id")
     sp.set_defaults(fn=cmd_new)
+
+    sp = sub.add_parser("add", help="интерактивное добавление устройств")
+    common(sp)
+    sp.add_argument("kind", choices=["light"])
+    sp.set_defaults(fn=cmd_add)
 
     args = p.parse_args()
     sys.exit(args.fn(args))
