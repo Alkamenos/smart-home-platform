@@ -148,6 +148,11 @@ def _cv_decide_cover(c, cfg, home, dogs):
     home = нас дома (my_doma == on)
     dogs = собаки дома (dogs_home == on)
     away = не home
+    
+    Глобальные переключатели:
+    - covers_close_night: закрывать шторы ночью (по расписанию)
+    - covers_close_door_night: закрывать ночью штору над дверью
+    - covers_close_away: закрывать шторы когда нас нет
     """
     cid = str(c.get("id"))
     cover_entity = c.get("cover")
@@ -194,6 +199,11 @@ def _cv_decide_cover(c, cfg, home, dogs):
     allow_open = (open_sel != "Не открывать")
     allow_close = (close_sel != "Не закрывать")
     
+    # Читаем глобальные переключатели
+    close_night = _cv_state("input_boolean.covers_close_night") == "on"
+    close_door_night = _cv_state("input_boolean.covers_close_door_night") == "on"
+    close_away = _cv_state("input_boolean.covers_close_away") == "on"
+    
     # === ЛОГИКА ДЛЯ ОБЫЧНОЙ ШТОРЫ ===
     if not is_door:
         # ЗАКРЫТА если (сейчас окно "закрыто") ИЛИ (away И не dogs)
@@ -205,10 +215,12 @@ def _cv_decide_cover(c, cfg, home, dogs):
         should_be_closed = False
         why_parts = []
         
-        if is_night and allow_close:
+        # Ночное закрытие (если включено в настройках)
+        if is_night and allow_close and close_night:
             should_be_closed = True
             why_parts.append("ночь/окно закрыто")
-        elif away and not dogs:
+        # Закрытие когда нас нет (если включено в настройках)
+        elif away and not dogs and close_away:
             should_be_closed = True
             why_parts.append("пустой дом (нет нас и собак)")
         
@@ -229,6 +241,7 @@ def _cv_decide_cover(c, cfg, home, dogs):
         # - fire_safety_min_pct = минимальный процент ОТКРЫТИЯ (штора никогда не закроется ниже этого)
         # - position = 100 - away_closed_pct (позиция закрытия)
         # - Если fire_safety включён: позиция не может быть меньше fire_min_pct
+        # - Исключение: override (ручное управление) может закрыть полностью
         
         away = not home
         
@@ -242,6 +255,9 @@ def _cv_decide_cover(c, cfg, home, dogs):
         else:
             adjusted_away_pct = away_pct
         
+        # Проверяем overrides - если есть ручное вмешательство, позволяем полное закрытие
+        has_override = _cv_override_active(cover_entity)
+        
         if is_day_window and (home or dogs):
             # День и (дома или собаки) -> полностью открыта
             return {"action": "open", "pct": 100, "why": "день + (дома или собаки), дверь" + (" (fire_safety)" if fire_safety else "")}
@@ -254,15 +270,22 @@ def _cv_decide_cover(c, cfg, home, dogs):
                 why_text += " (fire_safety min=" + str(fire_min_pct) + "%)"
             return {"action": "close_pct", "pct": pos, "why": why_text}
         elif not is_day_window and home:
-            # Ночь и дома -> закрываем полностью (пожарная безопасность не ограничивает, т.к. мы дома)
-            return {"action": "close", "pct": 0, "why": "ночь, дома, дверь -> 100%"}
+            # Ночь и дома -> закрываем если включено в настройках
+            if close_door_night:
+                # Пожарная безопасность НЕ ограничивает когда мы дома (можем сами открыть при необходимости)
+                return {"action": "close", "pct": 0, "why": "ночь, дома, дверь -> 100% (close_door_night)"}
+            else:
+                return {"action": "keep", "pct": None, "why": "ночь, дома, но close_door_night=off"}
         elif not is_day_window and away:
-            # Ночь и никого нет -> закрываем на away_pct, но не ниже fire_min_pct
-            pos = max(max_close_pos, fire_min_pct) if fire_safety else max_close_pos
-            why_text = "ночь, пустой дом, дверь -> " + str(int(100 - pos)) + "%"
-            if fire_safety:
-                why_text += " (fire_safety min=" + str(fire_min_pct) + "%)"
-            return {"action": "close_pct", "pct": pos, "why": why_text}
+            # Ночь и никого нет -> закрываем на away_pct, но не ниже fire_min_pct (если включено close_door_night)
+            if close_door_night:
+                pos = max(max_close_pos, fire_min_pct) if fire_safety else max_close_pos
+                why_text = "ночь, пустой дом, дверь -> " + str(int(100 - pos)) + "%"
+                if fire_safety:
+                    why_text += " (fire_safety min=" + str(fire_min_pct) + "%)"
+                return {"action": "close_pct", "pct": pos, "why": why_text}
+            else:
+                return {"action": "keep", "pct": None, "why": "ночь, пустой дом, но close_door_night=off"}
         
         return {"action": "keep", "pct": None, "why": "нет решения для двери"}
 

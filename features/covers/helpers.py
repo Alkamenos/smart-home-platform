@@ -87,6 +87,14 @@ def generate_covers_helpers(cfg, ctx):
     out.append(_bool(i, "covers_shadow_mode", "off", "mdi:ghost"))
     i += 1
     
+    # Три новых глобальных переключателя
+    out.append(_bool(i, "covers_close_night", "on", "mdi:weather-night"))
+    i += 1
+    out.append(_bool(i, "covers_close_door_night", "on", "mdi:door-closed"))
+    i += 1
+    out.append(_bool(i, "covers_close_away", "on", "mdi:account-arrow-right"))
+    i += 1
+    
     # Helpers для каждой шторы
     defaults = cfg.get("defaults", {"open_time": "08:00", "close_time": "00:00"})
     covers = cfg.get("covers", [])

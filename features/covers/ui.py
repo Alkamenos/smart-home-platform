@@ -85,7 +85,12 @@ def covers_global_card():
                 _bool("input_boolean.dogs_home", "Собаки дома"),
                 _bool("input_boolean.feature_covers", "Автоматика штор"),
                 _bool("input_boolean.covers_shadow_mode", "Shadow режим")
-            ], 2)
+            ], 3),
+            _grid([
+                _bool("input_boolean.covers_close_night", "Закрывать шторы ночью"),
+                _bool("input_boolean.covers_close_door_night", "Закрывать ночью штору над дверью"),
+                _bool("input_boolean.covers_close_away", "Закрывать шторы когда нас нет")
+            ], 3)
         ]
     }
 
