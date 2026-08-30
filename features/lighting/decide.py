@@ -44,7 +44,6 @@ def _lg_decide_ctx(g, cfg):
 
 ROLE_MAP = {"keep": "Как обычно", "on": "Включить",
              "off": "Выключить", "keep_on": "Держать включённым"}
-_FD_ABORT = {"abort": True}
 
 
 def _lg_feats(g):
