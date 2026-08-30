@@ -1,45 +1,13 @@
-# pyscript runtime: lighting decide-voters (склейка через build/build_pyscript.py)
-# Порядок: после utils освещения, до _lg_decide. Все ссылки — call-time.
-_FD_REGISTRY = []
-
-# Глобальная настройка логирования
-_LOG_LEVELS = {"CRITICAL": 0, "ERROR": 1, "WARNING": 2, "INFO": 3, "DEBUG": 4}
-_LOG_LEVEL = _LOG_LEVELS.get("INFO", 3)  # по умолчанию
-_MODULE_LOG_LEVELS = {}
-
-
-def _lg_get_log_level():
-    """Получить уровень логирования из манифеста"""
-    global _LOG_LEVEL, _MODULE_LOG_LEVELS
-    if _REGISTRY is None:
-        return
-    cfg = _REGISTRY.feature("logging") or {}
-    level_name = cfg.get("level", "INFO")
-    _LOG_LEVEL = _LOG_LEVELS.get(level_name, 3)
-    modules = cfg.get("modules", {})
-    for mod, lvl in modules.items():
-        _MODULE_LOG_LEVELS[mod] = _LOG_LEVELS.get(lvl, 3)
-
-
-def _lg_log(module, level_name, msg):
-    """Логирование с проверкой уровня"""
-    level_val = _LOG_LEVELS.get(level_name, 3)
-    module_level = _MODULE_LOG_LEVELS.get(module, _LOG_LEVEL)
-    if level_val <= module_level:
-        if level_name == "DEBUG":
-            log.info("[light][DEBUG][" + module + "] " + msg)
-        elif level_name == "INFO":
-            log.info("[light][" + module + "] " + msg)
-        else:
-            log.warning("[light][" + module + "] " + msg)
-
-
-def _fd_register(fn):
-    _FD_REGISTRY.append(fn)
-    return fn
+from features.lighting.state import (
+    _lg_state, _lg_cfg, _lg_mode, _lg_update_dark, _lg_season,
+    _lg_log, _DARK, _FD_REGISTRY, _FD_ABORT,
+    _lg_now_min, _lg_night, _lg_motion_sensor, _lg_motion, _lg_num,
+    _LG_MOTION_LAST, _lg_is_on,
+)
 
 
 def _lg_decide_ctx(g, cfg):
+    """Построение контекста для принятия решения."""
     prof = g.get("profile", "dusk_till_time")
     dark = bool(_DARK)
     now = _lg_now_min()
@@ -81,6 +49,13 @@ _FD_ABORT = {"abort": True}
 
 def _lg_feats(g):
     return g.get("features") or {}
+
+
+def _fd_register(fn):
+    """Регистрация voter'а в реестр."""
+    from features.lighting.state import _FD_REGISTRY
+    _FD_REGISTRY.append(fn)
+    return fn
 
 
 @_fd_register

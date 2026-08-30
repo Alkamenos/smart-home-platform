@@ -8,10 +8,13 @@ __pycache__/
 venv/
 node_modules/
 
-# Logs and temporary files
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs
 *.log
-*.tmp
-*.swp
 
 # Environment files
 .env
@@ -22,13 +25,20 @@ node_modules/
 .vscode/
 .idea/
 
+# Temporary files
+*.tmp
+*.swp
+
 # Coverage reports
+.coverage
 coverage/
 htmlcov/
-.coverage
 
-# Build artifacts
-dist/
-build/
-target/
+# Python cache
+.mypy_cache/
+.pytest_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
 ```

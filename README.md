@@ -15,13 +15,13 @@
 ├── shp, cli/ # CLI: validate/build/deploy/helpers/dashboards/check/cleanup/new
 ├── core/ # ha.py (REST+WS), manifest.py (instances/), builders.py
 ├── features/ # feature-sliced:
-│ ├── lighting/ # schema, helpers, ui, card, caps, decide (FD_REGISTRY)
+│ ├── lighting/ # schema, helpers, ui, card, caps, decide, state, control, runtime, services, triggers
 │ ├── climate/ # runtime, helpers, ui
 │ ├── ventilation/ # runtime, helpers, ui
 │ └── health/ # runtime
 ├── build/ # build_pyscript.py — детерминированная склейка
 ├── instances/ # <id>/manifest.yaml — канонический манифест
-├── ha/pyscript/ # registry.py, manifest_loader.py, lighting_controller.py
+├── ha/pyscript/ # registry.py, manifest_loader.py
 ├── tools/ # gen_helpers.py, gen_dashboard{home,settings,admin}.py, cleanup_helpers.py
 └── *.md # README, PYSCRIPT_RULES, HANDOFF, CHANGELOG, ENTITY_PROVISIONING
 ```
