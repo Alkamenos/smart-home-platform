@@ -499,6 +499,8 @@ features:
       cover: cover.shtora_v_gostinnoi_pravaia
       door: true
       away_closed_pct: 60
+      fire_safety: true
+      fire_safety_min_pct: 20
 globals:
   modes:
     zima:

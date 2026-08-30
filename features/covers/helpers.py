@@ -47,10 +47,20 @@ def helpers_for_cover(c, defaults, i):
     out.append(_dt(i, "cover_%s_open_time" % cid, open_time, "mdi:clock-outline"))
     i += 1
     
-    # Если дверь — добавляем away_closed_pct
+    # Если дверь — добавляем away_closed_pct и fire_safety настройки
     if c.get("door"):
         away_pct = c.get("away_closed_pct", 60)
         out.append(_num(i, "cover_%s_away_closed_pct" % cid, 0, 100, 5, away_pct, "mdi:percent"))
+        i += 1
+        
+        # Fire safety: минимальный процент открытия (штора никогда не закроется ниже этого)
+        fire_safety = c.get("fire_safety", False)
+        fire_min_pct = c.get("fire_safety_min_pct", 20) if fire_safety else 0
+        # Helper для включения пожарной безопасности
+        out.append(_bool(i, "cover_%s_fire_safety" % cid, "on" if fire_safety else "off", "mdi:fire-alert"))
+        i += 1
+        # Helper для минимального процента открытия
+        out.append(_num(i, "cover_%s_fire_safety_min_pct" % cid, 0, 100, 5, fire_min_pct, "mdi:arrow-up-bold"))
         i += 1
     
     return out, i

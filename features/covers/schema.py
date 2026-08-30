@@ -2,7 +2,7 @@
 """Schema: валидация секции covers в манифесте."""
 
 REQUIRED_COVER_FIELDS = ["id", "name", "cover"]
-OPTIONAL_COVER_FIELDS = ["door", "away_closed_pct"]
+OPTIONAL_COVER_FIELDS = ["door", "away_closed_pct", "fire_safety", "fire_safety_min_pct"]
 
 def validate_cover(c):
     """Валидация одной шторы."""
@@ -13,10 +13,22 @@ def validate_cover(c):
             return False, "missing required field: " + f
     if not isinstance(c.get("cover"), str) or not c["cover"].startswith("cover."):
         return False, "cover entity must start with 'cover.'"
-    if c.get("door") and not isinstance(c.get("away_closed_pct"), (int, float)):
-        # Если door=true, away_closed_pct должен быть числом или дефолт 60
-        if "away_closed_pct" not in c:
-            c["away_closed_pct"] = 60  # дефолт
+    
+    # Валидация для дверей с пожарной безопасностью
+    if c.get("door"):
+        away_pct = c.get("away_closed_pct", 60)
+        if not isinstance(away_pct, (int, float)) or not (0 <= away_pct <= 100):
+            return False, "away_closed_pct must be 0-100"
+        
+        fire_safety = c.get("fire_safety", False)
+        if fire_safety:
+            min_pct = c.get("fire_safety_min_pct", 20)
+            if not isinstance(min_pct, (int, float)) or not (0 <= min_pct <= 100):
+                return False, "fire_safety_min_pct must be 0-100"
+            if min_pct > (100 - away_pct):
+                # Проверка: минимальный процент открытия не может быть больше позиции закрытия
+                return False, "fire_safety_min_pct cannot be greater than max open position"
+    
     return True, None
 
 def validate_covers_feature(cfg):
@@ -55,12 +67,6 @@ def validate_covers_feature(cfg):
         if cid in ids_seen:
             errors.append("duplicate cover id: " + cid)
         ids_seen.add(cid)
-        
-        # Валидация away_closed_pct для дверей
-        if c.get("door"):
-            pct = c.get("away_closed_pct", 60)
-            if not (0 <= pct <= 100):
-                errors.append("cover[%d]: away_closed_pct must be 0-100" % i)
     
     if errors:
         return False, "; ".join(errors)

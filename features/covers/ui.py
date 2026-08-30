@@ -48,9 +48,20 @@ def cover_card(c, defaults):
          ]}},
     ]
     
-    # Если дверь — добавляем away_closed_pct
+    # Если дверь — добавляем away_closed_pct и fire_safety настройки
     if c.get("door"):
         cards.append(_num("input_number.cover_%s_away_closed_pct" % cid, "Закрывать ушедших, %"))
+        cards.append(_bool("input_boolean.cover_%s_fire_safety" % cid, "Пожарная безопасность"))
+        cards.append({
+            "type": "conditional",
+            "conditions": [{"entity": "input_boolean.cover_%s_fire_safety" % cid, "state": "on"}],
+            "card": {
+                "type": "entities",
+                "entities": [
+                    {"entity": "input_number.cover_%s_fire_safety_min_pct" % cid, "name": "Мин. открытие, %"}
+                ]
+            }
+        })
     
     # Информационное поле: текущее положение
     cover_entity = c.get("cover")

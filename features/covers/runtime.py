@@ -154,10 +154,22 @@ def _cv_decide_cover(c, cfg, home, dogs):
     is_door = c.get("door", False)
     away_pct = c.get("away_closed_pct", 60) if is_door else 100
     
+    # Fire safety параметры
+    fire_safety = c.get("fire_safety", False) if is_door else False
+    fire_min_pct = c.get("fire_safety_min_pct", 20) if fire_safety else 0
+    
     # Читаем настройки из helpers
     auto_flag = _cv_state("input_boolean.cover_%s_auto" % cid)
     if auto_flag != "on":
         return None  # автоматика отключена для этой шторы
+    
+    # Для двери читаем fire_safety из helper (может быть изменён с дашборда)
+    if is_door:
+        fs_helper = _cv_state("input_boolean.cover_%s_fire_safety" % cid)
+        if fs_helper == "on":
+            fire_safety = True
+        fs_min_helper = _cv_num("input_number.cover_%s_fire_safety_min_pct" % cid, fire_min_pct)
+        fire_min_pct = fs_min_helper
     
     # Режим открытия/закрытия
     close_sel = _cv_state("input_select.cover_%s_close" % cid)
@@ -213,27 +225,44 @@ def _cv_decide_cover(c, cfg, home, dogs):
     
     # === ЛОГИКА ДЛЯ ШТОРЫ НАД ДВЕРЬЮ ===
     else:
-        # ОТКРЫТА если (окно "открыто") И (home ИЛИ dogs)
-        # ЗАКРЫТА НА 100% если (окно "закрыто") И home
-        # ЗАКРЫТА НА away_closed_pct когда нас нет дома (и с собаками, и без)
+        # С учётом пожарной безопасности:
+        # - fire_safety_min_pct = минимальный процент ОТКРЫТИЯ (штора никогда не закроется ниже этого)
+        # - position = 100 - away_closed_pct (позиция закрытия)
+        # - Если fire_safety включён: позиция не может быть меньше fire_min_pct
         
         away = not home
         
+        # Вычисляем максимальную позицию закрытия с учётом пожарной безопасности
+        max_close_pos = 100 - away_pct  # например, away_closed_pct=60 -> pos=40
+        if fire_safety and max_close_pos < fire_min_pct:
+            # Ограничиваем закрытие: штора не может закрыться больше чем (100 - fire_min_pct)%
+            max_close_pos = fire_min_pct
+            # Корректируем away_pct для консистентности в логах
+            adjusted_away_pct = 100 - fire_min_pct
+        else:
+            adjusted_away_pct = away_pct
+        
         if is_day_window and (home or dogs):
             # День и (дома или собаки) -> полностью открыта
-            return {"action": "open", "pct": 100, "why": "день + (дома или собаки), дверь"}
+            return {"action": "open", "pct": 100, "why": "день + (дома или собаки), дверь" + (" (fire_safety)" if fire_safety else "")}
         elif is_day_window and away:
             # День но никого нет -> закрываем на away_pct (никогда не 100%)
-            # position = 100 - away_closed_pct
-            pos = 100 - away_pct
-            return {"action": "close_pct", "pct": pos, "why": "день, пустой дом, дверь -> " + str(away_pct) + "%"}
+            # position = 100 - away_closed_pct, но не меньше fire_min_pct
+            pos = max(max_close_pos, fire_min_pct) if fire_safety else max_close_pos
+            why_text = "день, пустой дом, дверь -> " + str(int(100 - pos)) + "%"
+            if fire_safety:
+                why_text += " (fire_safety min=" + str(fire_min_pct) + "%)"
+            return {"action": "close_pct", "pct": pos, "why": why_text}
         elif not is_day_window and home:
-            # Ночь и дома -> закрываем полностью
+            # Ночь и дома -> закрываем полностью (пожарная безопасность не ограничивает, т.к. мы дома)
             return {"action": "close", "pct": 0, "why": "ночь, дома, дверь -> 100%"}
         elif not is_day_window and away:
-            # Ночь и никого нет -> закрываем на away_pct
-            pos = 100 - away_pct
-            return {"action": "close_pct", "pct": pos, "why": "ночь, пустой дом, дверь -> " + str(away_pct) + "%"}
+            # Ночь и никого нет -> закрываем на away_pct, но не ниже fire_min_pct
+            pos = max(max_close_pos, fire_min_pct) if fire_safety else max_close_pos
+            why_text = "ночь, пустой дом, дверь -> " + str(int(100 - pos)) + "%"
+            if fire_safety:
+                why_text += " (fire_safety min=" + str(fire_min_pct) + "%)"
+            return {"action": "close_pct", "pct": pos, "why": why_text}
         
         return {"action": "keep", "pct": None, "why": "нет решения для двери"}
 
@@ -397,6 +426,18 @@ def _cv_immediate_close_on_leave(cfg, covers_list):
         is_door = c.get("door", False)
         away_pct = c.get("away_closed_pct", 60) if is_door else 100
         
+        # Fire safety для двери
+        fire_safety = c.get("fire_safety", False) if is_door else False
+        fire_min_pct = c.get("fire_safety_min_pct", 20) if fire_safety else 0
+        
+        # Читаем fire_safety из helper (может быть изменён с дашборда)
+        if is_door:
+            fs_helper = _cv_state("input_boolean.cover_%s_fire_safety" % cid)
+            if fs_helper == "on":
+                fire_safety = True
+            fs_min_helper = _cv_num("input_number.cover_%s_fire_safety_min_pct" % cid, fire_min_pct)
+            fire_min_pct = fs_min_helper
+        
         # Проверяем override
         if _cv_override_active(cover_entity):
             continue
@@ -406,10 +447,13 @@ def _cv_immediate_close_on_leave(cfg, covers_list):
             continue
         
         if is_door:
-            # Дверь: закрываем на away_pct
-            pos = 100 - away_pct
+            # Дверь: закрываем на away_pct, но не ниже fire_min_pct
+            max_close_pos = 100 - away_pct
+            if fire_safety and max_close_pos < fire_min_pct:
+                max_close_pos = fire_min_pct
+            pos = max_close_pos
             _cv_set_cover_position(cover_entity, pos, mode)
-            _cv_log("leave", "INFO", cid + ": immediate close to " + str(pos) + "% (door)")
+            _cv_log("leave", "INFO", cid + ": immediate close to " + str(pos) + "% (door)" + (" fire_safety=" + str(fire_min_pct) + "%" if fire_safety else ""))
         else:
             # Обычная: закрываем полностью
             _cv_close_cover(cover_entity, mode)
