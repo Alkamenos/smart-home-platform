@@ -2,9 +2,6 @@ from features.lighting.schema import _feats_of  # noqa: F401
 
 MOTION_MODES = ["Выкл", "Включать и выключать", "Держать включённым"]
 
-#!/usr/bin/env python3
-"""Helpers-артефакт фич освещения: какие input_* создавать для подключённых фич."""
-
 def _num(i, name, mn, mx, step, init, icon):
     return {"id": i, "type": "input_number/create", "name": name,
             "min": mn, "max": mx, "step": step, "initial": init, "icon": icon}
