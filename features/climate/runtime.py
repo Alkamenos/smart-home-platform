@@ -55,6 +55,45 @@ def _clim_is_on(entity):
     return mode =="on"
 
 
+def _clim_get_setpoint(zone_id, mode):
+    """Возвращает уставку heat/cool для зоны."""
+    if _REGISTRY is None:
+        return None
+    climate_cfg = _REGISTRY.feature("climate") or {}
+    for zone in climate_cfg.get("zones", []):
+        if zone.get("id") == zone_id:
+            setpoints = zone.get("setpoints") or {}
+            sp = (setpoints.get(mode) or {}).get("source")
+            return _clim_get_float(sp) if sp else None
+    return None
+
+
+def _clim_is_heating_active(zone_id):
+    """Проверяет, активен ли обогрев в зоне (конвектор on или AC heat)."""
+    if _REGISTRY is None:
+        return False
+    climate_cfg = _REGISTRY.feature("climate") or {}
+    for zone in climate_cfg.get("zones", []):
+        if zone.get("id") != zone_id:
+            continue
+        for act in zone.get("actuators", []):
+            if act.get("role") not in ("primary_heat", "secondary_heat"):
+                continue
+            dev = _REGISTRY.device(act.get("ref")) or {}
+            entity = dev.get("entity")
+            if not entity:
+                continue
+            domain = str(entity).split(".")[0]
+            if domain == "switch":
+                if _clim_is_on(entity):
+                    return True
+            elif domain == "climate":
+                md, _ = _clim_state(entity)
+                if md == "heat":
+                    return True
+    return False
+
+
 # ============================================================
 # OVERRIDE MANAGER (опросный, без event_trigger)
 # ============================================================

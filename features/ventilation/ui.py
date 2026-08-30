@@ -13,4 +13,20 @@ def vent_cards(ventilation):
         cards.append({"type": "entities", "title": "Двери/окна", "entities": [
             {"entity": od["mock_state"], "name": "Mock: открыты"},
         ]})
+    
+    # НОВЫЙ БЛОК: Heating Lockout (координация с отоплением)
+    lockout = ventilation.get("heating_lockout") or {}
+    if lockout.get("enabled", False):
+        lockout_entities = [
+            {"entity": "input_boolean.feature_vent_heating_lockout", 
+             "name": "Включить блокировку"},
+            {"entity": "input_number.vent_lockout_street_max", 
+             "name": "Порог улицы (°C)"},
+            {"entity": "input_number.vent_lockout_delta", 
+             "name": "Дельта до уставки (°C)"},
+            {"entity": "input_select.vent_lockout_action", 
+             "name": "Действие"},
+        ]
+        cards.append({"type": "entities", "title": "Координация с отоплением", "entities": lockout_entities})
+    
     return cards

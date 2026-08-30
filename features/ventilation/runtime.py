@@ -81,6 +81,67 @@ def _vent_any_heating():
     return False
 
 
+def _vent_heating_lockout_active(cfg):
+    """Проверяет, нужно ли прижать рекуператор из-за активного отопления."""
+    lockout = cfg.get("heating_lockout", {}) or {}
+    if not lockout.get("enabled", False):
+        return None
+    if state.get("input_boolean.feature_vent_heating_lockout") != "on":
+        return None
+    
+    outdoor = _vent_get_float(cfg.get("sensors", {}).get("outdoor_temp"))
+    street_max = _vent_get_float("input_number.vent_lockout_street_max")
+    if street_max is None:
+        street_max = lockout.get("street_max", 5)
+    
+    if outdoor is None or outdoor > street_max:
+        return None  # улица тёплая, блокировка не нужна
+    
+    delta = _vent_get_float("input_number.vent_lockout_delta")
+    if delta is None:
+        delta = lockout.get("delta", 0.3)
+    
+    action = state.get("input_select.vent_lockout_action")
+    if action in (None, "unknown", "unavailable"):
+        action = lockout.get("action", "10")
+    
+    # Проверяем per-room
+    for room in lockout.get("rooms", []) or []:
+        room_id = room.get("id")
+        temp_sensor = room.get("temp_sensor")
+        zone_id = room.get("climate_zone")
+        vent_device = room.get("vent_device")
+        
+        if not temp_sensor or not zone_id:
+            continue
+        
+        room_temp = _vent_get_float(temp_sensor)
+        if room_temp is None:
+            continue
+        
+        # Получаем уставку отопления для этой зоны
+        heat_setpoint = _clim_get_setpoint(zone_id, "heat")
+        if heat_setpoint is None:
+            continue
+        
+        # Условие: температура близка к минимуму
+        if room_temp > heat_setpoint + delta:
+            continue
+        
+        # Проверяем, активен ли обогрев в этой зоне
+        if _clim_is_heating_active(zone_id):
+            why_msg = "lockout: " + str(room_id) + " " + str(round(room_temp, 1)) + "° <= " + str(heat_setpoint) + "°+" + str(delta) + ", outdoor " + str(round(outdoor, 1)) + "°"
+            return {
+                "action": "lockout",
+                "device": vent_device,
+                "room": room_id,
+                "mode": action,  # "OFF" или "10"/"20"/"30"
+                "why": why_msg
+            }
+    
+    return None
+
+
 def _vent_room_temps(cfg):
     temps = []
     for r in cfg.get("rooms", []) or []:
@@ -115,6 +176,19 @@ def _vent_decide(cfg):
         return {"preset": V_BOOST_IN}
     if state.get(flags.get("boost_exhaust")) =="on":
         return {"preset": V_BOOST_EX}
+    
+    # НОВАЯ ПРОВЕРКА: heating lockout (приоритет выше обычных режимов, ниже boost)
+    lockout = _vent_heating_lockout_active(cfg)
+    if lockout is not None:
+        device = lockout.get("device")
+        mode = lockout.get("mode")
+        if mode == "OFF":
+            return {"action":"off", "device": device, "why": lockout.get("why")}
+        else:
+            pct = int(mode)  # "10" -> 10
+            return {"action": "lockout", "device": device, "pct": pct, 
+                    "preset": V_BASE_WINTER, "why": lockout.get("why")}
+    
     zima = state.get("input_boolean.zima") =="on"
     sensors = cfg.get("sensors", {}) or {}
     outdoor = _vent_get_float(sensors.get("outdoor_temp"))
@@ -178,6 +252,22 @@ def _vent_apply(cfg, desired, mode):
         last_preset = last.get("preset")
         last_pct = last.get("pct")
         last_action = last.get("action")
+        
+        # НОВАЯ ПРОВЕРКА: применяем lockout только к нужному устройству
+        if desired.get("action") == "lockout":
+            if desired.get("device") != entity:
+                continue  # пропускаем другие рекуператоры
+            pct = desired.get("pct")
+            preset = desired.get("preset", V_BASE_WINTER)
+            why = desired.get("why", "lockout")
+            if mode == "shadow":
+                log.warning("[vent][SHADOW][lockout] " + entity + " -> " + str(preset) + " pct=" + str(pct))
+            else:
+                service.call("fan", "set_preset_mode", entity_id=entity, preset_mode=preset)
+                service.call("fan", "set_percentage", entity_id=entity, percentage=int(pct))
+                _VENT_LAST[entity] = {"preset": preset, "pct": pct, "action": "lockout"}
+                log.warning("[vent][REAL][lockout] " + entity + " -> " + str(preset) + " pct=" + str(pct) + " (" + why + ")")
+            continue
         
         if desired.get("action") =="off":
             # Проверяем, нужно ли выключать (сравниваем с последним состоянием)
@@ -291,10 +381,16 @@ def vent_debug():
     if not cfg:
         log.warning("[vent][debug] no ventilation config")
         return
+    lockout = _vent_heating_lockout_active(cfg)
     log.warning("[vent][debug] mode=" + str(_vent_mode(cfg))
                 +" open_doors=" + str(_vent_open_doors(cfg))
                 +" heating=" + str(_vent_any_heating())
+                +" lockout=" + str(lockout is not None)
                 +" free_heat=" + str(_FREE_HEAT_ACTIVE))
+    
+    if lockout:
+        log.warning("[vent][debug] lockout_reason=" + lockout.get("why"))
+    
     log.warning("[vent][debug] decide=" + str(_vent_decide(cfg)))
     for dev in cfg.get("devices", []) or []:
         e = dev.get("entity")

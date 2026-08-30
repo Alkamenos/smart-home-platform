@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """Helpers-артефакт фичи ventilation."""
-from core.builders import bool_
+from core.builders import bool_, num, sel
+
+
+def vent_lockout_entries(i):
+    """Генерация helpers для heating lockout."""
+    entries = [
+        bool_(i, "feature_vent_heating_lockout", "on", "mdi:snowflake-alert"),
+        num(i + 1, "vent_lockout_street_max", -20, 10, 1, 5, "mdi:thermometer-minus"),
+        num(i + 2, "vent_lockout_delta", 0, 2, 0.1, 0.3, "mdi:delta"),
+        sel(i + 3, "vent_lockout_action", 
+            ["OFF", "10", "20", "30", "40", "50"], "10", "mdi:fan-alert"),
+    ]
+    return entries, i + 4
 
 
 def vent_entries(ventilation, i):
@@ -32,4 +44,11 @@ def vent_entries(ventilation, i):
     if bf.get("enabled_flag", "").startswith("input_boolean."):
         entries.append(bool_(i, bf["enabled_flag"].split(".", 1)[1], "on", "mdi:fan"))
         i += 1
+    
+    # Добавляем heating lockout helpers если фича включена
+    lockout = ventilation.get("heating_lockout") or {}
+    if lockout.get("enabled", False):
+        lockout_entries, i = vent_lockout_entries(i)
+        entries += lockout_entries
+    
     return entries, i
