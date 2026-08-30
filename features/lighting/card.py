@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Цельная карточка группы: база + блоки фич сверху вниз.
 Яркость показывается только для диммируемых устройств (caps)."""
-from features.lighting import ui as FU
-from features.lighting import caps as CAPS
+from features.lighting.ui import group_feature_blocks
+from features.lighting.caps import group_caps
 
 CARD_TYPE = "custom:vertical-stack-in-card"
 
@@ -17,7 +17,7 @@ def _num(e, n):
 
 def group_card(g):
     gid = str(g.get("id"))
-    caps = CAPS.group_caps(g)
+    caps = group_caps(g)
     cards = [
         {"type": "custom:mushroom-title-card", "title": "💡 " + g.get("name", gid)},
         _grid([_sel("input_select.light_%s_on" % gid, "Включение"),
@@ -25,5 +25,5 @@ def group_card(g):
     ]
     if caps.get("dim"):
         cards.append(_num("input_number.light_%s_brightness" % gid, "Яркость %"))
-    cards += FU.group_feature_blocks(g, gid)
+    cards += group_feature_blocks(g, gid)
     return {"type": CARD_TYPE, "cards": cards}
