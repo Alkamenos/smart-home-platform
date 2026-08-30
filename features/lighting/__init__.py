@@ -1,9 +1,10 @@
-from features.lighting import schema, helpers, ui, card  # noqa: F401
+# features/lighting/__init__.py
+# Импорты будут добавлены сборщиком в правильном порядке
 
 FEATURE = {
     "id": "lighting",
-    "resolve": schema.resolve_group,
-    "helpers": helpers.group_feature_helpers,
-    "ui": ui.group_feature_blocks,
-    "card": card.group_card,
+    "resolve": resolve_group,
+    "helpers": group_feature_helpers,
+    "ui": group_feature_blocks,
+    "card": group_card,
 }
