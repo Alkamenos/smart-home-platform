@@ -35,21 +35,17 @@ def helpers_motion(g, gid, i, ctx):
     minit = "Держать включённым" if mmode == "keepalive" else "Включать и выключать"
     out.append(_sel(i, "light_%s_motion_mode" % gid, MOTION_MODES, minit, "mdi:run"))
     i += 1
-    mmode = mo.get("mode", "trigger")
-    minit = "Держать включённым" if mmode == "keepalive" else "Включать и выключать"
-    out.append(_sel(i, "light_%s_motion_mode" % gid, MOTION_MODES, minit, "mdi:run"))
-    i += 1
-    mmode = mo.get("mode", "trigger")
-    minit = "Держать включённым" if mmode == "keepalive" else "Включать и выключать"
-    out.append(_sel(i, "light_%s_motion_mode" % gid, MOTION_MODES, minit, "mdi:run"))
-    i += 1
     out += [
         _bool(i, "light_%s_motion" % gid, "on", "mdi:motion-sensor"),
         _bool(i + 1, "light_%s_motion_day" % gid, "off", "mdi:weather-sunny"),
         _num(i + 2, "light_%s_motion_day_min" % gid, 1, 120, 1, 5, "mdi:timer-outline"),
         _num(i + 3, "light_%s_motion_night_min" % gid, 1, 60, 1, 2, "mdi:timer-outline"),
+        # Ручной приоритет для датчиковых групп
+        _bool(i + 4, "light_%s_manual_respect" % gid, "on", "mdi:gesture-tap-button"),
+        _num(i + 5, "light_%s_manual_off_min" % gid, 1, 60, 1, 2, "mdi:timer-outline"),
+        _num(i + 6, "light_%s_manual_on_min" % gid, 5, 240, 1, 60, "mdi:timer-outline"),
     ]
-    i += 4
+    i += 7
     if mo.get("no_night_auto"):
         out.append(_bool(i, mo["no_night_auto"].split(".", 1)[1], "off", "mdi:weather-night"))
         i += 1

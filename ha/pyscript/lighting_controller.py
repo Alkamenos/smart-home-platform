@@ -385,7 +385,7 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
         last = _LG_LAST_CHANGE.get(e, 0)
         if (time.monotonic() - last) < cfg.get("anti_cycle_min", 2) * 60:
             return
-    _EXPECTED_REAL_STATE[e] = {"state": on, "until": time.monotonic() + 30}
+    _EXPECTED_REAL_STATE[e] = {"state": on, "until": time.monotonic() + 60}
     if mode == "shadow" and not force:
         log.warning("[light][SHADOW] " + e + " -> " + ("on" if on else "off"))
         return
@@ -440,17 +440,41 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
 
 
 def _lg_manual_command(cfg, g, on, mode):
+    gid = str(g.get("id"))
+    ms = _lg_motion_sensor(g, gid)
+    motion_mode = None
+    if ms:
+        motion_mode = _lg_state("input_select.light_%s_motion_mode" % gid)
+    has_motion = ms is not None and motion_mode not in (None, "unknown", "unavailable", "Выкл")
+    
     v = lg_vlight_entity(g)
     if _lg_state(v) is not None:
         _VLIGHT_PREV[v] = "on" if on else "off"
-        _lg_set_vlight(v, on, "real")   # было: mode
+        _lg_set_vlight(v, on, "real")
     for e in (g.get("lights", []) or []):
         if not e:
             continue
         if g.get("tolerate_unavailable") and _lg_unavailable(e):
             continue
-        _LG_OVERRIDE[e] = time.monotonic() + cfg.get("override_timeout_min", 60) * 60
-        _lg_set_real(e, on, "real", cfg, force=True)   # было: mode
+        
+        # Для групп с датчиком — своя логика override
+        if has_motion:
+            respect = _lg_state("input_boolean.light_%s_manual_respect" % gid)
+            if respect == "off":
+                _lg_log("override", "INFO", "gid=%s: manual_respect=off, skip override" % gid)
+            elif on:
+                mins = int(_lg_num("input_number.light_%s_manual_on_min" % gid, 60))
+                _LG_OVERRIDE[e] = time.monotonic() + mins * 60
+                _lg_log("override", "INFO", "gid=%s: manual ON command, block %d min" % (gid, mins))
+            else:
+                mins = int(_lg_num("input_number.light_%s_manual_off_min" % gid, 2))
+                _LG_OVERRIDE[e] = time.monotonic() + mins * 60
+                _lg_log("override", "INFO", "gid=%s: manual OFF command, block %d min" % (gid, mins))
+        else:
+            _LG_OVERRIDE[e] = time.monotonic() + cfg.get("override_timeout_min", 60) * 60
+            _lg_log("override", "INFO", "gid=%s: manual command, block 60 min" % gid)
+        
+        _lg_set_real(e, on, "real", cfg, force=True)
 
 # ---------------- решение автоматики ----------------
 
@@ -535,6 +559,13 @@ def _lg_handle_vlight_change(g, cfg, mode, v, has_v):
 
 
 def _lg_track_real(g, cfg, mode, v, has_v):
+    gid = str(g.get("id"))
+    ms = _lg_motion_sensor(g, gid)
+    motion_mode = None
+    if ms:
+        motion_mode = _lg_state("input_select.light_%s_motion_mode" % gid)
+    has_motion = ms is not None and motion_mode not in (None, "unknown", "unavailable", "Выкл")
+    
     for e in (g.get("lights", []) or []):
         if not e:
             continue
@@ -548,8 +579,34 @@ def _lg_track_real(g, cfg, mode, v, has_v):
             if exp == cur:
                 _EXPECTED_REAL_STATE.pop(e, None)
                 continue
-        _LG_OVERRIDE[e] = time.monotonic() + cfg.get("override_timeout_min", 60) * 60
-        log.warning("[light][override-manual] " + e + " external -> block")
+        
+        # Переход из unavailable не считать ручным вмешательством
+        if prev is None and _lg_unavailable(e):
+            _lg_log("override", "INFO", "gid=%s: skip override (from unavailable)" % gid)
+            continue
+        
+        # Для групп с датчиком — своя логика override
+        if has_motion:
+            respect = _lg_state("input_boolean.light_%s_manual_respect" % gid)
+            if respect == "off":
+                _lg_log("override", "INFO", "gid=%s: manual_respect=off, skip override" % gid)
+                continue
+            
+            if cur:
+                # Ручное ВКЛ — пауза manual_on_min
+                mins = int(_lg_num("input_number.light_%s_manual_on_min" % gid, 60))
+                _LG_OVERRIDE[e] = time.monotonic() + mins * 60
+                _lg_log("override", "INFO", "gid=%s: manual ON, block %d min" % (gid, mins))
+            else:
+                # Ручное ВЫКЛ — пауза manual_off_min
+                mins = int(_lg_num("input_number.light_%s_manual_off_min" % gid, 2))
+                _LG_OVERRIDE[e] = time.monotonic() + mins * 60
+                _lg_log("override", "INFO", "gid=%s: manual OFF, block %d min" % (gid, mins))
+        else:
+            # Группы без датчика — глобальные 60 мин
+            _LG_OVERRIDE[e] = time.monotonic() + cfg.get("override_timeout_min", 60) * 60
+            _lg_log("override", "INFO", "gid=%s: external -> block 60 min" % gid)
+        
         if has_v:
             _lg_set_vlight(v, cur, mode)
 
@@ -1004,6 +1061,19 @@ def light_override_clear(entity=None):
     else:
         _LG_OVERRIDE.clear()
     return {"ok": True}
+
+
+@service
+def light_override_debug():
+    now = time.monotonic()
+    out = []
+    for e, until in _LG_OVERRIDE.items():
+        remain = max(0, int((until - now) / 60))
+        src = "motion"
+        out.append({"entity": e, "until_min": remain})
+    state.set("sensor.light_override_debug", "ok", overrides=out)
+    log.warning("[light][override-debug] %s" % str(out))
+    return {"ok": True, "overrides": out}
 
 
 @service

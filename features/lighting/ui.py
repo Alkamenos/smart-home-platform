@@ -53,6 +53,17 @@ def ui_motion(g, gid):
     if mo.get("timeouts") == "own":
         cards.append(_grid([_num("input_number.light_%s_motion_day_min" % gid, "Таймаут день"),
                             _num("input_number.light_%s_motion_night_min" % gid, "Таймаут ночь")], 2))
+    # Ручной приоритет
+    respect_entity = "input_boolean.light_%s_manual_respect" % gid
+    cards.append(_bool(respect_entity, "Учитывать ручное управление"))
+    cards.append({
+        "type": "conditional",
+        "conditions": [{"entity": respect_entity, "state": "on"}],
+        "card": {"type": "vertical-stack", "cards": [
+            _grid([_num("input_number.light_%s_manual_off_min" % gid, "Пауза после ручного выкл, мин"),
+                   _num("input_number.light_%s_manual_on_min" % gid, "Пауза после ручного вкл, мин")], 2)
+        ]}
+    })
     return cards
 
 
