@@ -1,4 +1,4 @@
-from features.lighting.schema import _feats_of  # noqa: F401
+from features.lighting.schema import _feats_of
 
 MOTION_MODES = ["Выкл", "Включать и выключать", "Держать включённым"]
 
