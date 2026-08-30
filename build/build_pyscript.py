@@ -14,6 +14,7 @@ ORDER = [
     "features/health/runtime.py",
     "features/lighting/decide.py",
     "ha/pyscript/lighting_controller.py",
+    "features/covers/runtime.py",
 ]
 
 OUT = "/config/pyscript/manifest_loader.py"

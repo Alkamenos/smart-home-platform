@@ -1,313 +1,365 @@
 instance:
   id: leonid_house
-  name: "Дом Леонида"
+  name: Дом Леонида
   timezone: Europe/Moscow
   locale: ru-RU
-  version: "1.1.0"
+  version: 1.1.0
   metadata:
-    customer: "Леонид"
-    platform_version: "0.3.0"
-    notes: "Климат: гостиная + санузел + спальня + кабинет, shadow mode"
-
+    customer: Леонид
+    platform_version: 0.3.0
+    notes: 'Климат: гостиная + санузел + спальня + кабинет, shadow mode'
 logging:
-  level: INFO  # CRITICAL, INFO, DEBUG
+  level: INFO
   modules:
     lighting: DEBUG
     climate: INFO
     ventilation: INFO
     health: INFO
-
 devices:
   sensors:
-    - id: temp_gostinnaia
-      entity: sensor.datchik_temperatury_gostinnaia_temperature
-      role: climate_zone
-    - id: temp_sanuzel
-      entity: sensor.datchik_temperatury_sanuzel_temperature
-      role: climate_zone
-    - id: temp_spalnia
-      entity: sensor.datchik_temperatury_spalnia_temperature
-      role: climate_zone
-    - id: temp_kabinet
-      entity: sensor.datchik_temperatury_kabinet_temperature
-      role: climate_zone
-    - id: temp_gostevaia_spalnia
-      entity: sensor.datchik_temperatury_gostevaia_spalnia_temperature
-      role: climate_zone
-    - id: temp_outdoor
-      entity: sensor.temperatura_na_ulitse_srednee
-      role: climate_reference
-
+  - id: temp_gostinnaia
+    entity: sensor.datchik_temperatury_gostinnaia_temperature
+    role: climate_zone
+  - id: temp_sanuzel
+    entity: sensor.datchik_temperatury_sanuzel_temperature
+    role: climate_zone
+  - id: temp_spalnia
+    entity: sensor.datchik_temperatury_spalnia_temperature
+    role: climate_zone
+  - id: temp_kabinet
+    entity: sensor.datchik_temperatury_kabinet_temperature
+    role: climate_zone
+  - id: temp_gostevaia_spalnia
+    entity: sensor.datchik_temperatury_gostevaia_spalnia_temperature
+    role: climate_zone
+  - id: temp_outdoor
+    entity: sensor.temperatura_na_ulitse_srednee
+    role: climate_reference
   actuators:
-    - id: floor_heating_global
-      entity: climate.termostat_gostinaia
-      type: climate_device
-      managed_by_platform: false
-
-    - id: convector_gostinnaia
-      entity: switch.obogrevatel_gostinnaia
-      type: relay
-      managed_by_platform: true
-      min_cycle_minutes: 5
-
-    - id: ac_gostinnaia
-      entity: climate.esphome_web_0d22a4_ac_name
-      type: climate_device
-      managed_by_platform: true
-
-    - id: convector_sanuzel
-      entity: switch.obogrevatel_sanuzel
-      type: relay
-      managed_by_platform: true
-      min_cycle_minutes: 5
-
-    - id: convector_spalnia
-      entity: switch.obogrevatel_spalnia
-      type: relay
-      managed_by_platform: true
-      min_cycle_minutes: 5
-
-    - id: convector_kabinet
-      entity: switch.obogrevatel_kabinet
-      type: relay
-      managed_by_platform: true
-      min_cycle_minutes: 5
-
-    - id: convector_gostevaia_spalnia
-      entity: switch.maslianyi_radiator
-      type: relay
-      managed_by_platform: true
-      min_cycle_minutes: 5
-
+  - id: floor_heating_global
+    entity: climate.termostat_gostinaia
+    type: climate_device
+    managed_by_platform: false
+  - id: convector_gostinnaia
+    entity: switch.obogrevatel_gostinnaia
+    type: relay
+    managed_by_platform: true
+    min_cycle_minutes: 5
+  - id: ac_gostinnaia
+    entity: climate.esphome_web_0d22a4_ac_name
+    type: climate_device
+    managed_by_platform: true
+  - id: convector_sanuzel
+    entity: switch.obogrevatel_sanuzel
+    type: relay
+    managed_by_platform: true
+    min_cycle_minutes: 5
+  - id: convector_spalnia
+    entity: switch.obogrevatel_spalnia
+    type: relay
+    managed_by_platform: true
+    min_cycle_minutes: 5
+  - id: convector_kabinet
+    entity: switch.obogrevatel_kabinet
+    type: relay
+    managed_by_platform: true
+    min_cycle_minutes: 5
+  - id: convector_gostevaia_spalnia
+    entity: switch.maslianyi_radiator
+    type: relay
+    managed_by_platform: true
+    min_cycle_minutes: 5
 features:
   lighting:
     enabled: true
     mode: shadow
     override_timeout_min: 60
     anti_cycle_min: 2
-
     color_temp:
       enabled_flag: input_boolean.feature_color_temp
       day_kelvin: 5000
       night_kelvin: 2200
-      warm_from: "21:00"
-      night_from: "23:00"
-
+      warm_from: '21:00'
+      night_from: '23:00'
     backlight:
       enabled_flag: input_boolean.feature_backlight
       items:
-        - {entity: switch.svet_v_spalne_flip_indicator_light, mode: schedule, 
-            off: "23:00", on: "07:00"}
-
+      - entity: switch.svet_v_spalne_flip_indicator_light
+        mode: schedule
+        false: '23:00'
+        true: 07:00
     imitation:
       enabled_flag: input_boolean.feature_imitation
       away_flag: input_boolean.my_doma
       window_start: input_datetime.imitation_start
       window_end: input_datetime.imitation_end
-      groups: [table, kitchen_work]
+      groups:
+      - table
+      - kitchen_work
       min_on_min: 10
       max_on_min: 30
-
     dark:
       illuminance_sensor: sensor.datchik_osveshchennosti_illuminance
       dark_lux: 20
       light_lux: 40
       sun_dark_elevation: -3
       sun_light_elevation: 1
-
     night_flag: input_boolean.vecher
-
   groups:
-    - id: yard_floodlights
-      name: "Улица/двор основное"
-      lights: [switch.group_lights_outdoor_floodlights]
-      flag: input_boolean.feature_yard
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-
-    - id: street_night
-      name: "Уличное ночное"
-      lights: [light.night_light]
-      flag: input_boolean.feature_street_night
-      features:
-        dusk: {}
-        schedule: {off: sunrise}
-
-    - id: office
-      name: "Кабинет"
-      lights: [light.workroom_lights]
-      room: kabinet
-      flag: input_boolean.feature_office
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-        ct: {follow: true}
-        party: {role: off}
-    - id: office_lampa
-      name: "Кабинет (настольная лампа)"
-      room: kabinet
-      lights: [light.nastolnaia_lampa]
-      flag: input_boolean.feature_office
-      tolerate_unavailable: true
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-        ct: {follow: true}
-        party: {role: off}
-    - id: office_kus
-      name: "Кабинет (кусь)"
-      room: kabinet
-      lights: [light.kus]
-      flag: input_boolean.feature_office
-      tolerate_unavailable: true
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-        ct: {follow: true}
-        party: {role: off}
-
-
-
-    - id: bedroom
-      name: "Спальня"
-      lights: [light.svet_v_spalne_right]
-      flag: input_boolean.feature_bedroom
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "22:30"}
-
-    - id: living_room
-      name: "Гостиная (подсветка зеркала)"
-      room: gostinnaia
-      lights: [light.podsvetka_zerkala]
-      flag: input_boolean.feature_living_room
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-        ct: {follow: true}
-
-    - id: guest_bedroom
-      name: "Гостевая спальня (торшер)"
-      room: gostevaia_spalnia
-      lights: [light.torsher]
-      flag: input_boolean.feature_guest_bedroom
-      tolerate_unavailable: true
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-        ct: {follow: true}
-        party: {role: off}
-
-    - id: kitchen_work
-      name: "Кухня (рабочая поверхность)"
-      lights: [switch.kitchen_lights]
-      flag: input_boolean.feature_kitchen_work
-      features:
-        schedule: {on: "18:00", off: "23:00", auto_flag: 
-            input_boolean.feature_kitchen_work}
-        imitation: {participate: true}
-
-    - id: table
-      name: "Кухня (обеденный стол)"
-      lights: [light.table_lights]
-      flag: input_boolean.feature_table
-      features:
-        schedule: {on: sunset, off: "23:00", auto_flag: 
-            input_boolean.feature_table}
-        motion: {sensor: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy, 
-            mode: keepalive}
-        nightlight: {brightness: 40, color: [255, 150, 60], off_min: 3}
-        imitation: {participate: true}
-
-    - id: container
-      name: "Контейнер"
-      lights: [light.svet_v_konteinere]
-      flag: input_boolean.feature_container
-      features:
-        motion: {sensor: binary_sensor.datchik_dvizheniia_konteiner_occupancy, 
-            mode: trigger}
-
-    - id: bathroom
-      name: "Санузел"
-      lights: [light.vykliuchatel_sanuzel_switch1]
-      flag: input_boolean.feature_bathroom_light
-      features:
-        motion: {sensor: binary_sensor.vykliuchatel_sanuzel_presence, mode: 
-            trigger, timeouts: own, no_night_auto: 
-            input_boolean.light_bathroom_no_night_auto}
-
-    - id: garland_terrace
-      name: "Гирлянда терраса"
-      lights: [light.girlianda_terassa]
-      flag: input_boolean.feature_garland_terrace
-      tolerate_unavailable: true
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-
-    - id: garland_street
-      name: "Гирлянда уличная"
-      lights: [light.ulichnaia_girlianda]
-      flag: input_boolean.feature_garland_street
-      tolerate_unavailable: true
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-
-    - id: garland_windows
-      name: "Окна"
-      lights: [light.girlianda_na_oknakh]
-      flag: input_boolean.feature_garland_windows
-      tolerate_unavailable: true
-      features:
-        dusk: {}
-        schedule: {off: sunrise}
-        party: {role: on}
-      season:
-        summer: {features: {schedule: {off: sunrise}}}
-        winter: {features: {dusk: {require_dark: true}, schedule: {off: "23:00"}}}
-
-    - id: xmas_a2
-      name: "Рождественская уличная"
-      lights: [light.girlianda_a2]
-      flag: input_boolean.feature_xmas_a2
-      tolerate_unavailable: true
-      features:
-        dusk: {require_dark: true}
-        schedule: {off: "23:00"}
-
+  - id: yard_floodlights
+    name: Улица/двор основное
+    lights:
+    - switch.group_lights_outdoor_floodlights
+    flag: input_boolean.feature_yard
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
+  - id: street_night
+    name: Уличное ночное
+    lights:
+    - light.night_light
+    flag: input_boolean.feature_street_night
+    features:
+      dusk: {}
+      schedule:
+        false: sunrise
+  - id: office
+    name: Кабинет
+    lights:
+    - light.workroom_lights
+    room: kabinet
+    flag: input_boolean.feature_office
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
+      ct:
+        follow: true
+      party:
+        role: false
+  - id: office_lampa
+    name: Кабинет (настольная лампа)
+    room: kabinet
+    lights:
+    - light.nastolnaia_lampa
+    flag: input_boolean.feature_office
+    tolerate_unavailable: true
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
+      ct:
+        follow: true
+      party:
+        role: false
+  - id: office_kus
+    name: Кабинет (кусь)
+    room: kabinet
+    lights:
+    - light.kus
+    flag: input_boolean.feature_office
+    tolerate_unavailable: true
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
+      ct:
+        follow: true
+      party:
+        role: false
+  - id: bedroom
+    name: Спальня
+    lights:
+    - light.svet_v_spalne_right
+    flag: input_boolean.feature_bedroom
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '22:30'
+  - id: living_room
+    name: Гостиная (подсветка зеркала)
+    room: gostinnaia
+    lights:
+    - light.podsvetka_zerkala
+    flag: input_boolean.feature_living_room
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
+      ct:
+        follow: true
+  - id: guest_bedroom
+    name: Гостевая спальня (торшер)
+    room: gostevaia_spalnia
+    lights:
+    - light.torsher
+    flag: input_boolean.feature_guest_bedroom
+    tolerate_unavailable: true
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
+      ct:
+        follow: true
+      party:
+        role: false
+  - id: kitchen_work
+    name: Кухня (рабочая поверхность)
+    lights:
+    - switch.kitchen_lights
+    flag: input_boolean.feature_kitchen_work
+    features:
+      schedule:
+        true: '18:00'
+        false: '23:00'
+        auto_flag: input_boolean.feature_kitchen_work
+      imitation:
+        participate: true
+  - id: table
+    name: Кухня (обеденный стол)
+    lights:
+    - light.table_lights
+    flag: input_boolean.feature_table
+    features:
+      schedule:
+        true: sunset
+        false: '23:00'
+        auto_flag: input_boolean.feature_table
+      motion:
+        sensor: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy
+        mode: keepalive
+      nightlight:
+        brightness: 40
+        color:
+        - 255
+        - 150
+        - 60
+        off_min: 3
+      imitation:
+        participate: true
+  - id: container
+    name: Контейнер
+    lights:
+    - light.svet_v_konteinere
+    flag: input_boolean.feature_container
+    features:
+      motion:
+        sensor: binary_sensor.datchik_dvizheniia_konteiner_occupancy
+        mode: trigger
+  - id: bathroom
+    name: Санузел
+    lights:
+    - light.vykliuchatel_sanuzel_switch1
+    flag: input_boolean.feature_bathroom_light
+    features:
+      motion:
+        sensor: binary_sensor.vykliuchatel_sanuzel_presence
+        mode: trigger
+        timeouts: own
+        no_night_auto: input_boolean.light_bathroom_no_night_auto
+  - id: garland_terrace
+    name: Гирлянда терраса
+    lights:
+    - light.girlianda_terassa
+    flag: input_boolean.feature_garland_terrace
+    tolerate_unavailable: true
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
+  - id: garland_street
+    name: Гирлянда уличная
+    lights:
+    - light.ulichnaia_girlianda
+    flag: input_boolean.feature_garland_street
+    tolerate_unavailable: true
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
+  - id: garland_windows
+    name: Окна
+    lights:
+    - light.girlianda_na_oknakh
+    flag: input_boolean.feature_garland_windows
+    tolerate_unavailable: true
+    features:
+      dusk: {}
+      schedule:
+        false: sunrise
+      party:
+        role: true
+    season:
+      summer:
+        features:
+          schedule:
+            false: sunrise
+      winter:
+        features:
+          dusk:
+            require_dark: true
+          schedule:
+            false: '23:00'
+  - id: xmas_a2
+    name: Рождественская уличная
+    lights:
+    - light.girlianda_a2
+    flag: input_boolean.feature_xmas_a2
+    tolerate_unavailable: true
+    features:
+      dusk:
+        require_dark: true
+      schedule:
+        false: '23:00'
   sensor_health:
     enabled: true
     check_interval_min: 10
     battery_threshold: 20
     sensors:
-      - {entity: sensor.datchik_temperatury_gostinnaia_temperature, battery: 
-          CR2450, count: 1}
-      - {entity: sensor.datchik_temperatury_spalnia_temperature, battery: CR2450,
-        count: 1}
-      - {entity: sensor.datchik_temperatury_kabinet_temperature, battery: CR2450,
-        count: 1}
-      - {entity: sensor.datchik_temperatury_sanuzel_temperature, battery: CR2450,
-        count: 1}
-      - {entity: sensor.datchik_temperatury_gostevaia_spalnia_temperature, 
-          battery: CR2450, count: 1}
-      - {entity: sensor.datchik_temperatury_terassa_temperature, battery: CR2450,
-        count: 1}
-      - {entity: sensor.temperatura_v_teplitse_tomaty_temperature, battery: 
-          CR2450, count: 1}
-      - {entity: sensor.temperatura_v_teplitse_ogurtsy_temperature, battery: 
-          CR2450, count: 1}
-      - {entity: sensor.temperatura_v_teni_temperature, battery: CR2450, count: 
-          1}
-
+    - entity: sensor.datchik_temperatury_gostinnaia_temperature
+      battery: CR2450
+      count: 1
+    - entity: sensor.datchik_temperatury_spalnia_temperature
+      battery: CR2450
+      count: 1
+    - entity: sensor.datchik_temperatury_kabinet_temperature
+      battery: CR2450
+      count: 1
+    - entity: sensor.datchik_temperatury_sanuzel_temperature
+      battery: CR2450
+      count: 1
+    - entity: sensor.datchik_temperatury_gostevaia_spalnia_temperature
+      battery: CR2450
+      count: 1
+    - entity: sensor.datchik_temperatury_terassa_temperature
+      battery: CR2450
+      count: 1
+    - entity: sensor.temperatura_v_teplitse_tomaty_temperature
+      battery: CR2450
+      count: 1
+    - entity: sensor.temperatura_v_teplitse_ogurtsy_temperature
+      battery: CR2450
+      count: 1
+    - entity: sensor.temperatura_v_teni_temperature
+      battery: CR2450
+      count: 1
   climate:
     enabled: true
     mode: shadow
     override_timeout_min: 120
     season:
       source: input_boolean.zima
-      heating_when: "on"
+      heating_when: 'on'
     safety:
       min_setpoint: 16
       ac_winter_lockout: true
@@ -316,79 +368,89 @@ features:
       ac_dry_summer: true
       ac_dry_humidity: 60
     zones:
-      - id: gostinnaia
-        temp_sensor_ref: temp_gostinnaia
-        setpoints:
-          heat: {source: input_number.temperatura}
-          cool: {source: input_number.maksimalno_komfortnaia_temperatura}
-          deadband: 0.5
-        actuators:
-          - ref: convector_gostinnaia
-            role: secondary_heat
-            priority: 1
-          - ref: ac_gostinnaia
-            role: primary_cool
-            priority: 2
-      - id: sanuzel
-        temp_sensor_ref: temp_sanuzel
-        setpoints:
-          heat: {source: input_number.temperatura_v_sanuzle}
-          deadband: 0.5
-        actuators:
-          - ref: convector_sanuzel
-            role: secondary_heat
-            priority: 1
-      - id: spalnia
-        temp_sensor_ref: temp_spalnia
-        setpoints:
-          heat: {source: input_number.temperatura}
-          deadband: 0.5
-        actuators:
-          - ref: convector_spalnia
-            role: secondary_heat
-            priority: 1
-      - id: kabinet
-        temp_sensor_ref: temp_kabinet
-        setpoints:
-          heat: {source: input_number.temperatura}
-          deadband: 0.5
-        actuators:
-          - ref: convector_kabinet
-            role: secondary_heat
-            priority: 1
-      - id: gostevaia_spalnia
-        temp_sensor_ref: temp_gostevaia_spalnia
-        setpoints:
-          heat: {source: input_number.temperatura}
-          deadband: 0.5
-        actuators:
-          - ref: convector_gostevaia_spalnia
-            role: secondary_heat
-            priority: 1
-
+    - id: gostinnaia
+      temp_sensor_ref: temp_gostinnaia
+      setpoints:
+        heat:
+          source: input_number.temperatura
+        cool:
+          source: input_number.maksimalno_komfortnaia_temperatura
+        deadband: 0.5
+      actuators:
+      - ref: convector_gostinnaia
+        role: secondary_heat
+        priority: 1
+      - ref: ac_gostinnaia
+        role: primary_cool
+        priority: 2
+    - id: sanuzel
+      temp_sensor_ref: temp_sanuzel
+      setpoints:
+        heat:
+          source: input_number.temperatura_v_sanuzle
+        deadband: 0.5
+      actuators:
+      - ref: convector_sanuzel
+        role: secondary_heat
+        priority: 1
+    - id: spalnia
+      temp_sensor_ref: temp_spalnia
+      setpoints:
+        heat:
+          source: input_number.temperatura
+        deadband: 0.5
+      actuators:
+      - ref: convector_spalnia
+        role: secondary_heat
+        priority: 1
+    - id: kabinet
+      temp_sensor_ref: temp_kabinet
+      setpoints:
+        heat:
+          source: input_number.temperatura
+        deadband: 0.5
+      actuators:
+      - ref: convector_kabinet
+        role: secondary_heat
+        priority: 1
+    - id: gostevaia_spalnia
+      temp_sensor_ref: temp_gostevaia_spalnia
+      setpoints:
+        heat:
+          source: input_number.temperatura
+        deadband: 0.5
+      actuators:
+      - ref: convector_gostevaia_spalnia
+        role: secondary_heat
+        priority: 1
   ventilation:
     enabled: true
     mode: shadow
     override_timeout_min: 60
     devices:
-      - id: rek_spalnia
-        entity: fan.base_smart
-      - id: rek_kabinet
-        entity: fan.base_smart_2
+    - id: rek_spalnia
+      entity: fan.base_smart
+    - id: rek_kabinet
+      entity: fan.base_smart_2
     sensors:
       outdoor_temp: sensor.temperatura_na_ulitse_srednee
       outdoor_humidity: sensor.datchik_temperatury_terassa_humidity
       house_humidity: input_number.vlazhnost_v_dome
     rooms:
-      - id: spalnia
-        temp: sensor.datchik_temperatury_spalnia_temperature
-      - id: kabinet
-        temp: sensor.datchik_temperatury_kabinet_temperature
+    - id: spalnia
+      temp: sensor.datchik_temperatury_spalnia_temperature
+    - id: kabinet
+      temp: sensor.datchik_temperatury_kabinet_temperature
     setpoints_ref:
       heat: input_number.temperatura
       cool: input_number.maksimalno_komfortnaia_temperatura
-    speeds: {day: 40, away: 20}
-    deltas: {free_cool: 2, free_heat: 2, humidity: 5}
+    speeds:
+      day: 40
+      away: 20
+    deltas:
+      free_cool: 2
+      free_heat: 2
+      humidity: 5
     boost_minutes: 60
     winter_pause_outdoor_max: -5
     flags:
@@ -401,11 +463,11 @@ features:
       mock: true
       mock_state: input_boolean.open_doors_mock_state
       sensors:
-        - {entity: binary_sensor.gostinnaia_window}
-        - {entity: binary_sensor.gostinnaia_door}
-        - {entity: binary_sensor.gostevaia_spalnia_window}
-        - {entity: binary_sensor.sanuzel_window}
-        - {entity: binary_sensor.sanuzel_interroom_door}
+      - entity: binary_sensor.gostinnaia_window
+      - entity: binary_sensor.gostinnaia_door
+      - entity: binary_sensor.gostevaia_spalnia_window
+      - entity: binary_sensor.sanuzel_window
+      - entity: binary_sensor.sanuzel_interroom_door
     bathroom_fan:
       enabled_flag: input_boolean.feature_bathroom_fan
       entity: fan.vykliuchatel_sanuzel_switch2
@@ -414,14 +476,41 @@ features:
       temp_min: 26
       humidity_min: 60
       run_minutes: 15
-
+  covers:
+    enabled: true
+    mode: real
+    presence_flag: input_boolean.my_doma
+    dogs_flag: input_boolean.dogs_home
+    defaults:
+      open_time: 08:00
+      close_time: 00:00
+    covers:
+    - id: spalnia
+      name: Штора в спальне
+      cover: cover.shtora_v_spalne
+    - id: kabinet
+      name: Штора в кабинете
+      cover: cover.shtora_v_kabinete
+    - id: gostinnaia_levaia
+      name: Штора в гостиной (левая)
+      cover: cover.shtora_v_gostinnoi_levaia
+    - id: gostinnaia_pravaia
+      name: Штора в гостиной (правая, над дверью)
+      cover: cover.shtora_v_gostinnoi_pravaia
+      door: true
+      away_closed_pct: 60
 globals:
   modes:
     zima:
       entity: input_boolean.zima
-      affects: [climate]
+      affects:
+      - climate
   override_policy:
-    physical_switch: {priority: highest, duration: indefinite}
-    voice_assistant: {priority: medium, default_timeout_min: 120}
+    physical_switch:
+      priority: highest
+      duration: indefinite
+    voice_assistant:
+      priority: medium
+      default_timeout_min: 120
   evaluation_intervals:
     climate_sec: 30

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Манифест -> все helpers платформы (освещение, климат, вентиляция, здоровье, глобальные).
+"""Манифест -> все helpers платформы (освещение, климат, вентиляция, здоровье, шторы, глобальные).
 --apply: создаёт отсутствующие, обновляет изменившиеся (через удаление+пересоздание).
 --orphan: показывает существующие, которых нет в манифесте.
 --delete --confirm: удаляет orphan'ы (с защитой).
@@ -16,6 +16,7 @@ from core.builders import num, bool_, dt, sel
 from features.climate import helpers as clim_h
 from features.ventilation import helpers as vent_h
 from features.lighting import helpers as FH
+from features.covers import helpers as covers_h
 get_state = ha.state
 exists = ha.exists
 list_all_states = ha.list_all_states
@@ -189,6 +190,16 @@ add, i = vent_h.vent_entries(ventilation, i)
 entries += add
 
 # ============================================================
+# COVERS: шторы
+# ============================================================
+covers = features.get("covers", {}) or {}
+if covers and covers.get("enabled", True):
+    covers_helpers = covers_h.generate_covers_helpers(covers, {})
+    entries.extend(covers_helpers)
+    # Обновляем i для следующих helpers
+    i += len(covers_helpers)
+
+# ============================================================
 # FEATURES & SHADOW MODES (для дашборда)
 # ============================================================
 created_names = set([e["name"] for e in entries])
@@ -224,7 +235,7 @@ expected_ids = [e["type"].split("/")[0] + "." + e["name"] for e in entries]
 WHITELIST_NAMES = {"zima", "vecher", "my_doma", "party_mode"}
 ORPHAN_PREFIXES = (
     "vlight_", "light_", "feature_", "ct_", "light_rgb_",
-    "imitation_", "vlazhnost_",
+    "imitation_", "vlazhnost_", "cover_",
 )
 SHADOW_SUFFIX = "_shadow_mode"
 

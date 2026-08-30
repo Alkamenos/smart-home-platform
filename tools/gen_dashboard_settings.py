@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Манифест -> дашборд "Настройки" (свет по зонам, климат, вентиляция, датчики, цвет)."""
+"""Манифест -> дашборд "Настройки" (свет по зонам, климат, вентиляция, датчики, цвет, шторы)."""
 import argparse, os, yaml
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -8,6 +8,7 @@ from features.climate import ui as clim_ui
 from features.ventilation import ui as vent_ui
 from features.lighting import ui as FU
 from features.lighting import card as GC
+from features.covers import ui as covers_ui
 
 ZONE_TITLES = {"street": "Улица", "garden": "Сад", "house": "Дом"}
 
@@ -120,11 +121,16 @@ def main():
         {"entity": "input_select.light_rgb_scene", "name": "Сцена"},
     ]}]
 
+    # --- Шторы ---
+    covers = features.get("covers", {}) or {}
+    covers_cards = covers_ui.generate_covers_ui(covers) if covers else []
+
     views = light_views({"groups": features.get("groups") or lighting.get("groups") or []}) + [
         {"title": "🌡️ Климат", "path": "climate", "icon": "mdi:thermometer", "cards": climate_cards},
         {"title": "💨 Вентиляция", "path": "vent", "icon": "mdi:fan", "cards": vent_cards},
         {"title": "📡 Датчики", "path": "sensors", "icon": "mdi:access-point", "cards": sensor_cards},
         {"title": "🎨 Цвет", "path": "color", "icon": "mdi:palette", "cards": color_cards},
+        {"title": "🪟 Шторы", "path": "covers", "icon": "mdi:window-shutter", "cards": covers_cards},
     ]
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as fh:
