@@ -50,6 +50,10 @@ _LOG_LEVELS = {"CRITICAL": 0, "ERROR": 1, "WARNING": 2, "INFO": 3, "DEBUG": 4}
 _LOG_LEVEL = _LOG_LEVELS.get("INFO", 3)  # по умолчанию
 _MODULE_LOG_LEVELS = {}
 
+# Реестр voters (заполняется декоратором @fd_voter)
+_FD_REGISTRY = []
+_FD_ABORT = {"abort": True}
+
 
 # ==================== ХЕЛПЕРЫ ЧТЕНИЯ СОСТОЯНИЙ ====================
 
