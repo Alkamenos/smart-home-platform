@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """Тики фоновых задач: CT, RGB, backlight, imitation."""
 
-from features.lighting.state import (
-    _lg_state, _lg_attr, _lg_is_on, _lg_num, _lg_hm, _lg_dt_min, _lg_now_min,
-    _lg_cfg, _lg_log, _lg_group, lg_vlight_entity,
-    _CT_LAST, _RGB_APPLIED, _LG_IM_ACTIVE, _LG_OVERRIDE, _VLIGHT_PREV,
-)
-from features.lighting.control import _lg_set_real, _lg_set_vlight
 
 
 # RGB сцены

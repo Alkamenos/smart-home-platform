@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """Обработчики событий: кнопки, vlight, motion."""
 
-from features.lighting.state import (
-    _lg_state, _lg_cfg, _lg_mode, _lg_season, _lg_motion_sensor, _lg_log,
-    lg_vlight_entity, _LG_MOTION_LAST,
-)
-from features.lighting.control import _lg_manual_command
 
 
 # ==================== КНОПКИ ====================
 
 def _btn_build():
     """Построение списка entity кнопок для триггеров."""
-    from features.lighting.state import _BUTTON_MAP
     m = {}
     try:
         cfg = _lg_cfg() or {}
@@ -92,7 +86,6 @@ def _lg_vlight_handler(var_name=None, **kwargs):
             continue
         g2 = _lg_season(g)
         m = "shadow" if (mode == "shadow" or g2.get("shadow")) else "real"
-        from features.lighting.runtime import _lg_handle_vlight_change
         _lg_handle_vlight_change(g2, cfg, m, v, True)
         return
 
@@ -139,6 +132,5 @@ def _lg_motion_handler(var_name=None, **kwargs):
         _lg_log("motion", "DEBUG", "gid=%s: motion detected, last=%s" % (gid, str(_LG_MOTION_LAST[gid])))
         g2 = _lg_season(g)
         m = "shadow" if (mode == "shadow" or g2.get("shadow")) else "real"
-        from features.lighting.runtime import _lg_apply_group
         _lg_apply_group(g2, cfg, m)
         return

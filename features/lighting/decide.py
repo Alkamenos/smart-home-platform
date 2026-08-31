@@ -1,9 +1,3 @@
-from features.lighting.state import (
-    _lg_state, _lg_cfg, _lg_mode, _lg_update_dark, _lg_season,
-    _lg_log, _DARK, _FD_REGISTRY, _FD_ABORT,
-    _lg_now_min, _lg_night, _lg_motion_sensor, _lg_motion, _lg_num,
-    _LG_MOTION_LAST, _lg_is_on,
-)
 
 
 def _lg_decide_ctx(g, cfg):
@@ -52,7 +46,6 @@ def _lg_feats(g):
 
 def _fd_register(fn):
     """Регистрация voter'а в реестр."""
-    from features.lighting.state import _FD_REGISTRY
     _FD_REGISTRY.append(fn)
     return fn
 

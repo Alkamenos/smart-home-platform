@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """Управление реальными устройствами освещения."""
 
-from features.lighting.state import (
-    _lg_state, _lg_attr, _lg_is_on, _lg_unavailable, _lg_num,
-    _lg_cfg, _lg_group, _lg_log, _lg_caps, _lg_ct_target,
-    _LG_LAST_CHANGE, _EXPECTED_REAL_STATE, _LG_NL_ACTIVE,
-)
 
 
 def _lg_override_active(e):
     """Проверка активной блокировки override для entity."""
-    from features.lighting.state import _LG_OVERRIDE
     until = _LG_OVERRIDE.get(e)
     if until is None:
         return False
@@ -22,7 +16,6 @@ def _lg_override_active(e):
 
 def _lg_vlight_guard_active(v):
     """Проверка guard для vlight sync."""
-    from features.lighting.state import _VLIGHT_SYNC_GUARD
     until = _VLIGHT_SYNC_GUARD.get(v, 0)
     if time.monotonic() > until:
         _VLIGHT_SYNC_GUARD.pop(v, None)
@@ -32,7 +25,6 @@ def _lg_vlight_guard_active(v):
 
 def _lg_set_vlight(v, on, mode):
     """Установка состояния vlight с guard."""
-    from features.lighting.state import _VLIGHT_SYNC_GUARD, _VLIGHT_PREV
     want = "on" if on else "off"
     cur = _lg_state(v)
     if cur is None:
@@ -157,7 +149,6 @@ def _lg_group(cfg, gid):
 
 def _lg_manual_command(cfg, g, on, mode):
     """Обработка ручной команды (кнопка/дашборд/голос)."""
-    from features.lighting.state import _LG_OVERRIDE
     
     gid = str(g.get("id"))
     ms = _lg_motion_sensor(g, gid)
