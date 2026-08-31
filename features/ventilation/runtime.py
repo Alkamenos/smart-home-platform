@@ -261,12 +261,12 @@ def _vent_apply(cfg, desired, mode):
             preset = desired.get("preset", V_BASE_WINTER)
             why = desired.get("why", "lockout")
             if mode == "shadow":
-                log.warning("[vent][SHADOW][lockout] " + entity + " -> " + str(preset) + " pct=" + str(pct))
+                log_event("ventilation", "Инфо", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why="lockout", src="автоматика")
             else:
                 service.call("fan", "set_preset_mode", entity_id=entity, preset_mode=preset)
                 service.call("fan", "set_percentage", entity_id=entity, percentage=int(pct))
                 _VENT_LAST[entity] = {"preset": preset, "pct": pct, "action": "lockout"}
-                log.warning("[vent][REAL][lockout] " + entity + " -> " + str(preset) + " pct=" + str(pct) + " (" + why + ")")
+                log_event("ventilation", "Предупреждения", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why=why, src="автоматика")
             continue
         
         if desired.get("action") =="off":
@@ -274,11 +274,11 @@ def _vent_apply(cfg, desired, mode):
             should_turn_off = (cur_state != "off") and (last_action != "off")
             if should_turn_off:
                 if mode =="shadow":
-                    log.warning("[vent][SHADOW]" + entity + " -> off")
+                    log_event("ventilation", "Инфо", str(entity) + " -> off", why="решение автоматики", src="автоматика")
                 else:
                     service.call("fan","turn_off", entity_id=entity)
                     _VENT_LAST[entity] = {"action": "off"}
-                    log.warning("[vent][REAL]" + entity + " -> off")
+                    log_event("ventilation", "Предупреждения", str(entity) + " -> off", why="решение автоматики", src="автоматика")
             continue
         
         preset = desired.get("preset")
@@ -295,7 +295,7 @@ def _vent_apply(cfg, desired, mode):
             continue
         
         if mode =="shadow":
-            log.warning("[vent][SHADOW]" + entity + " ->" + str(preset) + " pct=" + str(pct))
+            log_event("ventilation", "Инфо", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why="смена режима", src="автоматика")
         else:
             if preset:
                 service.call("fan","set_preset_mode", entity_id=entity, preset_mode=preset)
@@ -303,7 +303,7 @@ def _vent_apply(cfg, desired, mode):
                 service.call("fan","set_percentage", entity_id=entity, percentage=int(pct))
             # Обновляем последнее отправленное состояние
             _VENT_LAST[entity] = {"preset": preset, "pct": pct}
-            log.warning("[vent][REAL]" + entity + " ->" + str(preset) + " pct=" + str(pct))
+            log_event("ventilation", "Предупреждения", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why="смена режима", src="автоматика")
 
 def _vent_bathroom_fan(cfg, mode):
     bf = cfg.get("bathroom_fan", {}) or {}
@@ -324,20 +324,20 @@ def _vent_bathroom_fan(cfg, mode):
     need = (t > t_min) and (h > h_min)
     if need and not is_on:
         if mode =="shadow":
-            log.warning("[vent][SHADOW][bath]" + entity + " -> on")
+            log_event("ventilation", "Инфо", str(entity) + " -> on", why="влажность в ванной", src="датчик")
         else:
             service.call("fan","turn_on", entity_id=entity)
             _VENT_FAN_START[entity] = time.monotonic()
-            log.warning("[vent][REAL][bath]" + entity + " -> on")
+            log_event("ventilation", "Предупреждения", str(entity) + " -> on", why="влажность в ванной", src="датчик")
     elif is_on and ((not need) or (
             _VENT_FAN_START.get(entity) is not None
             and (time.monotonic() - _VENT_FAN_START[entity]) > run_min * 60)):
         if mode =="shadow":
-            log.warning("[vent][SHADOW][bath]" + entity + " -> off")
+            log_event("ventilation", "Инфо", str(entity) + " -> off", why="окончание вентиляции ванной", src="датчик")
         else:
             service.call("fan","turn_off", entity_id=entity)
             _VENT_FAN_START.pop(entity, None)
-            log.warning("[vent][REAL][bath]" + entity + " -> off")
+            log_event("ventilation", "Предупреждения", str(entity) + " -> off", why="окончание вентиляции ванной", src="датчик")
 
 def _vent_tick():
     if _REGISTRY is None:
