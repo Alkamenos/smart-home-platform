@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """Манифест -> дашборд "Платформа" (фичи, диагностика, здоровье)."""
 import argparse, os, yaml
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from features.lighting import schema as RF
 
 def nice(name):
     return name.replace("_", " ").capitalize()
@@ -67,6 +64,21 @@ def main():
         light_flags.append({"entity": "input_boolean.feature_%s" % gid,
                             "name": g.get("name", nice(gid))})
 
+    # --- Логирование ---
+    log_ents = []
+    log_ents.append({"entity": "input_select.loglevel_platform", "name": "Платформа"})
+    for fname in sorted(features.keys()):
+        if fname == "groups":
+            continue
+        log_ents.append({"entity": "input_select.loglevel_" + fname, "name": nice(fname)})
+    
+    # --- Буфер решений ---
+    decisions_card = {
+        "type": "entities",
+        "title": "📋 Последние решения",
+        "entities": [{"entity": "sensor.platform_decisions", "name": "Решения"}]
+    }
+
     views = [
         {"title": "⚙️ Фичи", "path": "features", "icon": "mdi:toggle-switch",
          "cards": [
@@ -81,6 +93,11 @@ def main():
          ]},
         {"title": "🔋 Датчики", "path": "health", "icon": "mdi:heart-pulse",
          "cards": [{"type": "entities", "title": "Здоровье", "entities": health_ents}]},
+        {"title": "📝 Логирование", "path": "logging", "icon": "mdi:file-document",
+         "cards": [
+             {"type": "entities", "title": "Уровни логирования", "entities": log_ents},
+             decisions_card,
+         ]},
     ]
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as fh:

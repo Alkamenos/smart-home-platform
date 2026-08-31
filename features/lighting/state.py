@@ -50,6 +50,17 @@ _LOG_LEVELS = {"CRITICAL": 0, "ERROR": 1, "WARNING": 2, "INFO": 3, "DEBUG": 4}
 _LOG_LEVEL = _LOG_LEVELS.get("INFO", 3)  # по умолчанию
 _MODULE_LOG_LEVELS = {}
 
+# Кэш уровней логирования по доменам (обновляется из helpers)
+_LOG_CACHE = {}
+_LOG_CACHE_UPDATED = 0
+
+# Домены логирования (заполняется при инициализации)
+_LOG_DOMAINS = []
+
+# Буфер решений (последние ~50)
+_DECISION_BUFFER = []
+_DECISION_BUFFER_MAX = 50
+
 # Реестр voters (заполняется декоратором @fd_voter)
 _FD_REGISTRY = []
 _FD_ABORT = {"abort": True}
@@ -141,29 +152,85 @@ def _lg_dt_min(entity):
 # ==================== КОНФИГУРАЦИЯ ====================
 
 def _lg_init_logging():
-    """Инициализация уровней логирования из манифеста."""
-    global _LOG_LEVEL, _MODULE_LOG_LEVELS
+    """Инициализация уровней логирования из helpers (manifest — фолбэк)."""
+    global _LOG_LEVEL, _MODULE_LOG_LEVELS, _LOG_CACHE, _LOG_DOMAINS
     if _REGISTRY is None:
         return
-    cfg = _REGISTRY.feature("logging") or {}
-    level_name = cfg.get("level", "INFO")
-    _LOG_LEVEL = _LOG_LEVELS.get(level_name, 3)
-    modules = cfg.get("modules", {})
-    for mod, lvl in modules.items():
-        _MODULE_LOG_LEVELS[mod] = _LOG_LEVELS.get(lvl, 3)
+    
+    # Считываем уровни из helpers (источник правды)
+    platform_lvl = _lg_state("input_select.loglevel_platform")
+    if platform_lvl:
+        _LOG_LEVEL = _LOG_LEVELS.get(platform_lvl, 3)
+    
+    # Собираем список доменов из реестра фич
+    features = _REGISTRY.features() or {}
+    _LOG_DOMAINS = ["platform"]
+    for fname in sorted(features.keys()):
+        _LOG_DOMAINS.append(fname)
+        helper_name = "input_select.loglevel_" + fname
+        lvl_val = _lg_state(helper_name)
+        if lvl_val:
+            _MODULE_LOG_LEVELS[fname] = _LOG_LEVELS.get(lvl_val, 3)
+    
+    # Кэшируем все уровни
+    _LOG_CACHE["platform"] = _LOG_LEVEL
+    for mod, lvl in _MODULE_LOG_LEVELS.items():
+        _LOG_CACHE[mod] = lvl
+    
+    _LOG_CACHE_UPDATED = time.monotonic()
 
 
 def _lg_log(module, level_name, msg):
-    """Логирование с проверкой уровня."""
+    """Логирование с проверкой уровня по домену."""
     level_val = _LOG_LEVELS.get(level_name, 3)
-    module_level = _MODULE_LOG_LEVELS.get(module, _LOG_LEVEL)
-    if level_val <= module_level:
+    
+    # Проверяем кэш, обновляем если старше 60 сек
+    now = time.monotonic()
+    if (now - _LOG_CACHE_UPDATED) > 60:
+        _lg_init_logging()
+    
+    # Получаем уровень для домена (fallback на platform)
+    domain_level = _LOG_CACHE.get(module, _LOG_CACHE.get("platform", _LOG_LEVEL))
+    
+    if level_val <= domain_level:
+        # Формат: [<домен>][<УРОВЕНЬ>] <что>
+        prefix = "[" + module + "][" + level_name + "]"
         if level_name == "DEBUG":
-            log.info("[light][DEBUG][" + module + "] " + msg)
+            log.info(prefix + " " + msg)
         elif level_name == "INFO":
-            log.info("[light][" + module + "] " + msg)
+            log.info(prefix + " " + msg)
         else:
-            log.warning("[light][" + module + "] " + msg)
+            log.warning(prefix + " " + msg)
+
+
+def _lg_log_decision(domain, decision_text, why, src="автоматика", extra_keys=None):
+    """Логирование решения с записью в буфер."""
+    global _DECISION_BUFFER
+    
+    # Форматируем строку лога
+    keys_str = ""
+    if extra_keys:
+        keys_list = []
+        for k, v in extra_keys.items():
+            keys_list.append(str(k) + "=" + str(v))
+        keys_str = " | " + " ".join(keys_list)
+    
+    log_msg = decision_text + " | why=" + why + " | src=" + src + keys_str
+    _lg_log(domain, "INFO", log_msg)
+    
+    # Добавляем в буфер решений
+    entry = {
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "domain": domain,
+        "decision": decision_text,
+        "why": why,
+        "src": src
+    }
+    _DECISION_BUFFER.insert(0, entry)
+    
+    # Обрезаем буфер
+    if len(_DECISION_BUFFER) > _DECISION_BUFFER_MAX:
+        _DECISION_BUFFER = _DECISION_BUFFER[:_DECISION_BUFFER_MAX]
 
 
 def _lg_cfg():
