@@ -16,6 +16,151 @@ DEFAULT_MANIFEST_PATH = os.path.join(CONFIG_DIR,"manifests","active.yaml")
 _REGISTRY = None
 _MANIFEST_PATH = DEFAULT_MANIFEST_PATH
 
+# ============================================================
+# СИСТЕМА ЛОГИРОВАНИЯ
+# ============================================================
+_LOG_CACHE = {}  # кэш уровней: {domain: level_index}
+_LOG_LEVELS = ["Выкл", "Ошибки", "Предупреждения", "Инфо", "Отладка"]
+_LOG_DOMAINS = []  # список доменов из реестра
+_DECISION_BUFFER = []  # кольцевой буфер решений (последние 50)
+
+def _lg_state(entity_id, default=None):
+    """Безопасное чтение state."""
+    try:
+        st = state.get(entity_id)
+        if st is None:
+            return default
+        return st.state
+    except Exception:
+        return default
+
+
+def _lg_get_level_index(level_name):
+    """Получить индекс уровня по названию."""
+    for idx, name in enumerate(_LOG_LEVELS):
+        if name == level_name:
+            return idx
+    return 3  # fallback: Инфо
+
+
+def _lg_refresh_cache():
+    """Обновить кэш уровней логирования из helpers."""
+    global _LOG_CACHE, _LOG_DOMAINS
+    # Платформа
+    plat_lvl = _lg_state("input_select.loglevel_platform", "Инфо")
+    _LOG_CACHE["platform"] = _lg_get_level_index(plat_lvl)
+    
+    # Фичи
+    for domain in _LOG_DOMAINS:
+        entity = "input_select.loglevel_" + domain
+        lvl = _lg_state(entity, "Инфо")
+        _LOG_CACHE[domain] = _lg_get_level_index(lvl)
+
+
+def log_event(domain, level_name, message, why="", src="автоматика", **kwargs):
+    """
+    Единый диспетчер логирования.
+    domain: 'platform', 'lighting', 'climate', 'ventilation', 'sensor_health'
+    level_name: 'Ошибки', 'Предупреждения', 'Инфо', 'Отладка'
+    message: текст события
+    why: причина решения
+    src: источник (автоматика/ручное/Алиса-внешний/таймер/датчик)
+    kwargs: дополнительные ключи для лога
+    """
+    global _LOG_CACHE, _DECISION_BUFFER
+    
+    # Проверка: есть ли домен в кэше
+    if domain not in _LOG_CACHE:
+        _lg_refresh_cache()
+    
+    # Получить требуемый уровень
+    req_level_idx = _lg_get_level_index(level_name)
+    cached_idx = _LOG_CACHE.get(domain, 3)
+    
+    # Фильтрация: если уровень ниже кэшированного — не логировать
+    if req_level_idx > cached_idx:
+        return
+    
+    # Форматирование дополнительных ключей
+    extra_parts = []
+    for k, v in kwargs.items():
+        extra_parts.append("%s=%s" % (str(k), str(v)))
+    
+    extra_str = ""
+    if extra_parts:
+        extra_str = " | " + " | ".join(extra_parts)
+    
+    why_str = ""
+    if why:
+        why_str = " | why=" + str(why)
+    
+    # Единый формат строки лога
+    log_line = "[" + domain + "][" + level_name + "] " + str(message) + why_str + " | src=" + str(src) + extra_str
+    
+    # Вывод через log.info или log.warning в зависимости от уровня
+    if level_name == "Отладка":
+        log.debug(log_line)
+    elif level_name == "Инфо":
+        log.info(log_line)
+    elif level_name == "Предупреждения":
+        log.warning(log_line)
+    else:  # Ошибки, Выкл
+        log.error(log_line)
+    
+    # Добавление в буфер решений (только важные события)
+    if level_name in ["Инфо", "Предупреждения", "Ошибки"]:
+        _add_to_buffer(domain, message, why, src)
+
+
+def _add_to_buffer(domain, decision, reason, source):
+    """Добавить решение в кольцевой буфер."""
+    global _DECISION_BUFFER
+    import time
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    entry = {
+        "time": now,
+        "domain": domain,
+        "decision": decision,
+        "reason": reason or "",
+        "source": source
+    }
+    _DECISION_BUFFER.insert(0, entry)
+    # Обрезать до 50 записей
+    if len(_DECISION_BUFFER) > 50:
+        _DECISION_BUFFER = _DECISION_BUFFER[:50]
+    # Опубликовать в sensor.platform_decisions
+    _publish_decisions()
+
+
+def _publish_decisions():
+    """Опубликовать буфер решений в sensor.platform_decisions."""
+    try:
+        state.set("sensor.platform_decisions", _DECISION_BUFFER)
+    except Exception:
+        pass
+
+
+@state_trigger("{input_select.loglevel_platform,input_select.loglevel_lighting,input_select.loglevel_climate,input_select.loglevel_ventilation,input_select.loglevel_sensor_health,input_select.loglevel_covers}")
+def _loglevel_changed(**kwargs):
+    """Обработчик изменения уровня логирования."""
+    _lg_refresh_cache()
+    log_event("platform", "Инфо", "Уровень логирования обновлён", src="ручное")
+
+
+@time_trigger("startup")
+def _logging_startup():
+    """Инициализация логирования при старте."""
+    global _LOG_DOMAINS
+    # Домены будут заполнены после загрузки реестра
+    _LOG_DOMAINS = ["lighting", "climate", "ventilation", "sensor_health", "covers"]
+    _lg_refresh_cache()
+    log_event("platform", "Инфо", "Система логирования запущена", src="таймер")
+    
+    # Периодическое обновление кэша (раз в минуту)
+    while True:
+        task.sleep(60)
+        _lg_refresh_cache()
+
 
 def _read_manifest_file(path):
     # БЕЗ with: pyscript теряет return из with-блока
