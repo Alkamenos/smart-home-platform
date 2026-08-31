@@ -33,10 +33,10 @@ def _lg_set_vlight(v, on, mode):
         return
     _VLIGHT_SYNC_GUARD[v] = time.monotonic() + 10
     if mode == "shadow":
-        log.warning("[light][SHADOW][vlight] " + v + " -> " + want)
+        log_event("lighting", "Инфо", "vlight " + v + " -> " + want, why="shadow-режим", src="автоматика")
     else:
         service.call("input_boolean", "turn_" + want, entity_id=v)
-        log.warning("[light][REAL][vlight] " + v + " -> " + want)
+        log_event("lighting", "Инфо", "vlight " + v + " -> " + want, why="ручная команда", src="ручное")
 
 
 def _lg_expected_guard(e):
@@ -57,7 +57,7 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
     
     # Если восстанавливаем свет после ночника - нужно применить профиль
     if restoring:
-        log.warning("[light][REAL][restore] " + e + " applying profile after nightlight")
+        log_event("lighting", "Инфо", e + " applying profile after nightlight", why="восстановление после ночника", src="автоматика")
         _LG_NL_ACTIVE.discard(e)
         # Не возвращаем, продолжаем применять настройки профиля
     elif already:
@@ -66,12 +66,13 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
     if not force and not restoring:
         last = _LG_LAST_CHANGE.get(e, 0)
         if (time.monotonic() - last) < cfg.get("anti_cycle_min", 2) * 60:
+            log_event("lighting", "Отладка", e + " skip (anti-cycle)", why="анти-цикл 2 мин", src="таймер")
             return
     
     _EXPECTED_REAL_STATE[e] = {"state": on, "until": time.monotonic() + 60}
     
     if mode == "shadow" and not force:
-        log.warning("[light][SHADOW] " + e + " -> " + ("on" if on else "off"))
+        log_event("lighting", "Инфо", e + " -> " + ("on" if on else "off"), why="shadow-режим", src="автоматика")
         return
     
     dom = str(e).split(".")[0]
@@ -92,7 +93,7 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
             else:
                 service.call(dom, "turn_on", entity_id=e)
             _LG_NL_ACTIVE.add(e)
-            log.warning("[light][REAL][nightlight] " + e + " -> on b=" + str(b))
+            log_event("lighting", "Инфо", e + " -> on b=" + str(b), why="ночник", src="автоматика")
         else:
             gid_real = _LIGHT2GID.get(e)
             gr = _lg_group(cfg, gid_real) if gid_real else None
@@ -121,7 +122,7 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
             _LG_NL_ACTIVE.discard(e)
     
     _LG_LAST_CHANGE[e] = time.monotonic()
-    log.warning("[light][REAL] " + e + " -> " + ("on" if on else "off"))
+    log_event("lighting", "Инфо", e + " -> " + ("on" if on else "off"), why="решение автоматики", src="автоматика")
 
 
 # Маппинг light -> gid (заполняется в runtime)
@@ -172,17 +173,17 @@ def _lg_manual_command(cfg, g, on, mode):
         if has_motion:
             respect = _lg_state("input_boolean.light_%s_manual_respect" % gid)
             if respect == "off":
-                _lg_log("override", "INFO", "gid=%s: manual_respect=off, skip override" % gid)
+                log_event("lighting", "Инфо", "gid=" + gid + ": manual_respect=off, skip override", why="настройка группы", src="ручное")
             elif on:
                 mins = int(_lg_num("input_number.light_%s_manual_on_min" % gid, 60))
                 _LG_OVERRIDE[e] = time.monotonic() + mins * 60
-                _lg_log("override", "INFO", "gid=%s: manual ON command, block %d min" % (gid, mins))
+                log_event("lighting", "Инфо", "gid=" + gid + ": manual ON command, block " + str(mins) + " min", why="ручное ВКЛ", src="ручное")
             else:
                 mins = int(_lg_num("input_number.light_%s_manual_off_min" % gid, 2))
                 _LG_OVERRIDE[e] = time.monotonic() + mins * 60
-                _lg_log("override", "INFO", "gid=%s: manual OFF command, block %d min" % (gid, mins))
+                log_event("lighting", "Инфо", "gid=" + gid + ": manual OFF command, block " + str(mins) + " min", why="ручное ВЫКЛ", src="ручное")
         else:
             _LG_OVERRIDE[e] = time.monotonic() + cfg.get("override_timeout_min", 60) * 60
-            _lg_log("override", "INFO", "gid=%s: manual command, block 60 min" % gid)
+            log_event("lighting", "Инфо", "gid=" + gid + ": manual command, block 60 min", why="ручная команда", src="ручное")
         
         _lg_set_real(e, on, "real", cfg, force=True)
