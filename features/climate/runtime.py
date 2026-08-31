@@ -147,8 +147,8 @@ def _clim_override_active(entity):
 def _clim_set_override(e, reason):
     timeout = _clim_override_timeout()
     _OVERRIDE[e] = time.monotonic() + timeout
-    log.warning("[override]" + str(e) + " manual change (" + reason
-                +") -> block " + str(timeout) +"s")
+    log_event("climate", "Предупреждения", str(e) + " manual change (" + reason
+                +") -> block " + str(timeout) +"s", why=reason, src="ручное")
 
 
 def _clim_detect_manual(mode):
@@ -201,16 +201,16 @@ def _clim_send_off(entity):
 
 
 def _clim_switch(mode, entity, target_state, zone_id, kind, cur, target):
-    msg = ("[" + str(zone_id) +"] " + str(kind) +" " + str(entity)
-           +" -> " + str(target_state)
-           +" (cur=" + str(cur) +" target=" + str(target) +")")
+    msg = "[" + str(zone_id) +"] " + str(kind) +" " + str(entity) \
+           +" -> " + str(target_state) \
+           +" (cur=" + str(cur) +" target=" + str(target) +")"
     if mode =="shadow":
-        log.warning("[climate][SHADOW]" + msg)
+        log_event("climate", "Инфо", msg, why="shadow-режим", src="автоматика")
         return
     svc = "turn_on" if target_state =="on" else"turn_off"
     service.call(str(entity).split(".")[0], svc, entity_id=entity)
     _clim_record_cmd(entity)
-    log.warning("[climate][REAL]" + msg)
+    log_event("climate", "Предупреждения", msg, why="решение автоматики", src="автоматика")
 
 def _clim_free_heat():
     try:
@@ -243,9 +243,9 @@ def _clim_eval_heat_actuator(mode, dev, cur_temp, heat_target, deadband, zone_id
 
     if mode =="shadow":
         if should_on and not is_on:
-            log.warning("[climate][SHADOW] [" + str(zone_id) +"] HEAT " + entity +" -> on")
+            log_event("climate", "Инфо", "[" + str(zone_id) +"] HEAT " + entity +" -> on", why="shadow-режим", src="автоматика")
         elif should_off and is_on:
-            log.warning("[climate][SHADOW] [" + str(zone_id) +"] HEAT " + entity +" -> off")
+            log_event("climate", "Инфо", "[" + str(zone_id) +"] HEAT " + entity +" -> off", why="shadow-режим", src="автоматика")
         return
 
     desired = {"mode":"heat","temp": heat_target}
@@ -279,9 +279,9 @@ def _clim_eval_cool_actuator(mode, dev, cur_temp, cool_target, deadband, zone_id
     should_off = cur_temp < (cool_target - deadband)
     if mode =="shadow":
         if should_on and not is_on:
-            log.warning("[climate][SHADOW] [" + str(zone_id) +"] COOL " + entity +" -> on")
+            log_event("climate", "Инфо", "[" + str(zone_id) +"] COOL " + entity +" -> on", why="shadow-режим", src="автоматика")
         elif should_off and is_on:
-            log.warning("[climate][SHADOW] [" + str(zone_id) +"] COOL " + entity +" -> off")
+            log_event("climate", "Инфо", "[" + str(zone_id) +"] COOL " + entity +" -> off", why="shadow-режим", src="автоматика")
         return
     desired = {"mode":"cool","temp": cool_target}
     last = _CLIM_LAST.get(entity)
@@ -313,8 +313,7 @@ def _clim_eval_zone(zone, mode, min_setpoint, heating_season):
     cool_target = _clim_get_float(cool_sp) if cool_sp else None
 
     if heat_target is not None and min_setpoint is not None and heat_target < min_setpoint:
-        log.warning("[climate][" + str(zone_id) +"] setpoint ниже минимума, использую "
-                    + str(min_setpoint))
+        log_event("climate", "Предупреждения", "[" + str(zone_id) +"] setpoint ниже минимума, использую " + str(min_setpoint), why="коррекция уставки", src="автоматика")
         heat_target = min_setpoint
     
     for act in zone.get("actuators", []):
@@ -373,10 +372,10 @@ def _clim_safety_tick(mode):
                 continue
             if _clim_is_on(entity):
                 if mode =="shadow":
-                    log.warning("[climate][SHADOW][lockout]" + entity + " on зимой -> был бы выключен")
+                    log_event("climate", "Инфо", str(entity) + " on зимой -> был бы выключен", why="lockout AC зимой", src="автоматика")
                 else:
                     _clim_send_off(entity)
-                    log.warning("[climate][REAL][lockout]" + entity + " выключен (зима)")
+                    log_event("climate", "Предупреждения", str(entity) + " выключен (зима)", why="lockout AC зимой", src="автоматика")
                 now = time.monotonic()
                 if now - _AC_WARN_LAST.get(entity, 0) > 600:
                     _AC_WARN_LAST[entity] = now
@@ -414,13 +413,13 @@ def _clim_dry_tick(mode):
                 continue
             if hum > thr and cur_mode =="off":
                 if mode =="shadow":
-                    log.warning("[climate][SHADOW][dry]" + entity + " -> dry (hum=" + str(hum) +")")
+                    log_event("climate", "Инфо", str(entity) + " -> dry (hum=" + str(hum) +")", why="осушение", src="автоматика")
                 else:
                     service.call("climate","set_hvac_mode", entity_id=entity, hvac_mode="dry")
-                    log.warning("[climate][REAL][dry]" + entity + " -> dry")
+                    log_event("climate", "Предупреждения", str(entity) + " -> dry", why="осушение", src="автоматика")
             elif cur_mode =="dry" and hum < (thr - 5):
                 if mode =="shadow":
-                    log.warning("[climate][SHADOW][dry]" + entity + " -> off")
+                    log_event("climate", "Инфо", str(entity) + " -> off", why="окончание осушения", src="автоматика")
                 else:
                     _clim_send_off(entity)
 
