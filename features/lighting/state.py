@@ -249,7 +249,6 @@ def _lg_cfg():
         if not isinstance(g, dict):
             continue
         try:
-            from features.lighting.schema import resolve_group
             groups.append(resolve_group(g))
         except Exception as ex:
             log.warning("[light] resolve failed: %s: %s" % (str(g.get("id")), str(ex)))

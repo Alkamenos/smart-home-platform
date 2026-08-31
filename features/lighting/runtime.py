@@ -1,17 +1,6 @@
 #!/usr/bin/env python3
 """Runtime: главный цикл и применение решений к группам."""
 
-from features.lighting.state import (
-    _lg_state, _lg_cfg, _lg_mode, _lg_update_dark, _lg_season,
-    _lg_decide_ctx, _lg_log, _DARK, _FD_REGISTRY, _FD_ABORT,
-)
-from features.lighting.control import (
-    _lg_set_real, _lg_manual_command, _lg_rebuild_light_map,
-    _lg_override_active, _lg_expected_guard, _lg_set_vlight, lg_vlight_entity,
-)
-from features.lighting.ticks import (
-    _lg_ct_tick, _lg_rgb_tick, _lg_backlight_tick, _lg_imitation_tick,
-)
 
 
 def _lg_decide(g, cfg):
@@ -39,7 +28,6 @@ def _lg_decide(g, cfg):
 
 def _lg_handle_vlight_change(g, cfg, mode, v, has_v):
     """Обработка изменения vlight (ручная команда)."""
-    from features.lighting.state import _VLIGHT_PREV
     if not has_v:
         return
     cur = _lg_state(v)
@@ -57,7 +45,6 @@ def _lg_handle_vlight_change(g, cfg, mode, v, has_v):
 
 def _lg_track_real(g, cfg, mode, v, has_v):
     """Отслеживание изменений реальных ламп (детект ручного вмешательства)."""
-    from features.lighting.state import _LG_PREV, _EXPECTED_REAL_STATE, _LG_OVERRIDE
     
     gid = str(g.get("id"))
     ms = _lg_motion_sensor(g, gid)

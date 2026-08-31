@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
 """Сервисы для управления освещением."""
 
-from features.lighting.state import (
-    _lg_state, _lg_cfg, _lg_mode, _lg_update_dark, _lg_num, _lg_is_on, _lg_unavailable,
-    _lg_motion_sensor, _lg_decide_ctx, _lg_log, lg_vlight_entity,
-    _LG_OVERRIDE, _DARK,
-)
-from features.lighting.control import _lg_manual_command, _lg_set_real
 
 
 @service
 def light_caps():
     """Получение caps всех групп в sensor.light_caps."""
-    from features.lighting.caps import group_caps
     cfg = _lg_cfg()
     if cfg is None:
         return
     out = {}
     for g in (cfg.get("groups", []) or []):
-        out[str(g.get("id"))] = group_caps(g)
+        out[str(g.get("id"))] = _lg_caps(g)
     state.set("sensor.light_caps", "ok", caps=out)
     log.warning("[light][caps] %s" % str(out))
 
@@ -33,7 +26,6 @@ def light_debug():
     _lg_update_dark(cfg)
     log.warning("[light][debug] mode=" + str(_lg_mode(cfg)) + " dark=" + str(_DARK))
     for g in (cfg.get("groups", []) or []):
-        from features.lighting.runtime import _lg_season, _lg_decide
         g2 = _lg_season(g)
         gid = str(g.get("id"))
         v = lg_vlight_entity(g2)

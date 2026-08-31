@@ -13,19 +13,15 @@ ORDER = [
     "features/ventilation/runtime.py",
     "features/health/runtime.py",
     # Lighting: __init__ -> state -> caps -> schema -> helpers -> decide -> control -> ticks -> runtime -> services -> triggers -> ui -> card
-    "features/lighting/__init__.py",
     "features/lighting/state.py",
     "features/lighting/caps.py",
     "features/lighting/schema.py",
-    "features/lighting/helpers.py",
     "features/lighting/decide.py",
     "features/lighting/control.py",
     "features/lighting/ticks.py",
     "features/lighting/runtime.py",
     "features/lighting/services.py",
     "features/lighting/triggers.py",
-    "features/lighting/ui.py",
-    "features/lighting/card.py",
     "features/covers/runtime.py",
 ]
 

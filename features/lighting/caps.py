@@ -8,6 +8,32 @@ RGB_MODES = ["rgb", "hs", "xy", "rgbw", "rgbww"]
 ALL_ON = {"dim": True, "ct": True, "rgb": True}
 _CACHE = {"loaded": False, "modes": None}
 
+_LG_CAPS = {}
+
+
+def _lg_caps(g):
+    """Runtime caps: авто по supported_color_modes + override caps:. Без внешних зависимостей."""
+    gid = str(g.get("id"))
+    if gid in _LG_CAPS:
+        return _LG_CAPS[gid]
+    caps = {}
+    ov = g.get("caps") or {}
+    for e in (g.get("lights", []) or []):
+        if not e or str(e).split(".")[0] != "light":
+            continue
+        scm = _lg_attr(e, "supported_color_modes") or []
+        caps = {"dim": any([m != "on_off" for m in scm]),
+                "ct": "color_temp" in scm,
+                "rgb": any([m in RGB_MODES for m in scm])}
+        break
+    if not caps:
+        caps = {"dim": False, "ct": False, "rgb": False}
+    for k in ("dim", "ct", "rgb"):
+        if k in ov:
+            caps[k] = bool(ov[k])
+    _LG_CAPS[gid] = caps
+    return caps
+
 def caps_from_modes(scm):
     if not scm:
         return {"dim": False, "ct": False, "rgb": False}
