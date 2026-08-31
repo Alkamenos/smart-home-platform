@@ -126,6 +126,30 @@ SEL_ON = ["Не включать", "Закат", "Время"]
 SEL_OFF = ["Время", "Рассвет", "Не выключать", "Датчик движения"]
 RGB = ["Белый", "Красный", "Оранжевый", "Зелёный", "Синий", "Фиолетовый", "Розовый"]
 
+# Уровни логирования (по возрастанию)
+LOG_LEVELS = ["Выкл", "Ошибки", "Предупреждения", "Инфо", "Отладка"]
+
+# Чтение настроек логирования из манифеста
+logging_cfg = m.get("logging", {}) or {}
+log_initial_platform = logging_cfg.get("level", "INFO")
+log_modules = logging_cfg.get("modules", {}) or {}
+
+# Маппинг уровня из манифеста в название для select
+LOG_LEVEL_MAP = {
+    "CRITICAL": "Ошибки",
+    "ERROR": "Ошибки",
+    "WARNING": "Предупреждения",
+    "WARN": "Предупреждения",
+    "INFO": "Инфо",
+    "DEBUG": "Отладка",
+    "NOTSET": "Выкл",
+}
+
+def get_log_level_initial(module_name):
+    """Получить начальный уровень логирования для модуля."""
+    lvl = log_modules.get(module_name, log_initial_platform)
+    return LOG_LEVEL_MAP.get(str(lvl).upper(), "Инфо")
+
 
 # Собрать motion_sensor по комнатам (для dropdown)
 motion_by_room = {}
@@ -217,6 +241,32 @@ for fname in features.keys():
         entries.append(bool_(i, s_name, "off", "mdi:eye-off-outline"))
         i += 1
         created_names.add(s_name)
+
+# ============================================================
+# LOGGING LEVEL SELECTS (platform + each feature)
+# ============================================================
+# Platform-level logging control
+entries.append(sel(i, "loglevel_platform", LOG_LEVELS, 
+                   get_log_level_initial("platform"), "mdi:file-search"))
+i += 1
+
+# Per-feature logging controls
+for fname in sorted(features.keys()):
+    if fname == "groups":
+        continue
+    # Маппинг имени фичи на имя модуля в логировании
+    module_map = {
+        "sensor_health": "health",
+        "lighting": "lighting",
+        "climate": "climate",
+        "ventilation": "ventilation",
+        "covers": "covers",
+    }
+    module_name = module_map.get(fname, fname)
+    initial_lvl = get_log_level_initial(module_name)
+    entries.append(sel(i, "loglevel_" + fname, LOG_LEVELS, 
+                       initial_lvl, "mdi:file-search"))
+    i += 1
 
 # ============================================================
 # GLOBALS (zima, vecher, my_doma, party_mode)
