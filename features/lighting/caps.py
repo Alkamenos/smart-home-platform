@@ -11,6 +11,16 @@ _CACHE = {"loaded": False, "modes": None}
 _LG_CAPS = {}
 
 
+class _CapsWrapper:
+    """Обёртка для совместимости с legacy-кодом, ожидающим CAPS.group_caps(g)."""
+    @staticmethod
+    def group_caps(g):
+        return group_caps(g)
+
+
+CAPS = _CapsWrapper()
+
+
 def _lg_caps(g):
     """Runtime caps: авто по supported_color_modes + override caps:. Без внешних зависимостей."""
     gid = str(g.get("id"))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """UI-артефакт освещения: блоки карточки из подключённых фич."""
 from features.lighting.schema import _feats_of
-from features.lighting.caps import group_caps  # noqa: F401
+from features.lighting.caps import group_caps, CAPS  # noqa: F401
 
 
 def _title(t):
