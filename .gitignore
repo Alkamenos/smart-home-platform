@@ -1,22 +1,13 @@
-```gitignore
-# Python cache
+```
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Compiled files
-*.o
-*.obj
-*.so
-*.a
-*.dll
-*.exe
-*.out
-
-# Dependencies
-venv/
+# Environment
 .venv/
+venv/
 .env
 .env.local
 *.env.*
@@ -26,33 +17,12 @@ venv/
 *.tmp
 *.swp
 
-# Editors and IDEs
+# Editors
 .vscode/
 .idea/
-
-# Coverage reports
-.coverage
-htmlcov/
-coverage/
 
 # Build artifacts
 dist/
 build/
 target/
-*.class
-
-# Package management
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Testing
-.pytest_cache/
-.mypy_cache/
-.hypothesis/
-
-# OS generated files
-.DS_Store
-Thumbs.db
 ```

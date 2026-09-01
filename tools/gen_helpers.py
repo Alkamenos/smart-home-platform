@@ -263,7 +263,9 @@ for fname in sorted(features.keys()):
         "covers": "covers",
     }
     module_name = module_map.get(fname, fname)
-    initial_lvl = get_log_level_initial(module_name)
+    # Для sensor_health используем ключ 'health' из манифеста
+    lookup_name = "health" if fname == "sensor_health" else fname
+    initial_lvl = get_log_level_initial(lookup_name)
     entries.append(sel(i, "loglevel_" + fname, LOG_LEVELS, 
                        initial_lvl, "mdi:file-search"))
     i += 1
