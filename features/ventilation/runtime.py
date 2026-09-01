@@ -379,22 +379,22 @@ def ventilation_controller_loop():
 def vent_debug():
     cfg = _vent_cfg()
     if not cfg:
-        log.warning("[vent][debug] no ventilation config")
+        log_event("ventilation", "Отладка", "no ventilation config", why="инициализация", src="сервис")
         return
     lockout = _vent_heating_lockout_active(cfg)
-    log.warning("[vent][debug] mode=" + str(_vent_mode(cfg))
+    log_event("ventilation", "Отладка", "mode=" + str(_vent_mode(cfg))
                 +" open_doors=" + str(_vent_open_doors(cfg))
                 +" heating=" + str(_vent_any_heating())
                 +" lockout=" + str(lockout is not None)
-                +" free_heat=" + str(_FREE_HEAT_ACTIVE))
+                +" free_heat=" + str(_FREE_HEAT_ACTIVE), why="диагностика", src="сервис")
     
     if lockout:
-        log.warning("[vent][debug] lockout_reason=" + lockout.get("why"))
+        log_event("ventilation", "Отладка", "lockout_reason=" + lockout.get("why"), why="блокировка нагревом", src="сервис")
     
-    log.warning("[vent][debug] decide=" + str(_vent_decide(cfg)))
+    log_event("ventilation", "Отладка", "decide=" + str(_vent_decide(cfg)), why="диагностика", src="сервис")
     for dev in cfg.get("devices", []) or []:
         e = dev.get("entity")
         s, p, pct, _a = _vent_current(e)
-        log.warning("[vent][debug]" + str(e) + " state=" + str(s)
-                    +" preset=" + str(p) +" pct=" + str(pct))
+        log_event("ventilation", "Отладка", str(e) + " state=" + str(s)
+                    +" preset=" + str(p) +" pct=" + str(pct), why="диагностика", src="сервис")
     return {"ok": True}

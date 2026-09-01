@@ -460,18 +460,18 @@ def climate_orchestrator_loop():
 @service
 def climate_debug():
     if _REGISTRY is None:
-        log.warning("[climate][debug] _REGISTRY is None")
+        log_event("climate", "Отладка", "_REGISTRY is None", why="инициализация", src="сервис")
         return
     climate_cfg = _REGISTRY.feature("climate")
     if not climate_cfg:
-        log.warning("[climate][debug] climate feature not found")
+        log_event("climate", "Отладка", "climate feature not found", why="инициализация", src="сервис")
         return
-    log.warning("[climate][debug] mode=" + str(_clim_current_mode(climate_cfg)))
+    log_event("climate", "Отладка", "mode=" + str(_clim_current_mode(climate_cfg)), why="диагностика", src="сервис")
     season_cfg = climate_cfg.get("season") or {}
-    log.warning("[climate][debug] heating_season=" + str(_clim_season_is_heating(season_cfg)))
+    log_event("climate", "Отладка", "heating_season=" + str(_clim_season_is_heating(season_cfg)), why="диагностика", src="сервис")
     for zone in climate_cfg.get("zones", []):
         temp_sensor = _REGISTRY.device(zone.get("temp_sensor_ref")) or {}
         temp_entity = temp_sensor.get("entity")
         cur_temp = _clim_get_float(temp_entity) if temp_entity else None
-        log.warning("[climate][debug] zone=" + str(zone.get("id")) +" cur_temp=" + str(cur_temp))
+        log_event("climate", "Отладка", "zone=" + str(zone.get("id")) +" cur_temp=" + str(cur_temp), why="диагностика", src="сервис")
     return {"ok": True}
