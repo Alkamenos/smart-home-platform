@@ -74,9 +74,22 @@ def main():
     
     # --- Буфер решений ---
     decisions_card = {
-        "type": "entities",
-        "title": "📋 Последние решения",
-        "entities": [{"entity": "sensor.platform_decisions", "name": "Решения"}]
+        "type": "markdown",
+        "title": "📋 Последние решения платформы",
+        "content": """{% set decisions = state_attr('sensor.platform_decisions', 'decisions') or [] %}
+{% if decisions | length == 0 %}
+Пока нет записей в журнале решений.
+{% else %}
+| Время | Домен | Решение | Причина | Источник |
+|-------|-------|---------|---------|----------|
+{% for d in decisions | slice(20) %}
+| {{ d.get('time', '')[:19] }} | {{ d.get('domain', '') }} | {{ d.get('decision', '') }} | {{ d.get('reason', '') }} | {{ d.get('source', '') }} |
+{% endfor %}
+{% if decisions | length > 20 %}
+
+_... и ещё {{ decisions | length - 20 }} записей в полном списке_
+{% endif %}
+{% endif %}"""
     }
 
     views = [
