@@ -27,6 +27,8 @@ ORDER = [
     "features/lighting/services.py",
     "features/lighting/triggers.py",
     "features/covers/fsm.py",
+    "features/room/fsm.py",
+    "features/room/runtime.py",
     "features/covers/runtime.py",
 ]
 
