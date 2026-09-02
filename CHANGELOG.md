@@ -247,3 +247,30 @@
 - Замена `_cv_track_manual_change()` на `fsm_trigger(entity_id, "manual_change")`
 - Таймер блокировки через `MANUAL_LOCK → timeout`
 
+
+## 2026-09-03 — FSM Фаза 2: Интеграция автоматов в runtime штор
+
+### Изменено
+- `features/covers/runtime.py`: полная интеграция автоматов
+  - `_cv_fsm_init()`: регистрация автоматов при старте + восстановление MANUAL_LOCK из `input_datetime` после перезагрузки
+  - `_cv_fsm_check_timers()`: проверка таймеров блокировки на каждом тике
+  - `_cv_track_manual_change()`: ручное вмешательство → `fsm_trigger(entity, "manual_change")`
+  - `_cv_override_active()`: приоритет проверки: автомат → `input_datetime` → in-memory
+  - `_cv_apply_cover()`: проверка `fsm_get_state() in ("MANUAL_LOCK", "ERROR")` перед исполнением
+  - `_cv_tick()`: добавлен вызов `_cv_fsm_check_timers()`
+  - `covers_controller_loop()`: инициализация автоматов при старте
+  - `covers_override_clear()`: сброс через `fsm_trigger(entity, "override_clear")`
+  - `_cv_immediate_close_on_leave()`: проверка состояния автомата перед закрытием
+
+### Семантика
+- При старте: автоматы регистрируются для всех штор. Если `input_datetime` содержит будущий таймаут — автомат восстанавливается в состоянии `MANUAL_LOCK`
+- При ручном изменении: `fsm_trigger("manual_change")` → состояние `MANUAL_LOCK` + запись в `input_datetime`
+- На каждом тике: `_cv_fsm_check_timers()` проверяет, не истёк ли таймер блокировки → `fsm_trigger("timeout")`
+- При сбросе: `fsm_trigger("override_clear")` → выход из `MANUAL_LOCK` + сброс `input_datetime`
+- Автоматика не исполняет команды, если автомат в состоянии `MANUAL_LOCK` или `ERROR`
+
+### Обратная совместимость
+- `_cv_override_active()` сохраняет fallback на `input_datetime` и in-memory
+- Старые хелперы `input_datetime.cover_<id>_override_until` продолжают работать
+- Если автомат не зарегистрирован, используется старая логика
+

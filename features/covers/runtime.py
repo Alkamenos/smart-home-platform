@@ -330,26 +330,30 @@ def _cv_close_cover(cover_entity, mode):
 
 
 def _cv_override_active(cover_entity, cid=None):
-    """Проверка: есть ли активный override (ручное вмешательство).
-    Приоритет: input_datetime (переживает перезагрузку HA), затем in-memory fallback."""
-    # 1. Надежный способ через input_datetime
+    """Проверка блокировки: автомат → input_datetime → in-memory."""
+    # 1. Автомат
+    fsm_state = fsm_get_state(cover_entity)
+    if fsm_state == "MANUAL_LOCK":
+        return True
+
+    # 2. Fallback: input_datetime
     if cid:
         override_entity = "input_datetime.cover_%s_override_until" % cid
         override_str = _cv_state(override_entity)
-        if override_str and override_str != "unknown" and override_str != "unavailable":
+        if override_str and override_str not in ("unknown", "unavailable", "1970-01-01 00:00:00"):
             try:
                 if " " in override_str:
                     until_dt = datetime.strptime(override_str, "%Y-%m-%d %H:%M:%S")
                 else:
                     until_dt = datetime.strptime(
                         datetime.now().strftime("%Y-%m-%d") + " " + override_str,
-                        "%Y-%m-%d %H:%M:%S"
-                    )
+                        "%Y-%m-%d %H:%M:%S")
                 if datetime.now() < until_dt:
                     return True
             except Exception:
                 pass
-    # 2. Fallback на in-memory (для обратной совместимости)
+
+    # 3. Fallback: in-memory
     until = _CV_OVERRIDE.get(cover_entity)
     if until is None:
         return False
@@ -376,41 +380,114 @@ def _cv_anti_cycle_ok(cover_entity, min_minutes=2):
     return (time.monotonic() - last) >= (min_minutes * 60)
 
 
+
+def _cv_fsm_init(cfg):
+    """Инициализация автоматов для всех штор."""
+    covers_list = cfg.get("covers", [])
+    for c in covers_list:
+        cover_entity = c.get("cover")
+        cid = str(c.get("id"))
+        definition = cover_fsm_definition(c)
+
+        # Проверяем активный override в input_datetime (переживает перезагрузку)
+        override_entity = "input_datetime.cover_%s_override_until" % cid
+        override_str = _cv_state(override_entity)
+
+        if override_str and override_str not in ("unknown", "unavailable", "1970-01-01 00:00:00"):
+            try:
+                if " " in override_str:
+                    until_dt = datetime.strptime(override_str, "%Y-%m-%d %H:%M:%S")
+                else:
+                    until_dt = datetime.strptime(
+                        datetime.now().strftime("%Y-%m-%d") + " " + override_str,
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                if datetime.now() < until_dt:
+                    fsm_register(cover_entity, definition)
+                    fsm_trigger(cover_entity, "manual_change", src="восстановление")
+                    _cv_log("manual", "INFO", cover_entity + ": FSM restored MANUAL_LOCK after restart")
+                    continue
+            except Exception:
+                pass
+
+        fsm_register(cover_entity, definition)
+
+
+def _cv_fsm_check_timers(cfg):
+    """Проверка таймеров блокировки автоматов."""
+    timeout_min = cfg.get("override_timeout_min", 60)
+    covers_list = cfg.get("covers", [])
+
+    for c in covers_list:
+        cover_entity = c.get("cover")
+        current_state = fsm_get_state(cover_entity)
+
+        if current_state != "MANUAL_LOCK":
+            continue
+
+        entry = _FSM_STATES.get(cover_entity)
+        if entry is None:
+            continue
+
+        entered_at_str = entry.get("entered_at")
+        if not entered_at_str:
+            continue
+
+        try:
+            entered_at = datetime.strptime(entered_at_str, "%Y-%m-%d %H:%M:%S")
+            if datetime.now() > entered_at + timedelta(minutes=timeout_min):
+                fsm_trigger(cover_entity, "timeout", src="таймер")
+                cid = str(c.get("id"))
+                try:
+                    service.call("input_datetime", "set_datetime",
+                                 entity_id="input_datetime.cover_%s_override_until" % cid,
+                                 datetime="1970-01-01 00:00:00")
+                except Exception:
+                    pass
+                _cv_log("manual", "INFO", cover_entity + ": FSM timeout — blocking released")
+        except Exception:
+            pass
+
+
 def _cv_track_manual_change(c, cfg):
-    """Отслеживание ручного вмешательства."""
+    """Отслеживание ручного вмешательства через автомат."""
     cid = str(c.get("id"))
     cover_entity = c.get("cover")
-    
+
     cur_pos = _cv_get_actual_position(cover_entity)
     if cur_pos is None:
         return
-    
+
     prev_pos = _CV_PREV.get(cover_entity)
     _CV_PREV[cover_entity] = cur_pos
-    
+
     if prev_pos is None or cur_pos == prev_pos:
         return
-    
+
     # Проверяем, не наша ли это команда
     exp = _cv_expected_guard(cover_entity)
     if exp is not None:
-        if abs(exp - cur_pos) < 5:  # допуск 5%
+        if abs(exp - cur_pos) < 5:
             _CV_EXPECTED_STATE.pop(cover_entity, None)
             return
-    
-    # Это ручное вмешательство — ставим override в input_datetime (переживает перезагрузку HA)
+
+    # Ручное вмешательство → триггерим автомат
+    fsm_trigger(cover_entity, "manual_change", src="ручное")
+
+    # Записываем в input_datetime для переживания перезагрузки
     timeout = cfg.get("override_timeout_min", 60)
     until_dt = datetime.now() + timedelta(minutes=timeout)
     until_str = until_dt.strftime("%Y-%m-%d %H:%M:%S")
     try:
         service.call("input_datetime", "set_datetime",
-                     entity_id="input_datetime.cover_%s_override_until" % str(c.get("id")),
+                     entity_id="input_datetime.cover_%s_override_until" % cid,
                      datetime=until_str)
-    except Exception as e:
-        _cv_log("manual", "WARNING", cover_entity + ": failed to set override_until: " + str(e))
-    # Дублируем в память для мгновенного эффекта
+    except Exception:
+        pass
+
+    # Fallback в память
     _CV_OVERRIDE[cover_entity] = time.monotonic() + (timeout * 60)
-    _cv_log("manual", "INFO", cover_entity + ": manual change detected, override until " + until_str)
+    _cv_log("manual", "INFO", cover_entity + ": manual change → FSM MANUAL_LOCK")
 
 
 def _cv_apply_cover(c, cfg, mode, home, dogs):
@@ -422,6 +499,12 @@ def _cv_apply_cover(c, cfg, mode, home, dogs):
     _cv_track_manual_change(c, cfg)
     
     # Проверяем override
+    # Проверяем состояние автомата
+    fsm_state = fsm_get_state(cover_entity)
+    if fsm_state in ("MANUAL_LOCK", "ERROR"):
+        return
+
+    # Fallback на старую проверку
     if _cv_override_active(cover_entity, cid=str(c.get("id"))):
         return
     
@@ -490,7 +573,12 @@ def _cv_immediate_close_on_leave(cfg, covers_list):
             fs_min_helper = _cv_num("input_number.cover_%s_fire_safety_min_pct" % cid, fire_min_pct)
             fire_min_pct = fs_min_helper
         
-        # Проверяем override
+        # Проверяем состояние автомата
+        fsm_state = fsm_get_state(cover_entity)
+        if fsm_state in ("MANUAL_LOCK", "ERROR"):
+            continue
+
+        # Fallback
         if _cv_override_active(cover_entity):
             continue
         
@@ -533,6 +621,9 @@ def _cv_tick():
     home = _cv_state(presence_flag) == "on"
     dogs = _cv_state("input_boolean.dogs_home") == "on"
     
+    # Проверяем таймеры автоматов
+    _cv_fsm_check_timers(cfg)
+
     for c in covers_list:
         try:
             _cv_apply_cover(c, cfg, mode, home, dogs)
@@ -544,6 +635,13 @@ def _cv_tick():
 def covers_controller_loop():
     """Главный цикл контроллера штор."""
     log.info("[covers] Controller loop started")
+
+    # Инициализация автоматов
+    cfg = _cv_cfg()
+    if cfg:
+        _cv_fsm_init(cfg)
+        log.info("[covers] FSM initialized for %d covers" % len(cfg.get("covers", [])))
+
     while True:
         try:
             _cv_tick()
@@ -629,10 +727,12 @@ def covers_debug():
 
 @service
 def covers_override_clear(entity=None):
-    """Очистка override (включая input_datetime на диске)."""
+    """Очистка блокировки через автомат."""
     cfg = _cv_cfg() or {}
     covers_list = cfg.get("covers", [])
+
     if entity:
+        fsm_trigger(entity, "override_clear", src="ручное")
         _CV_OVERRIDE.pop(entity, None)
         for c in covers_list:
             if c.get("cover") == entity:
@@ -645,8 +745,9 @@ def covers_override_clear(entity=None):
                     pass
                 break
     else:
-        _CV_OVERRIDE.clear()
         for c in covers_list:
+            cover_entity = c.get("cover")
+            fsm_trigger(cover_entity, "override_clear", src="ручное")
             cid = str(c.get("id"))
             try:
                 service.call("input_datetime", "set_datetime",
@@ -654,4 +755,8 @@ def covers_override_clear(entity=None):
                              datetime="1970-01-01 00:00:00")
             except Exception:
                 pass
+        _CV_OVERRIDE.clear()
+
     return {"ok": True}
+
+
