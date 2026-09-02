@@ -723,7 +723,68 @@ def covers_debug():
     return {"ok": True, "home": home, "dogs": dogs, "mode": mode}
 
 
+@service
+def covers_fsm_status():
+    """Краткий статус всех автоматов штор."""
+    cfg = _cv_cfg()
+    if not cfg:
+        return {"ok": False}
+
+    covers_list = cfg.get("covers", [])
+    result = {}
+    for c in covers_list:
+        cover_entity = c.get("cover")
+        cid = str(c.get("id"))
+        fsm_state = fsm_get_state(cover_entity)
+        entry = _FSM_STATES.get(cover_entity)
+
+        result[cid] = {
+            "entity": cover_entity,
+            "fsm_state": fsm_state or "NOT_REGISTERED",
+            "entered_at": entry.get("entered_at") if entry else None,
+            "entered_by": entry.get("entered_by") if entry else None,
+            "entered_why": entry.get("entered_why") if entry else None,
+            "history_count": len(entry.get("history", [])) if entry else 0
+        }
+
+    for cid, info in result.items():
+        log.warning("[covers][fsm_status] " + cid + ": " + info["fsm_state"]
+                    + " | entered_by=" + str(info["entered_by"])
+                    + " | why=" + str(info["entered_why"]))
+
+    return {"ok": True, "fsm": result}
+
+
 # ---------------- сервис очистки override ----------------
+
+
+# ---------------- сервис диагностики автоматов ----------------
+
+@service
+def covers_fsm_debug(entity=None):
+    """Диагностика автоматов штор: текущее состояние + история переходов."""
+    result = fsm_debug(entity)
+    if not result:
+        log.warning("[covers][fsm_debug] нет зарегистрированных автоматов")
+        return {"ok": False, "error": "no FSM registered"}
+
+    for eid, info in result.items():
+        if "error" in info:
+            log.warning("[covers][fsm_debug] " + str(eid) + ": " + str(info["error"]))
+        else:
+            log.warning("[covers][fsm_debug] " + str(eid)
+                        + " | state=" + str(info["state"])
+                        + " | entered_at=" + str(info["entered_at"])
+                        + " | entered_by=" + str(info["entered_by"])
+                        + " | why=" + str(info["entered_why"]))
+            for h in info.get("history", []):
+                log.warning("[covers][fsm_debug]   " + str(h["time"])
+                            + " | " + str(h["from"]) + " → " + str(h["to"])
+                            + " | trigger=" + str(h["trigger"])
+                            + " | why=" + str(h["why"]))
+
+    return {"ok": True, "fsm": result}
+
 
 @service
 def covers_override_clear(entity=None):
