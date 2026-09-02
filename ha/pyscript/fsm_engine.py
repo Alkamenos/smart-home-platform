@@ -236,3 +236,27 @@ def fsm_debug(entity_id=None):
         }
 
     return result
+
+
+def _fsm_publish_overview():
+    """Публикует агрегированное состояние всех автоматов в сенсор."""
+    try:
+        overview = {}
+        for entity_id, entry in _FSM_STATES.items():
+            overview[entity_id] = entry.get("state", "UNKNOWN")
+
+        # Публикуем в сенсор
+        state.set("sensor.fsm_overview", str(len(overview)),
+                  count=str(len(overview)),
+                  states=str(overview),
+                  updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    except Exception:
+        pass
+
+
+def fsm_publish_all():
+    """Принудительная публикация состояний всех автоматов."""
+    for entity_id in _FSM_STATES:
+        _fsm_publish_state(entity_id)
+    _fsm_publish_overview()
+    return {"ok": True, "count": len(_FSM_STATES)}

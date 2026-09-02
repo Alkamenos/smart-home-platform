@@ -179,6 +179,12 @@ def room_controller_loop():
                 except Exception:
                     pass
 
+            # Публикуем агрегированное состояние всех автоматов
+            try:
+                _fsm_publish_overview()
+            except Exception:
+                pass
+
         except Exception as exc:
             log.error("[room] Controller error: " + str(exc))
 
