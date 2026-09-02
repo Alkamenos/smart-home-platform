@@ -11,6 +11,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ORDER = [
     "ha/pyscript/registry.py",
+    "ha/pyscript/fsm_engine.py",
     "ha/pyscript/manifest_loader.py",
     "features/climate/runtime.py",
     "features/ventilation/runtime.py",
@@ -25,6 +26,7 @@ ORDER = [
     "features/lighting/runtime.py",
     "features/lighting/services.py",
     "features/lighting/triggers.py",
+    "features/covers/fsm.py",
     "features/covers/runtime.py",
 ]
 
