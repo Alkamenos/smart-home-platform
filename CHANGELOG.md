@@ -110,3 +110,24 @@
 - Манифест-ориентированная архитектура
 - Генераторы helpers и дашбордов
 - Override manager (60 мин lockout)
+
+## 2026-09-03
+
+### Добавлено
+- **Device-level override для штор**: ручное вмешательство теперь блокирует автоматику на уровне устройства через `input_datetime.cover_<id>_override_until`
+- Генерация `input_datetime` с датой и временем для каждой шторы (переживает перезагрузку HA)
+- Сервис `covers_override_clear` обновлен для сброса блокировки через UI/API
+- Fallback на in-memory override для обратной совместимости
+
+### Изменено
+- `features/covers/helpers.py`: добавлена функция `_dt_full` для создания `input_datetime` с датой
+- `features/covers/runtime.py`: функция `_cv_override_active` теперь проверяет `input_datetime` вместо только in-memory словаря
+- `tools/gen_helpers.py`: исправлена инициализация `input_datetime` с датой (параметр `datetime` вместо `time`)
+
+### Семантика
+- При ручном изменении позиции шторы записывается время снятия блокировки в `input_datetime.cover_<id>_override_until`
+- Автоматика проверяет этот `input_datetime` перед отправкой любой команды
+- Если текущее время < времени в `input_datetime`, команда отменяется с записью в лог
+- Через `override_timeout_min` (по умолчанию 60 минут) автоматика снова подхватывает управление
+- Можно сбросить блокировку вручную через сервис `pyscript.covers_override_clear`
+
