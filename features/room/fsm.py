@@ -48,9 +48,9 @@ ROOM_FSM_HOME = {
             "priority": 20,
             "why": "Рассвет — переход в дневной режим"
         },
-        # Вечеринка: включение
+        # Вечеринка: включение (включая из SLEEPING)
         {
-            "from": ["HOME_DAY", "HOME_NIGHT"],
+            "from": ["HOME_DAY", "HOME_NIGHT", "SLEEPING"],
             "to": "PARTY",
             "trigger": "party_on",
             "priority": 40,
@@ -64,9 +64,9 @@ ROOM_FSM_HOME = {
             "priority": 40,
             "why": "Режим вечеринки выключен"
         },
-        # Режим сна: включение
+        # Режим сна: включение (включая из PARTY)
         {
-            "from": ["HOME_DAY", "HOME_NIGHT"],
+            "from": ["HOME_DAY", "HOME_NIGHT", "PARTY"],
             "to": "SLEEPING",
             "trigger": "sleep_on",
             "priority": 45,
@@ -79,6 +79,14 @@ ROOM_FSM_HOME = {
             "trigger": "sleep_off",
             "priority": 45,
             "why": "Пробуждение — режим сна выключен"
+        },
+        # Режим сна: выключение ночью (если проснулись ночью)
+        {
+            "from": "SLEEPING",
+            "to": "HOME_NIGHT",
+            "trigger": "sleep_off_night",
+            "priority": 45,
+            "why": "Пробуждение ночью — режим сна выключен"
         },
         # Аварийная ситуация: все должны быть в безопасности
         {

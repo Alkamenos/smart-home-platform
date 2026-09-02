@@ -102,6 +102,23 @@ def _room_check_sun():
 # Триггеры: слушаем изменения присутствия и вечеринки
 # ──────────────────────────────────────────────────────────────
 
+
+def _room_trigger_sleep():
+    """Обработка изменения режима сна."""
+    sleep = _cv_state("input_boolean.sleep_mode")
+    current = fsm_get_state("room.main")
+    is_night = _room_is_night()
+
+    if sleep == "on" and current in ("HOME_DAY", "HOME_NIGHT", "PARTY"):
+        fsm_trigger("room.main", "sleep_on", src="ручное")
+    elif sleep != "on" and current == "SLEEPING":
+        # Пробуждение: определяем, день сейчас или ночь
+        if is_night:
+            fsm_trigger("room.main", "sleep_off_night", src="ручное")
+        else:
+            fsm_trigger("room.main", "sleep_off", src="ручное")
+
+
 @state_trigger("input_boolean.my_doma")
 def _room_presence_handler(var_name=None, **kwargs):
     """Обработчик изменения присутствия."""
@@ -116,6 +133,15 @@ def _room_party_handler(var_name=None, **kwargs):
     if not _ROOM_INITIALIZED:
         return
     _room_trigger_party()
+
+
+
+@state_trigger("input_boolean.sleep_mode")
+def _room_sleep_handler(var_name=None, **kwargs):
+    """Обработчик изменения режима сна."""
+    if not _ROOM_INITIALIZED:
+        return
+    _room_trigger_sleep()
 
 
 @state_trigger("sun.sun")

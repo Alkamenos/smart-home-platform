@@ -276,7 +276,7 @@ for fname in sorted(features.keys()):
 # ============================================================
 # GLOBALS (zima, vecher, my_doma, party_mode)
 # ============================================================
-for extra in ("zima", "vecher", "my_doma", "party_mode"):
+for extra in ("zima", "vecher", "my_doma", "party_mode", "sleep_mode"):
     if extra not in created_names:
         entries.append(bool_(i, extra, "off", "mdi:toggle-switch"))
         i += 1
