@@ -159,6 +159,11 @@ def _cv_decide_cover(c, cfg, home, dogs):
     cover_entity = c.get("cover")
     is_door = c.get("door", False)
     away_pct = c.get("away_closed_pct", 60) if is_door else 100
+
+    # Проверяем состояние комнаты: вечеринка → не закрываем шторы
+    room_state = fsm_get_state("room.main")
+    if room_state == "PARTY":
+        return {"action": "keep", "pct": None, "why": "Режим вечеринки — шторы не закрываются"}
     
     # Fire safety параметры
     fire_safety = c.get("fire_safety", False) if is_door else False
@@ -381,6 +386,30 @@ def _cv_anti_cycle_ok(cover_entity, min_minutes=2):
 
 
 
+
+def _cv_get_room_context():
+    """Получить контекст из автомата комнаты.
+    Возвращает: (home, dogs, is_night, is_party)
+    """
+    room_state = fsm_get_state("room.main")
+
+    if room_state is None:
+        # Fallback: автомат комнаты не зарегистрирован
+        presence_flag = "input_boolean.my_doma"
+        home = _cv_state(presence_flag) == "on"
+        dogs = _cv_state("input_boolean.dogs_home") == "on"
+        is_night = _room_is_night() if "_room_is_night" in dir() else False
+        is_party = _cv_state("input_boolean.party_mode") == "on"
+        return home, dogs, is_night, is_party
+
+    home = room_state not in ("EMPTY",)
+    dogs = _cv_state("input_boolean.dogs_home") == "on"
+    is_night = room_state in ("HOME_NIGHT", "SLEEPING")
+    is_party = room_state == "PARTY"
+
+    return home, dogs, is_night, is_party
+
+
 def _cv_fsm_init(cfg):
     """Инициализация автоматов для всех штор."""
     covers_list = cfg.get("covers", [])
@@ -548,8 +577,9 @@ def _cv_apply_cover(c, cfg, mode, home, dogs):
 def _cv_immediate_close_on_leave(cfg, covers_list):
     """Немедленное закрытие всех штор при уходе (my_doma -> off)."""
     mode = _cv_mode(cfg)
+    home, dogs, is_night, is_party = _cv_get_room_context()
+    # При уходе home уже должен быть False, но проверим явно
     home = False
-    dogs = _cv_state("input_boolean.dogs_home") == "on"
     
     for c in covers_list:
         cid = str(c.get("id"))
@@ -616,10 +646,8 @@ def _cv_tick():
     mode = _cv_mode(cfg)
     covers_list = cfg.get("covers", [])
     
-    # Читаем флаги присутствия
-    presence_flag = cfg.get("presence_flag", "input_boolean.my_doma")
-    home = _cv_state(presence_flag) == "on"
-    dogs = _cv_state("input_boolean.dogs_home") == "on"
+    # Читаем контекст из автомата комнаты (с fallback на прямые флаги)
+    home, dogs, is_night, is_party = _cv_get_room_context()
     
     # Проверяем таймеры автоматов
     _cv_fsm_check_timers(cfg)
