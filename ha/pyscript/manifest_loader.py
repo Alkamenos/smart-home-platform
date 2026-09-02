@@ -24,17 +24,6 @@ _LOG_LEVELS = ["Выкл", "Ошибки", "Предупреждения", "Ин
 _LOG_DOMAINS = []  # список доменов из реестра
 _DECISION_BUFFER = []  # кольцевой буфер решений (последние 50)
 
-def _lg_state(entity_id, default=None):
-    """Безопасное чтение state."""
-    try:
-        st = state.get(entity_id)
-        if st is None:
-            return default
-        return st.state
-    except Exception:
-        return default
-
-
 def _lg_get_level_index(level_name):
     """Получить индекс уровня по названию."""
     for idx, name in enumerate(_LOG_LEVELS):
@@ -47,13 +36,13 @@ def _lg_refresh_cache():
     """Обновить кэш уровней логирования из helpers."""
     global _LOG_CACHE, _LOG_DOMAINS
     # Платформа
-    plat_lvl = _lg_state("input_select.loglevel_platform", "Инфо")
+    plat_lvl = _lg_state("input_select.loglevel_platform") or "Инфо"
     _LOG_CACHE["platform"] = _lg_get_level_index(plat_lvl)
     
     # Фичи
     for domain in _LOG_DOMAINS:
         entity = "input_select.loglevel_" + domain
-        lvl = _lg_state(entity, "Инфо")
+        lvl = _lg_state(entity) or "Инфо"
         _LOG_CACHE[domain] = _lg_get_level_index(lvl)
 
 

@@ -123,6 +123,12 @@ features:
     flag: input_boolean.feature_street_night
     features:
       dusk: {}
+      ct:
+        follow: true
+      rgb:
+        follow: true
+      dim:
+        follow: true
       schedule:
         false: sunrise
   - id: office
@@ -137,6 +143,10 @@ features:
       schedule:
         false: '23:00'
       ct:
+        follow: true
+      rgb:
+        follow: true
+      dim:
         follow: true
       party:
         role: false
@@ -209,6 +219,10 @@ features:
         false: '23:00'
       ct:
         follow: true
+      rgb:
+        follow: true
+      dim:
+        follow: true
       party:
         role: false
   - id: kitchen_work
@@ -233,6 +247,12 @@ features:
         true: sunset
         false: '23:00'
         auto_flag: input_boolean.feature_table
+      ct:
+        follow: true
+      rgb:
+        follow: true
+      dim:
+        follow: true
       motion:
         sensor: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy
         mode: keepalive

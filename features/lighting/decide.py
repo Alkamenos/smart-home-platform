@@ -98,9 +98,11 @@ def _fd_motion(g, cfg, ctx):
         return None
     if mode == "Держать включённым":
         if ctx["any_on"]:
-            result = {"on": ctx["presence"], "why": "keepalive: держим пока движение"}
-            _lg_log("motion", "DEBUG", "gid=%s: keepalive any_on=%s presence=%s -> %s" % (gid, str(ctx["any_on"]), str(ctx["presence"]), str(result)))
-            return result
+            if ctx["presence"]:
+                _lg_log("motion", "DEBUG", "gid=%s: keepalive держим пока движение" % gid)
+                return {"on": True, "why": "keepalive: держим пока движение"}
+            _lg_log("motion", "DEBUG", "gid=%s: keepalive без движения -> воздерживаемся, решает расписание" % gid)
+            return None
         nl_ok = bool(g.get("nightlight")) and _lg_state("input_boolean.feature_%s_nightlight" % gid) == "on"
         if ctx["night"] and nl_ok:
             nl_min = _lg_num("input_number.light_%s_nightlight_off_min" % gid, 3)
