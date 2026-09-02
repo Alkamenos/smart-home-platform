@@ -43,7 +43,7 @@ def main():
         try:
             with open(MANIFEST_SRC, "r", encoding="utf-8") as f:
                 manifest_data = yaml.safe_load(f)
-            INJECTED_MANIFEST = json.dumps(manifest_data, ensure_ascii=False, indent=2)
+            INJECTED_MANIFEST = repr(manifest_data)
         except Exception as e:
             print("Warning: Could not read manifest for injection:", e)
 
