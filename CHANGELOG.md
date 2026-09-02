@@ -131,3 +131,55 @@
 - Через `override_timeout_min` (по умолчанию 60 минут) автоматика снова подхватывает управление
 - Можно сбросить блокировку вручную через сервис `pyscript.covers_override_clear`
 
+
+## 2026-09-03
+
+### Добавлено
+- **Device-level override для штор**: ручное вмешательство блокирует автоматику на уровне устройства через `input_datetime.cover_<id>_override_until` (переживает перезагрузку HA)
+- Сервис `covers_override_clear` теперь сбрасывает блокировку и на диске, и в памяти
+- Fallback на in-memory override для обратной совместимости
+
+### Изменено
+- `features/covers/helpers.py`: функция `_dt_full` для `input_datetime` с датой и временем
+- `features/covers/runtime.py`: `_cv_override_active` проверяет `input_datetime` с приоритетом над in-memory
+- `tools/gen_helpers.py`: корректная инициализация `input_datetime` с датой (параметр `datetime` вместо `time`)
+- `build/build_pyscript.py`: инъекция манифеста в `manifest_loader.py` на этапе сборки
+- `ha/pyscript/manifest_loader.py`: безопасное чтение манифеста (0 blocking I/O в runtime)
+
+### Исправлено
+- **WARNING "blocking call to open" в логах HA**: манифест теперь "вшит" в `manifest_loader.py` на этапе `./shp build`, в runtime используется готовый словарь из памяти
+- Шторы больше не открываются/закрываются автоматически в течение `override_timeout_min` (по умолчанию 60 мин) после ручного вмешательства
+
+### Семантика
+- При ручном изменении позиции шторы → записывается время снятия блокировки в `input_datetime.cover_<id>_override_until`
+- Автоматика проверяет этот `input_datetime` перед отправкой любой команды
+- Если `datetime.now() < until_dt` → команда отменяется с записью в лог (`override_active`)
+- Через `override_timeout_min` автоматика снова подхватывает управление
+- Сброс блокировки вручную: `pyscript.covers_override_clear(entity_id=cover.xxx)` или без параметров для всех
+
+
+## 2026-09-03
+
+### Добавлено
+- **Device-level override для штор**: ручное вмешательство блокирует автоматику на уровне устройства через `input_datetime.cover_<id>_override_until` (переживает перезагрузку HA)
+- Сервис `covers_override_clear` теперь сбрасывает блокировку и на диске, и в памяти
+- Fallback на in-memory override для обратной совместимости
+
+### Изменено
+- `features/covers/helpers.py`: функция `_dt_full` для `input_datetime` с датой и временем
+- `features/covers/runtime.py`: `_cv_override_active` проверяет `input_datetime` с приоритетом над in-memory
+- `tools/gen_helpers.py`: корректная инициализация `input_datetime` с датой (параметр `datetime` вместо `time`)
+- `build/build_pyscript.py`: инъекция манифеста в `manifest_loader.py` на этапе сборки
+- `ha/pyscript/manifest_loader.py`: безопасное чтение манифеста (0 blocking I/O в runtime)
+
+### Исправлено
+- **WARNING "blocking call to open" в логах HA**: манифест теперь "вшит" в `manifest_loader.py` на этапе `./shp build`, в runtime используется готовый словарь из памяти
+- Шторы больше не открываются/закрываются автоматически в течение `override_timeout_min` (по умолчанию 60 мин) после ручного вмешательства
+
+### Семантика
+- При ручном изменении позиции шторы → записывается время снятия блокировки в `input_datetime.cover_<id>_override_until`
+- Автоматика проверяет этот `input_datetime` перед отправкой любой команды
+- Если `datetime.now() < until_dt` → команда отменяется с записью в лог (`override_active`)
+- Через `override_timeout_min` автоматика снова подхватывает управление
+- Сброс блокировки вручную: `pyscript.covers_override_clear(entity_id=cover.xxx)` или без параметров для всех
+

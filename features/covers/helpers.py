@@ -13,6 +13,11 @@ def _dt(i, name, init, icon):
     return {"id": i, "type": "input_datetime/create", "name": name,
             "has_date": False, "initial": init, "icon": icon}
 
+def _dt_full(i, name, init, icon):
+    """input_datetime с датой и временем (для абсолютных таймаутов override)."""
+    return {"id": i, "type": "input_datetime/create", "name": name,
+            "has_date": True, "has_time": True, "initial": init, "icon": icon}
+
 def _num(i, name, mn, mx, step, init, icon):
     return {"id": i, "type": "input_number/create", "name": name,
             "min": mn, "max": mx, "step": step, "initial": init, "icon": icon}

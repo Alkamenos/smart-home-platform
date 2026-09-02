@@ -152,11 +152,21 @@ def _logging_startup():
 
 
 def _read_manifest_file(path):
-    # БЕЗ with: pyscript теряет return из with-блока
-    fh = builtins.open(path,"r", encoding="utf-8")
+    """Чтение манифеста. Использует инъекцию из build-скрипта для дефолтного пути (0 blocking I/O)."""
+    # Если это дефолтный путь и есть инъекция — возвращаем готовый словарь
+    if path == DEFAULT_MANIFEST_PATH:
+        try:
+            if INJECTED_MANIFEST_DATA is not None:
+                return INJECTED_MANIFEST_DATA
+        except NameError:
+            pass
+    # Fallback: чтение с диска (только для явных вызовов manifest_load с другим путем)
+    import yaml as _yaml
+    import builtins as _builtins
+    fh = _builtins.open(path, "r", encoding="utf-8")
     content = fh.read()
     fh.close()
-    return yaml.safe_load(content)
+    return _yaml.safe_load(content)
 
 
 def _collect_missing_helpers(registry):
@@ -175,9 +185,14 @@ def _do_load(path=None):
 
     log.info("[manifest] Загрузка манифеста:" + str(_MANIFEST_PATH))
 
-    if not os.path.exists(_MANIFEST_PATH):
-        log.error("[manifest] Файл не найден:" + str(_MANIFEST_PATH))
-        return {"ok": False,"error":"manifest not found: " + str(_MANIFEST_PATH)}
+    use_injected = (_MANIFEST_PATH == DEFAULT_MANIFEST_PATH)
+    try:
+        use_injected = use_injected and (INJECTED_MANIFEST_DATA is not None)
+    except NameError:
+        use_injected = False
+    if not use_injected and not os.path.exists(_MANIFEST_PATH):
+        log.error("[manifest] Файл не найден: " + str(_MANIFEST_PATH))
+        return {"ok": False, "error": "manifest not found: " + str(_MANIFEST_PATH)}
 
     raw = None
     try:

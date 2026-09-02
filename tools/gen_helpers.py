@@ -84,7 +84,10 @@ def create(ws, e):
         return False
     init = e.get("initial")
     if dom == "input_datetime" and init:
-        ws.call_service("input_datetime", "set_datetime", {"entity_id": eid, "time": init})
+        if e.get("has_date", False):
+            ws.call_service("input_datetime", "set_datetime", {"entity_id": eid, "datetime": init})
+        else:
+            ws.call_service("input_datetime", "set_datetime", {"entity_id": eid, "time": init})
     elif dom == "input_boolean" and init == "on":
         ws.call_service("input_boolean", "turn_on", {"entity_id": eid})
     elif dom == "input_select" and init:

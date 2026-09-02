@@ -3,6 +3,7 @@
 # Префикс _cv_ для избежания коллизий с _lg_/_clim_ и т.д.
 
 import time
+from datetime import datetime, timedelta
 
 _CV_PREV = {}
 _CV_OVERRIDE = {}
@@ -328,8 +329,27 @@ def _cv_close_cover(cover_entity, mode):
     _cv_set_cover_position(cover_entity, 0, mode)
 
 
-def _cv_override_active(cover_entity, timeout_min=60):
-    """Проверка: есть ли активный override (ручное вмешательство)."""
+def _cv_override_active(cover_entity, cid=None):
+    """Проверка: есть ли активный override (ручное вмешательство).
+    Приоритет: input_datetime (переживает перезагрузку HA), затем in-memory fallback."""
+    # 1. Надежный способ через input_datetime
+    if cid:
+        override_entity = "input_datetime.cover_%s_override_until" % cid
+        override_str = _cv_state(override_entity)
+        if override_str and override_str != "unknown" and override_str != "unavailable":
+            try:
+                if " " in override_str:
+                    until_dt = datetime.strptime(override_str, "%Y-%m-%d %H:%M:%S")
+                else:
+                    until_dt = datetime.strptime(
+                        datetime.now().strftime("%Y-%m-%d") + " " + override_str,
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                if datetime.now() < until_dt:
+                    return True
+            except Exception:
+                pass
+    # 2. Fallback на in-memory (для обратной совместимости)
     until = _CV_OVERRIDE.get(cover_entity)
     if until is None:
         return False
@@ -378,10 +398,19 @@ def _cv_track_manual_change(c, cfg):
             _CV_EXPECTED_STATE.pop(cover_entity, None)
             return
     
-    # Это ручное вмешательство — ставим override
+    # Это ручное вмешательство — ставим override в input_datetime (переживает перезагрузку HA)
     timeout = cfg.get("override_timeout_min", 60)
+    until_dt = datetime.now() + timedelta(minutes=timeout)
+    until_str = until_dt.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        service.call("input_datetime", "set_datetime",
+                     entity_id="input_datetime.cover_%s_override_until" % str(c.get("id")),
+                     datetime=until_str)
+    except Exception as e:
+        _cv_log("manual", "WARNING", cover_entity + ": failed to set override_until: " + str(e))
+    # Дублируем в память для мгновенного эффекта
     _CV_OVERRIDE[cover_entity] = time.monotonic() + (timeout * 60)
-    _cv_log("manual", "INFO", cover_entity + ": manual change detected, override " + str(timeout) + " min")
+    _cv_log("manual", "INFO", cover_entity + ": manual change detected, override until " + until_str)
 
 
 def _cv_apply_cover(c, cfg, mode, home, dogs):
@@ -393,7 +422,7 @@ def _cv_apply_cover(c, cfg, mode, home, dogs):
     _cv_track_manual_change(c, cfg)
     
     # Проверяем override
-    if _cv_override_active(cover_entity):
+    if _cv_override_active(cover_entity, cid=str(c.get("id"))):
         return
     
     # Проверяем глобальный флаг
@@ -600,9 +629,29 @@ def covers_debug():
 
 @service
 def covers_override_clear(entity=None):
-    """Очистка override."""
+    """Очистка override (включая input_datetime на диске)."""
+    cfg = _cv_cfg() or {}
+    covers_list = cfg.get("covers", [])
     if entity:
         _CV_OVERRIDE.pop(entity, None)
+        for c in covers_list:
+            if c.get("cover") == entity:
+                cid = str(c.get("id"))
+                try:
+                    service.call("input_datetime", "set_datetime",
+                                 entity_id="input_datetime.cover_%s_override_until" % cid,
+                                 datetime="1970-01-01 00:00:00")
+                except Exception:
+                    pass
+                break
     else:
         _CV_OVERRIDE.clear()
+        for c in covers_list:
+            cid = str(c.get("id"))
+            try:
+                service.call("input_datetime", "set_datetime",
+                             entity_id="input_datetime.cover_%s_override_until" % cid,
+                             datetime="1970-01-01 00:00:00")
+            except Exception:
+                pass
     return {"ok": True}
