@@ -11,8 +11,11 @@ _LIGHT_FSM_PREV_STATE = {}
 def _lg_publish_fsm_states():
     """Публикует состояния FSM всех групп в сенсоры sensor.<group>_fsm_state."""
     for gid, state_info in _FSM_STATES.items():
-        entity_id = "sensor.light_%s_fsm_state" % gid
-        state = state_info.get("state", "OFF")
+        # gid может быть "light.yard_floodlights", "cover.shtora_v_spalne", "room.main"
+        # Заменяем точки на подчеркивания для корректного имени сенсора
+        sensor_name = gid.replace(".", "_")
+        entity_id = "sensor.%s_fsm_state" % sensor_name
+        current_state = state_info.get("state", "OFF")  # Переименовано чтобы не конфликтовать с глобальным state
         why = state_info.get("entered_why", "")
         last_transition = state_info.get("entered_at", "")
         
@@ -25,7 +28,7 @@ def _lg_publish_fsm_states():
         
         # Публикуем состояние
         try:
-            state.set(entity_id, state, attributes=attrs)
+            state.set(entity_id, current_state, attributes=attrs)
         except Exception as e:
             log.error("[light] Failed to publish FSM state for group %s: %s" % (gid, str(e)))
 
