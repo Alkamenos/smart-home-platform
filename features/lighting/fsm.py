@@ -3,6 +3,140 @@
 # Описание состояний и переходов для фичи "Освещение"
 # ============================================================
 
+import time
+
+# ============================================
+# Движок FSM
+# ============================================
+
+def fsm_execute(fsm_def, current_state, ctx, events):
+    """Выполняет один шаг автомата.
+    
+    Args:
+        fsm_def: определение автомата (states, initial, transitions)
+        current_state: текущее состояние
+        ctx: контекст группы (dark, night, motion, presence, etc.)
+        events: список произошедших событий [{'name': 'motion', 'priority': 30}, ...]
+    
+    Returns:
+        (new_state, transition_info или None)
+    """
+    states = fsm_def.get("states", [])
+    transitions = fsm_def.get("transitions", [])
+    
+    if current_state not in states:
+        current_state = fsm_def.get("initial", "OFF")
+    
+    # Собираем все возможные переходы из текущего состояния
+    possible_transitions = []
+    for t in transitions:
+        from_states = t.get("from", [])
+        if isinstance(from_states, str):
+            from_states = [from_states]
+        
+        if current_state not in from_states:
+            continue
+        
+        # Проверка guard (условия)
+        guard = t.get("guard")
+        if guard:
+            if guard == "not night" and ctx.get("night"):
+                continue
+            if guard == "dark or motion_day":
+                if not ctx.get("dark") and not ctx.get("motion_day"):
+                    continue
+            if guard == "away" and not ctx.get("away"):
+                continue
+        
+        possible_transitions.append(t)
+    
+    # Если нет переходов - остаёмся в текущем состоянии
+    if not possible_transitions:
+        return current_state, None
+    
+    # Сортируем по приоритету (убывание)
+    possible_transitions.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    
+    # Находим первый переход, триггер которого совпадает с событием
+    for t in possible_transitions:
+        trigger = t.get("trigger", "")
+        for ev in events:
+            ev_name = ev.get("name", "")
+            ev_priority = ev.get("priority", 0)
+            
+            # Проверка совпадения триггера
+            if trigger == ev_name:
+                # Дополнительная проверка приоритета события
+                if ev_priority >= t.get("priority", 0) - 10:
+                    return t["to"], {
+                        "why": t.get("why", ""),
+                        "trigger": trigger,
+                        "priority": t.get("priority", 0)
+                    }
+    
+    # Ни один переход не сработал
+    return current_state, None
+
+
+def fsm_build_events(ctx):
+    """Строит список событий на основе контекста.
+    
+    Args:
+        ctx: контекст группы
+    
+    Returns:
+        список событий [{'name': ..., 'priority': ...}, ...]
+    """
+    events = []
+    
+    # События расписания
+    if ctx.get("schedule_on"):
+        events.append({"name": "schedule_on", "priority": 20})
+    if ctx.get("schedule_off"):
+        events.append({"name": "schedule_off", "priority": 20})
+    
+    # События датчика движения
+    if ctx.get("motion"):
+        if ctx.get("night") and ctx.get("nightlight_enabled"):
+            events.append({"name": "night_motion", "priority": 35})
+        else:
+            events.append({"name": "motion", "priority": 30})
+    
+    if ctx.get("no_motion_timeout"):
+        events.append({"name": "no_motion_timeout", "priority": 10})
+    
+    if ctx.get("nightlight_timeout"):
+        events.append({"name": "nightlight_timeout", "priority": 10})
+    
+    # Вечеринка
+    if ctx.get("party_mode"):
+        events.append({"name": "party_start", "priority": 50})
+    elif ctx.get("party_ended"):
+        events.append({"name": "party_end", "priority": 50})
+    
+    # Имитация присутствия
+    if ctx.get("imitation_on"):
+        events.append({"name": "imitation_on", "priority": 15})
+    if ctx.get("imitation_off"):
+        events.append({"name": "imitation_off", "priority": 15})
+    
+    # Ручное вмешательство
+    if ctx.get("manual_change"):
+        events.append({"name": "manual_change", "priority": 100})
+    
+    # Таймеры
+    if ctx.get("timeout_expired"):
+        events.append({"name": "timeout", "priority": 5})
+    if ctx.get("override_cleared"):
+        events.append({"name": "override_clear", "priority": 50})
+    
+    return events
+
+
+# ============================================
+# Определения автоматов
+# ============================================
+
 # Автомат по умолчанию для группы освещения
 LIGHT_FSM_DEFAULT = {
     "states": ["OFF", "ON_SCHEDULE", "ON_MOTION", "NIGHTLIGHT", "PARTY", "MANUAL_LOCK"],
@@ -362,3 +496,92 @@ def light_fsm_definition(g):
     
     # Автомат по умолчанию
     return LIGHT_FSM_DEFAULT
+
+
+# ============================================
+# Runtime: хранение состояний FSM
+# ============================================
+
+# Хранение состояния FSM для каждой группы: {gid: {"state": "OFF", "last_transition": time.time(), "why": ""}}
+_LIGHT_FSM_STATE = {}
+
+
+def light_fsm_get_state(gid):
+    """Получает текущее состояние FSM для группы.
+    
+    Args:
+        gid: идентификатор группы
+    
+    Returns:
+        состояние (строка)
+    """
+    if gid not in _LIGHT_FSM_STATE:
+        return "OFF"
+    return _LIGHT_FSM_STATE[gid].get("state", "OFF")
+
+
+def light_fsm_set_state(gid, state, why=""):
+    """Устанавливает новое состояние FSM для группы.
+    
+    Args:
+        gid: идентификатор группы
+        state: новое состояние
+        why: причина перехода
+    """
+    _LIGHT_FSM_STATE[gid] = {
+        "state": state,
+        "last_transition": time.monotonic(),
+        "why": why
+    }
+
+
+def light_fsm_run(g, ctx):
+    """Выполняет шаг FSM для группы освещения.
+    
+    Args:
+        g: конфигурация группы
+        ctx: контекст группы (dark, night, motion, presence, etc.)
+    
+    Returns:
+        {"state": новое_состояние, "action": действие, "why": причина} или None
+    """
+    gid = str(g.get("id"))
+    fsm_def = light_fsm_definition(g)
+    current_state = light_fsm_get_state(gid)
+    
+    # Строим события из контекста
+    events = fsm_build_events(ctx)
+    
+    # Выполняем шаг автомата
+    new_state, transition_info = fsm_execute(fsm_def, current_state, ctx, events)
+    
+    # Если состояние изменилось - логируем и сохраняем
+    if new_state != current_state and transition_info:
+        light_fsm_set_state(gid, new_state, transition_info.get("why", ""))
+        
+        # Определяем действие на основе состояния
+        action = None
+        if new_state in ["ON_SCHEDULE", "ON_MOTION", "PARTY"]:
+            action = {"on": True, "brightness": "normal"}
+        elif new_state == "NIGHTLIGHT":
+            action = {"on": True, "brightness": "min"}
+        elif new_state == "OFF":
+            action = {"on": False}
+        elif new_state == "MANUAL_LOCK":
+            # Блокировка - не меняем состояние света
+            action = None
+        
+        return {
+            "state": new_state,
+            "action": action,
+            "why": transition_info.get("why", ""),
+            "trigger": transition_info.get("trigger", "")
+        }
+    
+    # Состояние не изменилось - возвращем текущее
+    return {
+        "state": new_state,
+        "action": None,
+        "why": "нет перехода",
+        "trigger": None
+    }
