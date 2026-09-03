@@ -10,7 +10,7 @@ COVER_FSM_DEFAULT = {
     "transitions": [
         # Расписание: открытие днём
         {
-            "from": ["CLOSED", "PARTIAL"],
+            "from": ["CLOSED"],
             "to": "OPEN",
             "trigger": "schedule_day",
             "priority": 20,
@@ -18,11 +18,35 @@ COVER_FSM_DEFAULT = {
         },
         # Расписание: закрытие ночью
         {
-            "from": ["OPEN", "PARTIAL"],
+            "from": ["OPEN"],
             "to": "CLOSED",
             "trigger": "schedule_night",
             "priority": 20,
             "why": "Закрытие по расписанию (ночь)"
+        },
+        # Частичное закрытие при определённых условиях
+        {
+            "from": ["OPEN", "CLOSED"],
+            "to": "PARTIAL",
+            "trigger": "partial_adjust",
+            "priority": 15,
+            "why": "Частичная регулировка положения"
+        },
+        # Возврат из PARTIAL в OPEN
+        {
+            "from": ["PARTIAL"],
+            "to": "OPEN",
+            "trigger": "schedule_day",
+            "priority": 20,
+            "why": "Возврат в открытое состояние"
+        },
+        # Возврат из PARTIAL в CLOSED
+        {
+            "from": ["PARTIAL"],
+            "to": "CLOSED",
+            "trigger": "schedule_night",
+            "priority": 20,
+            "why": "Возврат в закрытое состояние"
         },
         # Уход: закрытие
         {

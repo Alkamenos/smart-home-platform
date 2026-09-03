@@ -6,6 +6,36 @@
 
 ## Unreleased
 
+### Добавлено (Фаза 6: Валидация FSM и исправление ошибок)
+- **Валидатор графов FSM** (`cli/fsm_validate.py`): проверка всех автоматов платформы
+  - Проверка достижимости состояний (BFS от initial)
+  - Проверка deadlock (состояния без исходящих переходов)
+  - Проверка циклов с одинаковым приоритетом
+  - Проверка корректности PREVIOUS
+  - Интеграция в `./shp validate --fsm` (планируется)
+- **Исправлен COVER_FSM_DEFAULT**: состояние PARTIAL теперь достижимо
+  - Добавлен триггер `partial_adjust` для перехода в PARTIAL из OPEN/CLOSED
+  - Добавлены переходы из PARTIAL обратно в OPEN/CLOSED по расписанию
+  - Все 5 состояний теперь достижимы из начального CLOSED
+- **Тестирование FSM**: все автоматы проходят валидацию
+  - LIGHT_FSM_DEFAULT/nightlight/motion/imitation: ✅ VALID
+  - CLIMATE_FSM_DEFAULT: ✅ VALID
+  - VENTILATION_FSM_DEFAULT: ✅ VALID
+  - ROOM_FSM_HOME: ✅ VALID
+  - COVER_FSM_DEFAULT/DOOR: ✅ VALID (после исправления)
+
+### Изменено
+- `features/covers/fsm.py`: переработаны переходы для достижения состояния PARTIAL
+  - Убраны переходы из PARTIAL по schedule_day/schedule_night в from
+  - Добавлен явный триггер `partial_adjust` (приоритет 15)
+  - Добавлены обратные переходы из PARTIAL в OPEN/CLOSED
+
+### Документация
+- Обновлён CHANGELOG.md: добавлена секция Фаза 6
+- FSM_SPEC.md: обновлён статус валидации (все автоматы проверены)
+
+---
+
 ### Добавлено (Фаза 5: FSM для Освещения — полный переход)
 - **Полная миграция освещения на FSM без shadow mode**: все 16 групп освещения используют FSM напрямую
   - Удалена логика `fsm_shadow` — FSM исполняется сразу при `fsm_enabled: true`
