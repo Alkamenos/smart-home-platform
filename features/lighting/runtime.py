@@ -1,16 +1,113 @@
 #!/usr/bin/env python3
 """Runtime: главный цикл и применение решений к группам."""
 
+from .fsm import light_fsm_run, light_fsm_get_state
+
+
+def _lg_build_fsm_ctx(g, ctx):
+    """Преобразует контекст decide.py в контекст для FSM.
+    
+    Args:
+        g: конфигурация группы
+        ctx: контекст из _lg_decide_ctx
+    
+    Returns:
+        словарь событий для fsm_build_events
+    """
+    gid = str(g.get("id"))
+    features = g.get("features") or {}
+    
+    # Определяем профиль включения/выключения
+    sel_on = ctx.get("sel_on", "")
+    sel_off = ctx.get("sel_off", "")
+    prof = ctx.get("prof", "")
+    
+    # События расписания
+    schedule_on = False
+    schedule_off = False
+    
+    if sel_on == "Время":
+        # Проверяем время включения
+        t_val = _lg_dt_min("input_datetime.light_%s_on_time" % gid)
+        if t_val is not None and ctx.get("now") >= t_val:
+            schedule_on = True
+    elif sel_on == "Закат" or prof == "dusk_till_time":
+        if ctx.get("dark"):
+            schedule_on = True
+    
+    if sel_off == "Рассвет":
+        if not ctx.get("dark") and not ctx.get("presence"):
+            schedule_off = True
+    elif sel_off == "Время":
+        off_min = _lg_dt_min("input_datetime.light_%s_off_time" % gid)
+        if off_min is not None and ctx.get("now") >= off_min:
+            schedule_off = True
+    
+    # События движения
+    motion = ctx.get("presence", False)
+    no_motion_timeout = not motion and ctx.get("ms") is not None
+    nightlight_timeout = False  # Обрабатывается отдельно
+    
+    # Вечеринка
+    party_mode = _lg_state("input_boolean.party_mode") == "on"
+    party_ended = False
+    
+    # Имитация присутствия
+    imitation_on = False
+    imitation_off = False
+    
+    # Ручное вмешательство
+    manual_change = False
+    
+    return {
+        "schedule_on": schedule_on,
+        "schedule_off": schedule_off,
+        "motion": motion,
+        "no_motion_timeout": no_motion_timeout,
+        "nightlight_timeout": nightlight_timeout,
+        "night": ctx.get("night", False),
+        "nightlight_enabled": bool(features.get("nightlight")),
+        "motion_day": ctx.get("mday", False),
+        "dark": ctx.get("dark", False),
+        "party_mode": party_mode,
+        "party_ended": party_ended,
+        "imitation_on": imitation_on,
+        "imitation_off": imitation_off,
+        "manual_change": manual_change,
+        "away": False,  # Заполняется из глобального контекста
+        "timeout_expired": False,
+        "override_cleared": False
+    }
 
 
 def _lg_decide(g, cfg):
-    """Принятие решения для группы через voters."""
+    """Принятие решения для группы через voters или FSM."""
     g = _lg_season(g)
     ctx = _lg_decide_ctx(g, cfg)
     ov = g.get("override_flag")
     if ov and _lg_state(ov) == "on":
         return {"on": True, "why": "override_flag"}
     gid = str(g.get("id"))
+    
+    # Проверяем, включен ли FSM для этой группы
+    use_fsm = g.get("fsm_enabled", False)
+    
+    if use_fsm:
+        # Используем FSM
+        fsm_ctx = _lg_build_fsm_ctx(g, ctx)
+        fsm_result = light_fsm_run(g, fsm_ctx)
+        
+        if fsm_result and fsm_result.get("action"):
+            action = fsm_result["action"]
+            why = fsm_result.get("why", "FSM")
+            
+            # Логируем переход состояния
+            state = fsm_result.get("state", "UNKNOWN")
+            _lg_log("fsm", "INFO", "gid=%s: state=%s why=%s" % (gid, state, why))
+            
+            return {"on": action.get("on", False), "why": why}
+    
+    # Используем старую логику voters
     _lg_log("decide", "DEBUG", "gid=%s: started, prof=%s dark=%s night=%s any_on=%s" % (gid, ctx.get("prof"), ctx.get("dark"), ctx.get("night"), ctx.get("any_on")))
     for voter in _FD_REGISTRY:
         vote = voter(g, cfg, ctx)
