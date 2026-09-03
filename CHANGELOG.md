@@ -6,11 +6,13 @@
 
 ## Unreleased
 
-### Добавлено (Фаза 4: FSM для Освещения)
-- **FSM движок для освещения**: 4 типа автоматов (DEFAULT, NIGHTLIGHT, MOTION, IMITATION)
-  - Состояния: `OFF`, `AUTO_DAY`, `AUTO_NIGHT`, `MOTION_ACTIVE`, `MANUAL_LOCK`, `PARTY`, `NIGHT_LIGHT`, `PREVIOUS`, `UNAVAILABLE`
-  - Триггеры: `manual_change` (100), `schedule_*` (20), `motion_*` (10), `party_*` (50), `night_light_*` (50), `timeout` (0)
-  - Ортогональность режимов: движение + расписание + вечеринка работают независимо
+### Добавлено (Фаза 5: FSM для Освещения — полный переход)
+- **Полная миграция освещения на FSM без shadow mode**: все 16 групп освещения используют FSM напрямую
+  - Удалена логика `fsm_shadow` — FSM исполняется сразу при `fsm_enabled: true`
+  - Прямое исполнение решений FSM в `_lg_decide()` без дублирования voters
+  - Сохранены все автоматы: DEFAULT, NIGHTLIGHT, MOTION, IMITATION
+  - Состояния: `OFF`, `ON_SCHEDULE`, `ON_MOTION`, `MANUAL_LOCK`, `PARTY`, `NIGHTLIGHT`, `UNAVAILABLE`
+  - Триггеры: `manual_change` (100), `schedule_*` (20), `motion_*` (10), `party_*` (50), `timeout` (0)
   - Guard `room_ok`: защита от включения при PARTY/SLEEPING
   - Переход `PREVIOUS`: возврат в предыдущее состояние после таймаута движения/ночника
 - **Наблюдаемость**:
@@ -21,15 +23,21 @@
 - **Интеграция с room_context**: чтение контекста комнаты через `_cv_get_room_context()`
 - **Обработка unavailable**: состояние `UNAVAILABLE` при недоступности устройств
 - **Манифест**: `fsm_enabled: true` для всех 16 групп освещения
+- **Тесты**: 6 unit-тестов в `tests/test_lighting_fsm.py` (начальное состояние, manual lock, motion timeout, party mode, night light, unavailable)
 
 ### Изменено
+- `features/lighting/runtime.py`: удалена логика shadow mode, прямое исполнение FSM
 - `features/lighting/fsm.py`: доработаны автоматы с состоянием PREVIOUS и guard'ами
-- `features/lighting/runtime.py`: интеграция room_context, device_available, публикация в fsm_overview
-- `features/lighting/services.py`: сервисы диагностики FSM
-- `instances/leonid_house/manifest.yaml`: включён FSM для всех групп
+- `features/lighting/helpers.py`: генерация `input_boolean.light_<gid>_fsm_enabled` для каждой группы
+- `instances/leonid_house/manifest.yaml`: включён FSM для всех групп (`fsm_enabled: true`)
 
 ### Документация
 - `features/lighting/fsm_design.md`: архитектурное описание автоматов освещения
+- Обновлён `CHANGELOG.md`: добавлена секция Фаза 5
+
+### Удалено
+- Логика `fsm_shadow` из освещения (теневой режим более не требуется)
+- Дублирование voters в `_lg_decide()` при активном FSM
 
 ---
 
