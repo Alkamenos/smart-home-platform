@@ -1,6 +1,7 @@
 # ============================================================
 # VENTILATION CONTROLLER (Vakio), Этап 2
 # ============================================================
+from .fsm import ventilation_fsm_run, ventilation_fsm_get_state
 import time
 
 _VENT_BOOST_START = {}
@@ -329,6 +330,14 @@ def _vent_tick():
     if not cfg or not cfg.get("enabled", True):
         return
     mode = _vent_mode(cfg)
+    # Проверяем, нужно ли использовать FSM для вентиляции
+    # Сейчас используется старая логика, но флаг готов
+    # fsm_enabled = cfg.get("fsm_enabled", False)
+    # if fsm_enabled:
+    #     fsm_ctx = _vent_build_fsm_ctx(cfg)
+    #     fsm_result = ventilation_fsm_run(device_id, fsm_ctx)
+    #     if fsm_result and fsm_result.get("action"):
+    #         return _vent_convert_fsm_action(fsm_result)
     desired = _vent_decide(cfg)
     if desired.get("preset") in (V_BOOST_IN, V_BOOST_EX):
         key ="intake" if desired["preset"] == V_BOOST_IN else"exhaust"
