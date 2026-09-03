@@ -16,9 +16,8 @@
 | Механизм | Влияние |
 |---|---|
 | `input_boolean.feature_<name>` (мастер и per-group) | выключает только автоматику; ручное работает всегда |
-| `input_boolean.<name>_shadow_mode` | автоматика только логирует `[SHADOW]` с причиной (`why`); ручное — в real |
-| per-group `shadow: true` в манифесте | то же для одной группы |
-| Ручное (vlight / кнопка-boolean / `vlight_toggle`) | всегда real: `_lg_manual_command` → `_lg_set_real(force=True)` обходит shadow |
+| FSM (`fsm_enabled: true` в манифесте) | автоматика использует конечный автомат для принятия решений |
+| Ручное (vlight / кнопка-boolean / `vlight_toggle`) | всегда real: `_lg_manual_command` → `_lg_set_real(force=True)` |
 
 ## Vlight-контракт (освещение)
 `vlight_<gid>` = командная шина группы; реальные лампы следуют за ней.
