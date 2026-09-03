@@ -105,10 +105,8 @@ def group_feature_helpers(g, gid, i, ctx):
             add, i = FEATURE_HELPERS[fname](g, gid, i, ctx)
             out += add
     
-    # Добавляем FSM helpers (fsm_enabled, fsm_shadow)
+    # Добавляем FSM helpers (fsm_enabled)
     out.append(_bool(i, "light_%s_fsm_enabled" % gid, "off", "mdi:robot"))
-    i += 1
-    out.append(_bool(i, "light_%s_fsm_shadow" % gid, "on", "mdi:debug-step-over"))
     i += 1
     
     return out, i
