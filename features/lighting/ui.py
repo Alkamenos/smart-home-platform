@@ -105,10 +105,41 @@ def ui_imitation(g, gid):
             _bool("input_boolean.light_%s_imitation" % gid, "Участвовать")]
 
 
+def ui_fsm_status(g, gid):
+    """Карточка статуса FSM для группы освещения."""
+    return [
+        _title("🤖 FSM Статус"),
+        # Переключатели режима FSM
+        _grid([
+            _bool("input_boolean.light_%s_fsm_enabled" % gid, "FSM включён"),
+            _bool("input_boolean.light_%s_fsm_shadow" % gid, "Shadow режим")
+        ], 2),
+        # Информационное поле: текущее состояние FSM
+        {
+            "type": "custom:mushroom-template-card",
+            "entity": "sensor.light_%s_fsm_state" % gid,
+            "content": "{{ states(entity) | default('OFF') }}",
+            "name": "Состояние FSM"
+        },
+        # Атрибуты: причина последнего перехода
+        {
+            "type": "entities",
+            "entities": [
+                {
+                    "entity": "sensor.light_%s_fsm_state" % gid,
+                    "name": "Причина",
+                    "attribute": "transition_reason"
+                }
+            ]
+        }
+    ]
+
+
 ALWAYS = {"party"}
 FEATURE_UI = {"party": ui_party, "dusk": ui_dusk, "ct": ui_ct, "imitation": ui_imitation,
-              "schedule": ui_schedule, "motion": ui_motion, "nightlight": ui_nightlight}
-FEATURE_ORDER = ["party", "schedule", "dusk", "motion", "nightlight", "ct", "imitation"]
+              "schedule": ui_schedule, "motion": ui_motion, "nightlight": ui_nightlight,
+              "fsm_status": ui_fsm_status}
+FEATURE_ORDER = ["party", "schedule", "dusk", "motion", "nightlight", "ct", "imitation", "fsm_status"]
 
 
 def group_feature_blocks(g, gid):

@@ -90,7 +90,21 @@ def covers_global_card():
                 _bool("input_boolean.covers_close_night", "Закрывать шторы ночью"),
                 _bool("input_boolean.covers_close_door_night", "Закрывать ночью штору над дверью"),
                 _bool("input_boolean.covers_close_away", "Закрывать шторы когда нас нет")
-            ], 3)
+            ], 3),
+            # НОВЫЙ БЛОК: FSM статус для штор
+            _grid([
+                _bool("input_boolean.feature_covers_fsm_enabled", "FSM включён"),
+                _bool("input_boolean.feature_covers_fsm_shadow", "Shadow режим")
+            ], 2),
+            {
+                "type": "custom:mushroom-template-card",
+                "entity": "sensor.covers_fsm_state",
+                "content": "{{ states(entity) | default('CLOSED') }}",
+                "name": "Состояние FSM"
+            },
+            {"type": "entities", "entities": [
+                {"entity": "sensor.covers_fsm_state", "name": "Причина", "attribute": "transition_reason"}
+            ]}
         ]
     }
 
