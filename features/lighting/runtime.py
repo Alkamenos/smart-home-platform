@@ -315,8 +315,6 @@ def _lg_track_real(g, cfg, mode, v, has_v):
 def _lg_apply_group(g, cfg, mode):
     """Применение автоматики к группе."""
     g = _lg_season(g)
-    if g.get("shadow"):
-        mode = "shadow"
     lights = [e for e in (g.get("lights", []) or []) if e]
     v = lg_vlight_entity(g)
     has_v = _lg_state(v) is not None
@@ -337,11 +335,6 @@ def _lg_apply_group(g, cfg, mode):
     
     # Логирование решения
     log_event("lighting", "Отладка", "gid=" + gid + " decided=" + str(desired) + " why=" + why, why=why, src="автоматика")
-    
-    if mode == "shadow":
-        cur = [_lg_is_on(e) for e in lights]
-        if any([c != desired for c in cur]):
-            log_event("lighting", "Инфо", "gid=" + gid + " shadow: desired=" + str(desired) + " why=" + why, why="shadow-режим", src="автоматика")
 
     nightlight = dec.get("nightlight", False)
 
