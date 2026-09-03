@@ -269,12 +269,7 @@ def _lg_cfg():
 # ==================== РЕЖИМЫ И СЕЗОНЫ ====================
 
 def _lg_mode(cfg):
-    """Определение текущего режима (real/shadow)."""
-    sh = _lg_state("input_boolean.lighting_shadow_mode")
-    if sh == "on":
-        return "shadow"
-    if sh == "off":
-        return "real"
+    """Определение текущего режима работы."""
     return cfg.get("mode", "real")
 
 
