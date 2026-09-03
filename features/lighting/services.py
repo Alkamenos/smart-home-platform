@@ -104,3 +104,37 @@ def vlight_toggle(group_id=None, on=None):
             on_val = not any([_lg_is_on(e) for e in lights_list])
     _lg_manual_command(cfg, g, on_val, _lg_mode(cfg))
     return {"ok": True}
+
+
+@service
+def lighting_fsm_status():
+    """Краткий статус всех автоматов освещения."""
+    from .runtime import _lg_fsm_status_all
+    
+    status = _lg_fsm_status_all()
+    state.set("sensor.lighting_fsm_status", "ok", fsm_status=status)
+    log.warning("[light][fsm-status] %s" % str(status))
+    return {"ok": True, "status": status}
+
+
+@service
+def lighting_fsm_debug(group_id=None):
+    """Полная диагностика автомата для конкретной группы.
+    
+    Args:
+        group_id: идентификатор группы (опционально)
+    """
+    from .runtime import _lg_fsm_debug
+    
+    if group_id is None:
+        return {"error": "group_id required"}
+    
+    debug_info = _lg_fsm_debug(str(group_id))
+    
+    if "error" in debug_info:
+        return debug_info
+    
+    entity_id = "sensor.light_%s_fsm_debug" % group_id
+    state.set(entity_id, "ok", fsm_debug=debug_info)
+    log.warning("[light][fsm-debug] gid=%s: %s" % (group_id, str(debug_info)))
+    return {"ok": True, "debug": debug_info}
