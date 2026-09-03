@@ -30,6 +30,24 @@ def _lg_publish_fsm_states():
             log.error("[light] Failed to publish FSM state for group %s: %s" % (gid, str(e)))
 
 
+def _lg_update_fsm_overview():
+    """Обновляет агрегированный сенсор fsm_overview состояниями освещения."""
+    try:
+        overview = {}
+        for gid, state_info in _LIGHT_FSM_STATE.items():
+            entity_id = "light_%s" % gid
+            overview[entity_id] = state_info.get("state", "OFF")
+        
+        # Публикуем в сенсор fsm_overview с обновлением таймстампа
+        from datetime import datetime
+        state.set("sensor.fsm_overview", str(len(overview)),
+                  count=str(len(overview)),
+                  states=str(overview),
+                  updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    except Exception as e:
+        log.error("[light] Failed to update fsm_overview: %s" % str(e))
+
+
 def _lg_fsm_status_all():
     """Возвращает краткий статус всех автоматов освещения.
     
@@ -365,6 +383,7 @@ def _lg_tick():
     # Публикация состояний FSM после каждого тика
     try:
         _lg_publish_fsm_states()
+        _lg_update_fsm_overview()
     except Exception as exc:
         log.error("[light] Failed to publish FSM states: " + str(exc))
     
