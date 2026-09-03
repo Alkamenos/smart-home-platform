@@ -33,6 +33,65 @@ def cmd_validate(args):
             print("  WARN: группа %s без lights" % gid)
         feats = g.get("features") or {}
         print("  - %s: %s" % (gid, ", ".join(sorted(feats.keys())) or "legacy"))
+    
+    # Валидация FSM графов
+    from cli import fsm_validate
+    print("\n=== Валидация FSM ===")
+    try:
+        # Собираем определения FSM из всех фич
+        fsm_defs = {}
+        
+        # Room FSM
+        try:
+            from features.room.fsm import room_fsm_definition
+            fsm_defs["room.main"] = room_fsm_definition()
+        except Exception as e:
+            print("WARN: Не удалось загрузить room FSM:", e)
+        
+        # Covers FSM
+        try:
+            from features.covers.fsm import COVER_FSM_DEFAULT, COVER_FSM_DOOR
+            fsm_defs["covers.default"] = COVER_FSM_DEFAULT
+            fsm_defs["covers.door"] = COVER_FSM_DOOR
+        except Exception as e:
+            print("WARN: Не удалось загрузить covers FSM:", e)
+        
+        # Climate FSM
+        try:
+            from features.climate.fsm import get_fsm_definition
+            fsm_defs["climate.auto"] = get_fsm_definition("auto")
+            fsm_defs["climate.manual"] = get_fsm_definition("manual")
+        except Exception as e:
+            print("WARN: Не удалось загрузить climate FSM:", e)
+        
+        # Ventilation FSM
+        try:
+            from features.ventilation.fsm import get_fsm_definition as vent_get_fsm
+            fsm_defs["ventilation.auto"] = vent_get_fsm()
+        except Exception as e:
+            print("WARN: Не удалось загрузить ventilation FSM:", e)
+        
+        # Lighting FSM
+        try:
+            from features.lighting.fsm import light_fsm_definition
+            test_group = {"id": "validation_test", "features": {"schedule": {}}, "room": "test"}
+            fsm_defs["lighting.default"] = light_fsm_definition(test_group)
+        except Exception as e:
+            print("WARN: Не удалось загрузить lighting FSM:", e)
+        
+        # Запуск валидации
+        if fsm_defs:
+            results = fsm_validate.validate_multiple_fsm(fsm_defs)
+            fsm_validate.print_validation_report(results)
+            
+            # Проверяем есть ли ошибки
+            has_errors = any(not r.is_valid() for r in results.values())
+            if has_errors:
+                return 1
+    except Exception as e:
+        print("ERROR при валидации FSM:", e)
+        return 1
+    
     return 0
 
 def cmd_build(args):

@@ -1,22 +1,56 @@
-# Python bytecode
+```
+# Python cache
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
-__pycache__/
+
+# Compiled and build artifacts
+*.o
+*.obj
+*.out
+*.exe
+*.dll
 *.so
+*.a
 
-# Pyscript runtime artifacts
-pyscript_modules/
+# Dependencies
+.venv/
+venv/
+env/
+node_modules/
 
-# IDE
+# Build directories
+build/
+dist/
+target/
+.deps/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editors and IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS
+# Coverage and testing
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# OS specific
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
+```
