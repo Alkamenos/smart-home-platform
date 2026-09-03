@@ -35,9 +35,8 @@ def climate_cards(climate):
         "cards": [
             _title("🤖 FSM Статус"),
             _grid([
-                _bool("input_boolean.feature_climate_fsm_enabled", "FSM включён"),
-                _bool("input_boolean.feature_climate_fsm_shadow", "Shadow режим")
-            ], 2),
+                _bool("input_boolean.feature_climate_fsm_enabled", "FSM включён")
+            ], 1),
             {
                 "type": "custom:mushroom-template-card",
                 "entity": "sensor.climate_fsm_state",

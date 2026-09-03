@@ -93,9 +93,8 @@ def covers_global_card():
             ], 3),
             # НОВЫЙ БЛОК: FSM статус для штор
             _grid([
-                _bool("input_boolean.feature_covers_fsm_enabled", "FSM включён"),
-                _bool("input_boolean.feature_covers_fsm_shadow", "Shadow режим")
-            ], 2),
+                _bool("input_boolean.feature_covers_fsm_enabled", "FSM включён")
+            ], 1),
             {
                 "type": "custom:mushroom-template-card",
                 "entity": "sensor.covers_fsm_state",

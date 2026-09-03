@@ -109,11 +109,10 @@ def ui_fsm_status(g, gid):
     """Карточка статуса FSM для группы освещения."""
     return [
         _title("🤖 FSM Статус"),
-        # Переключатели режима FSM
+        # Переключатель режима FSM
         _grid([
-            _bool("input_boolean.light_%s_fsm_enabled" % gid, "FSM включён"),
-            _bool("input_boolean.light_%s_fsm_shadow" % gid, "Shadow режим")
-        ], 2),
+            _bool("input_boolean.light_%s_fsm_enabled" % gid, "FSM включён")
+        ], 1),
         # Информационное поле: текущее состояние FSM
         {
             "type": "custom:mushroom-template-card",

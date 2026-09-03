@@ -44,9 +44,8 @@ def vent_cards(ventilation):
         "cards": [
             _title("🤖 FSM Статус"),
             _grid([
-                _bool("input_boolean.feature_ventilation_fsm_enabled", "FSM включён"),
-                _bool("input_boolean.feature_ventilation_fsm_shadow", "Shadow режим")
-            ], 2),
+                _bool("input_boolean.feature_ventilation_fsm_enabled", "FSM включён")
+            ], 1),
             {
                 "type": "custom:mushroom-template-card",
                 "entity": "sensor.ventilation_fsm_state",
