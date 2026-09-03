@@ -165,6 +165,99 @@ def _vent_winter_pct(cfg, outdoor, indoor):
     return max(0, pct)
 
 
+
+
+def _vent_build_fsm_ctx(cfg):
+    """Строит контекст для автомата вентиляции.
+    
+    Args:
+        cfg: конфигурация вентиляции из манифеста
+        
+    Returns:
+        словарь контекста для ventilation_fsm_run()
+    """
+    # Получаем сенсоры
+    sensors = cfg.get("sensors", {}) or {}
+    outdoor_temp = _vent_get_float(sensors.get("outdoor_temp"))
+    
+    # Получаем CO2 и влажность (если есть сенсоры)
+    co2_sensor = sensors.get("co2")
+    humidity_sensor = sensors.get("humidity")
+    co2_level = _vent_get_float(co2_sensor) if co2_sensor else 400
+    humidity = _vent_get_float(humidity_sensor) if humidity_sensor else 50
+    
+    # Получаем контекст комнаты
+    try:
+        room_context = _cv_get_room_context()
+    except Exception:
+        room_context = "HOME_DAY"
+    
+    # Проверяем ночное время
+    is_night = state.get("sun.sun") == "below_horizon"
+    
+    # Проверяем ручной режим
+    manual_mode = False
+    override_remaining_min = 0
+    
+    # Проверяем heating lockout
+    heating_lockout = _vent_heating_lockout_active(cfg) is not None
+    
+    # Проверяем boost timer
+    boost_remaining_min = 0
+    for key, start_time in _VENT_BOOST_START.items():
+        boost_minutes = cfg.get("boost_minutes", 60)
+        remaining = boost_minutes * 60 - (time.monotonic() - start_time)
+        if remaining > 0:
+            boost_remaining_min = int(remaining / 60)
+            break
+    
+    return {
+        "co2_level": co2_level if co2_level else 400,
+        "humidity": humidity if humidity else 50,
+        "outdoor_temperature": outdoor_temp if outdoor_temp else 0,
+        "indoor_temperature": 22.0,
+        "manual_mode": manual_mode,
+        "override_remaining_min": override_remaining_min,
+        "heating_lockout": heating_lockout,
+        "is_night": is_night,
+        "room_context": room_context,
+        "boost_remaining_min": boost_remaining_min,
+    }
+
+
+def _vent_convert_fsm_action(result):
+    """Конвертирует действие FSM в формат для _vent_apply.
+    
+    Args:
+        result: результат работы автомата {"state": ..., "action": ..., "why": ...}
+        
+    Returns:
+        словарь в формате для _vent_apply()
+    """
+    state = result.get("state")
+    action = result.get("action")
+    why = result.get("why", "")
+    
+    if action is None:
+        return None
+    
+    preset = action.get("preset")
+    pct = action.get("pct")
+    
+    # Конвертируем preset в формат вентиляции
+    if preset == "OFF":
+        return {"action": "off", "why": why}
+    elif preset == "Приток MAX":
+        return {"preset": "Приток MAX", "pct": 100, "why": why}
+    elif preset == "Рекуперация":
+        # Определяем сезон
+        zima = state.get("input_boolean.zima") == "on"
+        preset_name = "Рекуперация (зима)" if zima else "Рекуперация (лето)"
+        return {"preset": preset_name, "pct": pct, "why": why}
+    else:
+        return {"preset": preset, "pct": pct, "why": why}
+
+
 def _vent_decide(cfg):
     global _FREE_HEAT_ACTIVE
     _FREE_HEAT_ACTIVE = False
@@ -330,14 +423,12 @@ def _vent_tick():
     if not cfg or not cfg.get("enabled", True):
         return
     mode = _vent_mode(cfg)
-    # Проверяем, нужно ли использовать FSM для вентиляции
-    # Сейчас используется старая логика, но флаг готов
-    # fsm_enabled = cfg.get("fsm_enabled", False)
-    # if fsm_enabled:
-    #     fsm_ctx = _vent_build_fsm_ctx(cfg)
-    #     fsm_result = ventilation_fsm_run(device_id, fsm_ctx)
-    #     if fsm_result and fsm_result.get("action"):
-    #         return _vent_convert_fsm_action(fsm_result)
+    # Используем FSM для вентиляции
+    device_id = cfg.get("devices", [{}])[0].get("entity", "fan.base_smart").replace("fan.", "")
+    fsm_ctx = _vent_build_fsm_ctx(cfg)
+    fsm_result = ventilation_fsm_run(device_id, fsm_ctx)
+    if fsm_result and fsm_result.get("action"):
+        return _vent_convert_fsm_action(fsm_result)
     desired = _vent_decide(cfg)
     if desired.get("preset") in (V_BOOST_IN, V_BOOST_EX):
         key ="intake" if desired["preset"] == V_BOOST_IN else"exhaust"

@@ -289,16 +289,116 @@ def _clim_eval_cool_actuator(mode, dev, cur_temp, cool_target, deadband, zone_id
         _clim_send_off(entity)
 
 
-# Проверяем, нужно ли использовать FSM для этой зоны
-# Сейчас все зоны используют старую логику, но флаг готов
-# zone_fsm_enabled = zone.get("fsm_enabled", False)
-# if zone_fsm_enabled:
-#     ctx = _clim_build_fsm_ctx(zone)
-#     result = climate_fsm_run(zone.get("id"), ctx)
-#     if result and result.get("action"):
-#         _clim_apply_fsm_action(zone, result)
-#         continue
+def _clim_build_fsm_ctx(zone):
+    """Строит контекст для автомата климата.
+    
+    Args:
+        zone: конфигурация зоны из манифеста
+        
+    Returns:
+        словарь контекста для climate_fsm_run()
+    """
+    zone_id = zone.get("id")
+    
+    # Получаем текущую температуру
+    temp_sensor = _REGISTRY.device(zone.get("temp_sensor_ref")) or {}
+    temp_entity = temp_sensor.get("entity")
+    current_temp = _clim_get_float(temp_entity) if temp_entity else 20.0
+    
+    # Получаем уставку
+    setpoints = zone.get("setpoints") or {}
+    heat_sp = (setpoints.get("heat") or {}).get("source")
+    target_temp = _clim_get_float(heat_sp) if heat_sp else 22.0
+    
+    # Получаем контекст комнаты
+    try:
+        room_context = _cv_get_room_context()
+    except Exception:
+        room_context = "HOME_DAY"
+    
+    # Проверяем ручной режим
+    manual_mode = False
+    override_remaining_min = 0
+    
+    # Проверяем безопасность
+    safety_cfg = _clim_safety_cfg()
+    sensor_error = False
+    heating_lockout = _clim_ac_lockout()
+    
+    return {
+        "current_temperature": current_temp,
+        "target_temperature": target_temp,
+        "manual_mode": manual_mode,
+        "override_remaining_min": override_remaining_min,
+        "sensor_error": sensor_error,
+        "heating_lockout": heating_lockout,
+        "room_context": room_context,
+        "temp_hysteresis": setpoints.get("deadband", 0.5),
+    }
+
+
+def _clim_apply_fsm_action(zone, result):
+    """Применяет действие автомата климата к устройствам зоны.
+    
+    Args:
+        zone: конфигурация зоны из манифеста
+        result: результат работы автомата {"state": ..., "action": ..., "why": ...}
+    """
+    zone_id = zone.get("id")
+    state = result.get("state")
+    action = result.get("action")
+    why = result.get("why", "")
+    
+    if action is None:
+        return
+    
+    hvac_mode = action.get("hvac_mode")
+    
+    if hvac_mode == "off":
+        # Выключаем все устройства в зоне
+        for act in zone.get("actuators", []):
+            dev = _REGISTRY.device(act.get("ref")) or {}
+            entity = dev.get("entity")
+            if entity and dev.get("managed_by_platform", True):
+                _clim_send_off(entity)
+                log_event("climate", "Предупреждения", "[" + str(zone_id) + "] FSM " + str(state) + " -> off: " + why, why=why, src="FSM")
+    elif hvac_mode == "heat":
+        # Включаем нагрев
+        for act in zone.get("actuators", []):
+            if act.get("role") in ("primary_heat", "secondary_heat"):
+                dev = _REGISTRY.device(act.get("ref")) or {}
+                entity = dev.get("entity")
+                if entity and dev.get("managed_by_platform", True):
+                    # Получаем уставку
+                    setpoints = zone.get("setpoints") or {}
+                    heat_sp = (setpoints.get("heat") or {}).get("source")
+                    target_temp = _clim_get_float(heat_sp) if heat_sp else 22.0
+                    _clim_send_on(entity, "heat", target_temp)
+                    log_event("climate", "Предупреждения", "[" + str(zone_id) + "] FSM " + str(state) + " -> heat: " + why, why=why, src="FSM")
+    elif hvac_mode == "cool":
+        # Включаем охлаждение
+        for act in zone.get("actuators", []):
+            if act.get("role") in ("primary_cool", "free_cooling"):
+                dev = _REGISTRY.device(act.get("ref")) or {}
+                entity = dev.get("entity")
+                if entity and dev.get("managed_by_platform", True):
+                    # Получаем уставку
+                    setpoints = zone.get("setpoints") or {}
+                    cool_sp = (setpoints.get("cool") or {}).get("source")
+                    target_temp = _clim_get_float(cool_sp) if cool_sp else 22.0
+                    _clim_send_on(entity, "cool", target_temp)
+                    log_event("climate", "Предупреждения", "[" + str(zone_id) + "] FSM " + str(state) + " -> cool: " + why, why=why, src="FSM")
+
+
 def _clim_eval_zone(zone, mode, min_setpoint, heating_season):
+    # Используем FSM для управления климатом
+    zone_id = zone.get("id")
+    ctx = _clim_build_fsm_ctx(zone)
+    result = climate_fsm_run(zone_id, ctx)
+    if result and result.get("action"):
+        _clim_apply_fsm_action(zone, result)
+        return  # FSM принял решение, выходим
+
     zone_id = zone.get("id","unknown")
     temp_sensor = _REGISTRY.device(zone.get("temp_sensor_ref")) or {}
     temp_entity = temp_sensor.get("entity")
