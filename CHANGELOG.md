@@ -1,3 +1,59 @@
+# CHANGELOG
+
+## [2026-09-03] FSM v1.3.0
+
+### Добавлено
+- Универсальный движок конечных автоматов (`ha/pyscript/fsm_engine.py`)
+  - Функции: `fsm_register()`, `fsm_trigger()`, `fsm_get_state()`, `fsm_debug()`
+  - Хранение состояний в `_FSM_STATES` и `_FSM_DEFINITIONS`
+  - История переходов (кольцевой буфер на 20 элементов)
+  - Публикация в `sensor.<entity>_fsm_state`
+  - Поддержка псевдонима `PREVIOUS` для возврата в предыдущее состояние
+  - Логирование переходов через `log_event()`
+
+### Изменено
+- **Освещение:** рефакторинг `features/lighting/fsm.py` под универсальный движок
+  - Удален локальный движок (`fsm_execute`, `fsm_build_events`, `_LIGHT_FSM_STATE`)
+  - Интеграция через `fsm_register()` и `fsm_trigger()`
+  - 4 варианта автоматов: DEFAULT, NIGHTLIGHT, MOTION, IMITATION
+  
+- **Климат:** рефакторинг `features/climate/fsm.py` под универсальный движок
+  - Состояния: IDLE, HEATING, COOLING, SAFETY_LOCKOUT, MANUAL_LOCK
+  - Приоритеты: безопасность (500) > ручное (100) > автоматика (10)
+  
+- **Вентиляция:** рефакторинг `features/ventilation/fsm.py` под универсальный движок
+  - Состояния: NORMAL, BOOST, NIGHT, AWAY, WINTER_PAUSE, MANUAL_LOCK
+  - Пороги: CO2 > 1000 ppm, влажность > 70% для BOOST
+  
+- **Шторы:** уже были интегрированы с универсальным движком
+  - Состояния: OPEN, CLOSED, PARTIAL, MANUAL_LOCK, ERROR
+  
+- **Комната:** автомат комнаты уже работает
+  - Состояния: EMPTY, HOME_DAY, HOME_NIGHT, PARTY, SLEEPING
+
+### Тестирование
+- Обновлены тесты для освещения (6 тестов)
+- Обновлены тесты для климата (8 тестов)
+- Обновлены тесты для вентиляции (9 тестов)
+- Обновлены тесты для штор (4 теста)
+- Все 27 тестов проходят успешно
+
+### Подготовка к интеграции
+- `features/climate/runtime.py`: добавлен импорт и заготовка интеграции (закомментирована)
+- `features/ventilation/runtime.py`: добавлен импорт и заготовка интеграции (закомментирована)
+- Готовность к включению через флаг `fsm_enabled` в манифесте
+
+### Удалено
+- Дублирующиеся функции в `features/lighting/fsm.py` (`fsm_execute`, `fsm_build_events`, `_LIGHT_FSM_STATE`)
+- Старые функции в `features/climate/fsm.py` (`evaluate_guards`, `build_context`, `get_guard_function`)
+- Старые функции в `features/ventilation/fsm.py` (`evaluate_guards`, `build_context`)
+
+### Документация
+- Обновлен `FSM_SPEC.md` (отмечены выполненные фазы 1-5)
+- Обновлен `HANDOFF.md` (версия 1.3.0, разделы про FSM)
+
+---
+
 
 ## 3. CHANGELOG.md — последние изменения
 
