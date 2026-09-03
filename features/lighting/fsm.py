@@ -9,7 +9,7 @@ import time
 # Движок FSM
 # ============================================
 
-def fsm_execute(fsm_def, current_state, ctx, events):
+def fsm_execute(fsm_def, current_state, ctx, events, previous_state=None):
     """Выполняет один шаг автомата.
     
     Args:
@@ -17,6 +17,7 @@ def fsm_execute(fsm_def, current_state, ctx, events):
         current_state: текущее состояние
         ctx: контекст группы (dark, night, motion, presence, etc.)
         events: список произошедших событий [{'name': 'motion', 'priority': 30}, ...]
+        previous_state: предыдущее состояние (для возврата из PREVIOUS)
     
     Returns:
         (new_state, transition_info или None)
@@ -32,7 +33,10 @@ def fsm_execute(fsm_def, current_state, ctx, events):
     for t in transitions:
         from_states = t.get("from", [])
         if isinstance(from_states, str):
-            from_states = [from_states]
+            if from_states == "*":
+                from_states = states  # * означает все состояния
+            else:
+                from_states = [from_states]
         
         if current_state not in from_states:
             continue
@@ -47,6 +51,11 @@ def fsm_execute(fsm_def, current_state, ctx, events):
                     continue
             if guard == "away" and not ctx.get("away"):
                 continue
+            if guard == "room_ok":
+                # room_ok = True если room_context не в PARTY/SLEEPING
+                room_ctx = ctx.get("room_context", "")
+                if room_ctx in ("PARTY", "SLEEPING"):
+                    continue
         
         possible_transitions.append(t)
     
@@ -68,7 +77,12 @@ def fsm_execute(fsm_def, current_state, ctx, events):
             if trigger == ev_name:
                 # Дополнительная проверка приоритета события
                 if ev_priority >= t.get("priority", 0) - 10:
-                    return t["to"], {
+                    to_state = t["to"]
+                    # Обработка специального состояния PREVIOUS
+                    if to_state == "PREVIOUS":
+                        to_state = previous_state if previous_state and previous_state in states else "OFF"
+                    
+                    return to_state, {
                         "why": t.get("why", ""),
                         "trigger": trigger,
                         "priority": t.get("priority", 0)
@@ -139,14 +153,31 @@ def fsm_build_events(ctx):
 
 # Автомат по умолчанию для группы освещения
 LIGHT_FSM_DEFAULT = {
-    "states": ["OFF", "ON_SCHEDULE", "ON_MOTION", "NIGHTLIGHT", "PARTY", "MANUAL_LOCK"],
+    "states": ["OFF", "ON_SCHEDULE", "ON_MOTION", "NIGHTLIGHT", "PARTY", "MANUAL_LOCK", "UNAVAILABLE"],
     "initial": "OFF",
     "transitions": [
+        # Устройство недоступно
+        {
+            "from": "*",
+            "to": "UNAVAILABLE",
+            "trigger": "device_unavailable",
+            "priority": 0,
+            "why": "Устройство недоступно"
+        },
+        # Устройство восстановлено
+        {
+            "from": "UNAVAILABLE",
+            "to": "OFF",
+            "trigger": "device_available",
+            "priority": 0,
+            "why": "Устройство восстановлено"
+        },
         # Расписание: включение на закате/по времени
         {
             "from": ["OFF"],
             "to": "ON_SCHEDULE",
             "trigger": "schedule_on",
+            "guard": "room_ok",
             "priority": 20,
             "why": "Включение по расписанию (закат/время)"
         },
@@ -163,36 +194,38 @@ LIGHT_FSM_DEFAULT = {
             "from": ["OFF", "ON_SCHEDULE"],
             "to": "ON_MOTION",
             "trigger": "motion",
+            "guard": "room_ok",
             "priority": 30,
             "why": "Включение по датчику движения"
         },
-        # Датчик движения: выключение (нет движения)
+        # Датчик движения: выключение (нет движения) - возврат в предыдущее состояние
         {
             "from": ["ON_MOTION"],
-            "to": "OFF",
+            "to": "PREVIOUS",
             "trigger": "no_motion_timeout",
             "priority": 10,
-            "why": "Выключение по таймеру отсутствия движения"
+            "why": "Выключение по таймеру отсутствия движения — возврат в предыдущее состояние"
         },
         # Ночник: включение ночью при движении
         {
             "from": ["OFF", "ON_SCHEDULE"],
             "to": "NIGHTLIGHT",
             "trigger": "night_motion",
+            "guard": "room_ok",
             "priority": 35,
             "why": "Ночник: минимальная яркость ночью"
         },
-        # Ночник: выключение
+        # Ночник: выключение - возврат в предыдущее состояние
         {
             "from": ["NIGHTLIGHT"],
-            "to": "OFF",
+            "to": "PREVIOUS",
             "trigger": "nightlight_timeout",
             "priority": 10,
-            "why": "Ночник: таймер истёк"
+            "why": "Ночник: таймер истёк — возврат в предыдущее состояние"
         },
         # Вечеринка: включение
         {
-            "from": ["OFF", "ON_SCHEDULE", "ON_MOTION"],
+            "from": ["OFF", "ON_SCHEDULE", "ON_MOTION", "NIGHTLIGHT"],
             "to": "PARTY",
             "trigger": "party_start",
             "priority": 50,
@@ -230,21 +263,21 @@ LIGHT_FSM_DEFAULT = {
             "priority": 100,
             "why": "Ручное вмешательство — автоматика заблокирована"
         },
-        # Таймер блокировки истёк: возврат к автоматике
+        # Таймер блокировки истёк: возврат к предыдущему состоянию
         {
             "from": "MANUAL_LOCK",
-            "to": "OFF",
+            "to": "PREVIOUS",
             "trigger": "timeout",
             "priority": 5,
-            "why": "Таймер блокировки истёк — возврат к автоматике"
+            "why": "Таймер блокировки истёк — возврат к предыдущему состоянию"
         },
-        # Явный сброс блокировки
+        # Явный сброс блокировки: возврат к предыдущему состоянию
         {
             "from": "MANUAL_LOCK",
-            "to": "OFF",
+            "to": "PREVIOUS",
             "trigger": "override_clear",
             "priority": 50,
-            "why": "Явный сброс блокировки"
+            "why": "Явный сброс блокировки — возврат к предыдущему состоянию"
         }
     ]
 }
