@@ -6,6 +6,27 @@
 
 ## Unreleased
 
+### Добавлено (Фаза 7: Тесты для Climate и Ventilation FSM)
+- **Тесты Climate FSM** (`tests/test_climate_fsm.py`): 7 тестов
+  - `test_guard_needs_heating`: проверка guard при температуре ниже уставки
+  - `test_guard_needs_cooling`: проверка guard при температуре выше уставки
+  - `test_guard_safety_violation`: блокировка при safety_lockout
+  - `test_guard_manual_override_active`: приоритет ручного управления
+  - `test_evaluate_guards_priority`: проверка приоритетов guards
+  - `test_room_context_sleeping_setback`: уставка при SLEEPING
+  - `test_initial_state_idle`: начальное состояние IDLE
+- **Тесты Ventilation FSM** (`tests/test_ventilation_fsm.py`): 9 тестов
+  - `test_initial_state_normal`: начальное состояние NORMAL
+  - `test_boost_high_co2`: переход в BOOST при CO2 > 1000
+  - `test_boost_high_humidity`: переход в BOOST при humidity > 70
+  - `test_night_mode`: переход в NIGHT ночью
+  - `test_away_mode`: переход в AWAY когда EMPTY
+  - `test_manual_lock_priority`: приоритет MANUAL_LOCK
+  - `test_thresholds`: проверка порогов CO2 и влажности
+  - `test_guard_night_schedule`: guard ночного расписания
+  - `test_guard_away_mode`: guard режима отсутствия
+- **Результаты**: все 16 тестов проходят успешно ✅
+
 ### Добавлено (Фаза 6: Валидация FSM и исправление ошибок)
 - **Валидатор графов FSM** (`cli/fsm_validate.py`): проверка всех автоматов платформы
   - Проверка достижимости состояний (BFS от initial)
