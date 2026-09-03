@@ -83,6 +83,15 @@ def fsm_trigger(entity_id, trigger, src="автоматика"):
 
     current_state = fsm_get_state(entity_id)
     transitions = definition.get("transitions", [])
+    
+    # Получаем предыдущее состояние из истории для поддержки PREVIOUS
+    previous_state = None
+    entry = _FSM_STATES.get(entity_id)
+    if entry and entry.get("history"):
+        last_transition = entry["history"][0]
+        prev = last_transition.get("from")
+        if prev and prev in definition.get("states", []):
+            previous_state = prev
 
     # Находим все подходящие переходы
     candidates = []
@@ -106,6 +115,14 @@ def fsm_trigger(entity_id, trigger, src="автоматика"):
     best = candidates[0]
 
     target_state = best.get("to")
+    
+    # Обработка псевдонима PREVIOUS
+    if target_state == "PREVIOUS":
+        if previous_state:
+            target_state = previous_state
+        else:
+            target_state = definition.get("initial", "OFF")
+    
     why = best.get("why", "")
 
     # Проверяем, что целевое состояние существует и отличается от текущего
