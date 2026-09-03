@@ -1,11 +1,92 @@
 #!/usr/bin/env python3
 """Runtime: главный цикл и применение решений к группам."""
 
-from .fsm import light_fsm_run, light_fsm_get_state
+from .fsm import light_fsm_run, light_fsm_get_state, _LIGHT_FSM_STATE
 
 
 # Хранилище предыдущих состояний FSM для каждой группы
 _LIGHT_FSM_PREV_STATE = {}
+
+
+def _lg_publish_fsm_states():
+    """Публикует состояния FSM всех групп в сенсоры sensor.<group>_fsm_state."""
+    for gid, state_info in _LIGHT_FSM_STATE.items():
+        entity_id = "sensor.light_%s_fsm_state" % gid
+        state = state_info.get("state", "OFF")
+        why = state_info.get("why", "")
+        last_transition = state_info.get("last_transition", 0)
+        
+        # Формируем атрибуты
+        attrs = {
+            "friendly_name": "FSM состояние группы %s" % gid,
+            "last_transition": last_transition,
+            "transition_reason": why
+        }
+        
+        # Публикуем состояние
+        try:
+            state.set(entity_id, state, attributes=attrs)
+        except Exception as e:
+            log.error("[light] Failed to publish FSM state for group %s: %s" % (gid, str(e)))
+
+
+def _lg_fsm_status_all():
+    """Возвращает краткий статус всех автоматов освещения.
+    
+    Returns:
+        словарь {gid: {"state": ..., "why": ...}, ...}
+    """
+    result = {}
+    for gid, state_info in _LIGHT_FSM_STATE.items():
+        result[gid] = {
+            "state": state_info.get("state", "OFF"),
+            "why": state_info.get("why", ""),
+            "last_transition": state_info.get("last_transition", 0)
+        }
+    return result
+
+
+def _lg_fsm_debug(gid):
+    """Полная диагностика автомата для конкретной группы.
+    
+    Args:
+        gid: идентификатор группы
+    
+    Returns:
+        словарь с полной информацией об автомате
+    """
+    from .fsm import light_fsm_definition, fsm_build_events
+    
+    # Находим группу по gid
+    cfg = _lg_cfg()
+    group = None
+    if cfg:
+        for g in (cfg.get("groups", []) or []):
+            if str(g.get("id")) == str(gid):
+                group = g
+                break
+    
+    if not group:
+        return {"error": "Группа %s не найдена" % gid}
+    
+    fsm_def = light_fsm_definition(group)
+    current_state = light_fsm_get_state(gid)
+    state_info = _LIGHT_FSM_STATE.get(gid, {})
+    
+    # Строим текущий контекст
+    ctx = _lg_decide_ctx(group, cfg)
+    fsm_ctx = _lg_build_fsm_ctx(group, ctx)
+    events = fsm_build_events(fsm_ctx)
+    
+    return {
+        "group_id": gid,
+        "fsm_type": fsm_def.get("states", []),
+        "current_state": current_state,
+        "last_transition": state_info.get("last_transition", 0),
+        "transition_reason": state_info.get("why", ""),
+        "active_events": events,
+        "fsm_enabled": group.get("fsm_enabled", False)
+    }
 
 
 def _lg_build_fsm_ctx(g, ctx):
@@ -280,6 +361,13 @@ def _lg_tick():
             _lg_apply_group(g, cfg, mode)
         except Exception as exc:
             log.error("[light] group " + str(g.get("id")) + " error: " + str(exc))
+    
+    # Публикация состояний FSM после каждого тика
+    try:
+        _lg_publish_fsm_states()
+    except Exception as exc:
+        log.error("[light] Failed to publish FSM states: " + str(exc))
+    
     try:
         _lg_ct_tick(cfg, mode)
         _lg_rgb_tick(cfg, mode)
