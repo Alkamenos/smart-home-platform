@@ -112,13 +112,8 @@ def _cv_cfg():
 
 
 def _cv_mode(cfg):
-    """Определение режима работы (real/shadow)."""
-    sh = _cv_state("input_boolean.covers_shadow_mode")
-    if sh == "on":
-        return "shadow"
-    if sh == "off":
-        return "real"
-    return cfg.get("mode", "real")
+    """Определение режима работы (всегда real, shadow режим удален)."""
+    return "real"
 
 
 def _cv_is_time_window_open(now_min, open_min, close_min):
@@ -312,16 +307,13 @@ def _cv_set_cover_position(cover_entity, position, mode):
     if position is None:
         return
     
-    if mode == "shadow":
-        log.warning("[covers][SHADOW] " + cover_entity + " -> position " + str(position))
-    else:
-        # Платформа помечает команду как ожидаемую
-        _CV_EXPECTED_STATE[cover_entity] = {
-            "position": position,
-            "until": time.monotonic() + 30
-        }
-        service.call("cover", "set_cover_position", entity_id=cover_entity, position=position)
-        log.warning("[covers][REAL] " + cover_entity + " -> position " + str(position))
+    # Платформа помечает команду как ожидаемую
+    _CV_EXPECTED_STATE[cover_entity] = {
+        "position": position,
+        "until": time.monotonic() + 30
+    }
+    service.call("cover", "set_cover_position", entity_id=cover_entity, position=position)
+    log.warning("[covers][REAL] " + cover_entity + " -> position " + str(position))
 
 
 def _cv_open_cover(cover_entity, mode):

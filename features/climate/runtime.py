@@ -204,9 +204,6 @@ def _clim_switch(mode, entity, target_state, zone_id, kind, cur, target):
     msg = "[" + str(zone_id) +"] " + str(kind) +" " + str(entity) \
            +" -> " + str(target_state) \
            +" (cur=" + str(cur) +" target=" + str(target) +")"
-    if mode =="shadow":
-        log_event("climate", "Инфо", msg, why="shadow-режим", src="автоматика")
-        return
     svc = "turn_on" if target_state =="on" else"turn_off"
     service.call(str(entity).split(".")[0], svc, entity_id=entity)
     _clim_record_cmd(entity)
@@ -241,12 +238,10 @@ def _clim_eval_heat_actuator(mode, dev, cur_temp, heat_target, deadband, zone_id
     should_on = (not free) and (cur_temp < (heat_target - deadband))
     should_off = is_on and (free or cur_temp > (heat_target + deadband))
 
-    if mode =="shadow":
-        if should_on and not is_on:
-            log_event("climate", "Инфо", "[" + str(zone_id) +"] HEAT " + entity +" -> on", why="shadow-режим", src="автоматика")
-        elif should_off and is_on:
-            log_event("climate", "Инфо", "[" + str(zone_id) +"] HEAT " + entity +" -> off", why="shadow-режим", src="автоматика")
-        return
+    if should_on and not is_on:
+        log_event("climate", "Предупреждения", "[" + str(zone_id) +"] HEAT " + entity +" -> on", why="решение автоматики", src="автоматика")
+    elif should_off and is_on:
+        log_event("climate", "Предупреждения", "[" + str(zone_id) +"] HEAT " + entity +" -> off", why="решение автоматики", src="автоматика")
 
     desired = {"mode":"heat","temp": heat_target}
     last = _CLIM_LAST.get(entity)
@@ -277,12 +272,10 @@ def _clim_eval_cool_actuator(mode, dev, cur_temp, cool_target, deadband, zone_id
     is_on = _clim_is_on(entity)
     should_on = cur_temp > (cool_target + deadband)
     should_off = cur_temp < (cool_target - deadband)
-    if mode =="shadow":
-        if should_on and not is_on:
-            log_event("climate", "Инфо", "[" + str(zone_id) +"] COOL " + entity +" -> on", why="shadow-режим", src="автоматика")
-        elif should_off and is_on:
-            log_event("climate", "Инфо", "[" + str(zone_id) +"] COOL " + entity +" -> off", why="shadow-режим", src="автоматика")
-        return
+    if should_on and not is_on:
+        log_event("climate", "Предупреждения", "[" + str(zone_id) +"] COOL " + entity +" -> on", why="решение автоматики", src="автоматика")
+    elif should_off and is_on:
+        log_event("climate", "Предупреждения", "[" + str(zone_id) +"] COOL " + entity +" -> off", why="решение автоматики", src="автоматика")
     desired = {"mode":"cool","temp": cool_target}
     last = _CLIM_LAST.get(entity)
     if should_on:
@@ -330,12 +323,8 @@ def _clim_eval_zone(zone, mode, min_setpoint, heating_season):
 
     
 def _clim_current_mode(climate_cfg):
-    shadow_helper = state.get("input_boolean.climate_shadow_mode")
-    if shadow_helper =="on":
-        return"shadow"
-    if shadow_helper =="off":
-        return"real"
-    return climate_cfg.get("mode","real")
+    """Определение режима работы (всегда real, shadow режим удален)."""
+    return "real"
 
 def _clim_safety_cfg():
     if _REGISTRY is None:
@@ -371,11 +360,8 @@ def _clim_safety_tick(mode):
             if not dev.get("managed_by_platform", True):
                 continue
             if _clim_is_on(entity):
-                if mode =="shadow":
-                    log_event("climate", "Инфо", str(entity) + " on зимой -> был бы выключен", why="lockout AC зимой", src="автоматика")
-                else:
-                    _clim_send_off(entity)
-                    log_event("climate", "Предупреждения", str(entity) + " выключен (зима)", why="lockout AC зимой", src="автоматика")
+                _clim_send_off(entity)
+                log_event("climate", "Предупреждения", str(entity) + " выключен (зима)", why="lockout AC зимой", src="автоматика")
                 now = time.monotonic()
                 if now - _AC_WARN_LAST.get(entity, 0) > 600:
                     _AC_WARN_LAST[entity] = now
@@ -412,16 +398,10 @@ def _clim_dry_tick(mode):
             if"dry" not in modes:
                 continue
             if hum > thr and cur_mode =="off":
-                if mode =="shadow":
-                    log_event("climate", "Инфо", str(entity) + " -> dry (hum=" + str(hum) +")", why="осушение", src="автоматика")
-                else:
-                    service.call("climate","set_hvac_mode", entity_id=entity, hvac_mode="dry")
-                    log_event("climate", "Предупреждения", str(entity) + " -> dry", why="осушение", src="автоматика")
+                service.call("climate","set_hvac_mode", entity_id=entity, hvac_mode="dry")
+                log_event("climate", "Предупреждения", str(entity) + " -> dry", why="осушение", src="автоматика")
             elif cur_mode =="dry" and hum < (thr - 5):
-                if mode =="shadow":
-                    log_event("climate", "Инфо", str(entity) + " -> off", why="окончание осушения", src="автоматика")
-                else:
-                    _clim_send_off(entity)
+                _clim_send_off(entity)
 
 def climate_orchestrator_tick():
     if _REGISTRY is None:

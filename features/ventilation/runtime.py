@@ -46,12 +46,8 @@ def _vent_current(entity):
 
 
 def _vent_mode(cfg):
-    sh = state.get("input_boolean.ventilation_shadow_mode")
-    if sh =="on":
-        return"shadow"
-    if sh =="off":
-        return"real"
-    return cfg.get("mode","real")
+    """Определение режима работы (всегда real, shadow режим удален)."""
+    return "real"
 
 
 def _vent_open_doors(cfg):
@@ -260,25 +256,19 @@ def _vent_apply(cfg, desired, mode):
             pct = desired.get("pct")
             preset = desired.get("preset", V_BASE_WINTER)
             why = desired.get("why", "lockout")
-            if mode == "shadow":
-                log_event("ventilation", "Инфо", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why="lockout", src="автоматика")
-            else:
-                service.call("fan", "set_preset_mode", entity_id=entity, preset_mode=preset)
-                service.call("fan", "set_percentage", entity_id=entity, percentage=int(pct))
-                _VENT_LAST[entity] = {"preset": preset, "pct": pct, "action": "lockout"}
-                log_event("ventilation", "Предупреждения", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why=why, src="автоматика")
+            service.call("fan", "set_preset_mode", entity_id=entity, preset_mode=preset)
+            service.call("fan", "set_percentage", entity_id=entity, percentage=int(pct))
+            _VENT_LAST[entity] = {"preset": preset, "pct": pct, "action": "lockout"}
+            log_event("ventilation", "Предупреждения", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why=why, src="автоматика")
             continue
         
         if desired.get("action") =="off":
             # Проверяем, нужно ли выключать (сравниваем с последним состоянием)
             should_turn_off = (cur_state != "off") and (last_action != "off")
             if should_turn_off:
-                if mode =="shadow":
-                    log_event("ventilation", "Инфо", str(entity) + " -> off", why="решение автоматики", src="автоматика")
-                else:
-                    service.call("fan","turn_off", entity_id=entity)
-                    _VENT_LAST[entity] = {"action": "off"}
-                    log_event("ventilation", "Предупреждения", str(entity) + " -> off", why="решение автоматики", src="автоматика")
+                service.call("fan","turn_off", entity_id=entity)
+                _VENT_LAST[entity] = {"action": "off"}
+                log_event("ventilation", "Предупреждения", str(entity) + " -> off", why="решение автоматики", src="автоматика")
             continue
         
         preset = desired.get("preset")
@@ -294,16 +284,13 @@ def _vent_apply(cfg, desired, mode):
         if not (state_changed or preset_changed or pct_changed):
             continue
         
-        if mode =="shadow":
-            log_event("ventilation", "Инфо", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why="смена режима", src="автоматика")
-        else:
-            if preset:
-                service.call("fan","set_preset_mode", entity_id=entity, preset_mode=preset)
-            if pct is not None:
-                service.call("fan","set_percentage", entity_id=entity, percentage=int(pct))
-            # Обновляем последнее отправленное состояние
-            _VENT_LAST[entity] = {"preset": preset, "pct": pct}
-            log_event("ventilation", "Предупреждения", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why="смена режима", src="автоматика")
+        if preset:
+            service.call("fan","set_preset_mode", entity_id=entity, preset_mode=preset)
+        if pct is not None:
+            service.call("fan","set_percentage", entity_id=entity, percentage=int(pct))
+        # Обновляем последнее отправленное состояние
+        _VENT_LAST[entity] = {"preset": preset, "pct": pct}
+        log_event("ventilation", "Предупреждения", str(entity) + " -> " + str(preset) + " pct=" + str(pct), why="смена режима", src="автоматика")
 
 def _vent_bathroom_fan(cfg, mode):
     bf = cfg.get("bathroom_fan", {}) or {}
@@ -323,21 +310,15 @@ def _vent_bathroom_fan(cfg, mode):
     is_on = _clim_is_on(entity)
     need = (t > t_min) and (h > h_min)
     if need and not is_on:
-        if mode =="shadow":
-            log_event("ventilation", "Инфо", str(entity) + " -> on", why="влажность в ванной", src="датчик")
-        else:
-            service.call("fan","turn_on", entity_id=entity)
-            _VENT_FAN_START[entity] = time.monotonic()
-            log_event("ventilation", "Предупреждения", str(entity) + " -> on", why="влажность в ванной", src="датчик")
+        service.call("fan","turn_on", entity_id=entity)
+        _VENT_FAN_START[entity] = time.monotonic()
+        log_event("ventilation", "Предупреждения", str(entity) + " -> on", why="влажность в ванной", src="датчик")
     elif is_on and ((not need) or (
             _VENT_FAN_START.get(entity) is not None
             and (time.monotonic() - _VENT_FAN_START[entity]) > run_min * 60)):
-        if mode =="shadow":
-            log_event("ventilation", "Инфо", str(entity) + " -> off", why="окончание вентиляции ванной", src="датчик")
-        else:
-            service.call("fan","turn_off", entity_id=entity)
-            _VENT_FAN_START.pop(entity, None)
-            log_event("ventilation", "Предупреждения", str(entity) + " -> off", why="окончание вентиляции ванной", src="датчик")
+        service.call("fan","turn_off", entity_id=entity)
+        _VENT_FAN_START.pop(entity, None)
+        log_event("ventilation", "Предупреждения", str(entity) + " -> off", why="окончание вентиляции ванной", src="датчик")
 
 def _vent_tick():
     if _REGISTRY is None:
