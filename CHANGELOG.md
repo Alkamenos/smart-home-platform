@@ -4,7 +4,13 @@
 
 # Changelog
 
-## Unreleased
+## Unreleased [1.0.0] — Полный переход на FSM
+
+### 🔥 Breaking Changes
+- **Удалена концепция `fsm_shadow`**: теневой режим более не поддерживается
+  - FSM исполняется напрямую при `fsm_enabled: true`
+  - Удалены все упоминания `fsm_shadow` из кода и документации
+  - Миграция: если у вас был включен `fsm_shadow: true` в манифесте, просто удалите эту строку
 
 ### Добавлено (Фаза 7: Тесты для Climate и Ventilation FSM)
 - **Тесты Climate FSM** (`tests/test_climate_fsm.py`): 7 тестов
