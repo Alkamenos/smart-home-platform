@@ -2,6 +2,8 @@
 # CLIMATE ORCHESTRATOR + OVERRIDE MANAGER (MVP, без глобального слушателя)
 # Конкатенируется ПОСЛЕ manifest_loader.py.
 # ============================================================
+from .fsm import climate_fsm_run, climate_fsm_get_state
+
 import time
 
 
@@ -287,6 +289,15 @@ def _clim_eval_cool_actuator(mode, dev, cur_temp, cool_target, deadband, zone_id
         _clim_send_off(entity)
 
 
+# Проверяем, нужно ли использовать FSM для этой зоны
+# Сейчас все зоны используют старую логику, но флаг готов
+# zone_fsm_enabled = zone.get("fsm_enabled", False)
+# if zone_fsm_enabled:
+#     ctx = _clim_build_fsm_ctx(zone)
+#     result = climate_fsm_run(zone.get("id"), ctx)
+#     if result and result.get("action"):
+#         _clim_apply_fsm_action(zone, result)
+#         continue
 def _clim_eval_zone(zone, mode, min_setpoint, heating_season):
     zone_id = zone.get("id","unknown")
     temp_sensor = _REGISTRY.device(zone.get("temp_sensor_ref")) or {}
