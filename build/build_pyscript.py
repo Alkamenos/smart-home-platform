@@ -10,26 +10,32 @@ import glob
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ORDER = [
+    # === Ядро FSM ===
     "ha/pyscript/registry.py",
     "ha/pyscript/fsm_engine.py",
     "ha/pyscript/manifest_loader.py",
+    # === Контекст: комната (уровень 1) ===
+    "features/room/fsm.py",
+    "features/room/runtime.py",
+    # === Фичи (уровень 2): климат, вентиляция, шторы, освещение ===
+    "features/climate/fsm.py",
     "features/climate/runtime.py",
+    "features/ventilation/fsm.py",
     "features/ventilation/runtime.py",
-    "features/health/runtime.py",
-    # Lighting: state -> caps -> schema -> decide -> control -> ticks -> runtime -> services -> triggers
+    "features/covers/fsm.py",
+    "features/covers/runtime.py",
+    # Lighting: state -> caps -> schema -> fsm -> control -> ticks -> runtime -> services -> triggers
     "features/lighting/state.py",
     "features/lighting/caps.py",
     "features/lighting/schema.py",
-    "features/lighting/decide.py",
+    "features/lighting/fsm.py",
     "features/lighting/control.py",
     "features/lighting/ticks.py",
     "features/lighting/runtime.py",
     "features/lighting/services.py",
     "features/lighting/triggers.py",
-    "features/covers/fsm.py",
-    "features/room/fsm.py",
-    "features/room/runtime.py",
-    "features/covers/runtime.py",
+    # === Системные фичи ===
+    "features/health/runtime.py",
 ]
 
 OUT = "/config/pyscript/manifest_loader.py"

@@ -1,22 +1,24 @@
-# Python bytecode
+```
+# Build artifacts
+build/
 *.pyc
-*.pyo
-*.pyd
 __pycache__/
-*.so
 
-# Pyscript runtime artifacts
-pyscript_modules/
+# Dependencies
+.venv/
+venv/
+node_modules/
 
-# IDE
+# Logs and temp files
+*.log
+*.tmp
+
+# Editors
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
+# Environment
+.env
+.env.local
+*.env.*
+```

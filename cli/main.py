@@ -21,6 +21,54 @@ def mpath(args):
             or CM.manifest_path(args.instance))
 
 def cmd_validate(args):
+    # 1. Валидация FSM графов (если есть определения)
+    try:
+        from cli import fsm_validate
+        import yaml
+        import glob
+        
+        # Собираем все FSM определения из фич
+        fsm_defs = {}
+        features_dir = os.path.join(REPO_ROOT, "features")
+        for feature in os.listdir(features_dir):
+            fsm_path = os.path.join(features_dir, feature, "fsm.py")
+            if os.path.exists(fsm_path):
+                # Пытаемся импортировать и получить определения
+                try:
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location("%s_fsm" % feature, fsm_path)
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    
+                    # Ищем определения автоматов в модуле
+                    for name in dir(mod):
+                        if name.endswith("_FSM_DEFAULT") or name.endswith("_FSM_NIGHTLIGHT") or \
+                           name.endswith("_FSM_MOTION") or name.endswith("_FSM_IMITATION"):
+                            fsm_defs["%s.%s" % (feature, name)] = getattr(mod, name)
+                except Exception as e:
+                    print("  WARN: не удалось загрузить FSM для %s: %s" % (feature, e))
+        
+        if fsm_defs:
+            results = fsm_validate.validate_multiple_fsm(fsm_defs)
+            all_valid = True
+            for name, result in results.items():
+                if not result.is_valid():
+                    all_valid = False
+                    print("  ERROR: FSM %s: %d ошибок" % (name, len(result.errors)))
+                    for err in result.errors:
+                        print("    - %s" % err)
+            
+            if not all_valid:
+                print("❌ Валидация FSM не пройдена!")
+                return 1
+            else:
+                print("✅ Валидация FSM пройдена (%d автоматов)" % len(fsm_defs))
+    except ImportError:
+        print("  INFO: fsm_validate не найден, пропускаем валидацию FSM")
+    except Exception as e:
+        print("  WARN: ошибка при валидации FSM: %s" % e)
+    
+    # 2. Стандартная валидация манифеста
     m = CM.load_manifest(args.instance, mpath(args))
     f = CM.features_root(m)
     groups = CM.lighting_groups(m)
