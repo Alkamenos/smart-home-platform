@@ -1,7 +1,7 @@
 # ============================================================
 # VENTILATION CONTROLLER (Vakio), Этап 2
 # ============================================================
-from .fsm import ventilation_fsm_run, ventilation_fsm_get_state
+# Функции ventilation_fsm_run и ventilation_fsm_get_state доступны глобально после конкатенации
 import time
 
 _VENT_BOOST_START = {}

@@ -2,8 +2,8 @@
 # CLIMATE ORCHESTRATOR + OVERRIDE MANAGER (MVP, без глобального слушателя)
 # Конкатенируется ПОСЛЕ manifest_loader.py.
 # ============================================================
-from .fsm import climate_fsm_run, climate_fsm_get_state
 
+# Функции climate_fsm_run и climate_fsm_get_state доступны глобально после конкатенации
 import time
 
 

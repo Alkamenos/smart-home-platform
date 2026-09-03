@@ -29,6 +29,7 @@ ORDER = [
     "features/lighting/caps.py",
     "features/lighting/schema.py",
     "features/lighting/fsm.py",
+    "features/lighting/decide.py",
     "features/lighting/control.py",
     "features/lighting/ticks.py",
     "features/lighting/runtime.py",

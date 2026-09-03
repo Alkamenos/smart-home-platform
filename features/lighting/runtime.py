@@ -1,7 +1,7 @@
+# Функции fsm_build_events, light_fsm_definition, light_fsm_get_state, light_fsm_run доступны глобально после конкатенации
 #!/usr/bin/env python3
 """Runtime: главный цикл и применение решений к группам."""
 
-from .fsm import light_fsm_run, light_fsm_get_state, light_fsm_definition
 
 
 # Хранилище предыдущих состояний FSM для каждой группы
@@ -13,8 +13,8 @@ def _lg_publish_fsm_states():
     for gid, state_info in _FSM_STATES.items():
         entity_id = "sensor.light_%s_fsm_state" % gid
         state = state_info.get("state", "OFF")
-        why = entry.get("entered_why", "")
-        last_transition = entry.get("entered_at", "")
+        why = state_info.get("entered_why", "")
+        last_transition = state_info.get("entered_at", "")
         
         # Формируем атрибуты
         attrs = {
@@ -73,8 +73,7 @@ def _lg_fsm_debug(gid):
     Returns:
         словарь с полной информацией об автомате
     """
-    from .fsm import light_fsm_definition, fsm_build_events
-    
+        
     # Находим группу по gid
     cfg = _lg_cfg()
     group = None
