@@ -111,6 +111,7 @@ features:
     lights:
     - switch.group_lights_outdoor_floodlights
     flag: input_boolean.feature_yard
+    fsm_enabled: true
     features:
       dusk:
         require_dark: true
@@ -121,6 +122,7 @@ features:
     lights:
     - light.night_light
     flag: input_boolean.feature_street_night
+    fsm_enabled: true
     features:
       dusk: {}
       ct:
@@ -137,6 +139,7 @@ features:
     - light.workroom_lights
     room: kabinet
     flag: input_boolean.feature_office
+    fsm_enabled: true
     features:
       dusk:
         require_dark: true
@@ -156,6 +159,7 @@ features:
     lights:
     - light.nastolnaia_lampa
     flag: input_boolean.feature_office
+    fsm_enabled: true
     tolerate_unavailable: true
     features:
       dusk:
@@ -172,6 +176,7 @@ features:
     lights:
     - light.kus
     flag: input_boolean.feature_office
+    fsm_enabled: true
     tolerate_unavailable: true
     features:
       dusk:
@@ -187,6 +192,7 @@ features:
     lights:
     - light.svet_v_spalne_right
     flag: input_boolean.feature_bedroom
+    fsm_enabled: true
     features:
       dusk:
         require_dark: true
@@ -198,6 +204,7 @@ features:
     lights:
     - light.podsvetka_zerkala
     flag: input_boolean.feature_living_room
+    fsm_enabled: true
     features:
       dusk:
         require_dark: true
@@ -211,6 +218,7 @@ features:
     lights:
     - light.torsher
     flag: input_boolean.feature_guest_bedroom
+    fsm_enabled: true
     tolerate_unavailable: true
     features:
       dusk:
@@ -230,6 +238,7 @@ features:
     lights:
     - switch.kitchen_lights
     flag: input_boolean.feature_kitchen_work
+    fsm_enabled: true
     features:
       schedule:
         true: '18:00'
@@ -242,6 +251,7 @@ features:
     lights:
     - light.table_lights
     flag: input_boolean.feature_table
+    fsm_enabled: true
     features:
       schedule:
         true: sunset
@@ -270,6 +280,7 @@ features:
     lights:
     - light.svet_v_konteinere
     flag: input_boolean.feature_container
+    fsm_enabled: true
     features:
       motion:
         sensor: binary_sensor.datchik_dvizheniia_konteiner_occupancy
@@ -279,6 +290,7 @@ features:
     lights:
     - light.vykliuchatel_sanuzel_switch1
     flag: input_boolean.feature_bathroom_light
+    fsm_enabled: true
     features:
       motion:
         sensor: binary_sensor.vykliuchatel_sanuzel_presence
@@ -290,6 +302,7 @@ features:
     lights:
     - light.girlianda_terassa
     flag: input_boolean.feature_garland_terrace
+    fsm_enabled: true
     tolerate_unavailable: true
     features:
       dusk:
@@ -301,6 +314,7 @@ features:
     lights:
     - light.ulichnaia_girlianda
     flag: input_boolean.feature_garland_street
+    fsm_enabled: true
     tolerate_unavailable: true
     features:
       dusk:
@@ -312,6 +326,7 @@ features:
     lights:
     - light.girlianda_na_oknakh
     flag: input_boolean.feature_garland_windows
+    fsm_enabled: true
     tolerate_unavailable: true
     features:
       dusk: {}
@@ -335,6 +350,7 @@ features:
     lights:
     - light.girlianda_a2
     flag: input_boolean.feature_xmas_a2
+    fsm_enabled: true
     tolerate_unavailable: true
     features:
       dusk:
