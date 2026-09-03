@@ -32,11 +32,8 @@ def _lg_set_vlight(v, on, mode):
     if cur == want:
         return
     _VLIGHT_SYNC_GUARD[v] = time.monotonic() + 10
-    if mode == "shadow":
-        log_event("lighting", "Инфо", "vlight " + v + " -> " + want, why="shadow-режим", src="автоматика")
-    else:
-        service.call("input_boolean", "turn_" + want, entity_id=v)
-        log_event("lighting", "Инфо", "vlight " + v + " -> " + want, why="ручная команда", src="ручное")
+    service.call("input_boolean", "turn_" + want, entity_id=v)
+    log_event("lighting", "Инфо", "vlight " + v + " -> " + want, why="ручная команда", src="ручное")
 
 
 def _lg_expected_guard(e):
@@ -70,10 +67,6 @@ def _lg_set_real(e, on, mode, cfg, force=False, nightlight=False, gid=None):
             return
     
     _EXPECTED_REAL_STATE[e] = {"state": on, "until": time.monotonic() + 60}
-    
-    if mode == "shadow" and not force:
-        log_event("lighting", "Инфо", e + " -> " + ("on" if on else "off"), why="shadow-режим", src="автоматика")
-        return
     
     dom = str(e).split(".")[0]
     if on and dom == "light":

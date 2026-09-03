@@ -50,11 +50,8 @@ def _lg_rgb_tick(cfg, mode):
                 continue
             _RGB_APPLIED[e] = scene
             rgb = _RGB_SCENES.get(scene, [255, 255, 255])
-            if mode == "shadow":
-                log.warning("[light][SHADOW][rgb] " + e + " -> " + scene)
-            else:
-                service.call("light", "turn_on", entity_id=e, rgb_color=rgb)
-                log.warning("[light][REAL][rgb] " + e + " -> " + scene)
+            service.call("light", "turn_on", entity_id=e, rgb_color=rgb)
+            log.warning("[light][REAL][rgb] " + e + " -> " + scene)
 
 
 def _lg_ct_tick(cfg, mode):
@@ -88,11 +85,8 @@ def _lg_ct_tick(cfg, mode):
             if (time.monotonic() - last) < 300:
                 continue
             _CT_LAST[e] = time.monotonic()
-            if mode == "shadow":
-                log.warning("[light][SHADOW][ct] " + e + " -> " + str(target) + "K")
-            else:
-                service.call("light", "turn_on", entity_id=e, color_temp_kelvin=target)
-                log.warning("[light][REAL][ct] " + e + " -> " + str(target) + "K")
+            service.call("light", "turn_on", entity_id=e, color_temp_kelvin=target)
+            log.warning("[light][REAL][ct] " + e + " -> " + str(target) + "K")
 
 
 def _lg_backlight_tick(cfg, mode):
@@ -123,11 +117,8 @@ def _lg_backlight_tick(cfg, mode):
         cur = _lg_is_on(e)
         if cur == desired:
             continue
-        if mode == "shadow":
-            log.warning("[light][SHADOW][backlight] " + e + " -> " + ("on" if desired else "off"))
-        else:
-            service.call(str(e).split(".")[0], "turn_on" if desired else "turn_off", entity_id=e)
-            log.warning("[light][REAL][backlight] " + e + " -> " + ("on" if desired else "off"))
+        service.call(str(e).split(".")[0], "turn_on" if desired else "turn_off", entity_id=e)
+        log.warning("[light][REAL][backlight] " + e + " -> " + ("on" if desired else "off"))
 
 
 def _lg_imitation_tick(cfg, mode):
@@ -147,8 +138,7 @@ def _lg_imitation_tick(cfg, mode):
             pair = _LG_IM_ACTIVE.pop(e, None)
             if pair is None:
                 continue
-            if mode == "real":
-                _lg_set_real(e, False, mode, cfg, force=True)
+            _lg_set_real(e, False, mode, cfg, force=True)
             _LG_OVERRIDE.pop(e, None)
             g = groups.get(str(pair[1]))
             if g is not None:
@@ -171,8 +161,7 @@ def _lg_imitation_tick(cfg, mode):
         pair = _LG_IM_ACTIVE.get(e)
         if pair is not None and time.monotonic() >= pair[0]:
             _LG_IM_ACTIVE.pop(e, None)
-            if mode == "real":
-                _lg_set_real(e, False, mode, cfg, force=True)
+            _lg_set_real(e, False, mode, cfg, force=True)
             _LG_OVERRIDE.pop(e, None)
             g = groups.get(str(pair[1]))
             if g is not None:
@@ -201,8 +190,7 @@ def _lg_imitation_tick(cfg, mode):
                 g = groups[str(gid)]
                 v = lg_vlight_entity(g)
                 _LG_OVERRIDE[e] = time.monotonic() + mins * 60
-                if mode == "real":
-                    _lg_set_real(e, True, mode, cfg, force=True)
+                _lg_set_real(e, True, mode, cfg, force=True)
                 if _lg_state(v) is not None:
                     _VLIGHT_PREV[v] = "on"
                     _lg_set_vlight(v, True, mode)

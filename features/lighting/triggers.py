@@ -85,8 +85,7 @@ def _lg_vlight_handler(var_name=None, **kwargs):
         if v != var_name:
             continue
         g2 = _lg_season(g)
-        m = "shadow" if (mode == "shadow" or g2.get("shadow")) else "real"
-        _lg_handle_vlight_change(g2, cfg, m, v, True)
+        _lg_handle_vlight_change(g2, cfg, mode, v, True)
         return
 
 
@@ -131,6 +130,5 @@ def _lg_motion_handler(var_name=None, **kwargs):
         _LG_MOTION_LAST[gid] = time.monotonic()
         _lg_log("motion", "DEBUG", "gid=%s: motion detected, last=%s" % (gid, str(_LG_MOTION_LAST[gid])))
         g2 = _lg_season(g)
-        m = "shadow" if (mode == "shadow" or g2.get("shadow")) else "real"
-        _lg_apply_group(g2, cfg, m)
+        _lg_apply_group(g2, cfg, mode)
         return
