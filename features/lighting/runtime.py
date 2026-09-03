@@ -4,6 +4,10 @@
 from .fsm import light_fsm_run, light_fsm_get_state
 
 
+# Хранилище предыдущих состояний FSM для каждой группы
+_LIGHT_FSM_PREV_STATE = {}
+
+
 def _lg_build_fsm_ctx(g, ctx):
     """Преобразует контекст decide.py в контекст для FSM.
     
@@ -16,6 +20,12 @@ def _lg_build_fsm_ctx(g, ctx):
     """
     gid = str(g.get("id"))
     features = g.get("features") or {}
+    
+    # Чтение контекста комнаты
+    try:
+        room_ctx = _cv_get_room_context()
+    except Exception:
+        room_ctx = "EMPTY"  # Fallback при отсутствии контекста
     
     # Определяем профиль включения/выключения
     sel_on = ctx.get("sel_on", "")
@@ -59,6 +69,13 @@ def _lg_build_fsm_ctx(g, ctx):
     # Ручное вмешательство
     manual_change = False
     
+    # Проверка доступности устройств
+    device_available = True
+    for e in (g.get("lights", []) or []):
+        if e and _lg_unavailable(e):
+            device_available = False
+            break
+    
     return {
         "schedule_on": schedule_on,
         "schedule_off": schedule_off,
@@ -74,9 +91,11 @@ def _lg_build_fsm_ctx(g, ctx):
         "imitation_on": imitation_on,
         "imitation_off": imitation_off,
         "manual_change": manual_change,
-        "away": False,  # Заполняется из глобального контекста
+        "away": room_ctx == "EMPTY",  # AWAY когда комната EMPTY
         "timeout_expired": False,
-        "override_cleared": False
+        "override_cleared": False,
+        "room_context": room_ctx,
+        "device_available": device_available
     }
 
 
