@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runtime: главный цикл и применение решений к группам."""
 
-from .fsm import light_fsm_run, light_fsm_get_state, _LIGHT_FSM_STATE
+from .fsm import light_fsm_run, light_fsm_get_state, light_fsm_definition
 
 
 # Хранилище предыдущих состояний FSM для каждой группы
@@ -10,11 +10,11 @@ _LIGHT_FSM_PREV_STATE = {}
 
 def _lg_publish_fsm_states():
     """Публикует состояния FSM всех групп в сенсоры sensor.<group>_fsm_state."""
-    for gid, state_info in _LIGHT_FSM_STATE.items():
+    for gid, state_info in _FSM_STATES.items():
         entity_id = "sensor.light_%s_fsm_state" % gid
         state = state_info.get("state", "OFF")
-        why = state_info.get("why", "")
-        last_transition = state_info.get("last_transition", 0)
+        why = entry.get("entered_why", "")
+        last_transition = entry.get("entered_at", "")
         
         # Формируем атрибуты
         attrs = {
@@ -34,7 +34,7 @@ def _lg_update_fsm_overview():
     """Обновляет агрегированный сенсор fsm_overview состояниями освещения."""
     try:
         overview = {}
-        for gid, state_info in _LIGHT_FSM_STATE.items():
+        for gid, state_info in _FSM_STATES.items():
             entity_id = "light_%s" % gid
             overview[entity_id] = state_info.get("state", "OFF")
         
@@ -55,11 +55,11 @@ def _lg_fsm_status_all():
         словарь {gid: {"state": ..., "why": ...}, ...}
     """
     result = {}
-    for gid, state_info in _LIGHT_FSM_STATE.items():
+    for gid, state_info in _FSM_STATES.items():
         result[gid] = {
             "state": state_info.get("state", "OFF"),
-            "why": state_info.get("why", ""),
-            "last_transition": state_info.get("last_transition", 0)
+            "why": entry.get("entered_why", ""),
+            "last_transition": entry.get("entered_at", "")
         }
     return result
 
@@ -89,19 +89,19 @@ def _lg_fsm_debug(gid):
     
     fsm_def = light_fsm_definition(group)
     current_state = light_fsm_get_state(gid)
-    state_info = _LIGHT_FSM_STATE.get(gid, {})
+    state_info = _FSM_STATES.get(gid, {})
     
     # Строим текущий контекст
     ctx = _lg_decide_ctx(group, cfg)
     fsm_ctx = _lg_build_fsm_ctx(group, ctx)
-    events = fsm_build_events(fsm_ctx)
+    events = []
     
     return {
         "group_id": gid,
         "fsm_type": fsm_def.get("states", []),
         "current_state": current_state,
-        "last_transition": state_info.get("last_transition", 0),
-        "transition_reason": state_info.get("why", ""),
+        "last_transition": entry.get("entered_at", ""),
+        "transition_reason": entry.get("entered_why", ""),
         "active_events": events,
         "fsm_enabled": group.get("fsm_enabled", False)
     }
