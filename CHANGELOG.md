@@ -4,6 +4,35 @@
 
 # Changelog
 
+## Unreleased
+
+### Добавлено (Фаза 4: FSM для Освещения)
+- **FSM движок для освещения**: 4 типа автоматов (DEFAULT, NIGHTLIGHT, MOTION, IMITATION)
+  - Состояния: `OFF`, `AUTO_DAY`, `AUTO_NIGHT`, `MOTION_ACTIVE`, `MANUAL_LOCK`, `PARTY`, `NIGHT_LIGHT`, `PREVIOUS`, `UNAVAILABLE`
+  - Триггеры: `manual_change` (100), `schedule_*` (20), `motion_*` (10), `party_*` (50), `night_light_*` (50), `timeout` (0)
+  - Ортогональность режимов: движение + расписание + вечеринка работают независимо
+  - Guard `room_ok`: защита от включения при PARTY/SLEEPING
+  - Переход `PREVIOUS`: возврат в предыдущее состояние после таймаута движения/ночника
+- **Наблюдаемость**:
+  - Сенсоры `sensor.light_<gid>_fsm_state` с атрибутами (время перехода, причина)
+  - Интеграция в `sensor.fsm_overview` (обновление каждые 30 сек)
+  - Сервис `lighting_fsm_status()`: краткий статус всех автоматов
+  - Сервис `lighting_fsm_debug(group_id)`: полная диагностика группы
+- **Интеграция с room_context**: чтение контекста комнаты через `_cv_get_room_context()`
+- **Обработка unavailable**: состояние `UNAVAILABLE` при недоступности устройств
+- **Манифест**: `fsm_enabled: true` для всех 16 групп освещения
+
+### Изменено
+- `features/lighting/fsm.py`: доработаны автоматы с состоянием PREVIOUS и guard'ами
+- `features/lighting/runtime.py`: интеграция room_context, device_available, публикация в fsm_overview
+- `features/lighting/services.py`: сервисы диагностики FSM
+- `instances/leonid_house/manifest.yaml`: включён FSM для всех групп
+
+### Документация
+- `features/lighting/fsm_design.md`: архитектурное описание автоматов освещения
+
+---
+
 ## 2026-09-01 — v1.2.0: Система расширенного логирования
 ### Добавлено
 - Единая система логирования платформы с диспетчером `log_event()` в `manifest_loader.py`.
