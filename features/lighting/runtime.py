@@ -209,6 +209,7 @@ def _lg_decide(g, cfg):
     
     # Проверяем, включен ли FSM для этой группы
     use_fsm = g.get("fsm_enabled", False)
+    fsm_shadow = g.get("fsm_shadow", False)
     
     if use_fsm:
         # Используем FSM
@@ -218,12 +219,19 @@ def _lg_decide(g, cfg):
         if fsm_result and fsm_result.get("action"):
             action = fsm_result["action"]
             why = fsm_result.get("why", "FSM")
-            
-            # Логируем переход состояния
             state = fsm_result.get("state", "UNKNOWN")
-            _lg_log("fsm", "INFO", "gid=%s: state=%s why=%s" % (gid, state, why))
             
-            return {"on": action.get("on", False), "why": why}
+            if fsm_shadow:
+                # Shadow mode: логируем решение FSM, но исполняем старую логику
+                _lg_log("fsm", "INFO", "gid=%s: SHADOW state=%s why=%s" % (gid, state, why))
+                # Продолжаем со старой логикой decide.py
+            else:
+                # Реальный режим: исполняем решение FSM
+                _lg_log("fsm", "INFO", "gid=%s: state=%s why=%s" % (gid, state, why))
+                return {"on": action.get("on", False), "why": why}
+        elif fsm_result and fsm_shadow:
+            # FSM не принял решение, но мы в shadow mode
+            _lg_log("fsm", "DEBUG", "gid=%s: SHADOW no action from FSM" % gid)
     
     # Используем старую логику voters
     _lg_log("decide", "DEBUG", "gid=%s: started, prof=%s dark=%s night=%s any_on=%s" % (gid, ctx.get("prof"), ctx.get("dark"), ctx.get("night"), ctx.get("any_on")))

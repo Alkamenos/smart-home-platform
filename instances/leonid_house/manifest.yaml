@@ -111,7 +111,8 @@ features:
     lights:
     - switch.group_lights_outdoor_floodlights
     flag: input_boolean.feature_yard
-    fsm_enabled: true
+    fsm_enabled: false
+    fsm_shadow: true
     features:
       dusk:
         require_dark: true
