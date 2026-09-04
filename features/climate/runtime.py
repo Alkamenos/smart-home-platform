@@ -303,12 +303,20 @@ def _clim_build_fsm_ctx(zone):
     # Получаем текущую температуру
     temp_sensor = _REGISTRY.device(zone.get("temp_sensor_ref")) or {}
     temp_entity = temp_sensor.get("entity")
-    current_temp = _clim_get_float(temp_entity) if temp_entity else 20.0
+    current_temp = _clim_get_float(temp_entity) if temp_entity else None
+    
+    # Если температура недоступна - пропускаем зону
+    if current_temp is None:
+        return None
     
     # Получаем уставку
     setpoints = zone.get("setpoints") or {}
     heat_sp = (setpoints.get("heat") or {}).get("source")
-    target_temp = _clim_get_float(heat_sp) if heat_sp else 22.0
+    target_temp = _clim_get_float(heat_sp) if heat_sp else None
+    
+    # Если уставка недоступна - используем значение по умолчанию
+    if target_temp is None:
+        target_temp = 22.0
     
     # Получаем контекст комнаты
     try:

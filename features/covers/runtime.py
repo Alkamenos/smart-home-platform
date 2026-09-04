@@ -434,6 +434,23 @@ def _cv_fsm_init(cfg):
         fsm_register(cover_entity, definition)
 
 
+        
+        # Синхронизируем состояние автомата с реальной позицией штор
+        actual_pos = _cv_get_actual_position(cover_entity)
+        if actual_pos is not None:
+            if actual_pos >= 80:
+                # Штора открыта
+                fsm_trigger(cover_entity, "sync_open", src="синхронизация")
+                _cv_log("sync", "INFO", cover_entity + ": FSM synced to OPEN (pos=" + str(actual_pos) + "%)")
+            elif actual_pos <= 20:
+                # Штора закрыта
+                fsm_trigger(cover_entity, "sync_close", src="синхронизация")
+                _cv_log("sync", "INFO", cover_entity + ": FSM synced to CLOSED (pos=" + str(actual_pos) + "%)")
+            else:
+                # Штора частично открыта
+                fsm_trigger(cover_entity, "sync_partial", src="синхронизация")
+                _cv_log("sync", "INFO", cover_entity + ": FSM synced to PARTIAL (pos=" + str(actual_pos) + "%)")
+
 def _cv_fsm_check_timers(cfg):
     """Проверка таймеров блокировки автоматов."""
     timeout_min = cfg.get("override_timeout_min", 60)

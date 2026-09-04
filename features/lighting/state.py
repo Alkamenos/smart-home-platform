@@ -18,6 +18,11 @@ _LG_MOTION_LAST = {}
 # Статус темноты (с гистерезисом)
 _DARK = None
 
+# Время начала аномалии/недоступности датчика освещенности
+_LUX_ANOMALY_START = None
+_LUX_ANOMALY_LOGGED = False
+
+
 # Время последней смены цветовой температуры по entity
 _CT_LAST = {}
 
@@ -314,13 +319,36 @@ def _lg_motion(g, gid):
 # ==================== ТЕМНОТА (ГИСТЕРЕЗИС) ====================
 
 def _lg_update_dark(cfg):
-    """Обновление статуса темноты с гистерезисом."""
-    global _DARK
+    """Обновление статуса темноты с гистерезисом (с валидацией датчика по солнцу)."""
+    global _DARK, _LUX_ANOMALY_START, _LUX_ANOMALY_LOGGED
+    
     d = cfg.get("dark", {}) or {}
     lux = None
     if d.get("illuminance_sensor"):
         lux = _lg_get_float(d["illuminance_sensor"])
-    if lux is not None:
+    
+    # Получаем элевацию солнца для валидации и фолбэка
+    elev = 99.0
+    try:
+        elev = float(hass.states.get("sun.sun").attributes.get("elevation", 99))
+    except Exception:
+        pass
+
+    # Определяем, доверяем ли датчику
+    is_night_by_sun = elev < d.get("sun_dark_elevation", -3)
+    anomaly_threshold = d.get("anomaly_lux", 100) # Порог люкс ночью, выше которого считаем датчик сломанным
+    
+    sensor_trust = True
+    if lux is None:
+        sensor_trust = False
+    elif is_night_by_sun and lux > anomaly_threshold:
+        sensor_trust = False
+
+    if sensor_trust:
+        # Датчик в норме: сбрасываем таймер аномалии и используем люкс
+        _LUX_ANOMALY_START = None
+        _LUX_ANOMALY_LOGGED = False
+        
         if _DARK is None:
             _DARK = lux < d.get("dark_lux", 20)
         elif _DARK and lux > d.get("light_lux", 40):
@@ -328,20 +356,25 @@ def _lg_update_dark(cfg):
         elif (not _DARK) and lux < d.get("dark_lux", 20):
             _DARK = True
         return
-    try:
-        elev = float(hass.states.get("sun.sun").attributes.get("elevation", 99))
-    except Exception:
-        return
+
+    # Датчик недоступен или показывает аномалию
+    if _LUX_ANOMALY_START is None:
+        _LUX_ANOMALY_START = time.monotonic()
+    
+    delta = time.monotonic() - _LUX_ANOMALY_START
+    
+    # Если проблема длится больше 20 минут, логируем один раз
+    if delta >= 20 * 60 and not _LUX_ANOMALY_LOGGED:
+        _lg_log("lighting", "WARNING", "Датчик освещенности недоступен или показывает аномалию > 20 мин. Переход на расчет по солнцу.")
+        _LUX_ANOMALY_LOGGED = True
+    
+    # Фолбэк: используем гистерезис по элевации солнца
     if _DARK is None:
         _DARK = elev < d.get("sun_dark_elevation", -3)
     elif _DARK and elev > d.get("sun_light_elevation", 1):
         _DARK = False
     elif (not _DARK) and elev < d.get("sun_dark_elevation", -3):
         _DARK = True
-
-
-# ==================== VLIGHT ENTITY ====================
-
 def lg_vlight_entity(g):
     """Получение vlight entity для группы."""
     return g.get("vlight_entity") or ("input_boolean.vlight_" + str(g.get("id")))

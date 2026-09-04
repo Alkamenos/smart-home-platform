@@ -423,10 +423,19 @@ def _vent_tick():
     if not cfg or not cfg.get("enabled", True):
         return
     mode = _vent_mode(cfg)
-    # Используем FSM для вентиляции
-    device_id = cfg.get("devices", [{}])[0].get("entity", "fan.base_smart").replace("fan.", "")
+    # Используем FSM для вентиляции (для каждого устройства)
     fsm_ctx = _vent_build_fsm_ctx(cfg)
-    fsm_result = ventilation_fsm_run(device_id, fsm_ctx)
+    fsm_result = None
+    
+    for dev in cfg.get("devices", []) or []:
+        entity = dev.get("entity")
+        if not entity:
+            continue
+        device_id = entity.replace("fan.", "")
+        result = ventilation_fsm_run(device_id, fsm_ctx)
+        if result and result.get("action") and fsm_result is None:
+            fsm_result = result
+    
     if fsm_result and fsm_result.get("action"):
         return _vent_convert_fsm_action(fsm_result)
     desired = _vent_decide(cfg)

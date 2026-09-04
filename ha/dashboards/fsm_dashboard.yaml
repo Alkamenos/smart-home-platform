@@ -1,0 +1,82 @@
+# FSM Dashboard - Мониторинг состояний автоматов
+title: FSM Состояния
+views:
+  - title: Обзор
+    path: fsm-overview
+    icon: mdi:state-machine
+    cards:
+      - type: entities
+        title: Автоматы освещения
+        entities:
+          - entity: sensor.light_yard_floodlights_fsm_state
+            name: Улица/двор основное
+          - entity: sensor.light_street_night_fsm_state
+            name: Уличное ночное
+          - entity: sensor.light_office_fsm_state
+            name: Кабинет
+          - entity: sensor.light_office_lampa_fsm_state
+            name: Кабинет (настольная лампа)
+          - entity: sensor.light_office_kus_fsm_state
+            name: Кабинет (кусь)
+          - entity: sensor.light_bedroom_fsm_state
+            name: Спальня
+          - entity: sensor.light_living_room_fsm_state
+            name: Гостиная (подсветка зеркала)
+          - entity: sensor.light_guest_bedroom_fsm_state
+            name: Гостевая спальня (торшер)
+          - entity: sensor.light_kitchen_work_fsm_state
+            name: Кухня (рабочая поверхность)
+          - entity: sensor.light_table_fsm_state
+            name: Кухня (обеденный стол)
+          - entity: sensor.light_container_fsm_state
+            name: Контейнер
+          - entity: sensor.light_bathroom_fsm_state
+            name: Санузел
+          - entity: sensor.light_garland_terrace_fsm_state
+            name: Гирлянда терраса
+          - entity: sensor.light_garland_street_fsm_state
+            name: Гирлянда уличная
+          - entity: sensor.light_garland_windows_fsm_state
+            name: Окна
+          - entity: sensor.light_xmas_a2_fsm_state
+            name: Рождественская уличная
+
+      - type: entities
+        title: Автоматы климата
+        entities:
+          - entity: sensor.climate_gostinnaia_fsm_state
+            name: Зона gostinnaia
+          - entity: sensor.climate_sanuzel_fsm_state
+            name: Зона sanuzel
+          - entity: sensor.climate_spalnia_fsm_state
+            name: Зона spalnia
+          - entity: sensor.climate_kabinet_fsm_state
+            name: Зона kabinet
+          - entity: sensor.climate_gostevaia_spalnia_fsm_state
+            name: Зона gostevaia_spalnia
+
+      - type: entities
+        title: Автоматы вентиляции
+        entities:
+          - entity: sensor.fan_base_smart_fsm_state
+            name: rek_spalnia
+          - entity: sensor.fan_base_smart_2_fsm_state
+            name: rek_kabinet
+
+      - type: entities
+        title: Автоматы штор
+        entities:
+          - entity: sensor.cover_shtora_v_spalne_fsm_state
+            name: Штора в спальне
+          - entity: sensor.cover_shtora_v_kabinete_fsm_state
+            name: Штора в кабинете
+          - entity: sensor.cover_shtora_v_gostinnoi_levaia_fsm_state
+            name: Штора в гостиной (левая)
+          - entity: sensor.cover_shtora_v_gostinnoi_pravaia_fsm_state
+            name: Штора в гостиной (правая, над дверью)
+
+      - type: entities
+        title: Автомат комнаты
+        entities:
+          - entity: sensor.room_main_fsm_state
+            name: Контекст комнаты

@@ -103,6 +103,28 @@ COVER_FSM_DEFAULT = {
             "trigger": "device_error",
             "priority": 500,
             "why": "Ошибка привода"
+        },
+        # Синхронизация с реальной позицией при старте
+        {
+            "from": ["CLOSED", "PARTIAL"],
+            "to": "OPEN",
+            "trigger": "sync_open",
+            "priority": 1,
+            "why": "Синхронизация: штора открыта"
+        },
+        {
+            "from": ["OPEN", "PARTIAL"],
+            "to": "CLOSED",
+            "trigger": "sync_close",
+            "priority": 1,
+            "why": "Синхронизация: штора закрыта"
+        },
+        {
+            "from": ["OPEN", "CLOSED"],
+            "to": "PARTIAL",
+            "trigger": "sync_partial",
+            "priority": 1,
+            "why": "Синхронизация: штора частично открыта"
         }
     ]
 }
@@ -183,6 +205,28 @@ COVER_FSM_DOOR = {
             "trigger": "device_error",
             "priority": 500,
             "why": "Ошибка привода"
+        },
+        # Синхронизация с реальной позицией при старте
+        {
+            "from": ["CLOSED", "PARTIAL"],
+            "to": "OPEN",
+            "trigger": "sync_open",
+            "priority": 1,
+            "why": "Синхронизация: штора открыта"
+        },
+        {
+            "from": ["OPEN", "PARTIAL"],
+            "to": "CLOSED",
+            "trigger": "sync_close",
+            "priority": 1,
+            "why": "Синхронизация: штора закрыта"
+        },
+        {
+            "from": ["OPEN", "CLOSED"],
+            "to": "PARTIAL",
+            "trigger": "sync_partial",
+            "priority": 1,
+            "why": "Синхронизация: штора частично открыта"
         }
     ]
 }

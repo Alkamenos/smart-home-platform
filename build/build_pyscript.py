@@ -42,6 +42,28 @@ ORDER = [
 OUT = "/config/pyscript/manifest_loader.py"
 
 def main():
+    # 0. Копируем дашборды в /config/dashboards/
+    dashboards_src = os.path.join(REPO_ROOT, "ha", "dashboards")
+    dashboards_dst = "/config/dashboards"
+    
+    if os.path.exists(dashboards_src):
+        os.makedirs(dashboards_dst, exist_ok=True)
+        
+        # Список дашбордов для копирования
+        dashboard_files = [
+            "climate.yaml",
+            "smart_home.yaml",
+            "fsm_dashboard.yaml",
+        ]
+        
+        for dashboard_file in dashboard_files:
+            src = os.path.join(dashboards_src, dashboard_file)
+            if os.path.exists(src):
+                dst = os.path.join(dashboards_dst, dashboard_file.replace("_", "-"))
+                import shutil
+                shutil.copy2(src, dst)
+                print("copied:", src, "->", dst)
+    
     # 1. Читаем манифест на этапе сборки (здесь blocking I/O разрешен)
     MANIFEST_SRC = os.path.join(REPO_ROOT, "instances", "leonid_house", "manifest.yaml")
     if not os.path.exists(MANIFEST_SRC):
