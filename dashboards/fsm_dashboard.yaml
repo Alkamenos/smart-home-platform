@@ -1,0 +1,133 @@
+# FSM Dashboard - Мониторинг состояний автоматов
+
+title: FSM Состояния
+views:
+  - title: Обзор
+    path: fsm-overview
+    icon: mdi:state-machine
+    cards:
+      - type: entities
+        title: Автоматы освещения
+        entities:
+          - entity: sensor.light_yard_floodlights_fsm_state
+            name: Уличное освещение
+          - entity: sensor.light_street_night_fsm_state
+            name: Ночное освещение
+          - entity: sensor.light_office_fsm_state
+            name: Кабинет
+          - entity: sensor.light_bedroom_fsm_state
+            name: Спальня
+          - entity: sensor.light_living_room_fsm_state
+            name: Гостиная
+          - entity: sensor.light_guest_bedroom_fsm_state
+            name: Гостевая спальня
+          - entity: sensor.light_kitchen_work_fsm_state
+            name: Кухня (рабочая зона)
+          - entity: sensor.light_table_fsm_state
+            name: Стол
+          - entity: sensor.light_container_fsm_state
+            name: Контейнер
+          - entity: sensor.light_bathroom_fsm_state
+            name: Ванная
+          - entity: sensor.light_garland_terrace_fsm_state
+            name: Гирлянда терраса
+          - entity: sensor.light_garland_street_fsm_state
+            name: Гирлянда улица
+          - entity: sensor.light_garland_windows_fsm_state
+            name: Гирлянда окна
+          - entity: sensor.light_xmas_a2_fsm_state
+            name: Рождественская A2
+
+      - type: entities
+        title: Автоматы климата
+        entities:
+          - entity: sensor.climate_living_room_fsm_state
+            name: Гостиная
+          - entity: sensor.climate_bedroom_fsm_state
+            name: Спальня
+          - entity: sensor.climate_office_fsm_state
+            name: Кабинет
+          - entity: sensor.climate_kitchen_fsm_state
+            name: Кухня
+
+      - type: entities
+        title: Автоматы вентиляции
+        entities:
+          - entity: sensor.fan_base_smart_fsm_state
+            name: Рекуператор 1
+          - entity: sensor.fan_base_smart_2_fsm_state
+            name: Рекуператор 2
+
+      - type: entities
+        title: Автоматы штор
+        entities:
+          - entity: sensor.cover_shtora_v_spalne_fsm_state
+            name: Штора в спальне
+          - entity: sensor.cover_shtora_v_kabinete_fsm_state
+            name: Штора в кабинете
+          - entity: sensor.cover_shtora_v_gostinnoi_levaia_fsm_state
+            name: Штора в гостиной (левая)
+          - entity: sensor.cover_shtora_v_gostinnoi_pravaia_fsm_state
+            name: Штора в гостиной (правая)
+
+      - type: entities
+        title: Автомат комнаты
+        entities:
+          - entity: sensor.room_main_fsm_state
+            name: Контекст комнаты
+
+  - title: Отладка
+    path: fsm-debug
+    icon: mdi:bug
+    cards:
+      - type: entities
+        title: Отладка FSM
+        entities:
+          - type: button
+            name: Диагностика освещения
+            tap_action:
+              action: call-service
+              service: pyscript.light_fsm_debug
+          - type: button
+            name: Диагностика климата
+            tap_action:
+              action: call-service
+              service: pyscript.climate_debug
+          - type: button
+            name: Диагностика вентиляции
+            tap_action:
+              action: call-service
+              service: pyscript.vent_debug
+          - type: button
+            name: Диагностика штор
+            tap_action:
+              action: call-service
+              service: pyscript.covers_fsm_debug
+          - type: button
+            name: Сброс блокировок освещения
+            tap_action:
+              action: call-service
+              service: pyscript.light_override_clear
+          - type: button
+            name: Сброс блокировок штор
+            tap_action:
+              action: call-service
+              service: pyscript.covers_override_clear
+
+      - type: markdown
+        title: Информация о FSM
+        content: |
+          ## Универсальный движок конечных автоматов
+          
+          **Версия:** 1.3.0
+          
+          **Принципы работы:**
+          - Каждый автомат имеет состояния и переходы
+          - Переходы имеют приоритеты (выше = важнее)
+          - Приоритеты: ручное (100) > безопасность (500) > расписание (20) > автоматика (10)
+          - Состояние PREVIOUS позволяет вернуться в предыдущее состояние
+          
+          **Документация:**
+          - FSM_SPEC.md - спецификация автоматов
+          - HANDOFF.md - текущее состояние системы
+          - CHANGELOG.md - история изменений

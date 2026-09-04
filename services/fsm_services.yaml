@@ -1,0 +1,50 @@
+# FSM Services - Сервисы для управления автоматами
+
+# Диагностика всех автоматов
+pyscript.fsm_debug:
+  name: FSM Диагностика
+  description: Получить полную диагностику всех автоматов
+  target:
+    entity:
+      domain: sensor
+  fields: {}
+
+# Сброс всех блокировок
+pyscript.fsm_override_clear:
+  name: FSM Сброс блокировок
+  description: Сбросить все блокировки (manual lock) для всех автоматов
+  target: {}
+  fields:
+    entity_id:
+      name: Сущность
+      description: Конкретная сущность (опционально)
+      required: false
+      selector:
+        entity:
+          domain: [light, climate, fan, cover]
+
+# Принудительная публикация состояний
+pyscript.fsm_publish_all:
+  name: FSM Публикация состояний
+  description: Принудительно опубликовать состояния всех автоматов в сенсоры
+  target: {}
+  fields: {}
+
+# Получение истории переходов
+pyscript.fsm_get_history:
+  name: FSM История
+  description: Получить историю переходов для автомата
+  target:
+    entity:
+      domain: [light, climate, fan, cover]
+  fields:
+    limit:
+      name: Лимит
+      description: Количество записей (по умолчанию 10)
+      required: false
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: box
