@@ -137,20 +137,26 @@ def _lg_build_fsm_ctx(g, ctx):
     schedule_on = False
     schedule_off = False
     
+    sched = features.get("schedule") or {}
+    
     if sel_on == "Время":
-        # Проверяем время включения
+        # Проверяем время включения (helper, fallback — манифест)
         t_val = _lg_dt_min("input_datetime.light_%s_on_time" % gid)
+        if t_val is None:
+            t_val = _lg_hm(sched.get("true"))
         if t_val is not None and ctx.get("now") >= t_val:
             schedule_on = True
-    elif sel_on == "Закат" or prof == "dusk_till_time":
+    elif sel_on == "Закат" or prof == "dusk_till_time" or str(sched.get("true")) == "sunset":
         if ctx.get("dark"):
             schedule_on = True
     
-    if sel_off == "Рассвет":
+    if sel_off == "Рассвет" or str(sched.get("false")) == "sunrise":
         if not ctx.get("dark") and not ctx.get("presence"):
             schedule_off = True
     elif sel_off == "Время":
         off_min = _lg_dt_min("input_datetime.light_%s_off_time" % gid)
+        if off_min is None:
+            off_min = _lg_hm(sched.get("false"))
         if off_min is not None and ctx.get("now") >= off_min:
             schedule_off = True
     
@@ -185,6 +191,9 @@ def _lg_build_fsm_ctx(g, ctx):
         "nightlight_timeout": nightlight_timeout,
         "night": ctx.get("night", False),
         "nightlight_enabled": bool(features.get("nightlight")),
+    "nightlight_helper_on": _lg_state("input_boolean.feature_%s_nightlight" % gid) == "on",
+    "motion_mode": motion_mode,
+    "no_night_auto": no_night_auto,
         "motion_day": ctx.get("mday", False),
         "dark": ctx.get("dark", False),
         "party_mode": party_mode,

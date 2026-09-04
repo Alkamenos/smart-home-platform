@@ -75,7 +75,7 @@ COVER_FSM_DEFAULT = {
         # Таймер блокировки истёк: возврат к автоматике
         {
             "from": "MANUAL_LOCK",
-            "to": "CLOSED",
+            "to": "PREVIOUS",
             "trigger": "timeout",
             "priority": 10,
             "why": "Таймер блокировки истёк — возврат к автоматике"
@@ -83,7 +83,7 @@ COVER_FSM_DEFAULT = {
         # Явный сброс блокировки
         {
             "from": "MANUAL_LOCK",
-            "to": "OPEN",
+            "to": "PREVIOUS",
             "trigger": "override_clear",
             "priority": 50,
             "why": "Явный сброс блокировки"
@@ -177,7 +177,7 @@ COVER_FSM_DOOR = {
         # Таймер блокировки истёк: возврат к автоматике
         {
             "from": "MANUAL_LOCK",
-            "to": "PARTIAL",
+            "to": "PREVIOUS",
             "trigger": "timeout",
             "priority": 10,
             "why": "Таймер блокировки истёк — возврат к автоматике"
@@ -185,7 +185,7 @@ COVER_FSM_DOOR = {
         # Явный сброс блокировки
         {
             "from": "MANUAL_LOCK",
-            "to": "OPEN",
+            "to": "PREVIOUS",
             "trigger": "override_clear",
             "priority": 50,
             "why": "Явный сброс блокировки"

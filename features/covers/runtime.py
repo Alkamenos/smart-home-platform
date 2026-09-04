@@ -9,6 +9,7 @@ _CV_PREV = {}
 _CV_OVERRIDE = {}
 _CV_LAST_CHANGE = {}
 _CV_EXPECTED_STATE = {}
+_CV_LAST_MANUAL = {}
 
 # Глобальная настройка логирования
 _CV_LOG_LEVELS = {"CRITICAL": 0, "ERROR": 1, "WARNING": 2, "INFO": 3, "DEBUG": 4}
@@ -310,7 +311,7 @@ def _cv_set_cover_position(cover_entity, position, mode):
     # Платформа помечает команду как ожидаемую
     _CV_EXPECTED_STATE[cover_entity] = {
         "position": position,
-        "until": time.monotonic() + 30
+        "until": time.monotonic() + 120
     }
     service.call("cover", "set_cover_position", entity_id=cover_entity, position=position)
     log.warning("[covers][REAL] " + cover_entity + " -> position " + str(position))
@@ -475,6 +476,7 @@ def _cv_fsm_check_timers(cfg):
             entered_at = datetime.strptime(entered_at_str, "%Y-%m-%d %H:%M:%S")
             if datetime.now() > entered_at + timedelta(minutes=timeout_min):
                 fsm_trigger(cover_entity, "timeout", src="таймер")
+                _cv_sync_fsm_with_position(cover_entity)
                 cid = str(c.get("id"))
                 try:
                     service.call("input_datetime", "set_datetime",
@@ -487,10 +489,29 @@ def _cv_fsm_check_timers(cfg):
             pass
 
 
+def _cv_sync_fsm_with_position(cover_entity):
+    """Мягкая синхронизация: сенсор повторяет фактическую позицию."""
+    pos = _cv_get_actual_position(cover_entity)
+    if pos is None:
+        return
+    st = fsm_get_state(cover_entity)
+    if st in ("MANUAL_LOCK", "ERROR"):
+        return
+    if pos >= 80 and st != "OPEN":
+        fsm_trigger(cover_entity, "sync_open", src="синхронизация")
+    elif pos <= 20 and st != "CLOSED":
+        fsm_trigger(cover_entity, "sync_close", src="синхронизация")
+    elif 20 < pos < 80 and st != "PARTIAL":
+        fsm_trigger(cover_entity, "sync_partial", src="синхронизация")
+
 def _cv_track_manual_change(c, cfg):
     """Отслеживание ручного вмешательства через автомат."""
     cid = str(c.get("id"))
     cover_entity = c.get("cover")
+
+    # Анти-цикл: manual_change не чаще раза в 2 минуты
+    if (time.monotonic() - _CV_LAST_MANUAL.get(cover_entity, 0)) < 120:
+        return
 
     cur_pos = _cv_get_actual_position(cover_entity)
     if cur_pos is None:
@@ -502,15 +523,24 @@ def _cv_track_manual_change(c, cfg):
     if prev_pos is None or cur_pos == prev_pos:
         return
 
+    # Дребезг привода (<3%) — не вмешательство
+    if abs(cur_pos - prev_pos) < 3:
+        return
+
     # Проверяем, не наша ли это команда
     exp = _cv_expected_guard(cover_entity)
     if exp is not None:
         if abs(exp - cur_pos) < 5:
             _CV_EXPECTED_STATE.pop(cover_entity, None)
             return
+        # Штора едет к цели платформы — это не ручное вмешательство
+        if (exp > prev_pos and prev_pos < cur_pos <= exp + 5) or \
+           (exp < prev_pos and exp - 5 <= cur_pos < prev_pos):
+            return
 
     # Ручное вмешательство → триггерим автомат
     fsm_trigger(cover_entity, "manual_change", src="ручное")
+    _CV_LAST_MANUAL[cover_entity] = time.monotonic()
 
     # Записываем в input_datetime для переживания перезагрузки
     timeout = cfg.get("override_timeout_min", 60)
@@ -663,6 +693,7 @@ def _cv_tick():
 
     for c in covers_list:
         try:
+            _cv_sync_fsm_with_position(c.get("cover"))
             _cv_apply_cover(c, cfg, mode, home, dogs)
         except Exception as exc:
             _cv_log("error", "ERROR", "cover " + str(c.get("id")) + " error: " + str(exc))

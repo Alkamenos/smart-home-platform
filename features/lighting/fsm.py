@@ -62,7 +62,7 @@ LIGHT_FSM_DEFAULT = {
             "from": ["OFF", "ON_SCHEDULE"],
             "to": "ON_MOTION",
             "trigger": "motion",
-            "guard": "room_ok",
+            "guard": "room_ok and motion_mode != 'Выкл' and not no_night_auto",
             "priority": 30,
             "why": "Включение по датчику движения"
         },
@@ -79,7 +79,7 @@ LIGHT_FSM_DEFAULT = {
             "from": ["OFF", "ON_SCHEDULE"],
             "to": "NIGHTLIGHT",
             "trigger": "night_motion",
-            "guard": "room_ok",
+            "guard": "room_ok and motion_mode != 'Выкл' and nightlight_helper_on",
             "priority": 35,
             "why": "Ночник: минимальная яркость ночью"
         },
@@ -156,8 +156,8 @@ LIGHT_FSM_NIGHTLIGHT = {
     "transitions": [
         {"from": ["OFF"], "to": "ON_SCHEDULE", "trigger": "schedule_on", "priority": 20, "why": "Включение по расписанию"},
         {"from": ["ON_SCHEDULE", "ON_MOTION", "NIGHTLIGHT"], "to": "OFF", "trigger": "schedule_off", "priority": 20, "why": "Выключение по расписанию"},
-        {"from": ["OFF", "ON_SCHEDULE"], "to": "ON_MOTION", "trigger": "motion", "guard": "not night", "priority": 30, "why": "Включение по датчику движения (день)"},
-        {"from": ["OFF", "ON_SCHEDULE"], "to": "NIGHTLIGHT", "trigger": "night_motion", "priority": 35, "why": "Ночник ночью при движении"},
+        {"from": ["OFF", "ON_SCHEDULE"], "to": "ON_MOTION", "trigger": "motion", "guard": "not night and motion_mode != 'Выкл' and not no_night_auto", "priority": 30, "why": "Включение по датчику движения (день)"},
+        {"from": ["OFF", "ON_SCHEDULE"], "to": "NIGHTLIGHT", "trigger": "night_motion", "guard": "motion_mode != 'Выкл' and nightlight_helper_on", "priority": 35, "why": "Ночник ночью при движении"},
         {"from": ["NIGHTLIGHT"], "to": "OFF", "trigger": "nightlight_timeout", "priority": 10, "why": "Ночник: таймер истёк"},
         {"from": ["ON_MOTION"], "to": "OFF", "trigger": "no_motion_timeout", "priority": 10, "why": "Выключение по таймеру отсутствия движения"},
         {"from": ["OFF", "ON_SCHEDULE", "ON_MOTION", "NIGHTLIGHT"], "to": "PARTY", "trigger": "party_start", "priority": 50, "why": "Вечеринка: свет не выключается"},
@@ -172,7 +172,7 @@ LIGHT_FSM_MOTION = {
     "states": ["OFF", "ON_MOTION", "MANUAL_LOCK"],
     "initial": "OFF",
     "transitions": [
-        {"from": ["OFF"], "to": "ON_MOTION", "trigger": "motion", "guard": "dark or motion_day", "priority": 30, "why": "Включение по датчику движения"},
+        {"from": ["OFF"], "to": "ON_MOTION", "trigger": "motion", "guard": "(dark or motion_day) and motion_mode != 'Выкл' and not no_night_auto", "priority": 30, "why": "Включение по датчику движения"},
         {"from": ["ON_MOTION"], "to": "OFF", "trigger": "no_motion_timeout", "priority": 10, "why": "Выключение по таймеру отсутствия движения"},
         {"from": ["ON_MOTION"], "to": "OFF", "trigger": "schedule_off", "priority": 25, "why": "Выключение по расписанию (ночь)"},
         {"from": ["OFF", "ON_MOTION"], "to": "MANUAL_LOCK", "trigger": "manual_change", "priority": 100, "why": "Ручное вмешательство"},

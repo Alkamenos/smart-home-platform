@@ -178,6 +178,7 @@ def _climate_fsm_build_events(ctx):
     # События безопасности (высокий приоритет)
     if ctx.get("sensor_error") or ctx.get("heating_lockout"):
         events.append({"trigger": "safety_violation", "src": "безопасность"})
+        # return events  # Early return: предотвращает сравнение None с float ниже
     elif ctx.get("safety_clear"):
         events.append({"trigger": "safety_clear", "src": "безопасность"})
     

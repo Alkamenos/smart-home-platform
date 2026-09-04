@@ -305,9 +305,18 @@ def _clim_build_fsm_ctx(zone):
     temp_entity = temp_sensor.get("entity")
     current_temp = _clim_get_float(temp_entity) if temp_entity else None
     
-    # Если температура недоступна - пропускаем зону
+    # Если температура недоступна - это ошибка датчика, FSM должен перейти в SAFETY_LOCKOUT
     if current_temp is None:
-        return None
+        return {
+            "current_temperature": None,
+            "target_temperature": 22.0,
+            "manual_mode": False,
+            "override_remaining_min": 0,
+            "sensor_error": True,
+            "heating_lockout": _clim_ac_lockout(),
+            "room_context": "HOME_DAY",
+            "temp_hysteresis": 0.5,
+        }
     
     # Получаем уставку
     setpoints = zone.get("setpoints") or {}
@@ -402,6 +411,10 @@ def _clim_eval_zone(zone, mode, min_setpoint, heating_season):
     # Используем FSM для управления климатом
     zone_id = zone.get("id")
     ctx = _clim_build_fsm_ctx(zone)
+    if ctx is None:
+        zone_id = zone.get("id", "unknown")
+        log_event("climate", "Предупреждения", "[" + str(zone_id) + "] Пропуск зоны: датчик температуры недоступен", why="sensor_unavailable", src="автоматика")
+        return  # Пропускаем зону, чтобы не упал orchestrator
     result = climate_fsm_run(zone_id, ctx)
     if result and result.get("action"):
         _clim_apply_fsm_action(zone, result)
