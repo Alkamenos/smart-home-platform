@@ -1,0 +1,12 @@
+name: ядро поведения света
+steps:
+  - ctx: {schedule_on: true}
+    expect: "ON_SCHEDULE"
+  - ctx: {}
+    expect: "OFF"
+  - ctx: {motion: true}
+    expect: "ON_MOTION"
+  - ctx: {motion: true, schedule_off: true}
+    expect: "ON_MOTION"
+  - ctx: {no_motion_timeout: true}
+    expect: "OFF"

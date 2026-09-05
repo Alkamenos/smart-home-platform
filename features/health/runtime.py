@@ -40,6 +40,8 @@ def _sh_problems(cfg):
             b = _sh_battery(st.attributes or {})
             if b is not None and b <= thr:
                 problems.append({"entity": entity,"reason":"батарея " + str(int(b)) +"%","battery": batt_type,"count": cnt})
+    problems += _sh_fsm_divergence(cfg)
+    problems += _sh_fsm_stuck(cfg)
     return problems
 
 
@@ -109,3 +111,66 @@ def sensor_health_status():
     problems, agg = _sh_run(cfg)
     log.warning("[sensor_health] problems=" + str(problems) +" buy=" + str(agg))
     return {"ok": True,"problems": problems,"buy": agg}
+
+
+# ==================== WATCHDOG: FSM vs УСТРОЙСТВА ====================
+
+_SH_DIVERGE_SINCE = {}
+_SH_STUCK_SINCE = {}
+
+
+def _sh_light_groups():
+    try:
+        return (_lg_cfg() or {}).get("groups", []) or []
+    except Exception:
+        return []
+
+
+def _sh_fsm_divergence(cfg):
+    out = []
+    tol = cfg.get("divergence_min", 5)
+    for g in _sh_light_groups():
+        gid = str(g.get("id"))
+        lights = [e for e in (g.get("lights", []) or []) if e]
+        fsm_st = fsm_get_state("light." + gid)
+        if not lights or fsm_st in (None, "UNAVAILABLE", "MANUAL_LOCK"):
+            _SH_DIVERGE_SINCE.pop(gid, None)
+            continue
+        want_on = fsm_st != "OFF"
+        real_on = any(_lg_is_on(e) for e in lights)
+        if want_on == real_on:
+            _SH_DIVERGE_SINCE.pop(gid, None)
+            continue
+        since = _SH_DIVERGE_SINCE.setdefault(gid, time.monotonic())
+        if time.monotonic() - since >= tol * 60:
+            out.append({"entity": "light." + gid,
+                        "reason": "FSM=%s, устройство %s" % (fsm_st, "вкл" if real_on else "выкл"),
+                        "battery": None, "count": 0})
+    return out
+
+
+def _sh_fsm_stuck(cfg):
+    out = []
+    tol = cfg.get("stuck_min", 10)
+    for g in _sh_light_groups():
+        gid = str(g.get("id"))
+        ms = g.get("motion_sensor")
+        if not ms:
+            _SH_STUCK_SINCE.pop(gid, None)
+            continue
+        st = None
+        try:
+            st = hass.states.get(ms)
+        except Exception:
+            st = None
+        m_on = st is not None and str(st.state) == "on"
+        fsm_st = fsm_get_state("light." + gid)
+        if m_on and fsm_st == "OFF":
+            since = _SH_STUCK_SINCE.setdefault(gid, time.monotonic())
+            if time.monotonic() - since >= tol * 60:
+                out.append({"entity": ms,
+                            "reason": "движение есть, но FSM OFF > %d мин" % tol,
+                            "battery": None, "count": 0})
+        else:
+            _SH_STUCK_SINCE.pop(gid, None)
+    return out

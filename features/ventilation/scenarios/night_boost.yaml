@@ -1,0 +1,8 @@
+name: ночной буст вентиляции
+steps:
+  - ctx: {is_night: true}
+    expect: "NIGHT"
+  - ctx: {is_night: true, co2_level: 1200}
+    expect: "BOOST"
+  - ctx: {is_night: true, manual_boost: true}
+    expect: "BOOST"

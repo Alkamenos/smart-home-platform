@@ -5,13 +5,13 @@
 
 ## P0 — Стабильность
 - [x] Регрессионные FSM-тесты + контракт дашборда + pytest в CI
-- [ ] Символьная проверка бандла при сборке (tools/check_bundle_symbols.py + CI)
-- [ ] Персист FSM-состояний между рестартами HA (fsm_engine)
-- [ ] Watchdog: расхождение FSM vs устройство, детектор зависших состояний (sensor_health)
+- [x] Символьная проверка бандла при сборке (tools/check_bundle_symbols.py + CI)
+- [x] Персист FSM-состояний между рестартами HA (fsm_engine)
+- [x] Watchdog: расхождение FSM vs устройство, детектор зависших состояний (sensor_health)
 
 ## P1 — Системные фиксы поведения
 - [ ] Generic debounce/hysteresis в fsm_engine (cooldown per trigger, лечение флэппинга системно)
-- [ ] YAML-сценарии как регрессии: features/*/scenarios/*.yaml + generic-раннер в pytest
+- [x] YAML-сценарии как регрессии: features/*/scenarios/*.yaml + generic-раннер в pytest
 
 ## P2 — Low-code и прозрачность конфигурации
 - [ ] `shplatform explain <id>` — резолвнутый конфиг + последнее решение FSM с why-цепочкой

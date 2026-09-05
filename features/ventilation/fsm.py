@@ -95,6 +95,13 @@ VENTILATION_FSM_DEFAULT = {
         },
         {
             "from": "BOOST",
+            "to": "BOOST",
+            "trigger": "critical_co2",
+            "priority": 50,
+            "why": "Критический CO2 или ручной буст - boost продолжается"
+        },
+        {
+            "from": "BOOST",
             "to": "NIGHT",
             "trigger": "night_schedule",
             "priority": 20,
@@ -311,7 +318,12 @@ def _vent_fsm_build_events(ctx):
     # Таймер boost
     if ctx.get("boost_remaining_min", 0) > 0:
         events.append({"trigger": "boost_timeout_active", "src": "таймер"})
-    
+
+    # ручной буст / критический CO2 подавляют понижающие триггеры
+    for e in events:
+        if e.get("trigger") in ("critical_co2", "manual_override"):
+            events = [e]
+            break
     return events
 
 

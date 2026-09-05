@@ -1,0 +1,12 @@
+name: ручное управление
+steps:
+  - ctx: {schedule_on: true}
+    expect: "ON_SCHEDULE"
+  - ctx: {manual_change: true}
+    expect: "MANUAL_LOCK"
+  - ctx: {motion: true, manual_change: true}
+    expect: "MANUAL_LOCK"
+  - ctx: {timeout_expired: true}
+    expect: "ON_SCHEDULE"
+  - ctx: {device_available: false}
+    expect: "UNAVAILABLE"
