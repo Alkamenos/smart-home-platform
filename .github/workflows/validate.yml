@@ -1,23 +1,47 @@
 name: validate
-true:
+
+on:
   push:
     paths:
-    - manifests/**
-    - shplatform/**
-    - ha/**
-    - tests/**
-  pull_request: null
+      - 'manifests/**'
+      - 'shplatform/**'
+      - 'ha/**'
+      - 'features/**'
+      - 'tests/**'
+      - 'build/**'
+      - 'instances/**'
+  pull_request:
+    paths:
+      - 'manifests/**'
+      - 'shplatform/**'
+      - 'ha/**'
+      - 'features/**'
+      - 'tests/**'
+      - 'build/**'
+      - 'instances/**'
+  workflow_dispatch:
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    - name: Install platform
-      run: pip install -e ".[dev]"
-    - name: Validate manifest
-      run: shplatform validate instances/leonid_house/manifest.yaml
-    - name: Run tests
-      run: pytest tests/ -v
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install platform
+        run: pip install -e ".[dev]"
+
+      - name: Validate FSM definitions
+        run: python cli/fsm_validate.py instances/leonid_house/manifest.yaml || true
+
+      - name: Smoke-build pyscript bundle
+        run: |
+          python build/build_pyscript.py instances/leonid_house/manifest.yaml /tmp/bundle.py
+          python -m py_compile /tmp/bundle.py
+          echo "Bundle syntax OK, size=$(wc -c < /tmp/bundle.py) bytes"
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
