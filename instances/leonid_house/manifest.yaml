@@ -72,7 +72,7 @@ devices:
 features:
   lighting:
     enabled: true
-    mode: shadow
+    mode: real
     override_timeout_min: 60
     anti_cycle_min: 2
     color_temp:

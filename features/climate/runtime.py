@@ -105,6 +105,7 @@ _PLATFORM_CMD = {}
 _OVERRIDE = {}
 _PREV_STATE = {}
 _MANAGED_SET = set()
+_CLIM_ZONE_MANUAL = {}
 
 
 def _clim_refresh_managed():
@@ -161,7 +162,7 @@ def _clim_detect_manual(mode):
         cur_on = _clim_is_on(e)
         prev = _PREV_STATE.get(e)
         last = _PLATFORM_CMD.get(e)
-        recent_cmd = last is not None and (now - last) < 10
+        recent_cmd = last is not None and (now - last) < 45
         # Блок только если состояние ИЗМЕНИЛОСЬ и это не команда платформы
         if prev is not None and cur_on != prev and not recent_cmd:
             _clim_set_override(e,"state changed externally")
@@ -190,17 +191,23 @@ def override_clear(entity=None):
 # отправка команд
 # ============================================================
 def _clim_send_on(entity, hvac, temp):
-    service.call("climate","set_temperature", entity_id=entity,
-                 temperature=temp, hvac_mode=hvac)
+    domain = str(entity).split(".")[0]
+    if domain == "climate":
+        service.call("climate","set_temperature", entity_id=entity,
+                     temperature=temp, hvac_mode=hvac)
+    else:
+        service.call(domain, "turn_on", entity_id=entity)
     _CLIM_LAST[entity] = {"mode": hvac,"temp": temp}
     _clim_record_cmd(entity)
 
-
 def _clim_send_off(entity):
-    service.call("climate","set_hvac_mode", entity_id=entity, hvac_mode="off")
+    domain = str(entity).split(".")[0]
+    if domain == "climate":
+        service.call("climate","set_hvac_mode", entity_id=entity, hvac_mode="off")
+    else:
+        service.call(domain, "turn_off", entity_id=entity)
     _CLIM_LAST[entity] = {"mode":"off","temp": None}
     _clim_record_cmd(entity)
-
 
 def _clim_switch(mode, entity, target_state, zone_id, kind, cur, target):
     msg = "[" + str(zone_id) +"] " + str(kind) +" " + str(entity) \
@@ -333,20 +340,32 @@ def _clim_build_fsm_ctx(zone):
     except Exception:
         room_context = "HOME_DAY"
     
-    # Проверяем ручной режим
-    manual_mode = False
+    # Проверяем ручной режим: оверрайды на актуаторах зоны
+    now = time.monotonic()
     override_remaining_min = 0
-    
+    for act in zone.get("actuators", []):
+        dev = _REGISTRY.device(act.get("ref")) or {}
+        e = dev.get("entity")
+        if e and _OVERRIDE.get(e) is not None and _OVERRIDE[e] > now:
+            rem = (_OVERRIDE[e] - now) / 60.0
+            if rem > override_remaining_min:
+                override_remaining_min = rem
+    manual_mode = override_remaining_min > 0
+    prev_manual = _CLIM_ZONE_MANUAL.get(zone_id, False)
+    override_expired = bool(prev_manual and not manual_mode)
+    _CLIM_ZONE_MANUAL[zone_id] = manual_mode
+
     # Проверяем безопасность
     safety_cfg = _clim_safety_cfg()
     sensor_error = False
     heating_lockout = _clim_ac_lockout()
-    
+
     return {
         "current_temperature": current_temp,
         "target_temperature": target_temp,
         "manual_mode": manual_mode,
         "override_remaining_min": override_remaining_min,
+        "override_expired": override_expired,
         "sensor_error": sensor_error,
         "heating_lockout": heating_lockout,
         "room_context": room_context,
@@ -372,11 +391,15 @@ def _clim_apply_fsm_action(zone, result):
     hvac_mode = action.get("hvac_mode")
     
     if hvac_mode == "off":
-        # Выключаем все устройства в зоне
+        # Выключаем все устройства в зоне (кроме оверрайдов и уже выключенных)
         for act in zone.get("actuators", []):
             dev = _REGISTRY.device(act.get("ref")) or {}
             entity = dev.get("entity")
             if entity and dev.get("managed_by_platform", True):
+                if _clim_override_active(entity):
+                    continue
+                if not _clim_is_on(entity):
+                    continue
                 _clim_send_off(entity)
                 log_event("climate", "Предупреждения", "[" + str(zone_id) + "] FSM " + str(state) + " -> off: " + why, why=why, src="FSM")
     elif hvac_mode == "heat":
@@ -386,10 +409,18 @@ def _clim_apply_fsm_action(zone, result):
                 dev = _REGISTRY.device(act.get("ref")) or {}
                 entity = dev.get("entity")
                 if entity and dev.get("managed_by_platform", True):
+                    if _clim_override_active(entity):
+                        continue
                     # Получаем уставку
                     setpoints = zone.get("setpoints") or {}
                     heat_sp = (setpoints.get("heat") or {}).get("source")
                     target_temp = _clim_get_float(heat_sp) if heat_sp else 22.0
+                    if str(entity).split(".")[0] == "climate":
+                        cur_mode, cur_set = _clim_state(entity)
+                        if cur_mode == "heat" and cur_set == target_temp:
+                            continue
+                    elif _clim_is_on(entity):
+                        continue
                     _clim_send_on(entity, "heat", target_temp)
                     log_event("climate", "Предупреждения", "[" + str(zone_id) + "] FSM " + str(state) + " -> heat: " + why, why=why, src="FSM")
     elif hvac_mode == "cool":
@@ -399,10 +430,18 @@ def _clim_apply_fsm_action(zone, result):
                 dev = _REGISTRY.device(act.get("ref")) or {}
                 entity = dev.get("entity")
                 if entity and dev.get("managed_by_platform", True):
+                    if _clim_override_active(entity):
+                        continue
                     # Получаем уставку
                     setpoints = zone.get("setpoints") or {}
                     cool_sp = (setpoints.get("cool") or {}).get("source")
                     target_temp = _clim_get_float(cool_sp) if cool_sp else 22.0
+                    if str(entity).split(".")[0] == "climate":
+                        cur_mode, cur_set = _clim_state(entity)
+                        if cur_mode == "cool" and cur_set == target_temp:
+                            continue
+                    elif _clim_is_on(entity):
+                        continue
                     _clim_send_on(entity, "cool", target_temp)
                     log_event("climate", "Предупреждения", "[" + str(zone_id) + "] FSM " + str(state) + " -> cool: " + why, why=why, src="FSM")
 
@@ -566,7 +605,7 @@ def climate_orchestrator_loop():
             climate_orchestrator_tick()
         except Exception as exc:
             log.error("[climate] Orchestrator error:" + str(exc))
-        task.sleep(30)
+        task.sleep(10)
 
 
 @service

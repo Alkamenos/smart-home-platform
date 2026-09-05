@@ -1,29 +1,23 @@
 name: validate
-
-on:
+true:
   push:
     paths:
-      - 'manifests/**'
-      - 'shplatform/**'
-      - 'ha/**'
-      - 'tests/**'
-  pull_request:
-
+    - manifests/**
+    - shplatform/**
+    - ha/**
+    - tests/**
+  pull_request: null
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install platform
-        run: pip install -e ".[dev]"
-
-      - name: Validate manifest
-        run: shplatform validate manifests/ivanov_dacha.yaml
-
-      - name: Run tests
-        run: pytest tests/ -v
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install platform
+      run: pip install -e ".[dev]"
+    - name: Validate manifest
+      run: shplatform validate instances/leonid_house/manifest.yaml
+    - name: Run tests
+      run: pytest tests/ -v

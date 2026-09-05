@@ -84,6 +84,8 @@ def _lg_vlight_handler(var_name=None, **kwargs):
         v = lg_vlight_entity(g)
         if v != var_name:
             continue
+        if _lg_vlight_guard_active(v):
+            return  # платформенная синхронизация, не ручная команда
         g2 = _lg_season(g)
         _lg_handle_vlight_change(g2, cfg, mode, v, True)
         return
@@ -127,8 +129,9 @@ def _lg_motion_handler(var_name=None, **kwargs):
             ms = g.get("motion_sensor")
         if ms != var_name:
             continue
-        _LG_MOTION_LAST[gid] = time.monotonic()
-        _lg_log("motion", "DEBUG", "gid=%s: motion detected, last=%s" % (gid, str(_LG_MOTION_LAST[gid])))
+        if str(cur_state) == "on":
+            _LG_MOTION_LAST[gid] = time.monotonic()
+            _lg_log("motion", "DEBUG", "gid=%s: motion detected, last=%s" % (gid, str(_LG_MOTION_LAST[gid])))
         g2 = _lg_season(g)
         _lg_apply_group(g2, cfg, mode)
         return

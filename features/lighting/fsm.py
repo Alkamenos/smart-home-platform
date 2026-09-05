@@ -233,8 +233,11 @@ def _light_fsm_build_events(ctx):
             
     if ctx.get("schedule_on"):
         events.append({"trigger": "schedule_on", "src": "расписание"})
-    else:
-        events.append({"trigger": "schedule_off", "src": "расписание"})
+    elif not ctx.get("motion"):
+        # schedule_off только без активного движения: иначе оно выбивает ON_MOTION
+        _cur = fsm_get_state("light." + ctx.get("gid", ""))
+        if ctx.get("schedule_off") or _cur in ("ON_SCHEDULE", "ON_IMITATION"):
+            events.append({"trigger": "schedule_off", "src": "расписание"})
     
     if ctx.get("no_motion_timeout"):
         events.append({"trigger": "no_motion_timeout", "src": "таймер"})
@@ -266,6 +269,8 @@ def _light_fsm_build_events(ctx):
         if current == "UNAVAILABLE":
             events.append({"trigger": "device_available", "src": "устройство"})
     
+    # Ручное вмешательство и таймеры - всегда выше датчиков
+    events.sort(key=lambda e: 0 if e.get("trigger") in ("manual_change", "timeout", "device_unavailable", "device_available") else 1)
     return events
 
 def light_fsm_run(g, ctx):

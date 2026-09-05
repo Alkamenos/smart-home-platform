@@ -146,9 +146,19 @@ def _lg_build_fsm_ctx(g, ctx):
             t_val = _lg_hm(sched.get("true"))
         if t_val is not None and ctx.get("now") >= t_val:
             schedule_on = True
-    elif sel_on == "Закат" or prof == "dusk_till_time" or str(sched.get("true")) == "sunset":
+    elif sel_on != "Не включать" and (sel_on == "Закат" or prof == "dusk_till_time" or str(sched.get("true")) == "sunset"):
         if ctx.get("dark"):
             schedule_on = True
+        else:
+            # Закат (elev < 0), если группа не требует полной темноты
+            _rd = _lg_state("input_boolean.light_%s_require_dark" % gid)
+            if _rd != "on":
+                try:
+                    _el = float(hass.states.get("sun.sun").attributes.get("elevation", 99))
+                except Exception:
+                    _el = 99.0
+                if _el < 0:
+                    schedule_on = True
     
     if sel_off == "Рассвет" or str(sched.get("false")) == "sunrise":
         if not ctx.get("dark") and not ctx.get("presence"):
@@ -160,9 +170,20 @@ def _lg_build_fsm_ctx(g, ctx):
         if off_min is not None and ctx.get("now") >= off_min:
             schedule_off = True
     
-    # События движения
-    motion = ctx.get("presence", False)
-    no_motion_timeout = not motion and ctx.get("ms") is not None
+    # События движения: окно от последнего срабатывания, а не сырой датчик
+    motion = False
+    no_motion_timeout = False
+    if ctx.get("ms") is not None:
+        _last = _LG_MOTION_LAST.get(gid)
+        if _last is not None:
+            if g.get("motion_timeouts") == "own":
+                _dd, _dn = "input_number.light_%s_motion_day_min" % gid, "input_number.light_%s_motion_night_min" % gid
+            else:
+                _dd, _dn = "input_number.motion_day_min", "input_number.motion_night_min"
+            _mins = _lg_num(_dn, g.get("no_motion_night_min", 2)) if ctx.get("night") else _lg_num(_dd, g.get("no_motion_day_min", 5))
+            _age = time.monotonic() - _last
+            motion = _age < _mins * 60
+            no_motion_timeout = _age >= _mins * 60
     nightlight_timeout = False  # Обрабатывается отдельно
     
     # Вечеринка
@@ -174,7 +195,19 @@ def _lg_build_fsm_ctx(g, ctx):
     imitation_off = False
     
     # Ручное вмешательство
+    now_mc = time.monotonic()
+    _ov_active = False
     manual_change = False
+    for _e in (g.get("lights", []) or []):
+        _until = _LG_OVERRIDE.get(_e)
+        if _until is not None and _until > now_mc:
+            _ov_active = True
+            if (_until - now_mc) > 3555:  # оверрай свежий (<45с)
+                manual_change = True
+    _gid = str(g.get("id"))
+    _zman = globals().setdefault("_LG_ZONE_MANUAL", {})
+    _to_expired = bool(_zman.get(_gid, False) and not _ov_active)
+    _zman[_gid] = _ov_active
     
     # Проверка доступности устройств
     device_available = True
@@ -208,7 +241,7 @@ def _lg_build_fsm_ctx(g, ctx):
         "imitation_off": imitation_off,
         "manual_change": manual_change,
         "away": room_ctx == "EMPTY",  # AWAY когда комната EMPTY
-        "timeout_expired": False,
+        "timeout_expired": _to_expired,
         "override_cleared": False,
         "room_context": room_ctx,
         "device_available": device_available
@@ -225,21 +258,21 @@ def _lg_decide(g, cfg):
     gid = str(g.get("id"))
     
     # Проверяем, включен ли FSM для этой группы
-    use_fsm = g.get("fsm_enabled", False)
+    use_fsm = g.get("fsm_enabled", True)
     
     if use_fsm:
-        # Используем FSM
+        # FSM - источник истины: устройство следует текущему состоянию
         fsm_ctx = _lg_build_fsm_ctx(g, ctx)
         fsm_result = light_fsm_run(g, fsm_ctx)
-        
-        if fsm_result and fsm_result.get("action"):
-            action = fsm_result["action"]
-            why = fsm_result.get("why", "FSM")
-            state = fsm_result.get("state", "UNKNOWN")
-            
-            # Реальный режим: исполняем решение FSM
-            _lg_log("fsm", "INFO", "gid=%s: state=%s why=%s" % (gid, state, why))
-            return {"on": action.get("on", False), "why": why}
+        state = (fsm_result or {}).get("state", "OFF")
+        why = (fsm_result or {}).get("why", "")
+        _lg_log("fsm", "INFO", "gid=%s: state=%s why=%s" % (gid, state, why))
+        if state in ("MANUAL_LOCK", "UNAVAILABLE"):
+            return None  # не трогаем: ручная блокировка / недоступно
+        if state == "OFF":
+            return {"on": False, "why": "fsm: OFF"}
+        return {"on": True, "why": "fsm: " + str(state),
+                "nightlight": state == "NIGHTLIGHT"}
     
     # Используем старую логику voters (fallback)
     _lg_log("decide", "DEBUG", "gid=%s: started, prof=%s dark=%s night=%s any_on=%s" % (gid, ctx.get("prof"), ctx.get("dark"), ctx.get("night"), ctx.get("any_on")))
@@ -415,3 +448,57 @@ def lighting_controller_loop():
         except Exception as exc:
             log.error("[light] Controller error: " + str(exc))
         task.sleep(30)
+
+
+@service
+def lighting_debug(gid=None):
+    """Диагностика светового цикла."""
+    try:
+        flag = state.get("input_boolean.feature_lighting")
+        log.error("[light-debug] feature_lighting flag = " + str(flag))
+        
+        cfg = _lg_cfg()
+        log.error("[light-debug] cfg type=" + str(type(cfg).__name__) + " enabled=" + str((cfg or {}).get("enabled")))
+        groups = (cfg or {}).get("groups", []) or []
+        log.error("[light-debug] groups count = " + str(len(groups)))
+        
+        mode = _lg_mode(cfg) if cfg else None
+        log.error("[light-debug] mode = " + str(mode))
+        
+        if not groups:
+            log.error("[light-debug] NO GROUPS TO TEST")
+            return {"ok": False, "error": "no groups"}
+        
+        g = None
+        if gid:
+            for x in groups:
+                if str(x.get("id")) == str(gid):
+                    g = x
+        if g is None:
+            g = groups[0]
+        gid = str(g.get("id"))
+        log.error("[light-debug] testing gid=" + gid)
+        
+        ctx = _lg_decide_ctx(g, cfg)
+        log.error("[light-debug] ctx: presence=%s ms=%s dark=%s night=%s sel_on=%s sel_off=%s any_on=%s" % (
+            str(ctx.get("presence")), str(ctx.get("ms")), str(ctx.get("dark")), str(ctx.get("night")),
+            str(ctx.get("sel_on")), str(ctx.get("sel_off")), str(ctx.get("any_on"))))
+        
+        fsm_ctx = _lg_build_fsm_ctx(g, ctx)
+        log.error("[light-debug] fsm_ctx=" + str(fsm_ctx))
+        
+        res = light_fsm_run(g, fsm_ctx)
+        log.error("[light-debug] fsm_result=" + str(res))
+        
+        # проверим публикацию сенсоров
+        entity = "light." + gid
+        st = fsm_get_state(entity)
+        sensor = "sensor.light_" + gid + "_fsm_state"
+        log.error("[light-debug] fsm state=" + str(st) + " sensor=" + sensor)
+        
+        return {"ok": True, "gid": gid, "fsm": res, "flag": flag, "groups": len(groups)}
+    except Exception as exc:
+        log.error("[light-debug] EXCEPTION: " + str(exc))
+        import traceback
+        log.error(traceback.format_exc())
+        return {"ok": False, "error": str(exc)}
