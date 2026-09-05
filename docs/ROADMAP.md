@@ -10,7 +10,7 @@
 - [x] Watchdog: расхождение FSM vs устройство, детектор зависших состояний (sensor_health)
 
 ## P1 — Системные фиксы поведения
-- [ ] Generic debounce/hysteresis в fsm_engine (cooldown per trigger, лечение флэппинга системно)
+- [x] Generic debounce/hysteresis в fsm_engine (cooldown per trigger, лечение флэппинга системно)
 - [x] YAML-сценарии как регрессии: features/*/scenarios/*.yaml + generic-раннер в pytest
 
 ## P2 — Low-code и прозрачность конфигурации

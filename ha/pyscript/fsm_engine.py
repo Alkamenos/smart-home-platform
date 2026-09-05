@@ -64,6 +64,13 @@ def fsm_get_history(entity_id, limit=5):
     return entry.get("history", [])[:limit]
 
 
+import time
+
+_FSM_LAST_TRANSITION = {}
+_DEBOUNCE_EXEMPT_DEFAULT = {"manual_change", "manual_override", "critical_co2",
+                            "timeout_expired", "override_expired"}
+
+
 def fsm_trigger(entity_id, trigger, src="автоматика"):
     """Обработка триггера: найти переход, сменить состояние.
 
@@ -131,7 +138,17 @@ def fsm_trigger(entity_id, trigger, src="автоматика"):
     if target_state == current_state:
         return False
 
+    # Debounce: кулдаун на переходы (кроме ручных/критических триггеров)
+    now = time.monotonic()
+    cooldown = float(definition.get("debounce_sec", 0) or 0)
+    exempt = definition.get("debounce_exempt") or _DEBOUNCE_EXEMPT_DEFAULT
+    if cooldown > 0 and trigger not in exempt:
+        last = _FSM_LAST_TRANSITION.get(entity_id)
+        if last is not None and now - last < cooldown:
+            return False
+
     # Выполняем переход
+    _FSM_LAST_TRANSITION[entity_id] = now
     _fsm_set_state(entity_id, target_state, trigger, why, src)
     return True
 
