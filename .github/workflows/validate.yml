@@ -43,5 +43,8 @@ jobs:
           python -m py_compile /tmp/bundle.py
           echo "Bundle syntax OK, size=$(wc -c < /tmp/bundle.py) bytes"
 
+      - name: Symbol check bundle
+        run: python tools/check_bundle_symbols.py /tmp/bundle.py
+
       - name: Run tests
         run: pytest tests/ -v --tb=short

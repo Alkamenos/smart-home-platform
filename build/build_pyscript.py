@@ -39,14 +39,14 @@ ORDER = [
     "features/health/runtime.py",
 ]
 
-OUT = "/config/pyscript/manifest_loader.py"
+OUT = sys.argv[2] if len(sys.argv) > 2 else "/config/pyscript/manifest_loader.py"
 
 def main():
     # 0. Копируем дашборды в /config/dashboards/
     dashboards_src = os.path.join(REPO_ROOT, "ha", "dashboards")
     dashboards_dst = "/config/dashboards"
     
-    if os.path.exists(dashboards_src):
+    if os.path.exists(dashboards_src) and os.path.isdir("/config"):
         os.makedirs(dashboards_dst, exist_ok=True)
         
         # Список дашбордов для копирования
