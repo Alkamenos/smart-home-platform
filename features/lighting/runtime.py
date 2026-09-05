@@ -183,6 +183,12 @@ def _lg_build_fsm_ctx(g, ctx):
             device_available = False
             break
     
+    # Определяем motion_mode и no_night_auto для FSM
+    ms = ctx.get("ms")
+    motion_mode = _lg_state("input_select.light_%s_motion_mode" % gid) if ms else None
+    nnf = g.get("no_night_auto_flag")
+    no_night_auto = nnf and _lg_state(nnf) == "on"
+    
     return {
         "schedule_on": schedule_on,
         "schedule_off": schedule_off,
@@ -191,9 +197,9 @@ def _lg_build_fsm_ctx(g, ctx):
         "nightlight_timeout": nightlight_timeout,
         "night": ctx.get("night", False),
         "nightlight_enabled": bool(features.get("nightlight")),
-    "nightlight_helper_on": _lg_state("input_boolean.feature_%s_nightlight" % gid) == "on",
-    "motion_mode": motion_mode,
-    "no_night_auto": no_night_auto,
+        "nightlight_helper_on": _lg_state("input_boolean.feature_%s_nightlight" % gid) == "on",
+        "motion_mode": motion_mode,
+        "no_night_auto": no_night_auto,
         "motion_day": ctx.get("mday", False),
         "dark": ctx.get("dark", False),
         "party_mode": party_mode,

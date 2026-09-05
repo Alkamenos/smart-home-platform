@@ -199,6 +199,12 @@ def _vent_build_fsm_ctx(cfg):
     manual_mode = False
     override_remaining_min = 0
     
+    # Проверяем ручное включение boost через legacy flags
+    flags = cfg.get("flags", {}) or {}
+    if state.get(flags.get("boost_intake")) == "on" or state.get(flags.get("boost_exhaust")) == "on":
+        manual_mode = True
+        override_remaining_min = 60  # Пока флаг включен, считаем что есть override
+    
     # Проверяем heating lockout
     heating_lockout = _vent_heating_lockout_active(cfg) is not None
     
@@ -211,6 +217,14 @@ def _vent_build_fsm_ctx(cfg):
             boost_remaining_min = int(remaining / 60)
             break
     
+    # Check manual boosts from legacy flags
+    flags = cfg.get("flags", {}) or {}
+    manual_boost = False
+    if state.get(flags.get("boost_intake")) == "on":
+        manual_boost = True
+    if state.get(flags.get("boost_exhaust")) == "on":
+        manual_boost = True
+        
     return {
         "co2_level": co2_level if co2_level else 400,
         "humidity": humidity if humidity else 50,
@@ -222,6 +236,7 @@ def _vent_build_fsm_ctx(cfg):
         "is_night": is_night,
         "room_context": room_context,
         "boost_remaining_min": boost_remaining_min,
+        "manual_boost": manual_boost,
     }
 
 
@@ -437,7 +452,9 @@ def _vent_tick():
             fsm_result = result
     
     if fsm_result and fsm_result.get("action"):
-        return _vent_convert_fsm_action(fsm_result)
+        # FSM state is updated, but we let legacy _vent_decide drive the device to preserve free_heat/lockout.
+        # Removing early return so device is actually updated by _vent_apply!
+        pass
     desired = _vent_decide(cfg)
     if desired.get("preset") in (V_BOOST_IN, V_BOOST_EX):
         key ="intake" if desired["preset"] == V_BOOST_IN else"exhaust"

@@ -225,16 +225,16 @@ def _light_fsm_build_events(ctx):
     """Строит список событий на основе контекста для триггеров."""
     events = []
     
-    if ctx.get("schedule_on"):
-        events.append({"trigger": "schedule_on", "src": "расписание"})
-    if ctx.get("schedule_off"):
-        events.append({"trigger": "schedule_off", "src": "расписание"})
-    
     if ctx.get("motion"):
         if ctx.get("night") and ctx.get("nightlight_enabled"):
             events.append({"trigger": "night_motion", "src": "датчик"})
         else:
             events.append({"trigger": "motion", "src": "датчик"})
+            
+    if ctx.get("schedule_on"):
+        events.append({"trigger": "schedule_on", "src": "расписание"})
+    else:
+        events.append({"trigger": "schedule_off", "src": "расписание"})
     
     if ctx.get("no_motion_timeout"):
         events.append({"trigger": "no_motion_timeout", "src": "таймер"})

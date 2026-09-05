@@ -132,8 +132,15 @@ VENTILATION_FSM_DEFAULT = {
         {
             "from": "NIGHT",
             "to": "BOOST",
-            "trigger": "critical_co2",
+            "trigger": "high_co2_or_humidity",
             "priority": 30,
+            "why": "Высокий CO2 или влажность - переход из ночи в boost"
+        },
+        {
+            "from": "NIGHT",
+            "to": "BOOST",
+            "trigger": "critical_co2",
+            "priority": 35,
             "why": "Критический CO2 ночью - аварийный boost"
         },
         {
@@ -273,7 +280,7 @@ def _vent_fsm_build_events(ctx):
     # Ручное вмешательство
     if ctx.get("manual_mode") and ctx.get("override_remaining_min", 0) > 0:
         events.append({"trigger": "manual_override", "src": "ручное"})
-    elif ctx.get("override_expired"):
+    else:
         events.append({"trigger": "override_expired", "src": "таймер"})
     
     # Режимы комнаты (контекст)
@@ -294,8 +301,8 @@ def _vent_fsm_build_events(ctx):
     co2 = ctx.get("co2_level", 400)
     humidity = ctx.get("humidity", 50)
     
-    if co2 > CO2_CRITICAL:
-        events.append({"trigger": "critical_co2", "src": "датчик"})
+    if co2 > CO2_CRITICAL or ctx.get("manual_boost"):
+        events.append({"trigger": "critical_co2", "src": "датчик" if not ctx.get("manual_boost") else "ручное"})
     elif co2 > CO2_BOOST_THRESHOLD or humidity > HUMIDITY_BOOST_THRESHOLD:
         events.append({"trigger": "high_co2_or_humidity", "src": "датчик"})
     else:
