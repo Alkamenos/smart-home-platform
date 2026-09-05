@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import ha
 rest_get = ha.rest_get
-from core.builders import num, bool_, dt, sel
+from core.builders import num, bool_, dt, sel, txt
 from features.climate import helpers as clim_h
 from features.ventilation import helpers as vent_h
 from features.lighting import helpers as FH
@@ -246,6 +246,10 @@ for fname in features.keys():
         created_names.add(s_name)
 
 # ============================================================
+# PLATFORM HELPERS (core infrastructure)
+entries.append(txt(i, "fsm_persist", "", 10000, "mdi:database"))
+i += 1
+
 # LOGGING LEVEL SELECTS (platform + each feature)
 # ============================================================
 # Platform-level logging control

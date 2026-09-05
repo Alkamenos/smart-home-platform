@@ -15,3 +15,13 @@ def dt(i, name, init, icon):
 def sel(i, name, options, init, icon):
     return {"id": i, "type": "input_select/create", "name": name,
             "options": options, "initial": init, "icon": icon}
+
+def txt(i, name, initial="", max=100, icon="mdi:text"):
+    """input_text helper."""
+    return {
+        "type": "input_text/create",
+        "name": name,
+        "initial": initial,
+        "max": max,
+        "icon": icon,
+    }

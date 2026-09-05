@@ -552,7 +552,3 @@ globals:
       default_timeout_min: 120
   evaluation_intervals:
     climate_sec: 30
-  helpers:
-  - entity: input_text.fsm_persist
-    name: FSM Persist
-    max: 10000
