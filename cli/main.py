@@ -123,6 +123,58 @@ def cmd_cleanup(args):
         cmd.append("--confirm")
     return run(cmd)
 
+def cmd_explain(args):
+    """Разбор группы/устройства: манифест + хелперы + live FSM-статус."""
+    import yaml as _y
+    with open(mpath(args), encoding="utf-8") as f:
+        m = _y.safe_load(f) or {}
+    from shplatform.loader.registry import RuntimeRegistry
+    reg = RuntimeRegistry(m)
+    gid = args.id
+
+    raw = None
+    for g in reg.feature("groups") or []:
+        if str(g.get("id")) == gid:
+            raw = g
+    if raw is None:
+        print("Группа '%s' не найдена в features.groups" % gid)
+        dev = reg.device(gid)
+        if dev:
+            print("Но есть устройство:")
+            print(_y.safe_dump(dev, allow_unicode=True, default_flow_style=False))
+        return 1
+
+    print("# === Группа %s (raw из манифеста) ===" % gid)
+    print(_y.safe_dump(raw, allow_unicode=True, default_flow_style=False))
+
+    lcfg = reg.feature("lighting") or {}
+    defaults = {k: v for k, v in lcfg.items() if k not in ("groups",)}
+    if defaults:
+        print("# === Defaults lighting-фичи ===")
+        print(_y.safe_dump(defaults, allow_unicode=True, default_flow_style=False))
+
+    helpers = ["input_select.light_%s_on" % gid, "input_select.light_%s_off" % gid,
+               "input_boolean.feature_%s" % gid]
+    print("# === Live-статус (HA) ===")
+    try:
+        from core import ha
+        for h in helpers:
+            st = ha.state(h)
+            print("  %s = %s" % (h, (st or {}).get("state", "нет в HA")))
+        st = ha.state("sensor.light_%s_fsm_state" % gid)
+        if st:
+            print("  FSM: %s" % st.get("state"))
+            for k in ("entered_by", "why"):
+                v = (st.get("attributes") or {}).get(k)
+                if v:
+                    print("    %s: %s" % (k, v))
+        else:
+            print("  FSM-сенсор отсутствует")
+    except Exception as exc:
+        print("  (live-часть недоступна: %s)" % exc)
+    return 0
+
+
 def cmd_check(args):
     rc = cmd_validate(args)
     if rc != 0:
@@ -186,6 +238,9 @@ def main():
     sp.add_argument("kind", choices=["light"])
     sp.set_defaults(fn=cmd_add)
 
+    sp = sub.add_parser("explain", help="разбор группы по манифесту + live-статус"); common(sp)
+    sp.add_argument("id", help="id группы или устройства")
+    sp.set_defaults(fn=cmd_explain)
     args = p.parse_args()
     sys.exit(args.fn(args))
 
