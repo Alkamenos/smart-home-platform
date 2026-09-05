@@ -323,3 +323,56 @@ def feature_set_enabled(feature: str, enabled: bool):
 
 # Первичная загрузка при старте
 _do_load()
+
+
+# ==================== PLATFORM DOCTOR ====================
+
+@service
+def platform_doctor():
+    """Структурированный диагноз платформы: FSM-состояния, проблемы, решения.
+
+    Результат: лог + sensor.platform_doctor (атрибут doctor = JSON).
+    """
+    import json
+    doc = {"ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+           "fsm": {}, "problems": [], "recent_decisions": []}
+
+    # Все опубликованные FSM-состояния
+    try:
+        for st in hass.states.all():
+            eid = str(st.entity_id)
+            if eid.endswith("_fsm_state"):
+                doc["fsm"][eid] = st.state
+    except Exception as exc:
+        doc["fsm"]["error"] = str(exc)
+
+    # Проблемы здоровья (недоступные сенсоры, батарейки, расхождения, зависания)
+    try:
+        shcfg = (_REGISTRY.feature("sensor_health") if _REGISTRY is not None else {}) or {}
+        doc["problems"] = _sh_problems(shcfg)
+    except Exception as exc:
+        doc["problems"] = [{"entity": "sensor_health", "reason": str(exc)}]
+
+    # Последние решения
+    try:
+        doc["recent_decisions"] = list(_DECISION_BUFFER[:10])
+    except Exception:
+        pass
+
+    # Расхождения света отдельно для наглядности
+    try:
+        doc["light_states"] = {
+            str(g.get("id")): fsm_get_state("light." + str(g.get("id")))
+            for g in ((_lg_cfg() or {}).get("groups", []) or [])
+        }
+    except Exception as exc:
+        doc["light_states"] = {"error": str(exc)}
+
+    ok = not doc["problems"]
+    try:
+        state.set("sensor.platform_doctor", "ok" if ok else "issues",
+                  doctor=json.dumps(doc, ensure_ascii=False))
+    except Exception:
+        pass
+    log.info("[doctor] %d FSM, %d problems" % (len(doc["fsm"]), len(doc["problems"])))
+    return doc
