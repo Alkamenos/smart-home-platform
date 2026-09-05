@@ -277,3 +277,32 @@ def fsm_publish_all():
         _fsm_publish_state(entity_id)
     _fsm_publish_overview()
     return {"ok": True, "count": len(_FSM_STATES)}
+
+
+# ==================== ПЕРСИСТ СОСТОЯНИЙ ====================
+
+def fsm_save_states():
+    """Сохранить все FSM-состояния в input_text.fsm_persist."""
+    try:
+        import json
+        data = json.dumps(_FSM_STATES)
+        if state.get("input_text.fsm_persist") is None:
+            state.set("input_text.fsm_persist", data)
+        else:
+            service.call("input_text", "set_value", entity_id="input_text.fsm_persist", value=data)
+    except Exception as exc:
+        log.error("[fsm] save_states failed: " + str(exc))
+
+
+def fsm_load_states():
+    """Восстановить FSM-состояния из input_text.fsm_persist."""
+    try:
+        import json
+        raw = state.get("input_text.fsm_persist")
+        if raw:
+            loaded = json.loads(raw)
+            if isinstance(loaded, dict):
+                _FSM_STATES.update(loaded)
+                log.info("[fsm] loaded %d states" % len(loaded))
+    except Exception as exc:
+        log.error("[fsm] load_states failed: " + str(exc))

@@ -378,3 +378,10 @@ def _lg_update_dark(cfg):
 def lg_vlight_entity(g):
     """Получение vlight entity для группы."""
     return g.get("vlight_entity") or ("input_boolean.vlight_" + str(g.get("id")))
+
+# ==================== FSM ПЕРСИСТ ====================
+
+@time_trigger("shutdown")
+def _fsm_save_on_shutdown():
+    """Сохранение FSM-состояний перед остановкой HA."""
+    fsm_save_states()

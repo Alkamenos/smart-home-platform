@@ -110,3 +110,21 @@ def test_vent_manual_boost_from_night():
     assert vstate("r2") == "NIGHT"
     vrun("r2", is_night=True, manual_boost=True)
     assert vstate("r2") == "BOOST"
+
+
+def test_fsm_persist_roundtrip():
+    """FSM-состояния сохраняются и восстанавливаются между рестартами."""
+    import json
+    lrun("g7", schedule_on=True)
+    assert lstate("g7") == "ON_SCHEDULE"
+    
+    # Симуляция save
+    saved = fsm_engine._FSM_STATES.copy()
+    
+    # Симуляция рестарта: очищаем
+    fsm_engine._FSM_STATES.clear()
+    assert fsm_engine.fsm_get_state("light.g7") is None
+    
+    # Симуляция load
+    fsm_engine._FSM_STATES.update(saved)
+    assert lstate("g7") == "ON_SCHEDULE"

@@ -124,7 +124,8 @@ def _add_to_buffer(domain, decision, reason, source):
 def _publish_decisions():
     """Опубликовать буфер решений в sensor.platform_decisions."""
     try:
-        state.set("sensor.platform_decisions", _DECISION_BUFFER)
+        state.set("sensor.platform_decisions", len(_DECISION_BUFFER),
+                  decisions=_DECISION_BUFFER)
     except Exception:
         pass
 
@@ -134,6 +135,12 @@ def _loglevel_changed(**kwargs):
     """Обработчик изменения уровня логирования."""
     _lg_refresh_cache()
     log_event("platform", "Инфо", "Уровень логирования обновлён", src="ручное")
+
+
+@time_trigger("startup")
+def _fsm_restore_on_startup():
+    """Восстановление FSM-состояний сразу после старта."""
+    fsm_load_states()
 
 
 @time_trigger("startup")
