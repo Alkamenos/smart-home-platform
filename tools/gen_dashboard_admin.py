@@ -92,6 +92,35 @@ _... и ещё {{ decisions | length - 20 }} записей в полном сп
 {% endif %}"""
     }
 
+    doctor_card = {
+        "type": "markdown",
+        "title": "🏥 Platform Doctor",
+        "content": """{% set doctor = state_attr('sensor.platform_doctor', 'doctor') %}
+{% if doctor %}
+{% set doc = doctor | from_json %}
+**Обновлено:** {{ doc.ts }}
+**FSM-состояний:** {{ doc.fsm | length }} | **Проблем:** {{ doc.problems | length }}
+
+{% if doc.problems %}
+#### ⚠️ Проблемы
+{% for pr in doc.problems %}
+- {{ pr.entity }}: {{ pr.reason }}
+{% endfor %}
+{% else %}
+✅ Проблем не обнаружено
+{% endif %}
+
+{% if doc.light_states %}
+#### 💡 Свет (по группам)
+{% for gid, st in doc.light_states.items() %}
+- {{ gid }}: `{{ st }}`
+{% endfor %}
+{% endif %}
+{% else %}
+Запусти сервис `pyscript.platform_doctor` (Developer Tools → Services)
+{% endif %}"""
+    }
+
     views = [
         {"title": "⚙️ Фичи", "path": "features", "icon": "mdi:toggle-switch",
          "cards": [
@@ -103,6 +132,7 @@ _... и ещё {{ decisions | length - 20 }} записей в полном сп
          "cards": [
              {"type": "entities", "title": "Состояние", "entities": diag_ents},
              diag_buttons,
+             doctor_card,
          ]},
         {"title": "🔋 Датчики", "path": "health", "icon": "mdi:heart-pulse",
          "cards": [{"type": "entities", "title": "Здоровье", "entities": health_ents}]},
