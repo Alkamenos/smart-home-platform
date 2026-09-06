@@ -276,11 +276,35 @@ def _vent_convert_fsm_action(result):
 def _vent_decide(cfg):
     global _FREE_HEAT_ACTIVE
     _FREE_HEAT_ACTIVE = False
+    
+    # НОВАЯ ПРОВЕРКА: учитываем состояние FSM как источник истины
+    fsm_state = None
+    for dev in cfg.get("devices", []) or []:
+        entity = dev.get("entity")
+        if entity:
+            try:
+                fsm_state = fsm_get_state(entity)
+                if fsm_state:
+                    break
+            except Exception:
+                pass
+    
+    # Если FSM в специальных состояниях - используем их
+    if fsm_state == "WINTER_PAUSE":
+        return {"action": "off", "why": "FSM: WINTER_PAUSE (зимняя пауза)"}
+    if fsm_state == "AWAY":
+        return {"preset": V_BASE_SUMMER, "pct": cfg.get("speeds", {}).get("away", 20), "why": "FSM: AWAY"}
+    if fsm_state == "NIGHT":
+        # Ночной режим из FSM
+        zima = state.get("input_boolean.zima") == "on"
+        preset = V_BASE_WINTER if zima else V_BASE_SUMMER
+        return {"preset": preset, "pct": 10, "why": "FSM: NIGHT"}
+    
     flags = cfg.get("flags", {}) or {}
     if state.get(flags.get("boost_intake")) =="on":
-        return {"preset": V_BOOST_IN}
+        return {"preset": V_BOOST_IN, "pct": 100}  # FIX: добавили pct
     if state.get(flags.get("boost_exhaust")) =="on":
-        return {"preset": V_BOOST_EX}
+        return {"preset": V_BOOST_EX, "pct": 100}  # FIX: добавили pct
     
     # НОВАЯ ПРОВЕРКА: heating lockout (приоритет выше обычных режимов, ниже boost)
     lockout = _vent_heating_lockout_active(cfg)

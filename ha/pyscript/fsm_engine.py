@@ -72,7 +72,7 @@ _DEBOUNCE_EXEMPT_DEFAULT = {"manual_change", "manual_override", "critical_co2",
                             "timeout_expired", "override_expired"}
 
 
-def fsm_trigger(entity_id, trigger, src="автоматика"):
+def fsm_trigger(entity_id, trigger, src="автоматика", ctx=None):
     """Обработка триггера: найти переход, сменить состояние.
 
     При конфликте нескольких переходов побеждает наивысший приоритет.
@@ -114,6 +114,14 @@ def fsm_trigger(entity_id, trigger, src="автоматика"):
 
         # Проверяем, подходит ли текущее состояние
         if "*" in from_states or current_state in from_states:
+            guard = t.get("guard")
+            if guard and ctx is not None:
+                try:
+                    # Безопасное выполнение guard-выражения из контекста
+                    if not eval(guard, {"__builtins__": {}}, ctx):
+                        continue
+                except Exception:
+                    continue
             candidates.append(t)
 
     if not candidates:

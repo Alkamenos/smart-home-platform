@@ -314,7 +314,7 @@ def light_fsm_run(g, ctx):
         src = event.get("src", "автоматика")
         
         # Пытаемся триггерить переход
-        if fsm_trigger(entity_id, trigger, src=src):
+        if fsm_trigger(entity_id, trigger, src=src, ctx=ctx):
             # Переход произошёл
             new_state = fsm_get_state(entity_id)
             entry = _FSM_STATES.get(entity_id, {})

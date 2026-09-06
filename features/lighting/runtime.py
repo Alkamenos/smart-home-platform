@@ -241,6 +241,7 @@ def _lg_build_fsm_ctx(g, ctx):
         "imitation_off": imitation_off,
         "manual_change": manual_change,
         "away": room_ctx == "EMPTY",  # AWAY когда комната EMPTY
+        "room_ok": room_ctx not in ("EMPTY", "AWAY", None),  # Комната активна
         "timeout_expired": _to_expired,
         "override_cleared": False,
         "room_context": room_ctx,

@@ -32,6 +32,11 @@ HUMIDITY_BOOST_THRESHOLD = 70
 # Температурные пороги для зимней паузы
 WINTER_PAUSE_TEMP_OUTDOOR = -10.0
 
+# Пороги для BOOST режима
+CO2_BOOST_THRESHOLD = 1000  # ppm
+CO2_CRITICAL = 1500  # ppm
+HUMIDITY_BOOST_THRESHOLD = 70  # %
+
 
 # ============================================================
 # Определения автоматов для вентиляции
@@ -207,6 +212,35 @@ VENTILATION_FSM_DEFAULT = {
             "priority": 100,
             "why": "Ручное вмешательство в режиме away"
         },
+        # === Переходы из BOOST ===
+        {
+            "from": "BOOST",
+            "to": "NORMAL",
+            "trigger": "co2_normal",
+            "priority": 10,
+            "why": "CO2 в норме - возврат к обычной вентиляции"
+        },
+        {
+            "from": "BOOST",
+            "to": "NORMAL",
+            "trigger": "humidity_normal",
+            "priority": 10,
+            "why": "Влажность в норме - возврат к обычной вентиляции"
+        },
+        {
+            "from": "BOOST",
+            "to": "WINTER_PAUSE",
+            "trigger": "winter_conditions",
+            "priority": 400,
+            "why": "Зимняя пауза прерывает BOOST"
+        },
+        {
+            "from": "BOOST",
+            "to": "MANUAL_LOCK",
+            "trigger": "manual_override",
+            "priority": 100,
+            "why": "Ручное вмешательство во время BOOST"
+        },
         # === Переходы из WINTER_PAUSE ===
         {
             "from": "WINTER_PAUSE",
@@ -275,20 +309,47 @@ def _vent_fsm_build_events(ctx):
     """Строит список событий на основе контекста для триггеров."""
     events = []
     
-    # Проверяем зимние условия (высокий приоритет)
+    # Получаем значения сенсоров
+    co2 = ctx.get("co2_level", 400)
+    humidity = ctx.get("humidity", 50)
     outdoor_temp = ctx.get("outdoor_temperature", 0.0)
     heating_lockout = ctx.get("heating_lockout", False)
     
+    # Зимние условия (самый высокий приоритет)
     if outdoor_temp < WINTER_PAUSE_TEMP_OUTDOOR or heating_lockout:
         events.append({"trigger": "winter_conditions", "src": "погода"})
     elif ctx.get("winter_pause_clear"):
         events.append({"trigger": "winter_pause_clear", "src": "погода"})
+    
+    # CO2 и влажность (BOOST режимы)
+    if co2 >= CO2_BOOST_THRESHOLD:
+        events.append({"trigger": "co2_high", "src": "датчик CO2"})
+    else:
+        events.append({"trigger": "co2_normal", "src": "датчик CO2"})
+    
+    if humidity >= HUMIDITY_BOOST_THRESHOLD:
+        events.append({"trigger": "humidity_high", "src": "датчик влажности"})
+    else:
+        events.append({"trigger": "humidity_normal", "src": "датчик влажности"})
     
     # Ручное вмешательство
     if ctx.get("manual_mode") and ctx.get("override_remaining_min", 0) > 0:
         events.append({"trigger": "manual_override", "src": "ручное"})
     else:
         events.append({"trigger": "override_expired", "src": "таймер"})
+    
+    # Сортируем по приоритету триггеров
+    priority_map = {
+        "winter_conditions": 400,
+        "manual_override": 100,
+        "co2_high": 50,
+        "humidity_high": 45,
+        "co2_normal": 10,
+        "humidity_normal": 10,
+        "winter_pause_clear": 10,
+        "override_expired": 10,
+    }
+    events.sort(key=lambda e: priority_map.get(e["trigger"], 0), reverse=True)
     
     # Режимы комнаты (контекст)
     room_context = ctx.get("room_context", "HOME_DAY")

@@ -15,19 +15,36 @@ _RGB_SCENES = {
 
 
 def _lg_ct_target(cfg):
-    """Расчёт целевой цветовой температуры по времени суток."""
+    """Расчёт целевой цветовой температуры с корректным переходом через полночь."""
     ct = cfg.get("color_temp", {}) or {}
     day = int(_lg_num("input_number.ct_day_kelvin", ct.get("day_kelvin", 5000)))
     night = int(_lg_num("input_number.ct_night_kelvin", ct.get("night_kelvin", 2200)))
+    
     warm = _lg_dt_min("input_datetime.ct_warm_from") or _lg_hm(ct.get("warm_from", "21:00"))
     nightf = _lg_dt_min("input_datetime.ct_night_from") or _lg_hm(ct.get("night_from", "23:00"))
+    morning = _lg_dt_min("input_datetime.ct_morning_to") or _lg_hm(ct.get("morning_to", "08:00"))
+    
     now = _lg_now_min()
-    if warm is None or nightf is None or now <= warm:
+    if warm is None or nightf is None or morning is None:
         return day
-    if now >= nightf:
+        
+    # Ночной режим: с nightf до полуночи И с полуночи до morning
+    if now >= nightf or now < morning:
         return night
-    frac = (now - warm) / max(1, (nightf - warm))
-    return int(day + (night - day) * frac)
+        
+    # Утренний переход: от night к day (с morning до warm)
+    if now >= morning and now <= warm:
+        if morning < warm:
+            frac = (now - morning) / max(1, (warm - morning))
+            return int(night + (day - night) * frac)
+        return day
+        
+    # Вечерний переход: от day к night (с warm до nightf)
+    if now > warm and now < nightf:
+        frac = (now - warm) / max(1, (nightf - warm))
+        return int(day + (night - day) * frac)
+        
+    return day
 
 
 def _lg_rgb_tick(cfg, mode):
