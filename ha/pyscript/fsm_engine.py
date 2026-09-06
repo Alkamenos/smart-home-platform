@@ -49,6 +49,7 @@ def fsm_register(entity_id, definition):
 
 
 def fsm_get_state(entity_id):
+    _fsm_ensure_restored(entity_id)
     """Получить текущее состояние автомата."""
     entry = _FSM_STATES.get(entity_id)
     if entry is None:
@@ -88,6 +89,7 @@ def fsm_trigger(entity_id, trigger, src="автоматика"):
     if definition is None:
         return False
 
+    _fsm_ensure_restored(entity_id)
     current_state = fsm_get_state(entity_id)
     transitions = definition.get("transitions", [])
     
@@ -196,6 +198,29 @@ def _fsm_set_state(entity_id, new_state, trigger, why="", src="автомати�
 
     # Логируем переход
     _fsm_log_transition(entity_id, new_state, trigger, why, src)
+
+    # Debounced сохранение (1 сек)
+    try:
+        task.unique("fsm_save", kill_me=True)
+        task.sleep(1)
+        fsm_save_states()
+    except Exception:
+        pass
+
+
+_FSM_RESTORED = set()
+
+
+def _fsm_ensure_restored(entity_id):
+    """Восстановить состояние из persist, если ещё не загружено."""
+    if entity_id in _FSM_RESTORED:
+        return
+    _FSM_RESTORED.add(entity_id)
+    if entity_id not in _FSM_STATES:
+        try:
+            fsm_load_states()
+        except Exception:
+            pass
 
 
 def _fsm_publish_state(entity_id):
