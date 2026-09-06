@@ -325,6 +325,12 @@ def feature_set_enabled(feature: str, enabled: bool):
 _do_load()
 
 
+@service
+def fsm_save():
+    """Принудительное сохранение FSM-состояний в input_text.fsm_persist."""
+    fsm_save_states()
+    log.info("[fsm] states saved manually")
+
 # ==================== PLATFORM DOCTOR ====================
 
 @service

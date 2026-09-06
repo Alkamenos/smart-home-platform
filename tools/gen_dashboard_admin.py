@@ -32,11 +32,10 @@ def main():
 
     # --- Диагностика ---
     diag_ents = [
-        {"entity": "sensor.pyscript_manifest_status", "name": "Манифест"},
-        {"entity": "sensor.pyscript_climate_debug", "name": "Климат"},
-        {"entity": "sensor.pyscript_vent_debug", "name": "Вентиляция"},
-        {"entity": "sensor.pyscript_light_debug", "name": "Свет"},
-        {"entity": "sensor.pyscript_override_status", "name": "Override"},
+        {"entity": "sensor.platform_doctor", "name": "Доктор"},
+        {"entity": "sensor.platform_decisions", "name": "Решения"},
+        {"entity": "input_text.fsm_persist", "name": "FSM персист"},
+        {"entity": "sensor.sensor_health_status", "name": "Здоровье датчиков"},
     ]
     diag_buttons = {
         "type": "horizontal-stack", "cards": [
@@ -46,6 +45,10 @@ def main():
              "tap_action": {"action": "call-service", "service": "pyscript.light_debug"}},
             {"type": "button", "name": "Override clear", "icon": "mdi:lock-open",
              "tap_action": {"action": "call-service", "service": "pyscript.override_clear"}},
+            {"type": "button", "name": "Doctor", "icon": "mdi:stethoscope",
+             "tap_action": {"action": "call-service", "service": "pyscript.platform_doctor"}},
+            {"type": "button", "name": "FSM save", "icon": "mdi:content-save",
+             "tap_action": {"action": "call-service", "service": "pyscript.fsm_save"}},
         ]}
 
     # --- Здоровье датчиков ---
