@@ -35,7 +35,6 @@ def main():
         {"entity": "sensor.platform_doctor", "name": "Доктор"},
         {"entity": "sensor.platform_decisions", "name": "Решения"},
         {"entity": "input_text.fsm_persist", "name": "FSM персист"},
-        {"entity": "sensor.sensor_health_status", "name": "Здоровье датчиков"},
     ]
     diag_buttons = {
         "type": "horizontal-stack", "cards": [

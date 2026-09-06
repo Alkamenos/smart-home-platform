@@ -53,6 +53,12 @@ def needs_update(ws, e):
             print("  options changed: %s (was %d, now %d)" % (eid, len(cur_opts), len(e["options"])))
             return True
 
+    if dom == "input_text":
+        cur_max = st.get("attributes", {}).get("max", 255)
+        if cur_max != e.get("max", 255):
+            print("  max changed: %s (was %s, now %s)" % (eid, cur_max, e.get("max", 255)))
+            return True
+
     return False
 
 
@@ -74,6 +80,10 @@ def create(ws, e):
     if dom == "input_datetime":
         cmd["has_date"] = e.get("has_date", False)
         cmd["has_time"] = e.get("has_time", True)
+    if dom == "input_text":
+        cmd["max"] = e.get("max", 255)
+        if e.get("initial"):
+            cmd["initial"] = e["initial"]
     if dom == "input_number":
         cmd.update({"min": e["min"], "max": e["max"], "step": e["step"]})
         if e.get("initial") is not None:
@@ -247,7 +257,7 @@ for fname in features.keys():
 
 # ============================================================
 # PLATFORM HELPERS (core infrastructure)
-entries.append(txt(i, "fsm_persist", "", 10000, "mdi:database"))
+entries.append(txt(i, "fsm_persist", "", 255, "mdi:database"))
 i += 1
 
 # LOGGING LEVEL SELECTS (platform + each feature)
@@ -359,8 +369,17 @@ if args.apply:
     for e in entries:
         if sync_select_options(ws, e):
             upd += 1
+    rec = 0
+    for e in entries:
+        dom = e["type"].split("/")[0]
+        if dom in ("input_text", "input_number") and needs_update(ws, e):
+            eid = dom + "." + e["name"]
+            if exists(eid):
+                ws.delete_entity(eid)
+            if create(ws, e):
+                rec += 1
     ws.ws.close()
-    print("total created: %d, options updated: %d" % (done, upd))
+    print("total created: %d, options updated: %d, recreated: %d" % (done, upd, rec))
 
 else:
     print(json.dumps(missing if args.only_missing else entries,

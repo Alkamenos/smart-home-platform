@@ -137,7 +137,11 @@ def _sh_fsm_divergence(cfg):
             _SH_DIVERGE_SINCE.pop(gid, None)
             continue
         want_on = fsm_st != "OFF"
-        real_on = any(_lg_is_on(e) for e in lights)
+        real_on = False
+        for e in lights:
+            if _lg_is_on(e):
+                real_on = True
+                break
         if want_on == real_on:
             _SH_DIVERGE_SINCE.pop(gid, None)
             continue

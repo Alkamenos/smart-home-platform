@@ -323,28 +323,42 @@ def fsm_publish_all():
 
 # ==================== ПЕРСИСТ СОСТОЯНИЙ ====================
 
+_FSM_PERSIST_PATH = "/config/.fsm_states.json"
+
+
 def fsm_save_states():
-    """Сохранить все FSM-состояния в input_text.fsm_persist."""
+    """Сохранить FSM-состояния в файл; в helper — короткая сводка."""
     try:
         import json
-        data = json.dumps(_FSM_STATES)
-        if state.get("input_text.fsm_persist") is None:
-            state.set("input_text.fsm_persist", data)
-        else:
-            service.call("input_text", "set_value", entity_id="input_text.fsm_persist", value=data)
+        data = {}
+        for eid, entry in _FSM_STATES.items():
+            data[eid] = {"state": entry.get("state")}
+        with open(_FSM_PERSIST_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        try:
+            service.call("input_text", "set_value", entity_id="input_text.fsm_persist",
+                         value="saved %d states %s" % (len(data),
+                               datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        except Exception:
+            pass
     except Exception as exc:
         log.error("[fsm] save_states failed: " + str(exc))
 
 
 def fsm_load_states():
-    """Восстановить FSM-состояния из input_text.fsm_persist."""
+    """Восстановить FSM-состояния из файла персиста."""
     try:
         import json
-        raw = state.get("input_text.fsm_persist")
-        if raw:
-            loaded = json.loads(raw)
-            if isinstance(loaded, dict):
-                _FSM_STATES.update(loaded)
-                log.info("[fsm] loaded %d states" % len(loaded))
+        with open(_FSM_PERSIST_PATH, encoding="utf-8") as f:
+            loaded = json.load(f)
+        n = 0
+        for eid, v in loaded.items():
+            if eid in _FSM_STATES or not isinstance(v, dict) or not v.get("state"):
+                continue
+            _FSM_STATES[eid] = {"state": v["state"], "entered_at": "restored",
+                                "entered_by": "persist", "entered_why": "восстановлено после рестарта",
+                                "history": []}
+            n += 1
+        log.info("[fsm] restored %d states" % n)
     except Exception as exc:
         log.error("[fsm] load_states failed: " + str(exc))
