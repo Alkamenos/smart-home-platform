@@ -505,3 +505,41 @@ def vent_debug():
         log_event("ventilation", "Отладка", str(e) + " state=" + str(s)
                     +" preset=" + str(p) +" pct=" + str(pct), why="диагностика", src="сервис")
     return {"ok": True}
+def _vent_make_sync_mapper(entity):
+    """Маппер preset_mode -> FSM-состояние для общего watchdog."""
+    def mapper():
+        try:
+            st = hass.states.get(entity)
+        except Exception:
+            return None
+        if st is None:
+            return None
+        p = str((st.attributes or {}).get("preset_mode") or "")
+        if not p:
+            return None
+        if p in ("Приток MAX", "Вытяжка MAX"):
+            return "BOOST"
+        if "Ночн" in p or p.lower() == "night":
+            return "NIGHT"
+        if "Отсут" in p or p.lower() == "away":
+            return "AWAY"
+        if "Рекуперация" in p:
+            return "NORMAL"
+        return None
+    return mapper
+
+
+@time_trigger("startup")
+def _vent_sync_reg_loop():
+    """Регистрация мапперов реального preset_mode для общего watchdog."""
+    task.sleep(15)
+    while True:
+        try:
+            cfg = _vent_cfg()
+            for dev in (cfg or {}).get("devices", []) or []:
+                entity = dev.get("entity")
+                if entity and entity not in _FSM_SYNC_MAPPERS:
+                    fsm_register_sync(entity, _vent_make_sync_mapper(entity), grace_sec=90)
+        except Exception as e:
+            log.error("[vent] sync reg error: " + str(e))
+        task.sleep(60)

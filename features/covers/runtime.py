@@ -410,7 +410,12 @@ def _cv_fsm_init(cfg):
         cover_entity = c.get("cover")
         cid = str(c.get("id"))
         definition = cover_fsm_definition(c)
-
+        # Generic watchdog: маппер реальной позиции
+        try:
+            if cover_entity not in _FSM_SYNC_MAPPERS:
+                fsm_register_sync(cover_entity, _cv_make_sync_mapper(cover_entity), grace_sec=180)
+        except Exception:
+            pass
         # Проверяем активный override в input_datetime (переживает перезагрузку)
         override_entity = "input_datetime.cover_%s_override_until" % cid
         override_str = _cv_state(override_entity)
@@ -693,7 +698,6 @@ def _cv_tick():
 
     for c in covers_list:
         try:
-            _cv_sync_fsm_with_position(c.get("cover"))
             _cv_apply_cover(c, cfg, mode, home, dogs)
         except Exception as exc:
             _cv_log("error", "ERROR", "cover " + str(c.get("id")) + " error: " + str(exc))
@@ -889,3 +893,33 @@ def covers_override_clear(entity=None):
     return {"ok": True}
 
 
+
+
+@time_trigger("startup")
+def _cv_sync_reg_loop():
+    """Регистрация мапперов реальной позиции штор для общего watchdog."""
+    task.sleep(20)
+    while True:
+        try:
+            cfg = _cv_cfg()
+            for c in (cfg or {}).get("covers", []) or []:
+                ent = c.get("cover")
+                if ent and ent not in _FSM_SYNC_MAPPERS:
+                    fsm_register_sync(ent, _cv_make_sync_mapper(ent), grace_sec=180)
+        except Exception as e:
+            log.error("[covers] sync reg error: " + str(e))
+        task.sleep(60)
+
+
+def _cv_make_sync_mapper(cover_entity):
+    """Маппер реальная позиция -> FSM-состояние для общего watchdog."""
+    def mapper():
+        pos = _cv_get_actual_position(cover_entity)
+        if pos is None:
+            return None
+        if pos >= 80:
+            return "OPEN"
+        if pos <= 20:
+            return "CLOSED"
+        return "PARTIAL"
+    return mapper

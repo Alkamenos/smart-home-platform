@@ -139,6 +139,13 @@ LIGHT_FSM_DEFAULT = {
             "priority": 5,
             "why": "Таймер блокировки истёк — возврат к предыдущему состоянию"
         },
+        {
+            "from": ["ON_SCHEDULE", "MANUAL_LOCK", "ON_MOTION", "NIGHTLIGHT", "PARTY"],
+            "to": "OFF",
+            "trigger": "schedule_off_check",
+            "priority": 15,
+            "why": "Расписание не активно"
+        },
         # Явный сброс блокировки: возврат к предыдущему состоянию
         {
             "from": "MANUAL_LOCK",

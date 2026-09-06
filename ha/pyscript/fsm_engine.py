@@ -362,3 +362,167 @@ def fsm_load_states():
         log.info("[fsm] restored %d states" % n)
     except Exception as exc:
         log.error("[fsm] load_states failed: " + str(exc))
+
+
+def fsm_sync_with_device(entity_id, device_state_mapper):
+    """
+    Синхронизирует FSM состояние с реальным состоянием устройства.
+    
+    Args:
+        entity_id: идентификатор сущности (например, "cover.bedroom")
+        device_state_mapper: функция, которая возвращает текущее состояние устройства
+                           и маппинг реального состояния в FSM состояние
+    
+    Пример использования:
+        fsm_sync_with_device("cover.bedroom", 
+                            lambda: (_cv_get_actual_position("cover.bedroom"), 
+                                    {>=80: "OPEN", <=20: "CLOSED", else: "PARTIAL"}))
+    """
+    _fsm_ensure_restored(entity_id)
+    definition = _FSM_DEFINITIONS.get(entity_id)
+    if definition is None:
+        return False
+    
+    current_fsm_state = fsm_get_state(entity_id)
+    device_value, state_map = device_state_mapper()
+    
+    if device_value is None:
+        return False
+    
+    # Определяем ожидаемое FSM состояние на основе реального состояния устройства
+    expected_state = None
+    for threshold, fsm_state in state_map.items():
+        if isinstance(threshold, tuple):
+            # Диапазон (min, max)
+            if threshold[0] <= device_value <= threshold[1]:
+                expected_state = fsm_state
+                break
+        elif callable(threshold):
+            # Функция-предикат
+            if threshold(device_value):
+                expected_state = fsm_state
+                break
+        else:
+            # Точное значение
+            if device_value == threshold:
+                expected_state = fsm_state
+                break
+    
+    if expected_state is None or expected_state == current_fsm_state:
+        return False
+    
+    # Проверяем, не в MANUAL_LOCK ли мы
+    if current_fsm_state == "MANUAL_LOCK":
+        # Не синхронизируем если есть ручная блокировка
+        entry = _FSM_STATES.get(entity_id)
+        if entry:
+            debounce_sec = float(definition.get("debounce_sec", 0) or 0)
+            entered_at = entry.get("entered_at")
+            if entered_at:
+                try:
+                    from datetime import datetime
+                    entered_dt = datetime.strptime(entered_at, "%Y-%m-%d %H:%M:%S")
+                    if (datetime.now() - entered_dt).total_seconds() < 300:  # 5 минут
+                        return False  # Ещё не истёк таймаут
+                except Exception:
+                    pass
+    
+    # Синхронизируем через соответствующий триггер
+    sync_trigger = None
+    if "OPEN" in str(state_map.values()):
+        sync_trigger = "sync_open"
+    if "CLOSED" in str(state_map.values()):
+        sync_trigger = "sync_close"
+    if "PARTIAL" in str(state_map.values()):
+        sync_trigger = "sync_partial"
+    
+    if sync_trigger:
+        # Проверяем существует ли такой триггер в определениях
+        transitions = definition.get("transitions", [])
+        valid_sync = any(t.get("trigger") == sync_trigger for t in transitions)
+        if valid_sync:
+            fsm_trigger(entity_id, sync_trigger, src="watchdog_sync")
+            return True
+    
+    return False
+
+def fsm_get_all_states():
+    """Возвращает словарь всех зарегистрированных FSM состояний."""
+    return dict(_FSM_STATES)
+
+def fsm_force_state(entity_id, new_state, why="Принудительная синхронизация"):
+    """
+    Принудительно устанавливает состояние FSM (для отладки и аварийных случаев).
+    
+    Args:
+        entity_id: идентификатор сущности
+        new_state: новое состояние
+        why: причина изменения
+    """
+    _fsm_ensure_restored(entity_id)
+    if entity_id not in _FSM_DEFINITIONS:
+        return False
+    
+    definition = _FSM_DEFINITIONS[entity_id]
+    if new_state not in definition.get("states", []):
+        return False
+    
+    _fsm_set_state(entity_id, new_state, "force", why, src="watchdog")
+    return True
+
+# ==================== GENERIC WATCHDOG: FSM vs device ====================
+# Фича регистрирует маппер (устройство -> ожидаемое FSM-состояние);
+# watchdog чинит расхождение, если оно держится дольше grace_sec.
+
+_FSM_SYNC_MAPPERS = {}
+
+def fsm_register_sync(entity_id, mapper, grace_sec=120):
+    """Регистрация маппера реального состояния для watchdog. mapper() -> ожидаемое FSM-состояние или None."""
+    _FSM_SYNC_MAPPERS[entity_id] = {"mapper": mapper, "grace": float(grace_sec), "diverged_at": None}
+
+def fsm_sync_tick():
+    """Один проход сверки FSM vs устройство по всем зарегистрированным мапперам."""
+    now = time.monotonic()
+    for entity_id, info in list(_FSM_SYNC_MAPPERS.items()):
+        try:
+            expected = info["mapper"]()
+        except Exception:
+            expected = None
+        current = fsm_get_state(entity_id)
+        if expected is None or current is None or expected == current or current == "MANUAL_LOCK":
+            info["diverged_at"] = None
+            continue
+        if info["diverged_at"] is None:
+            info["diverged_at"] = now
+            continue
+        if now - info["diverged_at"] < info["grace"]:
+            continue
+        definition = _FSM_DEFINITIONS.get(entity_id) or {}
+        trig_map = {"OPEN": "sync_open", "CLOSED": "sync_close", "PARTIAL": "sync_partial"}
+        trig = trig_map.get(expected)
+        synced = False
+        if trig and any(t.get("trigger") == trig for t in definition.get("transitions", [])):
+            synced = fsm_trigger(entity_id, trig, src="watchdog")
+        if not synced and expected in (definition.get("states") or []):
+            _fsm_set_state(entity_id, expected, "watchdog_sync",
+                           "Watchdog: расхождение с устройством", "watchdog")
+            synced = True
+        if synced:
+            log.info("[fsm] watchdog sync: %s -> %s" % (entity_id, expected))
+        info["diverged_at"] = None
+
+try:
+    time_trigger
+    _FSM_PYSCRIPT = True
+except NameError:
+    _FSM_PYSCRIPT = False
+
+if _FSM_PYSCRIPT:
+    @time_trigger("startup")
+    def _fsm_sync_watchdog_loop():
+        while True:
+            try:
+                fsm_sync_tick()
+            except Exception as exc:
+                log.error("[fsm] sync watchdog error: " + str(exc))
+            task.sleep(60)

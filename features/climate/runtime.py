@@ -446,6 +446,28 @@ def _clim_apply_fsm_action(zone, result):
                     log_event("climate", "Предупреждения", "[" + str(zone_id) + "] FSM " + str(state) + " -> cool: " + why, why=why, src="FSM")
 
 
+
+def _clim_ensure_all_zones_registered():
+    """Гарантирует, что FSM зарегистрирован для всех зон из манифеста, даже если датчики недоступны."""
+    climate_cfg = _REGISTRY.feature("climate")
+    if not climate_cfg:
+        return
+    
+    for zone in climate_cfg.get("zones", []):
+        zone_id = zone.get("id")
+        if not zone_id:
+            continue
+        
+        entity_id = "climate." + zone_id
+        if entity_id not in _CLIMATE_FSM_REGISTERED:
+            try:
+                fsm_def = climate_fsm_definition(zone.get("room_context", "HOME_DAY"))
+                fsm_register(entity_id, fsm_def)
+                _CLIMATE_FSM_REGISTERED[entity_id] = True
+                log_event("climate", "Инфо", "["+str(zone_id)+"] FSM зарегистрирован (init)", why="registration", src="автоматика")
+            except Exception as e:
+                log_event("climate", "Предупреждения", "["+str(zone_id)+"] Ошибка регистрации FSM: "+str(e), why="error", src="автоматика")
+
 def _clim_eval_zone(zone, mode, min_setpoint, heating_season):
     # Используем FSM для управления климатом
     zone_id = zone.get("id")
@@ -626,3 +648,15 @@ def climate_debug():
         cur_temp = _clim_get_float(temp_entity) if temp_entity else None
         log_event("climate", "Отладка", "zone=" + str(zone.get("id")) +" cur_temp=" + str(cur_temp), why="диагностика", src="сервис")
     return {"ok": True}
+
+@time_trigger("startup")
+def _clim_zones_reg_loop():
+    """Гарантированная регистрация FSM всех зон климата, даже если датчики недоступны."""
+    task.sleep(10)
+    while True:
+        try:
+            if _REGISTRY is not None:
+                _clim_ensure_all_zones_registered()
+        except Exception as e:
+            log.error("[climate] zones reg error: " + str(e))
+        task.sleep(60)

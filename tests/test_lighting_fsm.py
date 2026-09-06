@@ -142,6 +142,7 @@ def run_all_tests():
         test_party_mode_protection()
         test_night_light_restores_brightness()
         test_unavailable_state()
+        test_manual_lock_timeout_when_schedule_off()
         print("\n🎉 Все тесты пройдены успешно!")
         return True
     except AssertionError as e:
@@ -156,3 +157,24 @@ def run_all_tests():
 if __name__ == "__main__":
     success = run_all_tests()
     sys.exit(0 if success else 1)
+
+
+def test_manual_lock_timeout_when_schedule_off():
+    """Тест: если после MANUAL_LOCK истекает таймер, но расписание уже OFF, свет должен выключиться."""
+    entity_id = "light.test_group"
+    fsm_register(entity_id, LIGHT_FSM_DEFAULT)
+    
+    # Имитируем, что предыдущим состоянием было ON_SCHEDULE
+    _FSM_STATES[entity_id]["history"].insert(0, {"from": "ON_SCHEDULE", "to": "MANUAL_LOCK", "trigger": "manual_change"})
+    _FSM_STATES[entity_id]["state"] = "MANUAL_LOCK"
+    
+    # Сначала переходим в PREVIOUS (ON_SCHEDULE) по таймауту
+    fsm_trigger(entity_id, "timeout", src="таймер")
+    assert fsm_get_state(entity_id) == "ON_SCHEDULE"
+    
+    # Затем эмулируем проверку из light_fsm_run: если schedule_on=False, вызываем schedule_off_check
+    fsm_trigger(entity_id, "schedule_off_check", src="автоматика")
+    
+    assert fsm_get_state(entity_id) == "OFF"
+    assert _FSM_STATES[entity_id]["history"][0]["trigger"] == "schedule_off_check"
+    assert _FSM_STATES[entity_id]["history"][0]["why"] == "Расписание не активно"
