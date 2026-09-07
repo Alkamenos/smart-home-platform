@@ -60,10 +60,11 @@ class Logger:
         logger.error("Failed to process event", error="...")
     """
 
-    def __init__(self, component: str = "platform", output: str = "stdout"):
+    def __init__(self, component: str = "platform", output: str = "stdout", quiet: bool = False):
         self._component = component
         self._output = output  # "stdout", "file", или callback
         self._logs: list[dict] = []  # Для тестирования
+        self._quiet = quiet  # Тихий режим (не выводить логи)
 
     def _format_log(self, level: str, message: str, **context) -> dict:
         """Сформировать структурированный лог"""
@@ -79,7 +80,7 @@ class Logger:
         """Записать лог"""
         self._logs.append(log_entry)
 
-        if self._output == "stdout":
+        if self._output == "stdout" and not self._quiet:
             print(json.dumps(log_entry, ensure_ascii=False))
 
     def info(self, message: str, **context) -> None:
