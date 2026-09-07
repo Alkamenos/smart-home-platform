@@ -8,7 +8,7 @@ Logger - Структурированное логирование с конте
 from __future__ import annotations
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class Logger:
@@ -29,7 +29,7 @@ class Logger:
     def _format_log(self, level: str, message: str, **context) -> dict:
         """Сформировать структурированный лог"""
         return {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": level,
             "component": self._component,
             "message": message,
