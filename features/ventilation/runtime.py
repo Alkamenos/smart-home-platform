@@ -3,6 +3,7 @@
 # ============================================================
 # Функции ventilation_fsm_run и ventilation_fsm_get_state доступны глобально после конкатенации
 import time
+from core.v2.sync_engine import SYNC
 
 _VENT_BOOST_START = {}
 _VENT_FAN_START = {}
@@ -370,6 +371,24 @@ def _vent_decide(cfg):
 
 
 def _vent_apply(cfg, desired, mode):
+    # Новая архитектура: используем SYNC вместо прямых вызовов
+    for dev in cfg.get("devices", []) or []:
+        entity = dev.get("entity")
+        if not entity:
+            continue
+            
+        if desired.get("action") == "off":
+            SYNC.set_desired(entity, "off", source="ventilation")
+        elif desired.get("preset"):
+            SYNC.set_desired(entity, "on", 
+                           attributes={"preset": desired["preset"], 
+                                       "pct": desired.get("pct", 40)},
+                           source="ventilation")
+    
+    # Старая логика оставляем как fallback
+    _vent_apply_legacy(cfg, desired, mode)
+
+def _vent_apply_legacy(cfg, desired, mode):
     for dev in cfg.get("devices", []) or []:
         entity = dev.get("entity")
         if not entity:
