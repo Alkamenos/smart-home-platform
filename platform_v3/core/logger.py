@@ -86,6 +86,10 @@ class Logger:
         """Информационное сообщение"""
         self._write(self._format_log("INFO", message, **context))
 
+    def debug(self, message: str, **context) -> None:
+        """Отладочное сообщение"""
+        self._write(self._format_log("DEBUG", message, **context))
+
     def warning(self, message: str, **context) -> None:
         """Предупреждение"""
         self._write(self._format_log("WARNING", message, **context))

@@ -262,7 +262,10 @@ def cmd_status(args):
         }
     
     if args.json:
-        print(json.dumps(statuses, indent=2))
+        # Выводим JSON без логов (только данные)
+        import sys
+        json.dump(statuses, sys.stdout, indent=2)
+        print()  # newline at end
     else:
         print("\n=== Статус автоматов ===\n")
         for entity_id, info in statuses.items():
