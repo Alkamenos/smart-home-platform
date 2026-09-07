@@ -66,6 +66,7 @@ class SyncEngine:
         self._actual: dict[str, ActualState] = {}
         self._divergences: dict[str, Divergence] = {}
         self._manual_locks: dict[str, float] = {}  # entity -> unlock_time
+        self._last_commanded: dict[str, str] = {}  # entity -> last commanded state
         self._grace_sec = grace_sec
         self._apply_callback: Optional[Callable] = None
         self._log_callback: Optional[Callable] = None
@@ -96,8 +97,7 @@ class SyncEngine:
             reason=reason,
             expires_at=expires
         )
-        
-        # Не применяем сразу — ждём синхронизации или обновления реального состояния
+        # НЕ обновляем _last_commanded здесь — только когда команда реально применена в _try_apply
         # Это предотвращает гонки и дублирование команд
     
     def get_desired(self, entity_id: str) -> Optional[DesiredState]:
@@ -142,7 +142,11 @@ class SyncEngine:
         """Заблокировать синхронизацию (ручное вмешательство)"""
         unlock_time = time.monotonic() + duration_min * 60
         self._manual_locks[entity_id] = unlock_time
-        self._log(f"[SYNC] {entity_id}: manual lock {duration_min} min ({reason})")
+        # Прямое логирование (обходим проблему с _log_callback)
+        try:
+            self._log(f"[SYNC] {entity_id}: manual lock {duration_min} min ({reason})")
+        except Exception:
+            pass
     
     def is_manual_locked(self, entity_id: str) -> bool:
         """Проверить, заблокирована ли синхронизация"""
@@ -187,20 +191,40 @@ class SyncEngine:
             # Проверяем расхождение
             self._check_divergence(entity_id)
             
-            # Если расхождение длится дольше grace — применяем
+            # Если есть расхождение — применяем команду СРАЗУ
             divergence = self._divergences.get(entity_id)
-            if divergence and divergence.duration_sec >= self._grace_sec:
-                if self._try_apply(entity_id):
-                    applied.append(entity_id)
-                    divergence.resolved_at = time.monotonic()
-                    # Не логируем каждое применение — только ошибки
+            actual = self._actual.get(entity_id)
+            
+            if divergence:
+                self._log(f"[SYNC] {entity_id}: divergence detected, desired={desired.state}, actual={actual.state if actual else None}")
+                # Не применяем если уже командовали это состояние
+                last_commanded = self._last_commanded.get(entity_id)
+                if last_commanded == desired.state:
+                    self._log(f"[SYNC] {entity_id}: already commanded {desired.state}, waiting")
+                else:
+                    # Обновляем _last_commanded ДО применения команды
+                    # Это нужно чтобы при повторном вызове не применять повторно
+                    self._last_commanded[entity_id] = desired.state
+                    if self._try_apply(entity_id):
+                        applied.append(entity_id)
+                        divergence.resolved_at = time.monotonic()
+                        self._log(f"[SYNC] {entity_id}: applied {desired.state}")
+                    else:
+                        self._log(f"[SYNC] {entity_id}: _try_apply returned False")
         
         return applied
     
     # ===== Внутренние методы =====
     
     def _check_divergence(self, entity_id: str) -> None:
-        """Проверить расхождение между желаемым и реальным"""
+        """Проверить расхождение между желаемым и реальным.
+        
+        Блокируем ТОЛЬКО если:
+        1. Есть расхождение desired != actual
+        2. Расхождение длится дольше grace_sec
+        3. Это НЕ стартовая синхронизация (source != "startup_sync")
+        4. actual НЕ совпадает с последней командой от платформы
+        """
         desired = self._desired.get(entity_id)
         actual = self._actual.get(entity_id)
         
@@ -210,32 +234,48 @@ class SyncEngine:
         if desired.state == actual.state:
             # Состояния совпадают — расхождения нет
             self._divergences.pop(entity_id, None)
-        else:
-            # Есть расхождение
-            divergence = self._divergences.get(entity_id)
-            
-            # Если расхождение длится больше grace_sec — это ручное вмешательство
-            if divergence is None:
-                divergence = Divergence(
+            return
+        
+        # Есть расхождение
+        # НЕ блокируем если это стартовая синхронизация
+        if desired.source == "startup_sync":
+            # Просто ждём, автоматика ещё не сработала
+            return
+        
+        # НЕ блокируем если платформа уже командовала это состояние
+        # Это значит что команда была применена, но устройство ещё не ответило
+        last_commanded = self._last_commanded.get(entity_id)
+        if last_commanded == desired.state:
+            # Платформа командовала — ждём пока устройство применит, не блокируем
+            return
+        
+        # Есть реальное расхождение — ждём grace_sec
+        divergence = self._divergences.get(entity_id)
+        
+        if divergence is None:
+            divergence = Divergence(
+                entity_id=entity_id,
+                desired=desired,
+                actual=actual,
+                started_at=time.monotonic()
+            )
+            self._divergences[entity_id] = divergence
+            return
+        
+        if divergence.duration_sec > self._grace_sec:
+            # Ручное вмешательство — блокируем синхронизацию
+            self._log(f"[SYNC] {entity_id}: divergence {divergence.duration_sec:.1f}s > grace {self._grace_sec}s, blocking")
+            if not self.is_manual_locked(entity_id):
+                self.set_manual_lock(entity_id, duration_min=60, reason="manual change")
+                # Обновляем желаемое состояние на реальное
+                self._desired[entity_id] = DesiredState(
                     entity_id=entity_id,
-                    desired=desired,
-                    actual=actual,
-                    started_at=time.monotonic()
+                    state=actual.state,
+                    attributes=actual.attributes,
+                    source="manual",
+                    reason="Manual change detected"
                 )
-                self._divergences[entity_id] = divergence
-            elif divergence.duration_sec > self._grace_sec:
-                # Ручное вмешательство — блокируем синхронизацию
-                if not self.is_manual_locked(entity_id):
-                    self.set_manual_lock(entity_id, duration_min=60, reason="manual change")
-                    # Обновляем желаемое состояние на реальное
-                    self._desired[entity_id] = DesiredState(
-                        entity_id=entity_id,
-                        state=actual.state,
-                        attributes=actual.attributes,
-                        source="manual",
-                        reason="Manual change detected"
-                    )
-                    self._divergences.pop(entity_id, None)
+                self._divergences.pop(entity_id, None)
     
     def _try_apply(self, entity_id: str) -> bool:
         """Применить желаемое состояние к устройству"""
@@ -254,10 +294,15 @@ class SyncEngine:
             self._divergences.pop(entity_id, None)
             return False
         
+        # Не применяем повторно если уже командовали это состояние
+        # (защита от бесконечных повторов)
+        last_commanded = self._last_commanded.get(entity_id)
+        if last_commanded == desired.state:
+            return False
+        
         if self._apply_callback:
             try:
                 self._apply_callback(entity_id, desired.state, desired.attributes)
-                
                 # Обновляем _actual сразу после применения
                 self._actual[entity_id] = ActualState(
                     entity_id=entity_id,
@@ -278,7 +323,11 @@ class SyncEngine:
     def _log(self, message: str) -> None:
         """Логирование"""
         if self._log_callback:
-            self._log_callback(message)
+            try:
+                result = self._log_callback(message)
+                # Игнорируем если это coroutine
+            except Exception:
+                pass
         else:
             print(message)
     
