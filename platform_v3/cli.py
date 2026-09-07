@@ -238,11 +238,10 @@ def cmd_deploy(args):
 
 def cmd_status(args):
     """Статус всех автоматов"""
-    logger = Logger(component="cli")
     
     # Создаём временный FSM
     event_bus = EventBus()
-    fsm_logger = Logger()
+    fsm_logger = Logger(component="status", quiet=args.json)  # Тихий режим для JSON
     fsm = FSMEngine(event_bus, fsm_logger)
     
     # Регистрируем все автоматы
@@ -267,6 +266,8 @@ def cmd_status(args):
         json.dump(statuses, sys.stdout, indent=2)
         print()  # newline at end
     else:
+        logger = Logger(component="cli")
+        logger.info("Статус автоматов", count=len(statuses))
         print("\n=== Статус автоматов ===\n")
         for entity_id, info in statuses.items():
             print(f"{entity_id}:")
