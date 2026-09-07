@@ -10,9 +10,9 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from ..core.event_bus import EventBus
-from ..core.registry import Registry
-from ..adapters.ha_adapter import HomeAssistantAdapter, HAEntity
+from core.event_bus import EventBus
+from core.registry import Registry
+from adapters.ha_adapter import HomeAssistantAdapter, HAEntity
 
 logger = logging.getLogger(__name__)
 
