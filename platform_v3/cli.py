@@ -13,6 +13,7 @@ CLI для платформы V3
 import argparse
 import sys
 import json
+import time
 from pathlib import Path
 
 # Добавляем platform_v3 в path
@@ -23,9 +24,12 @@ from core.event_bus import EventBus
 from core.logger import Logger
 from core.registry import Registry
 from adapters.mock_adapter import MockAdapter
-from adapters.ha_adapter import HAAdapter
+from adapters.ha_adapter import HomeAssistantAdapter
 from features.lighting import create_lighting_automations
 from features.climate import create_climate_automations
+
+# Алиас для совместимости
+HAAdapter = HomeAssistantAdapter
 
 
 def setup_parser():
@@ -58,9 +62,11 @@ def setup_parser():
     
     # Команда deploy
     deploy_parser = subparsers.add_parser("deploy", help="Деплой в Home Assistant")
-    deploy_parser.add_argument("--ha-url", help="URL Home Assistant")
+    deploy_parser.add_argument("--ha-config", help="Путь к директории конфигурации HA")
+    deploy_parser.add_argument("--ha-url", help="URL Home Assistant (для перезагрузки)")
     deploy_parser.add_argument("--token", help="Long-lived token")
     deploy_parser.add_argument("--dry-run", action="store_true", help="Тестовый режим")
+    deploy_parser.add_argument("--watch", action="store_true", help="Включить hot-reload мониторинг")
     
     # Команда status
     status_parser = subparsers.add_parser("status", help="Статус всех автоматов")
@@ -162,25 +168,72 @@ def cmd_debug(args):
 
 def cmd_deploy(args):
     """Деплой в Home Assistant"""
+    from loader import PyscriptLoader
+    
     logger = Logger(component="cli")
     
     if args.dry_run:
         logger.info("Dry-run режим. Файлы не будут загружены.")
         print("\n=== Планируемые действия ===")
-        print("1. Копирование core/*.py в ha/pyscript/")
-        print("2. Копирование features/*.py в ha/pyscript/")
-        print("3. Копирование adapters/ha_adapter.py в ha/pyscript/")
+        print("1. Копирование core/*.py в ha/pyscript/platform_v3/core/")
+        print("2. Копирование features/*.py в ha/pyscript/platform_v3/features/")
+        print("3. Копирование adapters/*.py в ha/pyscript/platform_v3/adapters/")
         print("4. Создание pyscript.yaml с конфигурацией")
+        print("5. Создание platform_v3_init.py")
+        if args.watch:
+            print("\nHot-reload будет включён после деплоя")
         return
     
-    logger.info("Деплой в Home Assistant", url=args.ha_url)
+    logger.info("Деплой в Home Assistant", ha_config=args.ha_config)
     
-    # TODO: Реализовать загрузку файлов через HA API
-    # 1. Копируем файлы
-    # 2. Создаём конфигурацию
-    # 3. Перезагружаем PyScript
+    # Создаём загрузчик
+    loader = PyscriptLoader(ha_config_dir=args.ha_config)
     
-    print("Деплой завершён!")
+    # Выполняем деплой
+    success = loader.deploy(ha_url=args.ha_url, ha_token=args.token)
+    
+    if not success:
+        logger.error("Деплой не удался")
+        sys.exit(1)
+    
+    # Запускаем hot-reload если запрошено
+    if args.watch:
+        logger.info("Запуск hot-reload мониторинга...")
+        
+        def on_reload(changed_files):
+            """Callback при изменении файлов"""
+            print("\n[Hot-Reload] Обнаружены изменения в файлах:")
+            for f in changed_files:
+                print(f"  - {f}")
+            
+            print("[Hot-Reload] Копирование изменённых файлов...")
+            loader.copy_core_files()
+            loader.copy_features_files()
+            loader.copy_adapters_files()
+            
+            if args.ha_url and args.token:
+                print("[Hot-Reload] Перезагрузка PyScript...")
+                loader.reload_pyscript(args.ha_url, args.token)
+            else:
+                print("⚠ Для авто-перезагрузки PyScript укажите --ha-url и --token")
+                print("  Или перезапустите PyScript вручную: Developer Tools > Services > pyscript.reload")
+        
+        loader.start_hot_reload(callback=on_reload)
+        
+        print("\n=== Hot-Reload активен ===")
+        print("Следим за изменениями файлов. Нажмите Ctrl+C для остановки.\n")
+        
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n[Hot-Reload] Остановка по запросу пользователя")
+            loader.stop_hot_reload()
+    
+    print("\n✅ Деплой завершён успешно!")
+    if not args.watch:
+        print("\n💡 Совет: Используйте --watch для автоматической перезагрузки при изменениях файлов")
+        print("   Пример: python cli.py deploy --watch --ha-config /config --ha-url http://localhost:8123 --token YOUR_TOKEN")
 
 
 def cmd_status(args):

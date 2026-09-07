@@ -8,8 +8,8 @@ from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
 
-from ..core.event_bus import EventBus
-from ..core.logger import get_logger
+from core.event_bus import EventBus
+from core.logger import get_logger
 
 logger = get_logger(__name__)
 

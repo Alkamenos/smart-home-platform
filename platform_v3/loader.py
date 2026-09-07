@@ -6,13 +6,24 @@ Loader для загрузки платформы V3 в Home Assistant PyScript
 1. Копирует файлы ядра в директорию pyscript
 2. Создаёт конфигурационный файл pyscript.yaml
 3. Опционально перезагружает PyScript через HA API
+4. Поддерживает hot-reload при изменениях файлов
 """
 
 import os
 import sys
 import shutil
+import hashlib
+import time
+import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Set
+from datetime import datetime
+
+try:
+    import watchfiles
+    WATCHFILES_AVAILABLE = True
+except ImportError:
+    WATCHFILES_AVAILABLE = False
 
 
 class PyscriptLoader:
@@ -29,6 +40,77 @@ class PyscriptLoader:
         self.source_dir = Path(__file__).parent
         self.ha_config_dir = Path(ha_config_dir) if ha_config_dir else Path.home() / ".homeassistant"
         self.pyscript_dir = self.ha_config_dir / "pyscript"
+        
+        # Для hot-reload
+        self._file_hashes: Dict[str, str] = {}
+        self._watch_thread: Optional[threading.Thread] = None
+        self._stop_watching = False
+        self._on_reload_callback = None
+        
+    def _compute_file_hash(self, file_path: Path) -> str:
+        """Вычислить хэш файла для отслеживания изменений"""
+        with open(file_path, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    
+    def _update_file_hashes(self, directory: Path) -> None:
+        """Обновить хэши всех файлов в директории"""
+        for py_file in directory.rglob("*.py"):
+            rel_path = str(py_file.relative_to(self.source_dir))
+            self._file_hashes[rel_path] = self._compute_file_hash(py_file)
+    
+    def _check_file_changes(self) -> Set[str]:
+        """Проверить изменения файлов, вернуть список изменённых"""
+        changed = set()
+        for rel_path, old_hash in list(self._file_hashes.items()):
+            file_path = self.source_dir / rel_path
+            if file_path.exists():
+                new_hash = self._compute_file_hash(file_path)
+                if new_hash != old_hash:
+                    changed.add(rel_path)
+                    self._file_hashes[rel_path] = new_hash
+        return changed
+    
+    def _watch_files_loop(self) -> None:
+        """Цикл отслеживания изменений файлов"""
+        print("[Hot-Reload] Started watching for file changes...")
+        while not self._stop_watching:
+            time.sleep(2)  # Проверяем каждые 2 секунды
+            changed = self._check_file_changes()
+            if changed and self._on_reload_callback:
+                print(f"\n[Hot-Reload] Detected changes in {len(changed)} file(s):")
+                for f in changed:
+                    print(f"  - {f}")
+                self._on_reload_callback(changed)
+    
+    def start_hot_reload(self, callback=None) -> None:
+        """
+        Запустить отслеживание изменений файлов
+        
+        Args:
+            callback: Функция обратного вызова при изменениях (получает set изменённых файлов)
+        """
+        if self._watch_thread is not None:
+            print("[Hot-Reload] Already running")
+            return
+        
+        # Инициализируем хэши
+        self._update_file_hashes(self.source_dir / "core")
+        self._update_file_hashes(self.source_dir / "features")
+        self._update_file_hashes(self.source_dir / "adapters")
+        
+        self._on_reload_callback = callback
+        self._stop_watching = False
+        self._watch_thread = threading.Thread(target=self._watch_files_loop, daemon=True)
+        self._watch_thread.start()
+        print("[Hot-Reload] File watcher started")
+    
+    def stop_hot_reload(self) -> None:
+        """Остановить отслеживание изменений"""
+        self._stop_watching = True
+        if self._watch_thread:
+            self._watch_thread.join(timeout=5)
+            self._watch_thread = None
+        print("[Hot-Reload] File watcher stopped")
         
     def copy_core_files(self) -> list[Path]:
         """Копировать файлы ядра в pyscript"""
@@ -281,6 +363,8 @@ def main():
     parser.add_argument("--ha-url", help="URL Home Assistant (для перезагрузки)")
     parser.add_argument("--token", help="Long-lived token (для перезагрузки)")
     parser.add_argument("--dry-run", action="store_true", help="Тестовый режим без копирования")
+    parser.add_argument("--watch", action="store_true", help="Включить hot-reload мониторинг")
+    parser.add_argument("--reload-cmd", help="Команда для перезагрузки (по умолчанию: pyscript.reload)")
     
     args = parser.parse_args()
     
@@ -295,10 +379,36 @@ def main():
         print("\nФайлы для создания:")
         print("  pyscript/platform_v3/pyscript.yaml")
         print("  pyscript/platform_v3_init.py")
+        
+        if args.watch:
+            print("\nHot-reload будет включён после деплоя")
         return
     
     loader = PyscriptLoader(ha_config_dir=args.ha_config)
     success = loader.deploy(ha_url=args.ha_url, ha_token=args.token)
+    
+    # Запускаем hot-reload если запрошено
+    if args.watch and success:
+        def on_reload(changed_files):
+            """Callback при изменении файлов"""
+            print("\n[Hot-Reload] Перезагрузка изменённых файлов...")
+            loader.copy_core_files()
+            loader.copy_features_files()
+            loader.copy_adapters_files()
+            
+            if args.ha_url and args.token:
+                loader.reload_pyscript(args.ha_url, args.token)
+            else:
+                print("⚠ Для авто-перезагрузки укажите --ha-url и --token")
+        
+        loader.start_hot_reload(callback=on_reload)
+        
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n[Hot-Reload] Остановка по запросу пользователя")
+            loader.stop_hot_reload()
     
     sys.exit(0 if success else 1)
 
