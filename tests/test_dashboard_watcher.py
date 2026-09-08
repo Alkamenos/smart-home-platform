@@ -116,7 +116,7 @@ devices:
 class TestDashboardUpdate:
     """Тесты обновления дашборда"""
     
-    @patch('tools.dashboard_watcher.DashboardGenerator')
+    @patch('tools.dashboard_generator.DashboardGenerator')
     def test_watcher_updates_dashboard(self, mock_generator_class, temp_files):
         """При изменении манифеста дашборд обновляется"""
         # Настраиваем мок генератора
@@ -133,8 +133,7 @@ class TestDashboardUpdate:
         
         # Проверяем что генератор был создан и использован
         mock_generator_class.assert_called_once()
-        mock_generator.generate_full_dashboard.assert_called_once()
-        mock_generator.write_to_ha.assert_called_once()
+        mock_generator.generate_and_save.assert_called_once()
 
 
 class TestWatchLoop:
@@ -174,7 +173,7 @@ class TestWatchLoop:
 class TestIntegration:
     """Интеграционные тесты"""
     
-    @patch('tools.dashboard_watcher.DashboardGenerator')
+    @patch('tools.dashboard_generator.DashboardGenerator')
     def test_full_watch_scenario(self, mock_generator_class, temp_files):
         """Полный сценарий: создание watcher → изменение манифеста → обновление"""
         mock_generator = MagicMock()
@@ -208,7 +207,7 @@ devices:
             watcher._last_hash = new_hash
         
         # Проверяем что обновление произошло
-        mock_update.assert_called_once()
+        mock_generator.generate_and_save.assert_called_once()
 
 
 @pytest.mark.asyncio
