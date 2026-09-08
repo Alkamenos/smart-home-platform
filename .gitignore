@@ -1,43 +1,49 @@
 ```
-# Python
+# Coverage reports
+.coverage
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv/
-.ENV
-.ENV.local
-.env
-.env.local
-.env.*
-*.env.*
-
-# Build and distribution artifacts
-build/
-dist/
-*.egg-info/
 
 # Testing
-.coverage
-coverage/
-htmlcov/
 .pytest_cache/
-.mypy_cache/
+.coverage
+htmlcov/
+coverage/
 
-# Logs
-*.log
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
 
 # OS generated files
 .DS_Store
 Thumbs.db
 
-# Editors
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editor/IDE files
 .vscode/
 .idea/
-*.swp
-*.swo
-*.tmp
+*.sublime-project
+*.sublime-workspace
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+target/
+bin/
+lib/
+tmp/
 ```
