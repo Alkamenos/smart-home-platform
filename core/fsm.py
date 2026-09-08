@@ -1,502 +1,279 @@
-"""
-Core FSM Engine - Универсальный движок конечных автоматов
-
-Ключевые принципы:
-- Нет eval() - guard условия через функции (type-safe)
-- Иммутабельность - состояния не мутируются, создаются новые
-- Event-driven - все переходы через Event Bus
-- Простота - минимум абстракций (~200 строк кода)
-"""
-
-from __future__ import annotations
-import time
 import asyncio
-from dataclasses import dataclass, field
-from typing import Callable, Optional, Dict, Any
-from collections import defaultdict
+import json
+import time
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Any, Callable, Optional
+import traceback
 
-
-@dataclass(frozen=True)
-class Transition:
-    """Описание перехода между состояниями"""
-    
-    from_state: str | tuple[str, ...]  # Из какого состояния ("*" = из любого)
-    to_state: str                      # В какое состояние
-    trigger: str                       # Событие, вызывающее переход
-    guard: Callable[[dict], bool] = lambda ctx: True  # Условие
-    priority: int = 0                  # Приоритет (выше = важнее)
-    reason: str = ""                   # Описание
-    timeout_sec: Optional[int] = None  # Таймаут для перехода в следующее состояние
-    attributes: dict = field(default_factory=dict)  # Атрибуты для команды (brightness, hvac_mode и т.д.)
-    debounce_sec: float = 0.0          # Защита от дребезга (мин. время между переходами)
-    action: Optional[Callable[[dict], None]] = None  # Действие при выполнении перехода
-    cooldown_sec: float = 0.0          # Мин. время после предыдущего перехода (защита от циклов)
-    manual_lockout_min: float = 0.0    # Блокировка автоматики после ручного (мин)
-
-
-@dataclass(frozen=True)
-class FSMDefinition:
-    """Описание автомата"""
-    
-    entity_id: str                     # ID устройства
-    states: tuple[str, ...]            # Все возможные состояния
-    initial: str                       # Начальное состояние
-    transitions: tuple[Transition, ...]  # Все переходы
+from loguru import logger
 
 
 @dataclass(frozen=True)
 class State:
-    """Текущее состояние автомата"""
-    
-    entity_id: str
-    current: str
+    """Иммутабельное состояние FSM с изолированной памятью."""
+    current_state: str
     entered_at: float
-    entered_by: str
-    entered_why: str
-    history: tuple[dict, ...] = field(default_factory=tuple)  # Последние 20 переходов
-    last_transition_at: float = 0.0  # Время последнего перехода (для cooldown)
-    manual_override_until: float = 0.0  # До какого момента блокирована автоматика
+    context: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "current_state": self.current_state,
+            "entered_at": self.entered_at,
+            "context": self.context
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "State":
+        return cls(
+            current_state=data["current_state"],
+            entered_at=data["entered_at"],
+            context=data.get("context", {})
+        )
 
 
-class Scheduler:
-    """
-    Неблокирующий планировщик таймеров
-    
-    Usage:
-        scheduler = Scheduler(event_bus, logger)
-        scheduler.schedule(entity_id, "timeout", delay_sec=60)
-    """
-    
-    def __init__(self, event_bus, logger):
-        self._event_bus = event_bus
-        self._logger = logger
-        self._timers: Dict[str, asyncio.Task] = {}
-        self._pending_callbacks: Dict[str, Callable] = {}
-    
-    def schedule(self, entity_id: str, trigger: str, delay_sec: int, context: dict = None) -> None:
-        """
-        Запланировать триггер с задержкой
-        
-        Args:
-            entity_id: ID автомата
-            trigger: Тип триггера
-            delay_sec: Задержка в секундах
-            context: Контекст для триггера
-        """
-        timer_key = f"{entity_id}:{trigger}"
-        
-        # Отменяем предыдущий таймер если есть
-        if timer_key in self._timers:
-            self._timers[timer_key].cancel()
-            self._logger.debug(f"Cancelled previous timer for {timer_key}")
-        
-        context = context or {}
-        
-        async def delayed_trigger():
-            await asyncio.sleep(delay_sec)
-            self._logger.debug(
-                f"Timer expired for {entity_id}, triggering {trigger}",
-                entity_id=entity_id,
-                trigger=trigger,
-                delay_sec=delay_sec
-            )
-            # Публикуем событие вместо прямого вызова fsm.trigger
-            self._event_bus.publish("fsm.timeout", {
-                "entity_id": entity_id,
-                "trigger": trigger,
-                "context": context
-            })
-        
-        # Создаём задачу в фоне (не блокирует основной поток)
+@dataclass(frozen=True)
+class Transition:
+    from_state: str
+    to_state: str
+    trigger: str
+    guard: Optional[str] = None
+    action: Optional[str] = None
+    timeout_sec: Optional[float] = None
+    internal: bool = False  # Если True, состояние не меняется и таймеры не сбрасываются
+
+
+@dataclass(frozen=True)
+class FSMDefinition:
+    entity_id: str
+    initial_state: str
+    states: tuple[str, ...]
+    transitions: tuple[Transition, ...]
+    debounce_sec: float = 0.0
+
+
+class FSMPersistence:
+    """Сохраняет состояния FSM на диск, чтобы пережить перезапуск HA."""
+
+    def __init__(self, storage_path: Path):
+        self.storage_path = storage_path
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def load(self) -> dict[str, State]:
+        if not self.storage_path.exists():
+            return {}
         try:
-            task = asyncio.create_task(delayed_trigger())
-            self._timers[timer_key] = task
-            self._logger.info(
-                f"Scheduled timer for {entity_id} in {delay_sec}s",
-                entity_id=entity_id,
-                trigger=trigger,
-                delay_sec=delay_sec
-            )
-        except RuntimeError as e:
-            # Если нет running event loop (синхронный контекст)
-            self._logger.warning(
-                f"No running event loop, cannot schedule timer: {e}",
-                entity_id=entity_id,
-                trigger=trigger
-            )
-            # В синхронном контексте просто публикуем событие сразу
-            # Это fallback для тестов и CLI
-            self._event_bus.publish("fsm.timeout", {
-                "entity_id": entity_id,
-                "trigger": trigger,
-                "context": context,
-                "_immediate": True  # Флаг что сработало немедленно
-            })
-    
-    def cancel(self, entity_id: str, trigger: str = None) -> None:
-        """
-        Отменить все таймеры для автомата
-        
-        Args:
-            entity_id: ID автомата
-            trigger: Конкретный триггер (опционально)
-        """
-        if trigger:
-            timer_key = f"{entity_id}:{trigger}"
-            if timer_key in self._timers:
-                self._timers[timer_key].cancel()
-                del self._timers[timer_key]
-                self._logger.debug(f"Cancelled timer {timer_key}")
-        else:
-            # Отменяем все таймеры для entity_id
-            keys_to_cancel = [k for k in self._timers if k.startswith(f"{entity_id}:")]
-            for key in keys_to_cancel:
-                self._timers[key].cancel()
-                del self._timers[key]
-            self._logger.debug(f"Cancelled all timers for {entity_id}")
-    
-    def shutdown(self) -> None:
-        """Отменить все таймеры при остановке"""
-        for task in self._timers.values():
-            task.cancel()
-        self._timers.clear()
-        self._logger.info("Scheduler shutdown complete")
+            with open(self.storage_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return {k: State.from_dict(v) for k, v in data.items()}
+        except Exception as e:
+            logger.error(f"Failed to load FSM states from disk: {e}")
+            return {}
+
+    def save(self, states: dict[str, State]) -> None:
+        try:
+            data = {k: v.to_dict() for k, v in states.items()}
+            # Пишем атомарно через temp файл, чтобы не повредить JSON при сбое питания
+            temp_path = self.storage_path.with_suffix(".tmp")
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            temp_path.replace(self.storage_path)
+        except Exception as e:
+            logger.error(f"Failed to save FSM states to disk: {e}")
 
 
 class FSMEngine:
-    """
-    Движок конечных автоматов
-    
-    Usage:
-        fsm = FSMEngine(event_bus, logger)
-        fsm.register(definition)
-        fsm.trigger("light.living_room", "turn_on", {"some": "context"})
-    """
-    
-    def __init__(self, event_bus, logger):
-        self._event_bus = event_bus
-        self._logger = logger
-        self._definitions: dict[str, FSMDefinition] = {}
+    def __init__(self, persistence: Optional[FSMPersistence] = None) -> None:
         self._states: dict[str, State] = {}
-        self._scheduler = Scheduler(event_bus, logger)
-        
-        # Debounce tracking: ключ = entity_id, значение = {trigger: last_transition_time}
-        self._debounce_tracker: Dict[str, Dict[str, float]] = {}
-        
-        # Подписываемся на события таймеров
-        event_bus.subscribe("fsm.timeout", self._on_timeout_event)
-    
-    def _on_timeout_event(self, data: dict) -> None:
-        """Обработчик событий таймера"""
-        entity_id = data.get("entity_id")
-        trigger = data.get("trigger")
-        context = data.get("context", {})
-        
-        if entity_id and trigger:
-            self._logger.debug(
-                f"Processing timeout event for {entity_id}",
-                entity_id=entity_id,
-                trigger=trigger
-            )
-            self.trigger(entity_id, trigger, context)
-    
-    def register(self, definition: FSMDefinition) -> None:
-        """Зарегистрировать автомат"""
+        self._definitions: dict[str, FSMDefinition] = {}
+        self._timers: dict[str, asyncio.Task] = {}
+        self._last_transition_time: dict[str, float] = {}
+
+        # Реестры бизнес-логики
+        self._guards: dict[str, Callable[[State, dict], bool]] = {}
+        self._actions: dict[str, Callable[[State, dict], dict]] = {}
+
+        # Метрики
+        self._stats: dict[str, dict[str, int]] = {}  # entity_id -> {transition_name: count}
+
+        self._persistence = persistence or FSMPersistence(Path(".fsm_states.json"))
+        self._states = self._persistence.load()
+        logger.info(f"FSM Engine initialized. Loaded {len(self._states)} states from disk.")
+
+    def register_definition(self, definition: FSMDefinition) -> None:
+        """Регистрирует автомат с предварительной валидацией графа."""
+        self._validate_definition(definition)
         self._definitions[definition.entity_id] = definition
-        
-        # Инициализируем начальное состояние
+
         if definition.entity_id not in self._states:
-            now = time.time()
             self._states[definition.entity_id] = State(
-                entity_id=definition.entity_id,
-                current=definition.initial,
-                entered_at=now,
-                entered_by="init",
-                entered_why="Initial state",
-                history=(),
-                last_transition_at=0.0,
-                manual_override_until=0.0
+                current_state=definition.initial_state,
+                entered_at=time.time(),
+                context={}
             )
-        
-        self._logger.info(
-            f"Registered FSM for {definition.entity_id}",
-            entity_id=definition.entity_id,
-            initial_state=definition.initial,
-            transitions_count=len(definition.transitions)
-        )
-    
-    def get_state(self, entity_id: str) -> State | None:
-        """Получить текущее состояние автомата"""
+            self._persistence.save(self._states)
+
+        self._stats.setdefault(definition.entity_id, {})
+        logger.debug(f"Registered FSM for {definition.entity_id}")
+
+    def _validate_definition(self, defn: FSMDefinition) -> None:
+        """Проверяет, что граф состояний не содержит битых ссылок."""
+        if defn.initial_state not in defn.states:
+            raise ValueError(f"Initial state '{defn.initial_state}' not in states list for {defn.entity_id}")
+
+        for t in defn.transitions:
+            if t.from_state not in defn.states:
+                raise ValueError(f"Transition from unknown state '{t.from_state}' in {defn.entity_id}")
+            if not t.internal and t.to_state not in defn.states:
+                raise ValueError(f"Transition to unknown state '{t.to_state}' in {defn.entity_id}")
+
+    def register_guard(self, name: str, guard_fn: Callable[[State, dict], bool]) -> None:
+        self._guards[name] = guard_fn
+
+    def register_action(self, name: str, action_fn: Callable[[State, dict], dict]) -> None:
+        self._actions[name] = action_fn
+
+    def get_state(self, entity_id: str) -> Optional[State]:
         return self._states.get(entity_id)
-    
-    def trigger(self, entity_id: str, trigger: str, context: dict = None) -> bool:
-        """
-        Вызвать триггер для автомата
-        
-        Returns:
-            True если переход произошёл, False иначе
-        """
-        context = context or {}
-        
-        if entity_id not in self._definitions:
-            self._logger.error(f"FSM not found for {entity_id}", entity_id=entity_id)
-            return False
-        
-        definition = self._definitions[entity_id]
-        current_state = self._states[entity_id]
-        
-        # Проверяем manual_lockout: если сейчас время ручного блокирования, отклоняем автоматические триггеры
-        now = time.time()
-        if current_state.manual_override_until > now:
-            # Это автоматический триггер (не от человека)
-            if context.get("source") != "manual":
-                remaining_sec = current_state.manual_override_until - now
-                self._logger.debug(
-                    f"Automatic trigger blocked due to manual lockout",
-                    entity_id=entity_id,
-                    trigger=trigger,
-                    remaining_lockout_sec=remaining_sec
-                )
-                return False
-        
-        # Находим подходящие переходы
-        matching_transitions = []
-        for transition in definition.transitions:
-            if transition.trigger != trigger:
-                continue
-            
-            # Проверяем from_state
-            if transition.from_state != "*":
-                if isinstance(transition.from_state, tuple):
-                    if current_state.current not in transition.from_state:
-                        continue
-                else:
-                    if current_state.current != transition.from_state:
-                        continue
-            
-            # Проверяем cooldown_sec: мин. время после предыдущего перехода
-            if transition.cooldown_sec > 0:
-                time_since_last = now - current_state.last_transition_at
-                if time_since_last < transition.cooldown_sec:
-                    remaining_cooldown = transition.cooldown_sec - time_since_last
-                    self._logger.debug(
-                        f"Transition skipped due to cooldown",
-                        entity_id=entity_id,
-                        trigger=trigger,
-                        remaining_cooldown_sec=remaining_cooldown
-                    )
-                    continue
-            
-            # Проверяем guard условие
-            try:
-                if not transition.guard(context):
-                    continue
-            except Exception as e:
-                self._logger.error(
-                    f"Guard failed for {entity_id}: {e}",
-                    entity_id=entity_id,
-                    trigger=trigger,
-                    error=str(e)
-                )
-                continue
-            
-            matching_transitions.append(transition)
-        
-        if not matching_transitions:
-            self._logger.debug(
-                f"No matching transition for {trigger} in {current_state.current}",
-                entity_id=entity_id,
-                trigger=trigger,
-                current_state=current_state.current
-            )
-            return False
-        
-        # Выбираем переход с наивысшим приоритетом
-        best_transition = max(matching_transitions, key=lambda t: t.priority)
-        
-        # Проверяем debounce перед выполнением перехода
-        if best_transition.debounce_sec > 0:
-            if not self._check_debounce(entity_id, trigger, best_transition.debounce_sec):
-                self._logger.debug(
-                    f"Debounce blocked for {trigger} in {current_state.current}",
-                    entity_id=entity_id,
-                    trigger=trigger,
-                    debounce_sec=best_transition.debounce_sec
-                )
-                return False
-        
-        # Выполняем переход
-        return self._execute_transition(entity_id, best_transition, context)
-    
-    def _check_debounce(self, entity_id: str, trigger: str, debounce_sec: float) -> bool:
-        """
-        Проверить прошло ли время debounce для данного триггера
-        
-        Args:
-            entity_id: ID автомата
-            trigger: Тип триггера
-            debounce_sec: Минимальное время между переходами (сек)
-            
-        Returns:
-            True если можно выполнить переход, False если слишком рано
-        """
-        now = time.time()
-        
-        # Инициализируем трекер если нужно
-        if entity_id not in self._debounce_tracker:
-            self._debounce_tracker[entity_id] = {}
-        
-        tracker = self._debounce_tracker[entity_id]
-        last_time = tracker.get(trigger, 0.0)
-        
-        # Для первого вызова last_time будет 0.0, значит всегда пропускаем
-        if last_time == 0.0:
-            tracker[trigger] = now
-            return True
-        
-        if now - last_time < debounce_sec:
-            return False
-        
-        # Обновляем время последнего перехода
-        tracker[trigger] = now
-        return True
-    
-    def _execute_transition(self, entity_id: str, transition: Transition, context: dict) -> bool:
-        """Выполнить переход"""
-        old_state = self._states[entity_id]
-        now = time.time()
-        
-        # Выполняем действие перехода если указано (например, сохранение timestamp)
-        if transition.action is not None:
-            try:
-                # Проверяем является ли action асинхронной функцией
-                if asyncio.iscoroutinefunction(transition.action):
-                    # Для async action пытаемся создать задачу
+
+    def get_stats(self, entity_id: str) -> dict[str, int]:
+        return self._stats.get(entity_id, {})
+
+    async def _cancel_timers(self, entity_id: str) -> None:
+        """Безопасно отменяет таймеры, избегая RuntimeError при self-cancellation."""
+        if entity_id in self._timers:
+            timer_task = self._timers.pop(entity_id)
+            if not timer_task.done():
+                timer_task.cancel()
+                # Избегаем падения, если задача отменяет сама себя
+                if timer_task is not asyncio.current_task():
                     try:
-                        loop = asyncio.get_running_loop()
-                        task = asyncio.create_task(transition.action(context))
-                        # Логгируем но не ждём выполнения (fire-and-forget)
-                        self._logger.debug(
-                            f"Scheduled async action for {entity_id}",
-                            entity_id=entity_id,
-                            trigger=transition.trigger
-                        )
-                    except RuntimeError:
-                        # Нет running loop - предупреждаем
-                        self._logger.warning(
-                            f"Async action scheduled but no running loop for {entity_id}",
-                            entity_id=entity_id,
-                            trigger=transition.trigger
-                        )
-                else:
-                    # Синхронный action - выполняем сразу
-                    transition.action(context)
-            except Exception as e:
-                self._logger.warning(
-                    f"Action failed for {entity_id}: {e}",
-                    entity_id=entity_id,
-                    trigger=transition.trigger,
-                    error=str(e)
-                )
-        
-        # Обновляем историю
-        history_entry = {
-            "from": old_state.current,
-            "to": transition.to_state,
-            "trigger": transition.trigger,
-            "why": transition.reason,
-            "at": now
-        }
-        new_history = (history_entry,) + old_state.history[:19]  # Храним последние 20
-        
-        # Определяем новый manual_override_until
-        new_manual_override_until = old_state.manual_override_until
-        if transition.manual_lockout_min > 0:
-            # Если в переходе указан manual_lockout_min, блокируем автоматику
-            new_manual_override_until = now + (transition.manual_lockout_min * 60)
-        
-        # Создаём новое состояние (иммутабельность)
-        new_state = State(
-            entity_id=entity_id,
-            current=transition.to_state,
-            entered_at=now,
-            entered_by=transition.trigger,
-            entered_why=transition.reason,
-            history=new_history,
-            last_transition_at=now,
-            manual_override_until=new_manual_override_until
-        )
-        
-        # Обновляем состояние
-        self._states[entity_id] = new_state
-        
-        # Планируем таймер если указан в переходе
-        if transition.timeout_sec is not None and transition.timeout_sec > 0:
-            self._scheduler.schedule(
-                entity_id=entity_id,
-                trigger="timeout",
-                delay_sec=transition.timeout_sec,
-                context={"from_state": transition.to_state}
-            )
-        
-        # Публикуем событие
-        self._event_bus.publish("fsm.transition", {
-            "entity_id": entity_id,
-            "from_state": old_state.current,
-            "to_state": transition.to_state,
-            "trigger": transition.trigger,
-            "reason": transition.reason,
-            "duration_ms": int((now - old_state.entered_at) * 1000) if old_state.entered_at < now else 0,
-            "attributes": transition.attributes  # Передаём атрибуты для команды
-        })
-        
-        self._logger.info(
-            f"Transition: {old_state.current} -> {transition.to_state}",
-            entity_id=entity_id,
-            from_state=old_state.current,
-            to_state=transition.to_state,
-            trigger=transition.trigger,
-            reason=transition.reason
-        )
-        
-        return True
-    
-    def reset(self, entity_id: str) -> bool:
-        """Сбросить автомат в начальное состояние"""
-        if entity_id not in self._definitions:
+                        await timer_task
+                    except asyncio.CancelledError:
+                        pass
+
+    def _evaluate_guard(self, guard_name: Optional[str], state: State, ctx: dict) -> bool:
+        if not guard_name:
+            return True
+        guard_fn = self._guards.get(guard_name)
+        if not guard_fn:
+            logger.warning(f"Guard '{guard_name}' not found in registry")
+            return True
+
+        try:
+            return bool(guard_fn(state, ctx))
+        except Exception as e:
+            # Изоляция: упавший guard не должен ломать весь движок
+            logger.error(f"Guard '{guard_name}' crashed: {e}\n{traceback.format_exc()}")
             return False
-        
-        definition = self._definitions[entity_id]
-        old_state = self._states[entity_id]
+
+    async def _execute_action(self, action_name: Optional[str], state: State, ctx: dict) -> dict:
+        if not action_name:
+            return {}
+        action_fn = self._actions.get(action_name)
+        if not action_fn:
+            logger.warning(f"Action '{action_name}' not found in registry")
+            return {}
+
+        try:
+            result = action_fn(state, ctx)
+            if asyncio.iscoroutine(result):
+                result = await result
+
+            # Action возвращает словарь-патч для обновления памяти автомата
+            return result if isinstance(result, dict) else {}
+        except Exception as e:
+            # Изоляция: упавший action (например, битый запрос в HA) не валит FSM
+            logger.error(f"Action '{action_name}' crashed: {e}\n{traceback.format_exc()}")
+            return {}
+
+    async def trigger(self, entity_id: str, event: str, external_ctx: Optional[dict] = None) -> bool:
+        # 1. Отменяем старые таймеры (решает проблему утечек)
+        await self._cancel_timers(entity_id)
+
+        definition = self._definitions.get(entity_id)
+        if not definition:
+            logger.warning(f"Trigger '{event}' for unknown entity {entity_id}")
+            return False
+
+        current_state = self._states.get(entity_id)
+        if not current_state:
+            return False
+
         now = time.time()
-        
-        # Добавляем запись в историю
-        history_entry = {
-            "from": old_state.current,
-            "to": definition.initial,
-            "trigger": "reset",
-            "why": "Manual reset",
-            "at": now
-        }
-        new_history = (history_entry,) + old_state.history[:19]
-        
-        self._states[entity_id] = State(
-            entity_id=entity_id,
-            current=definition.initial,
-            entered_at=now,
-            entered_by="reset",
-            entered_why="Manual reset",
-            history=new_history
-        )
-        
-        self._logger.info(
-            f"Reset FSM to {definition.initial}",
-            entity_id=entity_id,
-            previous_state=old_state.current
-        )
-        
-        return True
-    
-    def get_all_states(self) -> dict[str, State]:
-        """Получить снимок всех состояний"""
-        return dict(self._states)
+        external_ctx = external_ctx or {}
+
+        # Debounce (защита от дребезга контактов)
+        last_time = self._last_transition_time.get(entity_id, 0)
+        if definition.debounce_sec > 0 and (now - last_time) < definition.debounce_sec:
+            logger.debug(f"Ignoring '{event}' for {entity_id} due to debounce")
+            return False
+
+        # Ищем подходящие переходы
+        matching_transitions = [
+            t for t in definition.transitions
+            if t.from_state == current_state.current_state and t.trigger == event
+        ]
+
+        for transition in matching_transitions:
+            # Проверяем условие
+            if not self._evaluate_guard(transition.guard, current_state, external_ctx):
+                continue
+
+            # Выполняем действие (с изоляцией ошибок)
+            ctx_patch = await self._execute_action(transition.action, current_state, external_ctx)
+
+            # Обновляем статистику
+            trans_name = f"{transition.from_state}->{transition.to_state}_{event}"
+            self._stats[entity_id][trans_name] = self._stats[entity_id].get(trans_name, 0) + 1
+
+            if transition.internal:
+                # Internal transition: состояние не меняется, таймеры не сбрасываются
+                # Но мы обновляем контекст (память автомата)
+                new_context = {**current_state.context, **ctx_patch}
+                self._states[entity_id] = State(
+                    current_state=current_state.current_state,
+                    entered_at=current_state.entered_at,
+                    context=new_context
+                )
+                self._persistence.save(self._states)
+                logger.debug(f"Entity {entity_id}: Internal transition '{event}'")
+                return True
+
+            # Обычный переход: меняем состояние
+            new_context = {**current_state.context, **ctx_patch}
+            new_state = State(
+                current_state=transition.to_state,
+                entered_at=now,
+                context=new_context
+            )
+            self._states[entity_id] = new_state
+            self._last_transition_time[entity_id] = now
+            self._persistence.save(self._states)
+
+            logger.info(f"Entity {entity_id}: {current_state.current_state} -> {transition.to_state} (trigger: {event})")
+
+            # Планируем таймер безопасно (через wrapper, чтобы не убить себя)
+            if transition.timeout_sec and transition.timeout_sec > 0:
+                async def timeout_wrapper(delay=transition.timeout_sec, eid=entity_id):
+                    try:
+                        await asyncio.sleep(delay)
+                        # Запускаем следующий триггер как независимую задачу
+                        asyncio.create_task(self.trigger(eid, "timeout"))
+                    except asyncio.CancelledError:
+                        pass  # Таймер был отменен, это нормально
+
+                self._timers[entity_id] = asyncio.create_task(timeout_wrapper())
+
+            return True
+
+        logger.debug(f"No matching transition for {entity_id} in state '{current_state.current_state}' on trigger '{event}'")
+        return False
+
+    async def shutdown(self) -> None:
+        """Корректное завершение работы: отменяем все таймеры и сбрасываем на диск."""
+        logger.info("Shutting down FSM Engine...")
+        for entity_id in list(self._timers.keys()):
+            await self._cancel_timers(entity_id)
+        self._persistence.save(self._states)
+        logger.info("FSM Engine shutdown complete.")
