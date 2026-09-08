@@ -100,11 +100,17 @@ def test_persist_restore_on_start():
     persistence.enable_for_entity('light.test_room')
     
     # Регистрируем автомат (симуляция рестарта - начальное состояние OFF)
+    # Добавляем переход на PARTY чтобы граф был связным
     definition = FSMDefinition(
         entity_id='light.test_room',
         states=('OFF', 'ON', 'PARTY'),
         initial='OFF',
-        transitions=(Transition(from_state='OFF', to_state='ON', trigger='turn_on'), Transition(from_state='ON', to_state='OFF', trigger='turn_off'))
+        transitions=(
+            Transition(from_state='OFF', to_state='ON', trigger='turn_on'),
+            Transition(from_state='ON', to_state='OFF', trigger='turn_off'),
+            Transition(from_state='*', to_state='PARTY', trigger='party_on'),
+            Transition(from_state='PARTY', to_state='OFF', trigger='party_off')
+        )
     )
     fsm_engine.register(definition)
     

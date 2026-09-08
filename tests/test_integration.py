@@ -383,7 +383,7 @@ class TestSchedulerIntegration:
                     from_state="OFF",
                     to_state="ON",
                     trigger="turn_on",
-                    timeout_sec=60  # Таймаут 60 секунд
+                    timeout_sec=0.1  # Таймаут 100мс для быстрого теста
                 ),
             )
         )
