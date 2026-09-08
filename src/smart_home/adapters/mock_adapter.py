@@ -161,9 +161,15 @@ class MockAdapter:
         Очищает:
         - Все состояния устройств
         - Лог вызовов сервисов
+        - Все запланированные таймеры в FSMEngine (если доступен)
         """
         self._states.clear()
         self._service_calls.clear()
+        
+        # Отменяем все таймеры в планировщике если FSMEngine доступен
+        if self._fsm_engine is not None and hasattr(self._fsm_engine, 'scheduler'):
+            self._fsm_engine.scheduler.cancel_all()
+        
         logger.debug("MockAdapter: State cleared")
     
     def get_service_calls(self) -> list[dict[str, Any]]:
