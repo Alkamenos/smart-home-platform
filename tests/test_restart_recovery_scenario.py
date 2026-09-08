@@ -45,7 +45,6 @@ def create_test_lighting_definition(entity_id: str = "light.kitchen") -> FSMDefi
                 to_state="ON_MOTION",
                 trigger="motion_detected",
                 guard=lambda ctx: ctx.get("motion_sensor", False),
-                action=lambda ctx: {"action": "turn_on"},
                 priority=100,
             ),
             Transition(
@@ -53,7 +52,6 @@ def create_test_lighting_definition(entity_id: str = "light.kitchen") -> FSMDefi
                 to_state="OFF",
                 trigger="no_motion",
                 guard=lambda ctx: True,
-                action=lambda ctx: {"action": "turn_off"},
                 priority=100,
             ),
             Transition(
@@ -61,7 +59,6 @@ def create_test_lighting_definition(entity_id: str = "light.kitchen") -> FSMDefi
                 to_state="ON_SCHEDULE",
                 trigger="schedule_on",
                 guard=lambda ctx: ctx.get("is_schedule_time", False),
-                action=lambda ctx: {"action": "turn_on"},
                 priority=90,
             ),
             Transition(
@@ -69,7 +66,6 @@ def create_test_lighting_definition(entity_id: str = "light.kitchen") -> FSMDefi
                 to_state="OFF",
                 trigger="schedule_off",
                 guard=lambda ctx: True,
-                action=lambda ctx: {"action": "turn_off"},
                 priority=90,
             ),
             Transition(
@@ -77,7 +73,6 @@ def create_test_lighting_definition(entity_id: str = "light.kitchen") -> FSMDefi
                 to_state="MANUAL",
                 trigger="manual_change",
                 guard=lambda ctx: True,
-                action=lambda ctx: {"action": "manual_override"},
                 priority=80,
             ),
         ),

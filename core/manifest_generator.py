@@ -125,7 +125,7 @@ class ManifestAutomationGenerator:
                         trigger="manual_change",
                         priority=100,
                         reason="Ручное вмешательство",
-                        action=lambda ctx, r=room: ctx.update({f"{r}_manual_entered_at": time.time()}),
+                        
                         manual_lockout_min=manual_lockout
                     ),
                     # Возврат из MANUAL после таймаута
@@ -280,7 +280,7 @@ class ManifestAutomationGenerator:
                         trigger="manual_change",
                         priority=100,
                         reason="Ручное вмешательство",
-                        action=lambda ctx, r=room: ctx.update({f"{r}_manual_entered_at": time.time()}),
+                        
                         manual_lockout_min=manual_lockout
                     ),
                 )
@@ -369,7 +369,7 @@ class ManifestAutomationGenerator:
                         trigger="manual_change",
                         priority=100,
                         reason="Ручное вмешательство",
-                        action=lambda ctx, r=room: ctx.update({f"{r}_manual_entered_at": time.time()}),
+                        
                         manual_lockout_min=manual_lockout
                     ),
                 )

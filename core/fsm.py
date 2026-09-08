@@ -30,7 +30,6 @@ class Transition:
     timeout_sec: Optional[int] = None  # Таймаут для перехода в следующее состояние
     attributes: dict = field(default_factory=dict)  # Атрибуты для команды (brightness, hvac_mode и т.д.)
     debounce_sec: float = 0.0          # Защита от дребезга (мин. время между переходами)
-    action: Optional[Callable[[dict], None]] = None  # Действие при выполнении перехода
     cooldown_sec: float = 0.0          # Мин. время после предыдущего перехода (защита от циклов)
     manual_lockout_min: float = 0.0    # Блокировка автоматики после ручного (мин)
 
@@ -374,40 +373,19 @@ class FSMEngine:
         old_state = self._states[entity_id]
         now_abs = time.time()          # Абсолютное время для истории
         now_mono = time.monotonic()    # Монотонное время для таймеров
-        
-        # Выполняем действие перехода если указано (например, сохранение timestamp)
-        if transition.action is not None:
-            try:
-                # Проверяем является ли action асинхронной функцией
-                if asyncio.iscoroutinefunction(transition.action):
-                    # Для async action пытаемся создать задачу
-                    try:
-                        loop = asyncio.get_running_loop()
-                        task = asyncio.create_task(transition.action(context))
-                        # Логгируем но не ждём выполнения (fire-and-forget)
-                        self._logger.debug(
-                            f"Scheduled async action for {entity_id}",
-                            entity_id=entity_id,
-                            trigger=transition.trigger
-                        )
-                    except RuntimeError:
-                        # Нет running loop - предупреждаем
-                        self._logger.warning(
-                            f"Async action scheduled but no running loop for {entity_id}",
-                            entity_id=entity_id,
-                            trigger=transition.trigger
-                        )
-                else:
-                    # Синхронный action - выполняем сразу
-                    transition.action(context)
-            except Exception as e:
-                self._logger.warning(
-                    f"Action failed for {entity_id}: {e}",
-                    entity_id=entity_id,
-                    trigger=transition.trigger,
-                    error=str(e)
-                )
-        
+
+        # Публикуем событие команды через EventBus (вместо выполнения action напрямую)
+        # Это реализует Dependency Inversion Principle - core не знает об adapters
+        self._event_bus.publish("device.command", {
+            "entity_id": entity_id,
+            "command": transition.trigger,
+            "to_state": transition.to_state,
+            "attributes": transition.attributes,
+            "source": "fsm",
+            "reason": transition.reason,
+            "timestamp": now_abs
+        })
+
         # Обновляем историю (используем абсолютное время)
         history_entry = {
             "from": old_state.current,

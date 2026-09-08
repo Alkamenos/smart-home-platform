@@ -125,8 +125,7 @@ def create_lighting_automations(rooms: list[str]) -> list[FSMDefinition]:
                     trigger="manual_change",
                     priority=100,
                     reason="Ручное вмешательство",
-                    # Сохраняем время ручного вмешательства в контекст FSM
-                    action=lambda ctx, r=room: ctx.update({f"{r}_manual_entered_at": time.time()})
+                    attributes={"manual_entered_at": "context"}  # Флаг что это ручное переключение
                 ),
                 
                 # Возврат из MANUAL после таймаута (60 минут)
