@@ -42,7 +42,8 @@ def system():
 def get_last_trigger(state):
     """Получить последний триггер из истории"""
     if state.history:
-        return state.history[-1]['trigger']
+        # История хранится в обратном порядке: [последний, ..., первый]
+        return state.history[0]['trigger']
     return None
 
 
@@ -113,10 +114,13 @@ async def test_full_day_scenario(system):
     # 18:00 - Вечер, блокировка автоматики истекла (эмуляция времени)
     # ========================================================================
     # В lighting.py есть transition "timeout: MANUAL -> OFF"
-    # Эмулируем срабатывание таймаута
+    # Guard требует {room}_manual_entered_at и проверку что прошло 60 минут
+    # Эмулируем что прошло 61 минута с момента ручного вмешательства
+    import time
     result = fsm.trigger(entity_id, "timeout", {
         "source": "system",
-        "reason": "manual_timeout_expired"
+        "reason": "manual_timeout_expired",
+        "kitchen_manual_entered_at": time.time() - (61 * 60)  # 61 минуту назад
     })
     
     # После истечения ручного режима система возвращается в OFF

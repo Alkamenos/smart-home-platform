@@ -1,1 +1,52 @@
-Nothing needs to be added to .gitignore since the only change is adding a test Python file (`tests/test_full_day_scenario.py`) which is source code and should be tracked in version control.
+```gitignore
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Testing
+.pytest_cache/
+.coverage
+coverage/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+target/
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+.mypy_cache/
+.gradle/
+julia-*/
+zig*/
+
+# IDE
+.vscode/
+.idea/
+```
