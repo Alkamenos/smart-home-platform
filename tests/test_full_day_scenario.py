@@ -10,6 +10,7 @@
 """
 import pytest
 from core.fsm import FSMEngine, FSMDefinition, Transition
+from adapters.asyncio_scheduler import AsyncioScheduler
 from core.event_bus import EventBus
 from core.logger import Logger
 from core.registry import Registry
@@ -23,7 +24,7 @@ def system():
     logger = Logger(component="test")
     registry = Registry()
     
-    fsm = FSMEngine(event_bus, logger)
+    fsm = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     # Регистрируем автоматы освещения для кухни
     lighting_defs = create_lighting_automations(["kitchen"])

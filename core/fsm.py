@@ -10,11 +10,11 @@ Core FSM Engine - Универсальный движок конечных ав�
 
 from __future__ import annotations
 import time
-import asyncio
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Dict, Any
 from collections import defaultdict
 from core.fsm_validator import validate_definition, FSMValidationError
+from core.scheduler import BaseScheduler
 
 
 @dataclass(frozen=True)
@@ -59,109 +59,6 @@ class State:
     manual_override_until: float = 0.0     # Монотонное время (time.monotonic()) для lockout
 
 
-class Scheduler:
-    """
-    Неблокирующий планировщик таймеров
-    
-    Usage:
-        scheduler = Scheduler(event_bus, logger)
-        scheduler.schedule(entity_id, "timeout", delay_sec=60)
-    """
-    
-    def __init__(self, event_bus, logger):
-        self._event_bus = event_bus
-        self._logger = logger
-        self._timers: Dict[str, asyncio.Task] = {}
-        self._pending_callbacks: Dict[str, Callable] = {}
-    
-    def schedule(self, entity_id: str, trigger: str, delay_sec: int, context: dict = None) -> None:
-        """
-        Запланировать триггер с задержкой
-        
-        Args:
-            entity_id: ID автомата
-            trigger: Тип триггера
-            delay_sec: Задержка в секундах
-            context: Контекст для триггера
-        """
-        timer_key = f"{entity_id}:{trigger}"
-        
-        # Отменяем предыдущий таймер если есть
-        if timer_key in self._timers:
-            self._timers[timer_key].cancel()
-            self._logger.debug(f"Cancelled previous timer for {timer_key}")
-        
-        context = context or {}
-        
-        async def delayed_trigger():
-            await asyncio.sleep(delay_sec)
-            self._logger.debug(
-                f"Timer expired for {entity_id}, triggering {trigger}",
-                entity_id=entity_id,
-                trigger=trigger,
-                delay_sec=delay_sec
-            )
-            # Публикуем событие вместо прямого вызова fsm.trigger
-            self._event_bus.publish("fsm.timeout", {
-                "entity_id": entity_id,
-                "trigger": trigger,
-                "context": context
-            })
-        
-        # Создаём задачу в фоне (не блокирует основной поток)
-        try:
-            task = asyncio.create_task(delayed_trigger())
-            self._timers[timer_key] = task
-            self._logger.info(
-                f"Scheduled timer for {entity_id} in {delay_sec}s",
-                entity_id=entity_id,
-                trigger=trigger,
-                delay_sec=delay_sec
-            )
-        except RuntimeError as e:
-            # Если нет running event loop (синхронный контекст)
-            self._logger.warning(
-                f"No running event loop, cannot schedule timer: {e}",
-                entity_id=entity_id,
-                trigger=trigger
-            )
-            # В синхронном контексте просто публикуем событие сразу
-            # Это fallback для тестов и CLI
-            self._event_bus.publish("fsm.timeout", {
-                "entity_id": entity_id,
-                "trigger": trigger,
-                "context": context,
-                "_immediate": True  # Флаг что сработало немедленно
-            })
-    
-    def cancel(self, entity_id: str, trigger: str = None) -> None:
-        """
-        Отменить все таймеры для автомата
-        
-        Args:
-            entity_id: ID автомата
-            trigger: Конкретный триггер (опционально)
-        """
-        if trigger:
-            timer_key = f"{entity_id}:{trigger}"
-            if timer_key in self._timers:
-                self._timers[timer_key].cancel()
-                del self._timers[timer_key]
-                self._logger.debug(f"Cancelled timer {timer_key}")
-        else:
-            # Отменяем все таймеры для entity_id
-            keys_to_cancel = [k for k in self._timers if k.startswith(f"{entity_id}:")]
-            for key in keys_to_cancel:
-                self._timers[key].cancel()
-                del self._timers[key]
-            self._logger.debug(f"Cancelled all timers for {entity_id}")
-    
-    def shutdown(self) -> None:
-        """Отменить все таймеры при остановке"""
-        for task in self._timers.values():
-            task.cancel()
-        self._timers.clear()
-        self._logger.info("Scheduler shutdown complete")
 
 
 class FSMEngine:
@@ -169,17 +66,17 @@ class FSMEngine:
     Движок конечных автоматов
     
     Usage:
-        fsm = FSMEngine(event_bus, logger)
+        fsm = FSMEngine(event_bus, logger, scheduler)
         fsm.register(definition)
         fsm.trigger("light.living_room", "turn_on", {"some": "context"})
     """
     
-    def __init__(self, event_bus, logger):
+    def __init__(self, event_bus, logger, scheduler: BaseScheduler):
         self._event_bus = event_bus
         self._logger = logger
+        self._scheduler = scheduler
         self._definitions: dict[str, FSMDefinition] = {}
         self._states: dict[str, State] = {}
-        self._scheduler = Scheduler(event_bus, logger)
         
         # Debounce tracking: ключ = entity_id, значение = {trigger: last_transition_time}
         self._debounce_tracker: Dict[str, Dict[str, float]] = {}
@@ -424,6 +321,7 @@ class FSMEngine:
                 entity_id=entity_id,
                 trigger="timeout",
                 delay_sec=transition.timeout_sec,
+                callback=lambda ctx: self.trigger(entity_id, "timeout", ctx),
                 context={"from_state": transition.to_state}
             )
         

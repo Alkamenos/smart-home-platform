@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.fsm import FSMEngine, FSMDefinition, Transition, State
+from adapters.asyncio_scheduler import AsyncioScheduler
 from core.event_bus import EventBus
 from core.logger import Logger
 
@@ -36,7 +37,7 @@ def logger():
 @pytest.fixture
 def fsm(event_bus, logger):
     """Создать FSM движок"""
-    return FSMEngine(event_bus, logger)
+    return FSMEngine(event_bus, logger, AsyncioScheduler())
 
 
 class TestDebounceSpam:

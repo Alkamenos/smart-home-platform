@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Импортируем из core напрямую (для запуска из platform_v3/tests/)
 try:
     from core.fsm_persistence import FSMPersistence
+from adapters.asyncio_scheduler import AsyncioScheduler
     from core.event_bus import EventBus
     from core.logger import Logger
     from core.fsm import FSMEngine, FSMDefinition, Transition
@@ -33,7 +34,7 @@ def test_persist_save_on_transition():
     
     event_bus = EventBus()
     logger = Logger(component='test')
-    fsm_engine = FSMEngine(event_bus, logger)
+    fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     class MockAdapter:
         async def set_entity_state(self, entity_id, service, data):
@@ -88,7 +89,7 @@ def test_persist_restore_on_start():
     
     event_bus = EventBus()
     logger = Logger(component='test')
-    fsm_engine = FSMEngine(event_bus, logger)
+    fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     class MockAdapter:
         async def set_entity_state(self, entity_id, service, data):
@@ -135,7 +136,7 @@ def test_persist_multiple_entities():
     
     event_bus = EventBus()
     logger = Logger(component='test')
-    fsm_engine = FSMEngine(event_bus, logger)
+    fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     class MockAdapter:
         async def set_entity_state(self, entity_id, service, data):
@@ -176,7 +177,7 @@ def test_persist_invalid_state():
     
     event_bus = EventBus()
     logger = Logger(component='test')
-    fsm_engine = FSMEngine(event_bus, logger)
+    fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     class MockAdapter:
         async def set_entity_state(self, entity_id, service, data):

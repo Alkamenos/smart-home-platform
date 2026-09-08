@@ -11,6 +11,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from core.fsm import FSMEngine, FSMDefinition, Transition
+from adapters.asyncio_scheduler import AsyncioScheduler
 from core.event_bus import EventBus
 from core.logger import Logger
 from core.state_store import MemoryStateStore
@@ -66,7 +67,7 @@ def system():
     logger = Logger(component="test_parallel")
     state_store = MemoryStateStore()
     
-    fsm = FSMEngine(event_bus, logger)
+    fsm = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     return {
         "fsm": fsm,

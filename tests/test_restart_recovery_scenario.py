@@ -11,6 +11,7 @@
 import pytest
 import time
 from core.fsm import FSMEngine, FSMDefinition, Transition
+from adapters.asyncio_scheduler import AsyncioScheduler
 from core.event_bus import EventBus
 from core.logger import Logger
 from core.state_store import MemoryStateStore, StateStore
@@ -23,7 +24,7 @@ def system():
     logger = Logger(component="test")
     state_store = MemoryStateStore()
     
-    fsm = FSMEngine(event_bus, logger)
+    fsm = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     return {
         "fsm": fsm,
@@ -140,7 +141,7 @@ async def test_state_persists_across_restart(system):
     # Копируем данные из старого state_store (эмуляция persistence)
     # В реальной системе state_store персистентный (Redis/файл)
     
-    new_fsm = FSMEngine(new_event_bus, new_logger)
+    new_fsm = FSMEngine(new_event_bus, new_logger, AsyncioScheduler())
     new_fsm.register(definition)
     
     # Восстанавливаем состояние из store вручную
@@ -175,7 +176,7 @@ async def test_state_restored_from_store(system):
     event_bus = EventBus()
     logger = Logger(component="test_restore")
     
-    new_fsm = FSMEngine(event_bus, logger)
+    new_fsm = FSMEngine(event_bus, logger, AsyncioScheduler())
     definition = create_test_lighting_definition(entity_id)
     new_fsm.register(definition)
     

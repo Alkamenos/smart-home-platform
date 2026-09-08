@@ -12,6 +12,7 @@ from core.event_bus import EventBus
 from core.fsm import FSMEngine, FSMDefinition, Transition
 from core.logger import Logger
 from adapters.mock_adapter import MockAdapter
+from adapters.asyncio_scheduler import AsyncioScheduler
 from adapters.bridge import ActionBridge
 
 
@@ -76,7 +77,7 @@ class TestEndToEndScenarios:
         event_bus = EventBus()
         logger = Logger(component="test_e2e", output=None)
         mock_adapter = MockAdapter()
-        fsm_engine = FSMEngine(event_bus, logger)
+        fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
         
         # Регистрируем FSM
         fsm_def = create_lighting_fsm("light.hallway")
@@ -121,7 +122,7 @@ class TestEndToEndScenarios:
         event_bus = EventBus()
         logger = Logger(component="test_e2e", output=None)
         mock_adapter = MockAdapter()
-        fsm_engine = FSMEngine(event_bus, logger)
+        fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
         
         fsm_def = create_lighting_fsm("light.bedroom")
         fsm_engine.register(fsm_def)
@@ -180,7 +181,7 @@ class TestEndToEndScenarios:
             )  # tuple из 2 элементов
         )
         
-        fsm_engine = FSMEngine(event_bus, logger)
+        fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
         fsm_engine.register(fsm_def)
         bridge = ActionBridge(event_bus, mock_adapter, logger)
         
@@ -229,7 +230,7 @@ class TestEndToEndScenarios:
             )
         )
         
-        fsm_engine = FSMEngine(event_bus, logger)
+        fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
         fsm_engine.register(fsm_def)
         bridge = ActionBridge(event_bus, mock_adapter, logger)
         
@@ -258,7 +259,7 @@ class TestEndToEndScenarios:
         mock_adapter = MockAdapter()
         
         fsm_def = create_lighting_fsm("light.living_room")
-        fsm_engine = FSMEngine(event_bus, logger)
+        fsm_engine = FSMEngine(event_bus, logger, AsyncioScheduler())
         fsm_engine.register(fsm_def)
         bridge = ActionBridge(event_bus, mock_adapter, logger)
         

@@ -12,6 +12,7 @@
 import pytest
 import time
 from core.fsm import FSMEngine
+from adapters.asyncio_scheduler import AsyncioScheduler
 from core.event_bus import EventBus
 from core.logger import Logger
 from features.lighting import create_lighting_automations
@@ -23,7 +24,7 @@ def system():
     event_bus = EventBus()
     logger = Logger(component="test")
     
-    fsm = FSMEngine(event_bus, logger)
+    fsm = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     # Регистрируем автоматы освещения для гостиной
     lighting_defs = create_lighting_automations(["living_room"])

@@ -17,6 +17,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.fsm import FSMEngine, FSMDefinition, Transition, State
+from adapters.asyncio_scheduler import AsyncioScheduler
 from core.event_bus import EventBus
 from core.logger import Logger
 
@@ -36,7 +37,7 @@ def logger():
 @pytest.fixture
 def fsm(event_bus, logger):
     """Создать FSM движок"""
-    return FSMEngine(event_bus, logger)
+    return FSMEngine(event_bus, logger, AsyncioScheduler())
 
 
 class TestFSMRegistration:
@@ -422,7 +423,7 @@ class TestMonotonicTime:
         
         # Создаём FSM после патчинга
         from core.fsm import FSMEngine
-        fsm = FSMEngine(event_bus, logger)
+        fsm = FSMEngine(event_bus, logger, AsyncioScheduler())
         
         # Регистрируем автомат с cooldown 5 секунд
         # from_state="*" позволяет выполнять переход из любого состояния
@@ -497,7 +498,7 @@ class TestMonotonicTime:
         
         # Создаём FSM после патчинга
         from core.fsm import FSMEngine
-        fsm = FSMEngine(event_bus, logger)
+        fsm = FSMEngine(event_bus, logger, AsyncioScheduler())
         
         # Регистрируем автомат с manual_lockout 1 минута
         # from_state="*" позволяет выполнять переход из любого состояния

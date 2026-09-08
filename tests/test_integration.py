@@ -21,6 +21,7 @@ from core.fsm import FSMEngine, FSMDefinition, Transition, State
 from core.event_bus import EventBus
 from core.logger import Logger
 from adapters.mock_adapter import MockAdapter
+from adapters.asyncio_scheduler import AsyncioScheduler
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ def logger():
 @pytest.fixture
 def fsm(event_bus, logger):
     """Создать FSM движок"""
-    return FSMEngine(event_bus, logger)
+    return FSMEngine(event_bus, logger, AsyncioScheduler())
 
 
 @pytest.fixture

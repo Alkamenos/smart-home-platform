@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.fsm import FSMEngine
+from adapters.asyncio_scheduler import AsyncioScheduler
 from core.event_bus import EventBus
 from core.logger import Logger
 from features.lighting import create_lighting_automations
@@ -26,7 +27,7 @@ def lighting_system():
     """Создать систему освещения с одной комнатой"""
     event_bus = EventBus()
     logger = Logger(component="test", output=None)
-    fsm = FSMEngine(event_bus, logger)
+    fsm = FSMEngine(event_bus, logger, AsyncioScheduler())
     
     # Регистрируем автоматы для living_room
     definitions = create_lighting_automations(["living_room"])
