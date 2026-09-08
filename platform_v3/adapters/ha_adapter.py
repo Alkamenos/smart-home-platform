@@ -589,3 +589,87 @@ class HomeAssistantAdapter:
             HAEntity или None если не найдено
         """
         return await self.get_entity_state(entity_id)
+    
+    async def subscribe_state_changes(self, entity_ids: Set[str], callback: Callable):
+        """
+        Подписаться на изменения состояний конкретных entity_id.
+        
+        Вместо глобальной подписки на все события, создаем точечные подписки
+        только на те устройства, которые используются в зарегистрированных FSM.
+        
+        Args:
+            entity_ids: Множество entity_id для подписки
+            callback: Функция обратного вызова, принимающая event_data
+        """
+        if not self.is_connected:
+            logger.warning("Cannot subscribe: not connected")
+            return
+        
+        # Группируем entity_id по доменам для оптимизации (опционально)
+        # Например: light.kitchen, light.bedroom -> можно подписаться на "state_changed" и фильтровать
+        # Но для максимальной точности подписываемся на каждое устройство отдельно через wildcard
+        
+        unique_domains = set()
+        exact_entities = set()
+        
+        for entity_id in entity_ids:
+            if entity_id.endswith('.*'):
+                # Wildcard паттерн (например, "light.*")
+                unique_domains.add(entity_id)
+            else:
+                # Точный entity_id
+                exact_entities.add(entity_id)
+        
+        # Подписываемся на глобальное событие state_changed, но фильтруем внутри callback
+        # Это более эффективно чем создавать множество WebSocket подписок
+        if exact_entities or unique_domains:
+            await self._subscribe_filtered_state_changes(
+                exact_entities, 
+                unique_domains, 
+                callback
+            )
+            logger.info(f"Subscribed to {len(exact_entities)} entities and {len(unique_domains)} domain patterns")
+    
+    async def _subscribe_filtered_state_changes(
+        self, 
+        exact_entities: Set[str], 
+        domain_patterns: Set[str], 
+        callback: Callable
+    ):
+        """
+        Внутренний метод для подписки с фильтрацией по entity_id.
+        
+        Подписываемся на 'state_changed' один раз, но фильтруем события
+        перед вызовом callback, чтобы игнорировать ненужные устройства.
+        """
+        async def filtered_callback(event_data):
+            data = event_data.get('data', {})
+            entity_id = data.get('entity_id', '')
+            
+            # Проверяем точное совпадение
+            if entity_id in exact_entities:
+                await self._invoke_callback(callback, event_data, entity_id)
+                return
+            
+            # Проверяем wildcard паттерны (например, "light.*")
+            for pattern in domain_patterns:
+                prefix = pattern[:-2]  # Убираем ".*"
+                if entity_id.startswith(prefix + '.'):
+                    await self._invoke_callback(callback, event_data, entity_id)
+                    return
+            
+            # Игнорируем событие (не из нашего списка)
+            pass
+        
+        # Подписываемся на одно общее событие state_changed
+        await self.subscribe_events('state_changed', filtered_callback)
+    
+    async def _invoke_callback(self, callback: Callable, event_data: dict, entity_id: str):
+        """Вызвать callback с обработкой ошибок"""
+        try:
+            if asyncio.iscoroutinefunction(callback):
+                await callback(event_data)
+            else:
+                callback(event_data)
+        except Exception as e:
+            logger.error(f"Error in state change callback for {entity_id}: {e}")

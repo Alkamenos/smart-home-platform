@@ -4,30 +4,15 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Dependencies
-.venv/
-venv/
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Coverage reports
+.Python
+*.so
 .coverage
+coverage/
 htmlcov/
-
-# Pytest
 .pytest_cache/
-
-# MyPy
 .mypy_cache/
+.wafpickle-*
+.egg-info/
 
 # Distribution / packaging
 .Python
@@ -47,18 +32,12 @@ wheels/
 .installed.cfg
 *.egg
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Environment
+.env
+.env.local
+.env.*
+.venv/
+venv/
+ENV/
+env.bak/
 ```

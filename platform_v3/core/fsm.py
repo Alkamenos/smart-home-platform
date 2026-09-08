@@ -28,6 +28,7 @@ class Transition:
     reason: str = ""                   # Описание
     timeout_sec: Optional[int] = None  # Таймаут для перехода в следующее состояние
     attributes: dict = field(default_factory=dict)  # Атрибуты для команды (brightness, hvac_mode и т.д.)
+    debounce_sec: float = 0.0          # Защита от дребезга (мин. время между переходами)
 
 
 @dataclass(frozen=True)
@@ -174,6 +175,9 @@ class FSMEngine:
         self._states: dict[str, State] = {}
         self._scheduler = Scheduler(event_bus, logger)
         
+        # Debounce tracking: ключ = entity_id, значение = {trigger: last_transition_time}
+        self._debounce_tracker: Dict[str, Dict[str, float]] = {}
+        
         # Подписываемся на события таймеров
         event_bus.subscribe("fsm.timeout", self._on_timeout_event)
     
@@ -275,8 +279,52 @@ class FSMEngine:
         # Выбираем переход с наивысшим приоритетом
         best_transition = max(matching_transitions, key=lambda t: t.priority)
         
+        # Проверяем debounce перед выполнением перехода
+        if best_transition.debounce_sec > 0:
+            if not self._check_debounce(entity_id, trigger, best_transition.debounce_sec):
+                self._logger.debug(
+                    f"Debounce blocked for {trigger} in {current_state.current}",
+                    entity_id=entity_id,
+                    trigger=trigger,
+                    debounce_sec=best_transition.debounce_sec
+                )
+                return False
+        
         # Выполняем переход
         return self._execute_transition(entity_id, best_transition, context)
+    
+    def _check_debounce(self, entity_id: str, trigger: str, debounce_sec: float) -> bool:
+        """
+        Проверить прошло ли время debounce для данного триггера
+        
+        Args:
+            entity_id: ID автомата
+            trigger: Тип триггера
+            debounce_sec: Минимальное время между переходами (сек)
+            
+        Returns:
+            True если можно выполнить переход, False если слишком рано
+        """
+        now = time.time()
+        
+        # Инициализируем трекер если нужно
+        if entity_id not in self._debounce_tracker:
+            self._debounce_tracker[entity_id] = {}
+        
+        tracker = self._debounce_tracker[entity_id]
+        last_time = tracker.get(trigger, 0.0)
+        
+        # Для первого вызова last_time будет 0.0, значит всегда пропускаем
+        if last_time == 0.0:
+            tracker[trigger] = now
+            return True
+        
+        if now - last_time < debounce_sec:
+            return False
+        
+        # Обновляем время последнего перехода
+        tracker[trigger] = now
+        return True
     
     def _execute_transition(self, entity_id: str, transition: Transition, context: dict) -> bool:
         """Выполнить переход"""
