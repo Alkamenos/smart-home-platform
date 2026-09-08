@@ -1,0 +1,40 @@
+[project]
+name = "smart-home-fsm-platform"
+version = "3.0.0"
+description = "Smart Home FSM Platform - State machine based automation for smart homes"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Smart Home Team", email = "team@smarthome.local" }
+]
+
+dependencies = [
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "loguru>=0.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+    "freezegun>=1.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --cov=."
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "*/__pycache__/*"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "adapters", "services", "tools"]
