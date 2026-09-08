@@ -487,6 +487,20 @@ class HomeAssistantAdapter:
                         if context_id.startswith('platform_v3:'):
                             logger.debug(f"Ignoring echo by context.id: {context_id}")
                             continue
+                        
+                        # Определяем источник изменения: ручной ввод или автоматика
+                        # user_id присутствует если изменение сделано через UI (ручной ввод)
+                        # parent_id присутствует если изменение вызвано другой автоматизацией
+                        user_id = context.get('user_id')
+                        parent_id = context.get('parent_id')
+                        
+                        is_manual = user_id is not None
+                        is_automation = parent_id is not None and user_id is None
+                        
+                        # Добавляем флаг источника в событие для FSM
+                        event_data['data']['is_manual'] = is_manual
+                        event_data['data']['is_automation'] = is_automation
+                        event_data['data']['context_user_id'] = user_id
                     
                     # Публикуем в шину событий (только не-эхо события)
                     self.event_bus.publish(f'ha.event.{event_type}', event_data)

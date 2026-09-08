@@ -215,6 +215,7 @@ from core.fsm import FSMEngine
 from core.event_bus import EventBus
 from core.logger import Logger
 from core.registry import Registry
+from core.fsm_persistence import FSMPersistence
 from adapters.ha_adapter import HAAdapter
 
 # Создаём глобальные экземпляры
@@ -226,6 +227,9 @@ ha_adapter = HAAdapter()
 
 # Регистрируем адаптер в FSM
 fsm_engine.set_adapter(ha_adapter)
+
+# Инициализируем персистентность состояний
+persistence = FSMPersistence(event_bus, fsm_engine, ha_adapter, logger)
 
 # Импортируем и регистрируем автоматы
 from features.lighting import create_lighting_automations
@@ -239,11 +243,17 @@ ZONES = ["zone_1", "zone_2"]
 lighting_defs = create_lighting_automations(ROOMS)
 climate_defs = create_climate_automations(ZONES)
 
+all_definitions = []
 for definition in lighting_defs + climate_defs:
     fsm_engine.register(definition)
+    all_definitions.append(definition)
     logger.info(f"Зарегистрирован автомат: {definition.entity_id}")
+    
+    # Включаем персистентность для каждого автомата
+    persistence.enable_for_entity(definition.entity_id)
 
-logger.info(f"Platform V3 запущена. Всего автоматов: {len(lighting_defs) + len(climate_defs)}")
+logger.info(f"Platform V3 запущена. Всего автоматов: {len(all_definitions)}")
+logger.info(f"Персистентность включена для {len(all_definitions)} автоматов")
 
 
 # Обработчики событий от HA
@@ -283,6 +293,12 @@ def fsm_trigger(entity_id: str, trigger: str, **context):
     result = fsm_engine.trigger(entity_id, trigger, context)
     logger.info(f"Триггер {trigger} для {entity_id}: {result}")
     return {"success": result}
+
+
+@service
+def fsm_persist_list():
+    """Показать список автоматов с включенной персистентностью"""
+    return {"enabled_entities": list(persistence._enabled_entities.keys())}
 '''
         
         with open(init_script, 'w') as f:

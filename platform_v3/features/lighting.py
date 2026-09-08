@@ -8,6 +8,7 @@ Lighting Feature - Автоматы освещения
 from __future__ import annotations
 import sys
 import os
+import time  # Для расчёта таймаутов ручного управления
 
 # Добавляем parent directory в path для импорта core
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -117,24 +118,28 @@ def create_lighting_automations(rooms: list[str]) -> list[FSMDefinition]:
                 ),
                 
                 # Ручное вмешательство (самый высокий приоритет)
+                # При переходе сохраняем timestamp в контексте для корректного расчёта таймаута
                 Transition(
                     from_state="*",
                     to_state="MANUAL",
                     trigger="manual_change",
                     priority=100,
-                    reason="Ручное вмешательство"
+                    reason="Ручное вмешательство",
+                    # Сохраняем время ручного вмешательства в контекст FSM
+                    action=lambda ctx, r=room: ctx.update({f"{r}_manual_entered_at": time.time()})
                 ),
                 
-                # Возврат из MANUAL после таймаута
+                # Возврат из MANUAL после таймаута (60 минут)
                 Transition(
                     from_state="MANUAL",
                     to_state="OFF",
                     trigger="timeout",
                     guard=lambda ctx, r=room: (
-                        ctx.get(f"{r}_minutes_since_manual", 0) >= 60
-                    ),
+                        lambda entered_at=ctx.get(f"{r}_manual_entered_at", 0):
+                        entered_at > 0 and (time.time() - entered_at) / 60 >= 60
+                    )(),
                     priority=50,
-                    reason="Автоматическое восстановление"
+                    reason="Автоматическое восстановление после ручного управления"
                 ),
             )
         )
