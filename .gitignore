@@ -8,33 +8,42 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Dependencies
-venv/
-.venv/
-.env
-.env.local
-*.env.*
-
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+coverage/
 
-# Editors
-.vscode/
-.idea/
+# Temporary files
+*.tmp
+*.temp
 *.swp
 *.swo
 
-# OS
+# OS generated files
 .DS_Store
 Thumbs.db
 
 # Logs
 *.log
 
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
 # Build artifacts
-build/
 dist/
+build/
 *.egg-info/
+target/
+bin/
+lib/
+tmp/
 ```
