@@ -29,17 +29,36 @@ except ImportError:
 class PyscriptLoader:
     """Загрузчик платформы V3 в Home Assistant PyScript"""
     
-    def __init__(self, ha_config_dir: Optional[str] = None):
+    def __init__(self, ha_config_dir: Optional[str] = None, manifest_path: Optional[str] = None):
         """
         Инициализация загрузчика
         
         Args:
             ha_config_dir: Путь к директории конфигурации HA.
                           Если None, используется стандартный путь ~/.homeassistant
+            manifest_path: Путь к манифесту. Если None, используется путь по умолчанию
         """
         self.source_dir = Path(__file__).parent
         self.ha_config_dir = Path(ha_config_dir) if ha_config_dir else Path.home() / ".homeassistant"
         self.pyscript_dir = self.ha_config_dir / "pyscript"
+        
+        # ← НОВОЕ: Манифест обязателен
+        self._manifest_path = manifest_path or "instances/leonids_house/manifest.yaml"
+        
+        if not Path(self._manifest_path).exists():
+            raise FileNotFoundError(f"Манифест не найден: {self._manifest_path}")
+        
+        # Загружаем манифест для валидации
+        import yaml
+        with open(self._manifest_path) as f:
+            self._manifest = yaml.safe_load(f)
+        
+        # Валидируем манифест при инициализации
+        from core.manifest_validator import ManifestValidator
+        validator = ManifestValidator()
+        errors = validator.validate(self._manifest)
+        if errors:
+            raise ValueError(f"Манифест невалиден: {[str(e) for e in errors]}")
         
         # Для hot-reload
         self._file_hashes: Dict[str, str] = {}
