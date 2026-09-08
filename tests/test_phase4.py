@@ -285,7 +285,7 @@ class TestPhase4CLI:
         import subprocess
         result = subprocess.run(
             ['python', 'cli.py', 'status'],
-            cwd='/workspace/platform_v3',
+            cwd='/workspace',
             capture_output=True,
             text=True
         )
@@ -299,7 +299,7 @@ class TestPhase4CLI:
         import re
         result = subprocess.run(
             ['python', 'cli.py', 'status', '--json'],
-            cwd='/workspace/platform_v3',
+            cwd='/workspace',
             capture_output=True,
             text=True
         )
@@ -317,7 +317,7 @@ class TestPhase4CLI:
         import subprocess
         result = subprocess.run(
             ['python', 'cli.py', 'debug', 'light.living_room', '--state'],
-            cwd='/workspace/platform_v3',
+            cwd='/workspace',
             capture_output=True,
             text=True
         )

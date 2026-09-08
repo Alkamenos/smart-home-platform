@@ -1,40 +1,33 @@
-
-.idea
-
-# Python
+```
+# Compiled Python files
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
 
 # Dependencies
 .venv/
 venv/
-env/
-pip-log.txt
-pip-selfcheck.json
+node_modules/
 
-# Build and distribution artifacts
-build/
-dist/
-*.egg
-*.egg-info/
-*.so
-
-# Testing
-.coverage
-htmlcov/
+# Test and coverage
 .pytest_cache/
-.tox/
+.coverage
+coverage/
+htmlcov/
 
 # Logs
 *.log
 
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Environment variables
+# Environment files
 .env
 .env.local
-.env.*
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+```
