@@ -202,7 +202,9 @@ def cmd_debug(args):
     # Создаём временный FSM для отладки
     event_bus = EventBus()
     fsm_logger = Logger()
-    fsm = FSMEngine(event_bus, fsm_logger)
+    from adapters.asyncio_scheduler import AsyncioScheduler
+    scheduler = AsyncioScheduler()
+    fsm = FSMEngine(event_bus, fsm_logger, scheduler)
     
     # Регистрируем все автоматы
     lighting_defs = create_lighting_automations(["living_room", "bedroom", "kitchen"])

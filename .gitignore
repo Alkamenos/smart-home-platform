@@ -1,24 +1,8 @@
-```gitignore
-# Compiled Python files
+```
+# Python compiled files
 *.pyc
 __pycache__/
 
-# Dependencies
-.venv/
-venv/
-node_modules/
-
-# Editors
-.vscode/
-.idea/
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
-.env
-.env.local
-*.env.*
+# Test cache
+.pytest_cache/
 ```

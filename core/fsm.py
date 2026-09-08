@@ -334,7 +334,8 @@ class FSMEngine:
             "trigger": transition.trigger,
             "reason": transition.reason,
             "duration_ms": int((now_abs - old_state.entered_at) * 1000) if old_state.entered_at < now_abs else 0,
-            "attributes": transition.attributes  # Передаём атрибуты для команды
+            "attributes": transition.attributes,  # Передаём атрибуты для команды
+            "context": context  # Передаём контекст триггера
         })
         
         self._logger.info(

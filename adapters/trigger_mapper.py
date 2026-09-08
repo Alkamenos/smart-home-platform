@@ -45,18 +45,24 @@ class MockTriggerMapper(BaseTriggerMapper):
         """Регистрирует маппинг триггеров"""
         for trigger_name, ha_entity_id in definition.triggers_mapping.items():
             if ha_entity_id not in self._registrations:
-                self._registrations[ha_entity_id] = {}
-            self._registrations[ha_entity_id][trigger_name] = definition.entity_id
+                self._registrations[ha_entity_id] = []
+            
+            # Добавляем в список чтобы поддерживать несколько FSM для одного сенсора
+            self._registrations[ha_entity_id].append({
+                "trigger_name": trigger_name,
+                "fsm_entity_id": definition.entity_id
+            })
     
     def unregister_definition(self, entity_id: str) -> None:
         """Отписывает триггеры для данного автомата"""
         to_remove = []
         for ha_entity_id, mappings in self._registrations.items():
-            for trigger_name, fsm_entity_id in list(mappings.items()):
-                if fsm_entity_id == entity_id:
-                    del mappings[trigger_name]
-            if not mappings:
+            # mappings теперь список словарей
+            new_mappings = [m for m in mappings if m["fsm_entity_id"] != entity_id]
+            if not new_mappings:
                 to_remove.append(ha_entity_id)
+            else:
+                self._registrations[ha_entity_id] = new_mappings
         for ha_entity_id in to_remove:
             del self._registrations[ha_entity_id]
     
@@ -80,16 +86,20 @@ class MockTriggerMapper(BaseTriggerMapper):
         
         # Для binary_sensor: True -> motion_detected, False -> motion_cleared
         # Определяем какой триггер вызвать на основе имени и значения
-        for trigger_name, fsm_entity_id in self._registrations[ha_entity_id].items():
+        for mapping in self._registrations[ha_entity_id]:
+            trigger_name = mapping["trigger_name"]
+            fsm_entity_id = mapping["fsm_entity_id"]
             trigger_lower = trigger_name.lower()
             
             # Пропускаем триггеры которые не соответствуют текущему значению
-            if ("cleared" in trigger_lower or "off" in trigger_lower) and new_value is True:
-                continue  # Пропускаем cleared/off при True
-            if ("detected" in trigger_lower or "on" in trigger_lower) and new_value is False:
-                continue  # Пропускаем detected/on при False
+            # Если new_value=False, пропускаем "detected"/"on" триггеры (но не "cleared"!)
+            if new_value is False and ("detected" in trigger_lower or "_on" in trigger_lower or trigger_lower.endswith("_on")):
+                continue
+            # Если new_value=True, пропускаем "cleared"/"off" триггеры
+            if new_value is True and ("cleared" in trigger_lower or "_off" in trigger_lower or trigger_lower.endswith("_off")):
+                continue
             
-            # Вызываем триггер
+            # Вызываем триггер с контекстом
             self._fsm_engine.trigger(fsm_entity_id, trigger_name, context)
 
 

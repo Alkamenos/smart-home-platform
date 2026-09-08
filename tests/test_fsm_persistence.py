@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Импортируем из core напрямую (для запуска из platform_v3/tests/)
 try:
     from core.fsm_persistence import FSMPersistence
-from adapters.asyncio_scheduler import AsyncioScheduler
+    from adapters.asyncio_scheduler import AsyncioScheduler
     from core.event_bus import EventBus
     from core.logger import Logger
     from core.fsm import FSMEngine, FSMDefinition, Transition
