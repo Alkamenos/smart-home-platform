@@ -35,6 +35,18 @@ def create_lighting_automations(rooms: list[str]) -> list[FSMDefinition]:
             entity_id=entity_id,
             states=("OFF", "ON_SCHEDULE", "ON_MOTION", "PARTY", "NIGHTLIGHT", "MANUAL"),
             initial="OFF",
+            triggers_mapping={
+                "motion_detected": f"binary_sensor.{room}_motion",
+                "motion_cleared": f"binary_sensor.{room}_motion",
+                "schedule_on": f"input_boolean.{room}_schedule",
+                "schedule_off": f"input_boolean.{room}_schedule",
+                "night_mode_on": f"input_boolean.{room}_night_mode",
+                "night_mode_off": f"input_boolean.{room}_night_mode",
+                "party_mode_on": f"input_boolean.{room}_party_mode",
+                "party_mode_off": f"input_boolean.{room}_party_mode",
+                "manual_change": f"light.{room}",
+                # timeout - внутренний триггер, не мапится на сенсор
+            },
             transitions=(
                 # Включение по расписанию
                 Transition(

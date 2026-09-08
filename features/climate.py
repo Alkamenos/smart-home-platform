@@ -34,6 +34,15 @@ def create_climate_automations(zones: list[str]) -> list[FSMDefinition]:
             entity_id=entity_id,
             states=("IDLE", "HEATING", "COOLING", "SAFETY_LOCKOUT", "AWAY"),
             initial="IDLE",
+            triggers_mapping={
+                "temp_low": f"sensor.{zone}_temperature",
+                "temp_high": f"sensor.{zone}_temperature",
+                "temp_reached": f"sensor.{zone}_temperature",
+                "away_mode_on": f"input_boolean.{zone}_away_mode",
+                "away_mode_off": f"input_boolean.{zone}_away_mode",
+                "safety_alarm": f"binary_sensor.{zone}_safety_alarm",
+                "safety_reset": f"binary_sensor.{zone}_safety_alarm",
+            },
             transitions=(
                 # Включение нагрева
                 Transition(

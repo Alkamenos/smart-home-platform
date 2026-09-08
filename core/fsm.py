@@ -42,6 +42,7 @@ class FSMDefinition:
     states: tuple[str, ...]            # Все возможные состояния
     initial: str                       # Начальное состояние
     transitions: tuple[Transition, ...]  # Все переходы
+    triggers_mapping: dict[str, str] = field(default_factory=dict)  # Маппинг триггеров: {internal_trigger: ha_entity_id}
 
 
 @dataclass(frozen=True)
