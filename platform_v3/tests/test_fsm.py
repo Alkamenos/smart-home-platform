@@ -334,21 +334,21 @@ class TestEventBus:
         bus = EventBus()
         received_events = []
         
-        def handler(event_type, data):
-            received_events.append((event_type, data))
+        def handler(data):
+            received_events.append(data)
         
         bus.subscribe("test.event", handler)
         bus.publish("test.event", {"key": "value"})
         
         assert len(received_events) == 1
-        assert received_events[0] == ("test.event", {"key": "value"})
+        assert received_events[0] == {"key": "value"}
     
     def test_unsubscribe(self):
         """Тест отписки"""
         bus = EventBus()
         call_count = [0]
         
-        def handler(event_type, data):
+        def handler(data):
             call_count[0] += 1
         
         bus.subscribe("test.event", handler)
