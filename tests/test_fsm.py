@@ -359,5 +359,154 @@ class TestEventBus:
         assert call_count[0] == 1
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+class TestMonotonicTime:
+    """Тесты на использование монотонного времени"""
+    
+    def test_monotonic_time_resistance(self, event_bus, logger, monkeypatch):
+        """
+        Тест проверяет что при 'прыжке' системного времени cooldown не ломается.
+        
+        Сценарий:
+        1. Регистрируем автомат с cooldown_sec = 5 секунд
+        2. Выполняем первый переход
+        3. Эмулируем прыжок времени (time.time() изменилось на +1 час)
+        4. Пытаемся выполнить второй переход - он должен быть заблокирован cooldown
+           потому что time.monotonic() не изменился
+        
+        Это доказывает что cooldown использует монотонное время, а не абсолютное.
+        """
+        import time as time_module
+        
+        # Фиксированное монотонное время (не будет меняться)
+        base_mono_time = [100.0]  # Начинаем с 100
+        
+        # Абсолютное время которое будем эмулировать с прыжком
+        abs_time_jump = [5000.0]  # Начальное абсолютное время
+        
+        # Создаём моки для time.time() и time.monotonic()
+        def mock_time():
+            return abs_time_jump[0]
+        
+        def mock_monotonic():
+            return base_mono_time[0]
+        
+        # Патчим time.time и time.monotonic ДО создания FSM
+        monkeypatch.setattr(time_module, "time", mock_time)
+        monkeypatch.setattr(time_module, "monotonic", mock_monotonic)
+        
+        # Создаём FSM после патчинга
+        from core.fsm import FSMEngine
+        fsm = FSMEngine(event_bus, logger)
+        
+        # Регистрируем автомат с cooldown 5 секунд
+        definition = FSMDefinition(
+            entity_id="test.cooldown",
+            states=("OFF", "ON"),
+            initial="OFF",
+            transitions=(
+                Transition(
+                    from_state="OFF",
+                    to_state="ON",
+                    trigger="turn_on",
+                    cooldown_sec=5.0
+                ),
+            )
+        )
+        
+        fsm.register(definition)
+        
+        # Увеличиваем монотонное время на 10 секунд перед первым переходом
+        # Чтобы cooldown не блокировал первый переход (last_transition_at=100, now=110)
+        base_mono_time[0] = 110.0
+        
+        # Первый переход - должен пройти
+        result1 = fsm.trigger("test.cooldown", "turn_on", {})
+        assert result1 is True
+        assert fsm.get_state("test.cooldown").current == "ON"
+        
+        # Запоминаем last_transition_at после первого перехода
+        last_transition_after_first = fsm.get_state("test.cooldown").last_transition_at
+        
+        # Эмулируем прыжок системного времени на 1 час вперёд
+        abs_time_jump[0] += 3600.0
+        # Монотонное время НЕ меняем - оно должно остаться тем же
+        
+        # Второй переход - должен быть заблокирован cooldown
+        # Потому что монотонное время не изменилось (прошло 0 секунд)
+        result2 = fsm.trigger("test.cooldown", "turn_on", {})
+        assert result2 is False  # Заблокировано cooldown
+        
+        # Теперь увеличиваем монотонное время на 6 секунд (больше cooldown)
+        base_mono_time[0] = last_transition_after_first + 6.0
+        
+        # Третий переход - должен пройти (cooldown истёк)
+        result3 = fsm.trigger("test.cooldown", "turn_on", {})
+        assert result3 is True
+    
+    def test_manual_lockout_uses_monotonic_time(self, event_bus, logger, monkeypatch):
+        """
+        Тест проверяет что manual_lockout использует монотонное время.
+        
+        Сценарий:
+        1. Регистрируем автомат с manual_lockout_min = 1 минута
+        2. Выполняем переход с ручным источником
+        3. Эмулируем прыжок системного времени
+        4. Автоматический триггер должен всё ещё быть заблокирован
+        """
+        import time as time_module
+        
+        base_mono_time = [1000.0]
+        abs_time = [5000.0]
+        
+        def mock_time():
+            return abs_time[0]
+        
+        def mock_monotonic():
+            return base_mono_time[0]
+        
+        # Патчим ДО создания FSM
+        monkeypatch.setattr(time_module, "time", mock_time)
+        monkeypatch.setattr(time_module, "monotonic", mock_monotonic)
+        
+        # Создаём FSM после патчинга
+        from core.fsm import FSMEngine
+        fsm = FSMEngine(event_bus, logger)
+        
+        # Регистрируем автомат с manual_lockout 1 минута
+        definition = FSMDefinition(
+            entity_id="test.lockout",
+            states=("OFF", "ON"),
+            initial="OFF",
+            transitions=(
+                Transition(
+                    from_state="OFF",
+                    to_state="ON",
+                    trigger="turn_on",
+                    manual_lockout_min=1.0  # 1 минута блокировки
+                ),
+            )
+        )
+        
+        fsm.register(definition)
+        
+        # Выполняем переход с source="manual"
+        result1 = fsm.trigger("test.lockout", "turn_on", {"source": "manual"})
+        assert result1 is True
+        
+        # Эмулируем прыжок времени на 10 минут вперёд
+        abs_time[0] += 600.0
+        
+        # Но монотонное время увеличиваем только на 30 секунд
+        base_mono_time[0] += 30.0
+        
+        # Автоматический триггер должен быть заблокирован
+        # (прошло только 30 секунд монотонного времени, а lockout на 60 секунд)
+        result2 = fsm.trigger("test.lockout", "turn_on", {"source": "auto"})
+        assert result2 is False
+        
+        # Увеличиваем монотонное время ещё на 31 секунду (итого 61 секунда)
+        base_mono_time[0] += 31.0
+        
+        # Теперь автоматический триггер должен пройти
+        result3 = fsm.trigger("test.lockout", "turn_on", {"source": "auto"})
+        assert result3 is True

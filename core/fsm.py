@@ -50,12 +50,13 @@ class State:
     
     entity_id: str
     current: str
-    entered_at: float
+    entered_at: float                      # Абсолютное время (time.time()) для истории
     entered_by: str
     entered_why: str
     history: tuple[dict, ...] = field(default_factory=tuple)  # Последние 20 переходов
-    last_transition_at: float = 0.0  # Время последнего перехода (для cooldown)
-    manual_override_until: float = 0.0  # До какого момента блокирована автоматика
+    last_transition_at: float = 0.0        # Монотонное время (time.monotonic()) для cooldown
+    last_transition_at_abs: float = 0.0    # Абсолютное время (time.time()) для логов
+    manual_override_until: float = 0.0     # Монотонное время (time.monotonic()) для lockout
 
 
 class Scheduler:
@@ -206,15 +207,17 @@ class FSMEngine:
         
         # Инициализируем начальное состояние
         if definition.entity_id not in self._states:
-            now = time.time()
+            now_abs = time.time()          # Абсолютное время для истории
+            now_mono = time.monotonic()    # Монотонное время для таймеров
             self._states[definition.entity_id] = State(
                 entity_id=definition.entity_id,
                 current=definition.initial,
-                entered_at=now,
+                entered_at=now_abs,
                 entered_by="init",
                 entered_why="Initial state",
                 history=(),
-                last_transition_at=0.0,
+                last_transition_at=now_mono,
+                last_transition_at_abs=now_abs,
                 manual_override_until=0.0
             )
         
@@ -246,11 +249,11 @@ class FSMEngine:
         current_state = self._states[entity_id]
         
         # Проверяем manual_lockout: если сейчас время ручного блокирования, отклоняем автоматические триггеры
-        now = time.time()
-        if current_state.manual_override_until > now:
+        now_mono = time.monotonic()
+        if current_state.manual_override_until > now_mono:
             # Это автоматический триггер (не от человека)
             if context.get("source") != "manual":
-                remaining_sec = current_state.manual_override_until - now
+                remaining_sec = current_state.manual_override_until - now_mono
                 self._logger.debug(
                     f"Automatic trigger blocked due to manual lockout",
                     entity_id=entity_id,
@@ -274,10 +277,11 @@ class FSMEngine:
                     if current_state.current != transition.from_state:
                         continue
             
-            # Проверяем cooldown_sec: мин. время после предыдущего перехода
+            # Проверяем cooldown_sec: мин. время после предыдущего перехода (используем монотонное время)
+            # last_transition_at инициализируется при регистрации, поэтому проверяем что прошло больше 0 времени
             if transition.cooldown_sec > 0:
-                time_since_last = now - current_state.last_transition_at
-                if time_since_last < transition.cooldown_sec:
+                time_since_last = now_mono - current_state.last_transition_at
+                if time_since_last <= transition.cooldown_sec:
                     remaining_cooldown = transition.cooldown_sec - time_since_last
                     self._logger.debug(
                         f"Transition skipped due to cooldown",
@@ -340,7 +344,7 @@ class FSMEngine:
         Returns:
             True если можно выполнить переход, False если слишком рано
         """
-        now = time.time()
+        now_mono = time.monotonic()
         
         # Инициализируем трекер если нужно
         if entity_id not in self._debounce_tracker:
@@ -351,20 +355,21 @@ class FSMEngine:
         
         # Для первого вызова last_time будет 0.0, значит всегда пропускаем
         if last_time == 0.0:
-            tracker[trigger] = now
+            tracker[trigger] = now_mono
             return True
         
-        if now - last_time < debounce_sec:
+        if now_mono - last_time < debounce_sec:
             return False
         
         # Обновляем время последнего перехода
-        tracker[trigger] = now
+        tracker[trigger] = now_mono
         return True
     
     def _execute_transition(self, entity_id: str, transition: Transition, context: dict) -> bool:
         """Выполнить переход"""
         old_state = self._states[entity_id]
-        now = time.time()
+        now_abs = time.time()          # Абсолютное время для истории
+        now_mono = time.monotonic()    # Монотонное время для таймеров
         
         # Выполняем действие перехода если указано (например, сохранение timestamp)
         if transition.action is not None:
@@ -399,31 +404,32 @@ class FSMEngine:
                     error=str(e)
                 )
         
-        # Обновляем историю
+        # Обновляем историю (используем абсолютное время)
         history_entry = {
             "from": old_state.current,
             "to": transition.to_state,
             "trigger": transition.trigger,
             "why": transition.reason,
-            "at": now
+            "at": now_abs
         }
         new_history = (history_entry,) + old_state.history[:19]  # Храним последние 20
         
-        # Определяем новый manual_override_until
+        # Определяем новый manual_override_until (используем монотонное время)
         new_manual_override_until = old_state.manual_override_until
         if transition.manual_lockout_min > 0:
             # Если в переходе указан manual_lockout_min, блокируем автоматику
-            new_manual_override_until = now + (transition.manual_lockout_min * 60)
+            new_manual_override_until = now_mono + (transition.manual_lockout_min * 60)
         
         # Создаём новое состояние (иммутабельность)
         new_state = State(
             entity_id=entity_id,
             current=transition.to_state,
-            entered_at=now,
+            entered_at=now_abs,
             entered_by=transition.trigger,
             entered_why=transition.reason,
             history=new_history,
-            last_transition_at=now,
+            last_transition_at=now_mono,
+            last_transition_at_abs=now_abs,
             manual_override_until=new_manual_override_until
         )
         
@@ -439,14 +445,14 @@ class FSMEngine:
                 context={"from_state": transition.to_state}
             )
         
-        # Публикуем событие
+        # Публикуем событие (используем абсолютное время для duration calculation)
         self._event_bus.publish("fsm.transition", {
             "entity_id": entity_id,
             "from_state": old_state.current,
             "to_state": transition.to_state,
             "trigger": transition.trigger,
             "reason": transition.reason,
-            "duration_ms": int((now - old_state.entered_at) * 1000) if old_state.entered_at < now else 0,
+            "duration_ms": int((now_abs - old_state.entered_at) * 1000) if old_state.entered_at < now_abs else 0,
             "attributes": transition.attributes  # Передаём атрибуты для команды
         })
         
@@ -468,7 +474,8 @@ class FSMEngine:
         
         definition = self._definitions[entity_id]
         old_state = self._states[entity_id]
-        now = time.time()
+        now_abs = time.time()          # Абсолютное время для истории
+        now_mono = time.monotonic()    # Монотонное время для таймеров
         
         # Добавляем запись в историю
         history_entry = {
@@ -476,17 +483,20 @@ class FSMEngine:
             "to": definition.initial,
             "trigger": "reset",
             "why": "Manual reset",
-            "at": now
+            "at": now_abs
         }
         new_history = (history_entry,) + old_state.history[:19]
         
         self._states[entity_id] = State(
             entity_id=entity_id,
             current=definition.initial,
-            entered_at=now,
+            entered_at=now_abs,
             entered_by="reset",
             entered_why="Manual reset",
-            history=new_history
+            history=new_history,
+            last_transition_at=now_mono,
+            last_transition_at_abs=now_abs,
+            manual_override_until=0.0
         )
         
         self._logger.info(
