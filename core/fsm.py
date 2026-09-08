@@ -369,7 +369,28 @@ class FSMEngine:
         # Выполняем действие перехода если указано (например, сохранение timestamp)
         if transition.action is not None:
             try:
-                transition.action(context)
+                # Проверяем является ли action асинхронной функцией
+                if asyncio.iscoroutinefunction(transition.action):
+                    # Для async action пытаемся создать задачу
+                    try:
+                        loop = asyncio.get_running_loop()
+                        task = asyncio.create_task(transition.action(context))
+                        # Логгируем но не ждём выполнения (fire-and-forget)
+                        self._logger.debug(
+                            f"Scheduled async action for {entity_id}",
+                            entity_id=entity_id,
+                            trigger=transition.trigger
+                        )
+                    except RuntimeError:
+                        # Нет running loop - предупреждаем
+                        self._logger.warning(
+                            f"Async action scheduled but no running loop for {entity_id}",
+                            entity_id=entity_id,
+                            trigger=transition.trigger
+                        )
+                else:
+                    # Синхронный action - выполняем сразу
+                    transition.action(context)
             except Exception as e:
                 self._logger.warning(
                     f"Action failed for {entity_id}: {e}",
