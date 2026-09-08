@@ -54,20 +54,34 @@ class Loader:
 
     def _yaml_to_transition(self, yaml_transition: YAMLTransition) -> Transition:
         """
-        Преобразовать YAMLTransition в Transition.
+        Преобразовать YAMLTransition в Transition, резолвя строки в функции.
         
         Args:
             yaml_transition: Валидированная YAML-модель перехода.
             
         Returns:
-            Transition: Объект перехода для FSM.
+            Transition: Объект перехода для FSM с резолвленными функциями.
         """
+        # Резолвим guard
+        guard_fn = None
+        if yaml_transition.guard:
+            guard_fn = self._registry.get_guard(yaml_transition.guard)
+            if guard_fn is None:
+                logger.warning(f"Guard '{yaml_transition.guard}' not found in registry!")
+
+        # Резолвим action
+        action_fn = None
+        if yaml_transition.action:
+            action_fn = self._registry.get_action(yaml_transition.action)
+            if action_fn is None:
+                logger.warning(f"Action '{yaml_transition.action}' not found in registry!")
+
         return Transition(
             from_state=yaml_transition.from_state,
             to_state=yaml_transition.to_state,
             trigger=yaml_transition.trigger,
-            guard=yaml_transition.guard,
-            action=yaml_transition.action,
+            guard=guard_fn,      # Теперь это Callable или None
+            action=action_fn,    # Теперь это Callable или None
             timeout_sec=yaml_transition.timeout_sec,
         )
 
@@ -204,53 +218,15 @@ class Loader:
         """
         Загрузить YAML файлы и сразу зарегистрировать их в двигателе.
         
-        Также регистрирует все guard/action функции из Registry в FSMEngine.
-        
         Args:
             directory: Путь к директории (по умолчанию используется features_dir).
             
         Returns:
             list[FSMDefinition]: Список всех загруженных и зарегистрированных определений.
         """
-        # Сначала регистрируем все guard/action функции из Registry в FSMEngine
-        for guard_name in self._registry.list_guards():
-            guard_fn = self._registry.get_guard(guard_name)
-            if guard_fn:
-                self._engine.register_guard(guard_name, guard_fn)
-        
-        for action_name in self._registry.list_actions():
-            action_fn = self._registry.get_action(action_name)
-            if action_fn:
-                self._engine.register_action(action_name, action_fn)
-        
-        # Затем загружаем и регистрируем FSM определения
+        # Загружаем и регистрируем FSM определения
+        # guard/action функции уже резолвлены в _yaml_to_transition
         definitions = self.load_from_directory(directory)
         self.register_in_engine(definitions)
         return definitions
 
-
-# Пример использования
-if __name__ == "__main__":
-    # Создание двигателя и реестра
-    engine = FSMEngine()
-    registry = Registry()
-    
-    # Регистрация guard/action функций
-    def is_night_time(ctx: dict[str, Any]) -> bool:
-        """Пример guard функции - проверка ночного времени."""
-        return ctx.get("hour", 12) >= 22 or ctx.get("hour", 12) < 6
-    
-    def turn_on_light(ctx: dict[str, Any]) -> None:
-        """Пример action функции - включение света."""
-        logger.info(f"Turning on light for entity {ctx.get('entity_id')}")
-    
-    registry.register_guard("is_night_time", is_night_time)
-    registry.register_action("turn_on_light", turn_on_light)
-    
-    # Загрузка из папки features/
-    loader = Loader(engine, registry, features_dir="features")
-    definitions = loader.load_and_register()
-    
-    print(f"Loaded {len(definitions)} FSM definitions:")
-    for d in definitions:
-        print(f"  - {d.entity_id}: {d.initial_state} -> {d.states}")

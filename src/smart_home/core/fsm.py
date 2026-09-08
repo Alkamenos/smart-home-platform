@@ -39,15 +39,15 @@ class Transition:
         from_state: The source state for this transition.
         to_state: The destination state after transition.
         trigger: The event name that triggers this transition.
-        guard: Optional condition name/string that must evaluate to True.
-        action: Optional action name/string to execute on transition.
+        guard: Optional callable condition function that must return True.
+        action: Optional callable action function to execute on transition.
         timeout_sec: Optional timeout in seconds to auto-trigger 'timeout' event.
     """
     from_state: str
     to_state: str
     trigger: str
-    guard: Optional[str] = None
-    action: Optional[str] = None
+    guard: Optional[Callable[..., bool]] = None
+    action: Optional[Callable[..., Any]] = None
     timeout_sec: Optional[float] = None
 
 
@@ -128,39 +128,31 @@ class FSMEngine:
             del self._timers[entity_id]
             logger.debug(f"Cancelled timers for entity {entity_id}")
 
-    def _evaluate_guard(self, guard_name: Optional[str], context: dict[str, Any]) -> bool:
+    def _evaluate_guard(self, guard: Optional[Callable[..., bool]], context: dict[str, Any]) -> bool:
         """Evaluate a guard condition if specified."""
-        if guard_name is None:
-            return True
-        
-        if guard_name not in self._guards:
-            logger.warning(f"Guard '{guard_name}' not found, allowing transition")
+        if guard is None:
             return True
         
         try:
-            result = self._guards[guard_name](context)
-            logger.debug(f"Guard '{guard_name}' evaluated to {result}")
+            result = guard(context)
+            logger.debug(f"Guard '{guard.__name__}' evaluated to {result}")
             return result
         except Exception as e:
-            logger.error(f"Guard '{guard_name}' raised exception: {e}, denying transition")
+            logger.error(f"Guard '{guard.__name__}' raised exception: {e}, denying transition")
             return False
 
-    async def _execute_action(self, action_name: Optional[str], context: dict[str, Any]) -> None:
+    async def _execute_action(self, action: Optional[Callable[..., Any]], context: dict[str, Any]) -> None:
         """Execute an action if specified."""
-        if action_name is None:
-            return
-        
-        if action_name not in self._actions:
-            logger.warning(f"Action '{action_name}' not found, skipping execution")
+        if action is None:
             return
         
         try:
-            result = self._actions[action_name](context)
+            result = action(context)
             if asyncio.iscoroutine(result):
                 await result
-            logger.debug(f"Action '{action_name}' executed successfully")
+            logger.debug(f"Action '{action.__name__}' executed successfully")
         except Exception as e:
-            logger.error(f"Action '{action_name}' raised exception: {e}")
+            logger.error(f"Action '{action.__name__}' raised exception: {e}")
 
     async def trigger(self, entity_id: str, event: str, external_ctx: Optional[dict[str, Any]] = None) -> bool:
         """

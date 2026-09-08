@@ -15,7 +15,7 @@ transitions:
   - from_state: "OFF"
     to_state: "ON_MOTION"
     trigger: "motion_detected"
-    guard: "is_night_time"  # Только ночью
+    guard: "is_night_time"  # Имя функции в Registry (только ночью)
     action: "turn_on_light"
 
   # Из OFF можно перейти в ON_MANUAL при ручном включении
@@ -35,7 +35,7 @@ transitions:
   - from_state: "ON_MOTION"
     to_state: "ON_MANUAL"
     trigger: "manual_override"
-    guard: "is_manual_override_enabled"
+    guard: "is_manual_override_enabled"  # Имя функции в Registry
 
   # Из ON_MANUAL можно перейти в OFF при ручном выключении
   - from_state: "ON_MANUAL"
@@ -43,9 +43,9 @@ transitions:
     trigger: "manual_switch_off"
     action: "turn_off_light"
 
-  # Из ON_MANUAL можно перейти в OFF при таймауте (опционально)
+  # Из ON_MANUAL можно перейти в OFF при таймауте бездействия
   - from_state: "ON_MANUAL"
     to_state: "OFF"
     trigger: "timeout"
     action: "turn_off_light"
-    timeout_sec: 300.0  # 5 минут
+    timeout_sec: 300.0  # 5 минут автоматического выключения без действия
