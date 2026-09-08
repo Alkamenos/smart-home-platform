@@ -14,6 +14,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Dict, Any
 from collections import defaultdict
+from core.fsm_validator import validate_definition, FSMValidationError
 
 
 @dataclass(frozen=True)
@@ -203,6 +204,9 @@ class FSMEngine:
     
     def register(self, definition: FSMDefinition) -> None:
         """Зарегистрировать автомат"""
+        # Сначала валидируем определение
+        validate_definition(definition)
+        
         self._definitions[definition.entity_id] = definition
         
         # Инициализируем начальное состояние

@@ -19,7 +19,7 @@ try:
     from core.fsm_persistence import FSMPersistence
     from core.event_bus import EventBus
     from core.logger import Logger
-    from core.fsm import FSMEngine, FSMDefinition
+    from core.fsm import FSMEngine, FSMDefinition, Transition
 except ImportError:
     from platform_v3.core.fsm_persistence import FSMPersistence
     from platform_v3.core.event_bus import EventBus
@@ -43,12 +43,18 @@ def test_persist_save_on_transition():
     persistence = FSMPersistence(event_bus, fsm_engine, adapter, logger)
     persistence.enable_for_entity('light.test_room')
     
-    # Регистрируем автомат
+    # Регистрируем автомат с минимальными переходами для связности графа
     definition = FSMDefinition(
         entity_id='light.test_room',
         states=('OFF', 'ON', 'PARTY'),
         initial='OFF',
-        transitions=()
+        transitions=(
+            # Минимальные переходы чтобы граф был связный
+            Transition(from_state='OFF', to_state='ON', trigger='turn_on'),
+            Transition(from_state='ON', to_state='OFF', trigger='turn_off'),
+            Transition(from_state='OFF', to_state='PARTY', trigger='party_on'),
+            Transition(from_state='PARTY', to_state='OFF', trigger='party_off'),
+        )
     )
     fsm_engine.register(definition)
     
@@ -97,7 +103,7 @@ def test_persist_restore_on_start():
         entity_id='light.test_room',
         states=('OFF', 'ON', 'PARTY'),
         initial='OFF',
-        transitions=()
+        transitions=(Transition(from_state='OFF', to_state='ON', trigger='turn_on'), Transition(from_state='ON', to_state='OFF', trigger='turn_off'))
     )
     fsm_engine.register(definition)
     
@@ -147,7 +153,7 @@ def test_persist_multiple_entities():
             entity_id=f'light.{room}',
             states=('OFF', 'ON'),
             initial='OFF',
-            transitions=()
+            transitions=(Transition(from_state='OFF', to_state='ON', trigger='turn_on'), Transition(from_state='ON', to_state='OFF', trigger='turn_off'))
         )
         fsm_engine.register(definition)
     
@@ -197,7 +203,7 @@ def test_persist_invalid_state():
         entity_id='light.test_room_fake',
         states=('OFF', 'ON'),  # INVALID_STATE_123 нет в списке
         initial='OFF',
-        transitions=()
+        transitions=(Transition(from_state='OFF', to_state='ON', trigger='turn_on'), Transition(from_state='ON', to_state='OFF', trigger='turn_off'))
     )
     fsm_engine.register(definition)
     

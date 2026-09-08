@@ -130,6 +130,32 @@ class TestFSMTransitions:
                     to_state="MOTION",
                     trigger="motion"
                 ),
+                # Добавляем переходы чтобы граф был связный
+                Transition(
+                    from_state="MOTION",
+                    to_state="OFF",
+                    trigger="no_motion"
+                ),
+                Transition(
+                    from_state="OFF",
+                    to_state="SCHEDULE",
+                    trigger="schedule_start"
+                ),
+                Transition(
+                    from_state="SCHEDULE",
+                    to_state="OFF",
+                    trigger="schedule_end"
+                ),
+                Transition(
+                    from_state="OFF",
+                    to_state="MANUAL",
+                    trigger="manual_on"
+                ),
+                Transition(
+                    from_state="MANUAL",
+                    to_state="OFF",
+                    trigger="manual_off"
+                ),
             )
         )
         
