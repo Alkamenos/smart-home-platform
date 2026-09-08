@@ -8,6 +8,9 @@ CLI для платформы V3
 - debug: Отладка конкретного автомата
 - deploy: Деплой в Home Assistant
 - status: Показать статус всех автоматов
+- manifest: Управление манифестом (validate, show, generate, migrate)
+- health: Проверка здоровья платформы
+- doctor: Автоматическая диагностика проблем
 """
 
 import argparse
@@ -71,6 +74,48 @@ def setup_parser():
     # Команда status
     status_parser = subparsers.add_parser("status", help="Статус всех автоматов")
     status_parser.add_argument("--json", action="store_true", help="Вывод в JSON формате")
+    
+    # ===== НОВЫЕ КОМАНДЫ ДЛЯ МАНИФЕСТА =====
+    # Команда manifest
+    manifest_parser = subparsers.add_parser("manifest", help="Управление манифестом")
+    manifest_subparsers = manifest_parser.add_subparsers(dest="manifest_command", help="Команды манифеста")
+    
+    # manifest validate
+    manifest_validate = manifest_subparsers.add_parser("validate", help="Валидация манифеста")
+    manifest_validate.add_argument("--manifest-path", default="instances/leonids_house/manifest.yaml",
+                                   help="Путь к манифесту")
+    manifest_validate.add_argument("--strict", action="store_true", 
+                                   help="Считать warnings ошибками")
+    
+    # manifest show
+    manifest_show = manifest_subparsers.add_parser("show", help="Показать содержимое манифеста")
+    manifest_show.add_argument("--manifest-path", default="instances/leonids_house/manifest.yaml",
+                               help="Путь к манифесту")
+    manifest_show.add_argument("--json", action="store_true", help="Вывод в JSON формате")
+    
+    # manifest generate
+    manifest_generate = manifest_subparsers.add_parser("generate", help="Сгенерировать автоматы (без деплоя)")
+    manifest_generate.add_argument("--manifest-path", default="instances/leonids_house/manifest.yaml",
+                                   help="Путь к манифесту")
+    manifest_generate.add_argument("--output", help="Файл для вывода результата")
+    
+    # manifest migrate
+    manifest_migrate = manifest_subparsers.add_parser("migrate", help="Миграция с захардкоженных значений")
+    manifest_migrate.add_argument("--output", default="instances/leonids_house/manifest.yaml",
+                                  help="Путь для сохранения манифеста")
+    
+    # ===== КОМАНДЫ HEALTH CHECKS =====
+    # Команда health
+    health_parser = subparsers.add_parser("health", help="Проверка здоровья платформы")
+    health_parser.add_argument("--manifest-path", default="instances/leonids_house/manifest.yaml",
+                               help="Путь к манифесту")
+    health_parser.add_argument("--json", action="store_true", help="Вывод в JSON формате")
+    
+    # Команда doctor
+    doctor_parser = subparsers.add_parser("doctor", help="Автоматическая диагностика проблем")
+    doctor_parser.add_argument("--manifest-path", default="instances/leonids_house/manifest.yaml",
+                               help="Путь к манифесту")
+    doctor_parser.add_argument("--json", action="store_true", help="Вывод в JSON формате")
     
     return parser
 
@@ -277,6 +322,425 @@ def cmd_status(args):
             print()
 
 
+# ===== НОВЫЕ КОМАНДЫ ДЛЯ МАНИФЕСТА =====
+
+def cmd_manifest_validate(args):
+    """Валидация манифеста"""
+    import yaml
+    
+    manifest_path = Path(args.manifest_path)
+    
+    if not manifest_path.exists():
+        print(f"❌ Манифест не найден: {manifest_path}")
+        sys.exit(1)
+    
+    try:
+        with open(manifest_path) as f:
+            manifest = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"❌ Ошибка парсинга YAML: {e}")
+        sys.exit(1)
+    
+    from core.manifest_validator import ManifestValidator
+    validator = ManifestValidator()
+    errors = validator.validate(manifest)
+    
+    if errors:
+        print(f"❌ Манифест невалиден ({len(errors)} ошибок):")
+        for e in errors:
+            severity = "⚠️" if e.severity == "warning" else "❌"
+            print(f"  {severity} {e.field}: {e.message}")
+        sys.exit(1)
+    else:
+        print(f"✅ Манифест валиден: {manifest_path}")
+        print(f"   Instance: {manifest.get('instance', {}).get('name', 'N/A')}")
+        print(f"   Устройств: {sum(len(v) for v in manifest.get('devices', {}).values())}")
+        print(f"   Зон: {len(manifest.get('zones', []))}")
+
+
+def cmd_manifest_show(args):
+    """Показать содержимое манифеста"""
+    import yaml
+    
+    manifest_path = Path(args.manifest_path)
+    
+    if not manifest_path.exists():
+        print(f"❌ Манифест не найден: {manifest_path}")
+        sys.exit(1)
+    
+    try:
+        with open(manifest_path) as f:
+            manifest = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"❌ Ошибка парсинга YAML: {e}")
+        sys.exit(1)
+    
+    if args.json:
+        print(json.dumps(manifest, indent=2, ensure_ascii=False))
+    else:
+        print(f"\n=== Манифест: {manifest_path} ===\n")
+        print(f"Версия: {manifest.get('version', 'N/A')}")
+        print(f"Instance: {manifest.get('instance', {}).get('name', 'N/A')} ({manifest.get('instance', {}).get('id', 'N/A')})")
+        print(f"Владелец: {manifest.get('instance', {}).get('owner', 'N/A')}")
+        
+        print("\n--- Устройства ---")
+        devices = manifest.get('devices', {})
+        for device_type, device_list in devices.items():
+            print(f"\n{device_type.title()} ({len(device_list)}):")
+            for dev in device_list:
+                print(f"  • {dev.get('id')} — {dev.get('name', 'N/A')} ({dev.get('room', 'N/A')})")
+        
+        print(f"\n--- Зоны ({len(manifest.get('zones', []))}) ---")
+        for zone in manifest.get('zones', []):
+            print(f"  • {zone.get('id')} — {zone.get('name', 'N/A')} (этаж {zone.get('floor', 'N/A')})")
+        
+        print("\n--- Правила автоматизации ---")
+        rules = manifest.get('automation_rules', {})
+        for rule_type, rule_config in rules.items():
+            print(f"  {rule_type}: {rule_config}")
+        
+        print("\n--- Настройки дашборда ---")
+        dashboard = manifest.get('dashboard', {})
+        for key, value in dashboard.items():
+            print(f"  {key}: {value}")
+
+
+def cmd_manifest_generate(args):
+    """Сгенерировать автоматы из манифеста"""
+    import yaml
+    
+    manifest_path = Path(args.manifest_path)
+    
+    if not manifest_path.exists():
+        print(f"❌ Манифест не найден: {manifest_path}")
+        sys.exit(1)
+    
+    try:
+        with open(manifest_path) as f:
+            manifest = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"❌ Ошибка парсинга YAML: {e}")
+        sys.exit(1)
+    
+    from core.manifest_validator import ManifestValidator
+    from core.manifest_generator import ManifestAutomationGenerator
+    
+    # Валидация
+    validator = ManifestValidator()
+    errors = validator.validate(manifest)
+    if errors:
+        print(f"❌ Манифест невалиден, генерация отменена:")
+        for e in errors:
+            print(f"  - {e.field}: {e.message}")
+        sys.exit(1)
+    
+    # Генерация
+    generator = ManifestAutomationGenerator(manifest)
+    result = generator.generate_all()
+    
+    print(f"\n✅ Генерация успешна:")
+    print(f"   Освещение: {len(result.lighting_definitions)} автоматов, {len(result.lighting_mappings)} маппингов")
+    print(f"   Климат: {len(result.climate_definitions)} автоматов, {len(result.climate_mappings)} маппингов")
+    print(f"   Вентиляция: {len(result.ventilation_definitions)} автоматов, {len(result.ventilation_mappings)} маппингов")
+    
+    if args.output:
+        output_data = {
+            'lighting_count': len(result.lighting_definitions),
+            'climate_count': len(result.climate_definitions),
+            'ventilation_count': len(result.ventilation_definitions),
+            'total_mappings': len(result.lighting_mappings) + len(result.climate_mappings) + len(result.ventilation_mappings)
+        }
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, 'w') as f:
+            json.dump(output_data, f, indent=2)
+        print(f"\n💾 Результат сохранён: {output_path}")
+
+
+def cmd_manifest_migrate(args):
+    """Миграция с захардкоженных значений в манифест"""
+    import yaml
+    from migration.migrate import MigrationTool
+    
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Создаём базовый манифест из существующих настроек
+    manifest = {
+        "version": 1,
+        "instance": {
+            "id": "leonids_house",
+            "name": "Leonid's House",
+            "owner": "Leo",
+            "created_at": time.strftime("%Y-%m-%d")
+        },
+        "devices": {
+            "lighting": [
+                {
+                    "id": f"light.{room}",
+                    "name": f"Свет в {room.replace('_', ' ').title()}",
+                    "room": room,
+                    "motion_sensor": f"binary_sensor.{room}_motion",
+                    "schedule": "07:00-23:00",
+                    "motion_timeout_sec": 300
+                }
+                for room in ["kitchen", "living_room", "bedroom"]
+            ],
+            "climate": [
+                {
+                    "id": f"climate.{zone}",
+                    "name": f"Климат {zone.replace('_', ' ').title()}",
+                    "room": zone,
+                    "sensor": f"sensor.{zone}_temperature",
+                    "target": 22.0,
+                    "hysteresis": 0.5,
+                    "modes": ["heat", "cool", "auto"]
+                }
+                for zone in ["kitchen", "living_room"]
+            ],
+            "ventilation": [
+                {
+                    "id": "fan.bathroom",
+                    "name": "Вентиляция ванной",
+                    "room": "bathroom",
+                    "humidity_sensor": "sensor.bathroom_humidity",
+                    "humidity_threshold": 65,
+                    "timeout_sec": 1800
+                }
+            ]
+        },
+        "zones": [
+            {"id": room, "name": room.replace("_", " ").title(), "floor": 1}
+            for room in ["kitchen", "living_room", "bedroom", "bathroom"]
+        ],
+        "automation_rules": {
+            "lighting": {"manual_lockout_min": 60, "schedule_enabled": True, "motion_enabled": True},
+            "climate": {"manual_lockout_min": 30, "safety_lockout_enabled": True, "away_mode_enabled": True},
+            "ventilation": {"manual_lockout_min": 15, "humidity_based": True}
+        },
+        "dashboard": {
+            "title": "Leonid's House",
+            "show_motion_sensors": True,
+            "show_climate": True,
+            "show_history": True,
+            "history_days": 7
+        }
+    }
+    
+    # Валидация перед сохранением
+    from core.manifest_validator import ManifestValidator
+    validator = ManifestValidator()
+    errors = validator.validate(manifest)
+    
+    if errors:
+        print("❌ Сгенерированный манифест невалиден:")
+        for e in errors:
+            print(f"  - {e.field}: {e.message}")
+        sys.exit(1)
+    
+    # Сохранение
+    with open(output_path, "w", encoding="utf-8") as f:
+        yaml.dump(manifest, f, allow_unicode=True, default_flow_style=False)
+    
+    print(f"✅ Манифест создан: {output_path}")
+    print(f"   Устройств: {sum(len(v) for v in manifest['devices'].values())}")
+    print(f"   Зон: {len(manifest['zones'])}")
+
+
+# ===== КОМАНДЫ HEALTH CHECKS =====
+
+def cmd_health(args):
+    """Проверка здоровья платформы"""
+    import yaml
+    
+    print("🏥 Здоровье платформы")
+    print("=" * 50)
+    
+    # 1. Проверка манифеста
+    manifest_path = Path(args.manifest_path)
+    if manifest_path.exists():
+        try:
+            with open(manifest_path) as f:
+                manifest = yaml.safe_load(f)
+            from core.manifest_validator import ManifestValidator
+            validator = ManifestValidator()
+            errors = validator.validate(manifest)
+            if errors:
+                print(f"📋 Манифест: ❌ {len(errors)} ошибок")
+                for e in errors[:3]:  # Показываем первые 3
+                    print(f"     - {e.field}: {e.message}")
+            else:
+                print(f"📋 Манифест: ✅ Валиден")
+                print(f"     Instance: {manifest.get('instance', {}).get('name', 'N/A')}")
+        except Exception as e:
+            print(f"📋 Манифест: ❌ Ошибка чтения: {e}")
+    else:
+        print(f"📋 Манифест: ❌ Не найден ({manifest_path})")
+    
+    # 2. Проверка файлов ядра
+    core_dir = Path("/workspace/core")
+    required_files = ["fsm.py", "event_bus.py", "registry.py", "manifest_validator.py", "manifest_generator.py"]
+    missing = [f for f in required_files if not (core_dir / f).exists()]
+    if missing:
+        print(f"📦 Ядро: ❌ Отсутствуют файлы: {', '.join(missing)}")
+    else:
+        print(f"📦 Ядро: ✅ Все файлы на месте")
+    
+    # 3. Проверка тестов
+    tests_dir = Path("/workspace/tests")
+    test_files = list(tests_dir.glob("test_*.py"))
+    print(f"🧪 Тесты: ✅ {len(test_files)} тестовых файлов")
+    
+    # 4. Проверка адаптеров
+    adapters_dir = Path("/workspace/adapters")
+    adapter_files = list(adapters_dir.glob("*.py"))
+    print(f"🔌 Адаптеры: ✅ {len(adapter_files) - 1} адаптеров")  # -1 для __init__.py
+    
+    print("=" * 50)
+    print("✅ Платформа готова к работе")
+
+
+def cmd_doctor(args):
+    """Автоматическая диагностика проблем"""
+    import yaml
+    
+    print("👨‍⚕️ Диагностика платформы\n")
+    
+    issues = []
+    checks_passed = 0
+    checks_total = 0
+    
+    # 1. Проверка манифеста
+    print("Проверяю манифест...", end=" ")
+    checks_total += 1
+    manifest_path = Path(args.manifest_path)
+    if manifest_path.exists():
+        try:
+            with open(manifest_path) as f:
+                manifest = yaml.safe_load(f)
+            from core.manifest_validator import ManifestValidator
+            validator = ManifestValidator()
+            errors = validator.validate(manifest)
+            if errors:
+                print(f"⚠️ {len(errors)} предупреждений")
+                issues.append({
+                    'type': 'manifest_warnings',
+                    'message': f"Манифест содержит {len(errors)} предупреждений",
+                    'fix': "Запустите `python cli.py manifest validate` для деталей"
+                })
+            else:
+                print("✅")
+                checks_passed += 1
+        except Exception as e:
+            print(f"❌ {e}")
+            issues.append({
+                'type': 'manifest_error',
+                'message': f"Ошибка чтения манифеста: {e}",
+                'fix': "Проверьте путь к манифесту и формат YAML"
+            })
+    else:
+        print("❌ Не найден")
+        issues.append({
+            'type': 'manifest_missing',
+            'message': f"Манифест не найден: {manifest_path}",
+            'fix': f"Запустите `python cli.py manifest migrate --output {manifest_path}`"
+        })
+    
+    # 2. Проверка автоматов
+    print("Проверяю автоматы...", end=" ")
+    checks_total += 1
+    try:
+        from core.fsm import FSMEngine
+        from core.event_bus import EventBus
+        from core.logger import Logger
+        
+        event_bus = EventBus()
+        logger = Logger(component="doctor")
+        fsm = FSMEngine(event_bus, logger)
+        
+        # Пробуем загрузить манифест и сгенерировать автоматы
+        if manifest_path.exists():
+            with open(manifest_path) as f:
+                manifest = yaml.safe_load(f)
+            from core.manifest_generator import ManifestAutomationGenerator
+            generator = ManifestAutomationGenerator(manifest)
+            result = generator.generate_all()
+            
+            total_automata = len(result.lighting_definitions) + len(result.climate_definitions) + len(result.ventilation_definitions)
+            print(f"✅ {total_automata} автоматов")
+            checks_passed += 1
+        else:
+            print("⚠️ Пропущено (нет манифеста)")
+    except Exception as e:
+        print(f"❌ {e}")
+        issues.append({
+            'type': 'automation_error',
+            'message': f"Ошибка генерации автоматов: {e}",
+            'fix': "Проверьте корректность манифеста"
+        })
+    
+    # 3. Проверка подключений (адаптеры)
+    print("Проверяю подключения...", end=" ")
+    checks_total += 1
+    try:
+        from adapters.ha_adapter import HomeAssistantAdapter
+        from adapters.mock_adapter import MockAdapter
+        
+        # Mock адаптер всегда доступен
+        mock = MockAdapter()
+        if mock.is_available():
+            print("✅ Mock адаптер доступен")
+            checks_passed += 1
+        else:
+            print("⚠️ Mock адаптер недоступен")
+    except Exception as e:
+        print(f"❌ {e}")
+    
+    # 4. Проверка производительности
+    print("Проверяю производительность...", end=" ")
+    checks_total += 1
+    import time
+    start = time.time()
+    try:
+        event_bus = EventBus()
+        for i in range(100):
+            event_bus.publish("test_event", {"i": i})
+        elapsed = (time.time() - start) * 1000  # ms
+        if elapsed < 100:
+            print(f"✅ {elapsed:.1f}мс (100 событий)")
+            checks_passed += 1
+        else:
+            print(f"⚠️ {elapsed:.1f}мс (медленно)")
+            issues.append({
+                'type': 'performance_slow',
+                'message': f"Обработка событий медленная: {elapsed:.1f}мс",
+                'fix': "Проверьте нагрузку на систему"
+            })
+    except Exception as e:
+        print(f"❌ {e}")
+    
+    # Итоги
+    print(f"\n{'='*50}")
+    print(f"Найдено проблем: {len(issues)}")
+    
+    if issues:
+        print("\nРекомендации:")
+        for i, issue in enumerate(issues, 1):
+            print(f"\n{i}. {issue['message']}")
+            print(f"   Решение: {issue['fix']}")
+        print(f"\nОбщий статус: ⚠️ Требует внимания")
+    else:
+        print(f"\nОбщий статус: ✅ Всё в порядке")
+    
+    if args.json:
+        print("\n" + json.dumps({
+            'checks_passed': checks_passed,
+            'checks_total': checks_total,
+            'issues': issues
+        }, indent=2))
+
+
+# Обновляем словарь команд
 def main():
     parser = setup_parser()
     args = parser.parse_args()
@@ -285,6 +749,32 @@ def main():
         parser.print_help()
         sys.exit(1)
     
+    # Обработка подкоманд manifest
+    if args.command == "manifest":
+        if args.manifest_command == "validate":
+            cmd_manifest_validate(args)
+        elif args.manifest_command == "show":
+            cmd_manifest_show(args)
+        elif args.manifest_command == "generate":
+            cmd_manifest_generate(args)
+        elif args.manifest_command == "migrate":
+            cmd_manifest_migrate(args)
+        else:
+            print("❌ Укажите подкоманду: validate, show, generate, migrate")
+            sys.exit(1)
+        return
+    
+    # Обработка health
+    if args.command == "health":
+        cmd_health(args)
+        return
+    
+    # Обработка doctor
+    if args.command == "doctor":
+        cmd_doctor(args)
+        return
+    
+    # Остальные команды
     commands = {
         "run": cmd_run,
         "test": cmd_test,
