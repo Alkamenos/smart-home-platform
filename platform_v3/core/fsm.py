@@ -27,6 +27,7 @@ class Transition:
     priority: int = 0                  # Приоритет (выше = важнее)
     reason: str = ""                   # Описание
     timeout_sec: Optional[int] = None  # Таймаут для перехода в следующее состояние
+    attributes: dict = field(default_factory=dict)  # Атрибуты для команды (brightness, hvac_mode и т.д.)
 
 
 @dataclass(frozen=True)
@@ -321,7 +322,8 @@ class FSMEngine:
             "to_state": transition.to_state,
             "trigger": transition.trigger,
             "reason": transition.reason,
-            "duration_ms": int((now - old_state.entered_at) * 1000) if old_state.entered_at < now else 0
+            "duration_ms": int((now - old_state.entered_at) * 1000) if old_state.entered_at < now else 0,
+            "attributes": transition.attributes  # Передаём атрибуты для команды
         })
         
         self._logger.info(
