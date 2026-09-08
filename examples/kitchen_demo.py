@@ -1,137 +1,268 @@
+#!/usr/bin/env python3
+"""Kitchen Demo - Local mock simulator for Smart Home FSM.
+
+This script demonstrates the Smart Home FSM platform running locally
+without Home Assistant. It simulates a kitchen lighting automation
+with motion detection, manual override, and timeout handling.
+
+Features:
+- Simulates motion sensor events
+- Demonstrates automatic light control
+- Shows manual override functionality
+- Displays trace_id propagation in logs
+- Validates timer cancellation on rapid triggers
+
+Usage:
+    make run-mock
+    
+    or
+    
+    python examples/kitchen_demo.py
 """
-Kitchen Demo - Минимальный рабочий пример Smart Home Platform v3
 
-Этот скрипт демонстрирует работу платформы локально без HA:
-- Датчик движения на кухне включает свет
-- Через 5 минут без движения свет выключается
-- Ручное вмешательство переключает в MANUAL режим
+from __future__ import annotations
 
-Запуск: python examples/kitchen_demo.py
-"""
+import asyncio
+from datetime import datetime
 
-import sys
-import os
-import time
+from loguru import logger
 
-# Добавляем parent directory для импортов
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core.event_bus import EventBus
-from core.logger import Logger
-from core.fsm import FSMEngine
-from adapters.mock_adapter import MockAdapter
-from adapters.bridge import ActionBridge, StateSync
-from features.lighting import create_lighting_automations
+from src.smart_home.adapters.mock_adapter import MockAdapter
+from src.smart_home.core.event_bus import EventBus
+from src.smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
+from src.smart_home.core.registry import Registry
+from src.smart_home.core.scheduler import Scheduler
 
 
-def print_header(text: str):
-    """Красивый заголовок"""
-    print(f"\n{'='*60}")
-    print(f"  {text}")
-    print(f"{'='*60}\n")
+def setup_kitchen_automations(
+    engine: FSMEngine, adapter: MockAdapter
+) -> None:
+    """Set up kitchen lighting automations.
+
+    Configures FSM states, transitions, guards, and actions for
+    kitchen motion-based lighting with manual override support.
+
+    Args:
+        engine: FSMEngine instance to configure.
+        adapter: MockAdapter for service calls.
+    """
+    log = logger.bind(component="kitchen_demo")
+
+    # Define kitchen light entity
+    kitchen_light = "light.kitchen"
+    kitchen_motion = "binary_sensor.kitchen_motion"
+
+    # Register guard: Check if manual override is active
+    def is_not_manual_override(entity_id: str, state: State) -> bool:
+        """Return False if manual override is active."""
+        manual_until = state.context.get("manual_override_until", 0.0)
+        now = datetime.now().timestamp()
+        is_active = now < manual_until
+
+        if is_active:
+            logger.bind(trace_id="demo").debug(
+                f"{entity_id}: Manual override active until "
+                f"{datetime.fromtimestamp(manual_until).strftime('%H:%M:%S')}"
+            )
+
+        return not is_active
+
+    # Register action: Turn on light
+    async def turn_on_light(entity_id: str, state: State) -> None:
+        """Turn on the kitchen light."""
+        log.info(f"Turning ON {entity_id}")
+        await adapter.call_service(
+            "light", "turn_on", entity_id, {"brightness": 200}, state.context
+        )
+
+    # Register action: Turn off light
+    async def turn_off_light(entity_id: str, state: State) -> None:
+        """Turn off the kitchen light."""
+        log.info(f"Turning OFF {entity_id}")
+        await adapter.call_service("light", "turn_off", entity_id, {}, state.context)
+
+    # Register action: Set manual override
+    async def set_manual_override(
+        entity_id: str, state: State, duration_minutes: int = 60
+    ) -> None:
+        """Set manual override for specified duration."""
+        now = datetime.now().timestamp()
+        until = now + (duration_minutes * 60)
+        new_context = {**state.context, "manual_override_until": until}
+
+        log.info(
+            f"{entity_id}: Manual override set for {duration_minutes} minutes "
+            f"(until {datetime.fromtimestamp(until).strftime('%H:%M:%S')})"
+        )
+
+        # Update state context (in real scenario, this would be done by FSM)
+        state.context.update(new_context)
+
+    # Register guards and actions directly on engine
+    engine.register_guard("not_manual_override", is_not_manual_override)
+    engine.register_action("turn_on_light", turn_on_light)
+    engine.register_action("turn_off_light", turn_off_light)
+    engine.register_action("set_manual_override", set_manual_override)
+
+    # Create transitions
+    transitions = [
+        # Motion detected: off → on_auto (timeout 5 min)
+        Transition(
+            from_state="off",
+            trigger="motion_detected",
+            to_state="on_auto",
+            action="turn_on_light",
+            timeout_sec=300,  # 5 minutes
+        ),
+        # Timeout: on_auto → off
+        Transition(
+            from_state="on_auto",
+            trigger="timeout",
+            to_state="off",
+            action="turn_off_light",
+        ),
+        # Motion while on_auto: reset timer
+        Transition(
+            from_state="on_auto",
+            trigger="motion_detected",
+            to_state="on_auto",
+            action="turn_on_light",
+            timeout_sec=300,
+        ),
+        # Manual override: on_auto → on_manual (timeout 60 min)
+        Transition(
+            from_state="on_auto",
+            trigger="manual_override",
+            to_state="on_manual",
+            action="set_manual_override",
+            timeout_sec=3600,  # 60 minutes
+        ),
+        # Manual override: off → on_manual
+        Transition(
+            from_state="off",
+            trigger="manual_override",
+            to_state="on_manual",
+            action="set_manual_override",
+            timeout_sec=3600,
+        ),
+        # Timeout from manual: on_manual → off
+        Transition(
+            from_state="on_manual",
+            trigger="timeout",
+            to_state="off",
+            action="turn_off_light",
+        ),
+        # Light turned off manually from any state
+        Transition(
+            from_state="on_auto",
+            trigger="turned_off",
+            to_state="off",
+            action="turn_off_light",
+        ),
+        Transition(
+            from_state="on_manual",
+            trigger="turned_off",
+            to_state="off",
+            action="turn_off_light",
+        ),
+    ]
+
+    # Create FSM definition
+    fsm_def = FSMDefinition(
+        entity_id=kitchen_light,
+        initial_state="off",
+        states=("off", "on_auto", "on_manual"),
+        transitions=tuple(transitions),
+    )
+
+    # Register FSM definition
+    engine.register_definition(fsm_def)
+
+    log.info("Kitchen automations configured")
 
 
-def print_event(time_offset: str, event: str, details: str = ""):
-    """Вывод события с таймингом"""
-    emoji = {
-        "motion": "🏃",
-        "light_on": "💡",
-        "light_off": "⬛",
-        "timeout": "⏰",
-        "manual": "✋",
-        "start": "🚀",
-        "end": "✅"
-    }
-    
-    print(f"[{time_offset}] {emoji.get(event, '•')} {event.upper()}")
-    if details:
-        print(f"         {details}")
+async def run_demo() -> None:
+    """Run the kitchen demo simulation."""
+    log = logger.bind(component="demo")
 
+    print("=" * 60)
+    print("🏠 Smart Home FSM - Kitchen Demo")
+    print("=" * 60)
+    print()
 
-def main():
-    print_header("KITCHEN DEMO - Smart Home Platform v3")
-    
-    # 1. Инициализация компонентов
-    event_bus = EventBus()
-    logger = Logger(component="demo", output=None)
-    mock_adapter = MockAdapter()
-    fsm_engine = FSMEngine(event_bus, logger)
-    
-    # 2. Регистрируем автомат для кухни
-    automations = create_lighting_automations(["kitchen"])
-    for auto in automations:
-        fsm_engine.register(auto)
-    
-    # 3. Подключаем мосты (ActionBridge и StateSync)
-    bridge = ActionBridge(event_bus, mock_adapter, logger)
-    sync = StateSync(event_bus, fsm_engine, logger)
-    
-    print_event("00:00", "start", "Платформа запущена. Свет на кухне выключен.")
-    
-    # Показываем начальное состояние
-    state = fsm_engine.get_state("light.kitchen")
-    print(f"         FSM состояние: {state.current}")
-    
-    # 4. Сценарий 1: Обнаружено движение → свет включается
-    print_event("00:05", "motion", "Датчик движения сработал")
-    
-    context_motion = {
-        "kitchen_motion_sensor": True,
-        "kitchen_motion_enabled": True
-    }
-    result = fsm_engine.trigger("light.kitchen", "motion_detected", context_motion)
-    
-    state = fsm_engine.get_state("light.kitchen")
-    print_event("00:05", "light_on", f"Свет включён! Переход: OFF → {state.current}")
-    print(f"         Причина: {state.entered_why}")
-    
-    # 5. Сценарий 2: Таймаут 5 минут → свет выключается
-    print_event("05:05", "timeout", "Прошло 5 минут без движения")
-    
-    result = fsm_engine.trigger("light.kitchen", "timeout", {})
-    
-    state = fsm_engine.get_state("light.kitchen")
-    print_event("05:05", "light_off", f"Свет выключен. Переход: ON_MOTION → {state.current}")
-    
-    # 6. Сценарий 3: Ручное вмешательство
-    print_event("05:10", "manual", "Пользователь включил свет вручную")
-    
-    result = fsm_engine.trigger("light.kitchen", "manual_change", {})
-    
-    state = fsm_engine.get_state("light.kitchen")
-    print_event("05:10", "light_on", f"MANUAL режим активирован: {state.current}")
-    print(f"         Приоритет: {state.entered_why}")
-    
-    # 7. Показываем историю переходов
-    print_header("ИСТОРИЯ ПЕРЕХОДОВ")
-    
-    history = state.history[:5]  # Последние 5 переходов
-    for i, entry in enumerate(history, 1):
-        duration = ""
-        if i < len(history):
-            prev_time = history[i-1]['at']
-            curr_time = entry['at']
-            duration = f" ({int(curr_time - prev_time)}с)"
-        
-        print(f"{i}. {entry['from']:15} → {entry['to']:15} [{entry['trigger']}] {duration}")
-    
-    # 8. Показываем команды отправленные в MockAdapter
-    print_header("КОМАНДЫ В MOCK ADAPTER")
-    
-    adapter_history = mock_adapter.get_commands_log()
-    if adapter_history:
-        for cmd in adapter_history:
-            if cmd.get('type') == 'command':
-                print(f"  • {cmd['entity_id']}: {cmd['command']} (attributes: {cmd.get('attributes', {})})")
-    else:
-        print("  (команды не отправлялись)")
-    
-    print_header("DEMO ЗАВЕРШЕНА")
-    print_event("", "end", "Все сценарии выполнены успешно!")
-    
-    return True
+    # Initialize components
+    engine = FSMEngine()
+    adapter = MockAdapter()
+
+    # Connect adapter to engine
+    adapter.set_fsm_engine(engine)
+
+    # Set up automations
+    setup_kitchen_automations(engine, adapter)
+
+    kitchen_light = "light.kitchen"
+    kitchen_motion = "binary_sensor.kitchen_motion"
+
+    print("Scenario: Kitchen Lighting Automation")
+    print("-" * 60)
+    print()
+
+    # Scenario 1: Motion detected - trigger on light.kitchen entity
+    print("📍 Step 1: Motion detected in kitchen")
+    await asyncio.sleep(0.5)
+    await adapter.simulate_event(
+        kitchen_light,
+        "motion_detected",
+        {"trace_id": "demo0001"},
+    )
+    await asyncio.sleep(1)
+    print()
+
+    # Check state
+    state = engine.get_state(kitchen_light)
+    print(f"💡 Light FSM state: {state.current_state if state else 'N/A'}")
+    print()
+
+    # Scenario 2: Rapid motion triggers (test timer cancellation)
+    print("📍 Step 2: Rapid motion triggers (testing timer cancellation)")
+    await asyncio.sleep(0.5)
+    for i in range(3):
+        print(f"  Trigger {i+1}/3")
+        await adapter.simulate_event(
+            kitchen_light,
+            "motion_detected",
+            {"trace_id": f"demo000{i+2}"},
+        )
+        await asyncio.sleep(0.3)
+    await asyncio.sleep(1)
+    print()
+
+    # Scenario 3: Manual override
+    print("📍 Step 3: User activates manual override")
+    await asyncio.sleep(0.5)
+    await adapter.simulate_event(
+        kitchen_light,
+        "manual_override",
+        {"trace_id": "demo0005"},
+    )
+    await asyncio.sleep(1)
+    print()
+
+    # Show service calls
+    print("=" * 60)
+    print("📋 Service Calls Log:")
+    print("-" * 60)
+    calls = adapter.get_service_calls()
+    for i, call in enumerate(calls, 1):
+        print(f"{i}. {call['domain']}.{call['service']}({call['entity_id']})")
+    print()
+
+    # Cleanup
+    print("🛑 Stopping demo...")
+    await engine.shutdown()
+    print("✅ Demo completed successfully!")
+    print()
 
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    asyncio.run(run_demo())
