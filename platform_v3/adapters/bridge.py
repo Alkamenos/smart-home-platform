@@ -30,9 +30,15 @@ class ActionBridge:
     
     Подписывается на события fsm.transition и отправляет команды в HA.
     
+    Поддерживает:
+    - Бинарные устройства (свет, розетки): turn_on/turn_off
+    - Климат: hvac_mode, temperature
+    - Атрибуты: brightness, color_temp, rgb_color из Transition.attributes
+    
     Mapping состояний в команды:
     - ON_SCHEDULE, ON_MOTION, PARTY, NIGHTLIGHT, MANUAL -> turn_on
     - OFF -> turn_off
+    - HEATING, COOLING, FAN_ONLY -> set_hvac_mode
     """
     
     def __init__(self, event_bus: EventBus, adapter: HomeAssistantAdapter, logger: Logger):
@@ -55,19 +61,21 @@ class ActionBridge:
                 "from_state": "OFF",
                 "to_state": "ON_SCHEDULE",
                 "trigger": "schedule_on",
-                "reason": "Включение по расписанию"
+                "reason": "Включение по расписанию",
+                "attributes": {"brightness": 50}  # Опционально
             }
         """
         entity_id = data.get("entity_id")
         to_state = data.get("to_state")
         from_state = data.get("from_state")
+        attributes = data.get("attributes", {})
         
         if not entity_id or not to_state:
             self._logger.error("Invalid transition data", data=data)
             return
         
-        # Определяем команду на основе состояния
-        command = self._state_to_command(to_state)
+        # Определяем команду и атрибуты на основе состояния
+        command, command_attributes = self._state_to_command(to_state, attributes)
         
         if command is None:
             # Состояние не требует изменения физического устройства
@@ -79,16 +87,23 @@ class ActionBridge:
             return
         
         # Отправляем команду в HA
-        self._send_command(entity_id, command, from_state, to_state)
+        self._send_command(entity_id, command, command_attributes, from_state, to_state)
     
-    def _state_to_command(self, state: str) -> str | None:
+    def _state_to_command(self, state: str, attributes: dict = None) -> tuple[str | None, dict]:
         """
-        Преобразует состояние FSM в команду HA
+        Преобразует состояние FSM в команду HA и атрибуты
         
         Returns:
-            "turn_on", "turn_off" или None (если действие не требуется)
+            (command, attributes) или (None, {}) если действие не требуется
+        
+        Команды:
+        - "turn_on" / "turn_off" - для света, розеток, переключателей
+        - "set_hvac_mode" - для климата (heat, cool, fan_only, off)
+        - "set_temperature" - для климата
         """
-        # Состояния когда свет должен быть включен
+        attributes = attributes or {}
+        
+        # Свет и бинарные устройства
         on_states = {
             "ON_SCHEDULE",
             "ON_MOTION", 
@@ -98,14 +113,43 @@ class ActionBridge:
         }
         
         if state in on_states:
-            return "turn_on"
+            # Для NIGHTLIGHT можно установить яркость по умолчанию если не указана
+            if state == "NIGHTLIGHT" and "brightness" not in attributes:
+                attributes["brightness"] = attributes.get("nightlight_brightness", 10)
+            return "turn_on", attributes
+        
         elif state == "OFF":
-            return "turn_off"
-        else:
-            return None
+            return "turn_off", attributes
+        
+        # Климат - состояния HVAC
+        hvac_modes = {
+            "HEATING": ("set_hvac_mode", {"hvac_mode": "heat"}),
+            "COOLING": ("set_hvac_mode", {"hvac_mode": "cool"}),
+            "FAN_ONLY": ("set_hvac_mode", {"hvac_mode": "fan_only"}),
+            "DRY": ("set_hvac_mode", {"hvac_mode": "dry"}),
+            "AUTO": ("set_hvac_mode", {"hvac_mode": "auto"}),
+            "HEAT_COOL": ("set_hvac_mode", {"hvac_mode": "heat_cool"}),
+        }
+        
+        if state in hvac_modes:
+            cmd, mode_attrs = hvac_modes[state]
+            merged_attrs = {**mode_attrs, **attributes}
+            return cmd, merged_attrs
+        
+        # Неизвестное состояние
+        return None, {}
     
-    def _send_command(self, entity_id: str, command: str, from_state: str, to_state: str) -> None:
-        """Отправить команду в HA"""
+    def _send_command(self, entity_id: str, command: str, attributes: dict, from_state: str, to_state: str) -> None:
+        """
+        Отправить команду в HA
+        
+        Args:
+            entity_id: ID устройства
+            command: Команда (turn_on, turn_off, set_hvac_mode)
+            attributes: Атрибуты команды (brightness, hvac_mode, temperature)
+            from_state: Предыдущее состояние FSM
+            to_state: Новое состояние FSM
+        """
         try:
             # Для async контекста (когда запущено как отдельный сервис)
             if hasattr(self._adapter, 'set_entity_state'):
@@ -114,37 +158,39 @@ class ActionBridge:
                     loop = asyncio.get_running_loop()
                     # Создаём задачу чтобы не блокировать event loop
                     task = asyncio.create_task(
-                        self._adapter.set_entity_state(entity_id, "on" if command == "turn_on" else "off")
+                        self._adapter.set_entity_state(entity_id, command, attributes)
                     )
                     self._logger.info(
                         f"Command sent: {command}",
                         entity_id=entity_id,
                         from_state=from_state,
                         to_state=to_state,
+                        attributes=attributes,
                         async_mode=True
                     )
                 except RuntimeError:
                     # Нет running loop (синхронный контекст)
-                    self._send_sync(entity_id, command, from_state, to_state)
+                    self._send_sync(entity_id, command, attributes, from_state, to_state)
             else:
                 # Mock adapter или другой адаптер без async
-                self._send_sync(entity_id, command, from_state, to_state)
+                self._send_sync(entity_id, command, attributes, from_state, to_state)
                 
         except Exception as e:
             self._logger.error(
                 f"Failed to send command: {e}",
                 entity_id=entity_id,
                 command=command,
+                attributes=attributes,
                 error=str(e)
             )
     
-    def _send_sync(self, entity_id: str, command: str, from_state: str, to_state: str) -> None:
+    def _send_sync(self, entity_id: str, command: str, attributes: dict, from_state: str, to_state: str) -> None:
         """Синхронная отправка команды (для тестов и mock adapter)"""
         if hasattr(self._adapter, 'send_command'):
-            # Mock adapter
-            self._adapter.send_command(entity_id, command)
+            # Mock adapter с атрибутами
+            self._adapter.send_command(entity_id, command, attributes)
         elif hasattr(self._adapter, 'set_state'):
-            # Другой тип mock
+            # Другой тип mock (без атрибутов)
             new_state = "on" if command == "turn_on" else "off"
             self._adapter.set_state(entity_id, new_state)
         
@@ -153,6 +199,7 @@ class ActionBridge:
             entity_id=entity_id,
             from_state=from_state,
             to_state=to_state,
+            attributes=attributes,
             async_mode=False
         )
 

@@ -70,7 +70,17 @@ class MockAdapter(BaseAdapter):
         command: str, 
         attributes: dict = None
     ) -> bool:
-        """Отправить команду устройству"""
+        """
+        Отправить команду устройству
+        
+        Args:
+            entity_id: ID устройства
+            command: Команда (turn_on, turn_off, set_hvac_mode)
+            attributes: Атрибуты команды (brightness, hvac_mode, temperature)
+        
+        Returns:
+            True если команда принята
+        """
         if not self._available:
             return False
         
@@ -85,6 +95,16 @@ class MockAdapter(BaseAdapter):
             "command": command,
             "attributes": attributes or {}
         })
+        
+        # Для мока эмулируем изменение состояния при turn_on/turn_off
+        if command == "turn_on":
+            self.set_state(entity_id, "on")
+        elif command == "turn_off":
+            self.set_state(entity_id, "off")
+        elif command == "set_hvac_mode" and attributes:
+            hvac_mode = attributes.get("hvac_mode")
+            if hvac_mode:
+                self.set_state(entity_id, hvac_mode)
         
         # Для мока просто считаем команду успешной
         return True
