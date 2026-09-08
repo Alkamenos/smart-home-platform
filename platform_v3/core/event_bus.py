@@ -47,7 +47,8 @@ class EventBus:
         handlers = self._subscribers.get(event_type, [])
         for handler in handlers:
             try:
-                handler(event_type, data)
+                # Передаём только data (хендлер и так знает тип события)
+                handler(data)
             except Exception as e:
                 # Логируем ошибку, но не прерываем обработку других хендлеров
                 print(f"[EventBus] Error in handler for {event_type}: {e}")
