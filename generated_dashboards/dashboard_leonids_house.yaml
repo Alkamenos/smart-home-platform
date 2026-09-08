@@ -1,0 +1,178 @@
+title: Leonid's House
+views:
+- title: Главная
+  icon: mdi:home
+  cards:
+  - type: horizontal-stack
+    cards:
+    - type: button
+      name: Включить
+      icon: mdi:robot
+      show_name: true
+      tap_action:
+        action: call-service
+        service: platform_v3.enable_automation
+        service_data: {}
+    - type: button
+      name: Выключить
+      icon: mdi:robot-off
+      show_name: true
+      tap_action:
+        action: call-service
+        service: platform_v3.disable_automation
+        service_data: {}
+    - type: button
+      name: Ручной
+      icon: mdi:hand-left
+      show_name: true
+      tap_action:
+        action: call-service
+        service: platform_v3.manual_mode
+        service_data: {}
+    - type: button
+      name: Статус
+      icon: mdi:information-outline
+      show_name: true
+      tap_action:
+        action: call-service
+        service: platform_v3.status
+        service_data: {}
+    - type: button
+      name: Сброс
+      icon: mdi:refresh
+      show_name: true
+      tap_action:
+        action: call-service
+        service: platform_v3.reset_lockouts
+        service_data: {}
+  - type: entities
+    title: 🏠 Автоматы
+    show_header_toggle: false
+    entities:
+    - entity: sensor.platform_v3_light_kitchen_state
+      name: Свет на кухне
+      icon: mdi:lightbulb
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_light_living_room_state
+      name: Свет в гостиной
+      icon: mdi:lightbulb
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_light_bedroom_state
+      name: Свет в спальне
+      icon: mdi:lightbulb
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_climate_kitchen_state
+      name: Климат кухни
+      icon: mdi:thermometer
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_climate_living_room_state
+      name: Климат гостиной
+      icon: mdi:thermometer
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_fan_bathroom_state
+      name: Вентиляция ванной
+      icon: mdi:fan
+      secondary_info: last-changed
+  - type: entities
+    title: 👁️ Датчики движения
+    show_header_toggle: false
+    entities:
+    - entity: binary_sensor.kitchen_motion
+      name: 'Движение: Свет на кухне'
+      icon: mdi:motion-sensor
+      secondary_info: last-changed
+    - entity: binary_sensor.living_room_motion
+      name: 'Движение: Свет в гостиной'
+      icon: mdi:motion-sensor
+      secondary_info: last-changed
+    - entity: binary_sensor.bedroom_motion
+      name: 'Движение: Свет в спальне'
+      icon: mdi:motion-sensor
+      secondary_info: last-changed
+  - type: entities
+    title: 🌡️ Климат
+    show_header_toggle: false
+    entities:
+    - entity: sensor.kitchen_temperature
+      name: Климат кухни
+      icon: mdi:thermometer
+      secondary_info: last-changed
+    - entity: sensor.living_room_temperature
+      name: Климат гостиной
+      icon: mdi:thermometer
+      secondary_info: last-changed
+- title: История
+  icon: mdi:history
+  cards:
+  - type: entities
+    title: 📜 История переходов (7 дн.)
+    show_header_toggle: false
+    entities:
+    - entity: sensor.platform_v3_light_kitchen_history
+      name: Свет на кухне
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_light_living_room_history
+      name: Свет в гостиной
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_light_bedroom_history
+      name: Свет в спальне
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_climate_kitchen_history
+      name: Климат кухни
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_climate_living_room_history
+      name: Климат гостиной
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_fan_bathroom_history
+      name: Вентиляция ванной
+      secondary_info: last-changed
+    sort:
+      method: last_changed
+      reverse: true
+- title: Комнаты
+  icon: mdi:floor-plan
+  cards:
+  - type: entities
+    title: 🏠 Устройства по комнатам
+    show_header_toggle: false
+    entities:
+    - content: '**Кухня**'
+      type: custom:markdown
+    - entity: sensor.platform_v3_light_kitchen_state
+      name: Свет на кухне
+      icon: mdi:lightbulb
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_climate_kitchen_state
+      name: Климат кухни
+      icon: mdi:thermometer
+      secondary_info: last-changed
+    - content: ''
+      type: custom:markdown
+    - content: '**Гостиная**'
+      type: custom:markdown
+    - entity: sensor.platform_v3_light_living_room_state
+      name: Свет в гостиной
+      icon: mdi:lightbulb
+      secondary_info: last-changed
+    - entity: sensor.platform_v3_climate_living_room_state
+      name: Климат гостиной
+      icon: mdi:thermometer
+      secondary_info: last-changed
+    - content: ''
+      type: custom:markdown
+    - content: '**Спальня**'
+      type: custom:markdown
+    - entity: sensor.platform_v3_light_bedroom_state
+      name: Свет в спальне
+      icon: mdi:lightbulb
+      secondary_info: last-changed
+    - content: ''
+      type: custom:markdown
+    - content: '**Ванная**'
+      type: custom:markdown
+    - entity: sensor.platform_v3_fan_bathroom_state
+      name: Вентиляция ванной
+      icon: mdi:fan
+      secondary_info: last-changed
+    - content: ''
+      type: custom:markdown
