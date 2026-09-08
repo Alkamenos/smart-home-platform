@@ -184,26 +184,50 @@ class ContextManager:
             self._trigger_affected_fsms(context_key, is_active)
     
     def _start_schedule_checker(self) -> None:
-        """Запустить периодическую проверку расписаний"""
+        """
+        Запустить периодическую проверку расписаний
+        
+        Использует task.unique() для безопасного управления жизненным циклом в PyScript.
+        При каждом вызове старая задача автоматически отменяется перед созданием новой.
+        """
         import asyncio
         
+        # Проверяем доступность task.unique() (PyScript-specific)
+        try:
+            from pyscript import task
+            PYSRIPT_TASK_AVAILABLE = True
+        except ImportError:
+            PYSRIPT_TASK_AVAILABLE = False
+        
         async def check_schedules():
+            """Фоновая задача проверки расписаний"""
             while True:
                 try:
                     await asyncio.sleep(self._schedule_check_interval)
                     for context_key, time_range in self._schedules.items():
                         self._update_schedule_context(context_key, time_range)
                 except asyncio.CancelledError:
+                    self._logger.info("Schedule checker cancelled")
                     break
                 except Exception as e:
                     self._logger.error(f"Schedule checker error: {e}")
         
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(check_schedules())
-            self._logger.info("Schedule checker started")
-        except RuntimeError:
-            self._logger.warning("No running event loop, schedule checker not started")
+        if PYSRIPT_TASK_AVAILABLE:
+            # Безопасный способ для PyScript - task.unique() сам отменяет старую задачу
+            task.unique("platform_v3_schedule_checker")(check_schedules())
+            self._logger.info("Schedule checker started with task.unique()")
+        else:
+            # Fallback для тестов / вне PyScript
+            try:
+                loop = asyncio.get_running_loop()
+                # Отменяем предыдущую задачу если есть
+                if hasattr(self, '_schedule_checker_task') and self._schedule_checker_task:
+                    self._schedule_checker_task.cancel()
+                
+                self._schedule_checker_task = loop.create_task(check_schedules())
+                self._logger.info("Schedule checker started with create_task()")
+            except RuntimeError:
+                self._logger.warning("No running event loop, schedule checker not started")
     
     def set_context(self, key: str, value) -> None:
         """

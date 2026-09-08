@@ -29,6 +29,7 @@ class Transition:
     timeout_sec: Optional[int] = None  # Таймаут для перехода в следующее состояние
     attributes: dict = field(default_factory=dict)  # Атрибуты для команды (brightness, hvac_mode и т.д.)
     debounce_sec: float = 0.0          # Защита от дребезга (мин. время между переходами)
+    action: Optional[Callable[[dict], None]] = None  # Действие при выполнении перехода
 
 
 @dataclass(frozen=True)
@@ -330,6 +331,18 @@ class FSMEngine:
         """Выполнить переход"""
         old_state = self._states[entity_id]
         now = time.time()
+        
+        # Выполняем действие перехода если указано (например, сохранение timestamp)
+        if transition.action is not None:
+            try:
+                transition.action(context)
+            except Exception as e:
+                self._logger.warning(
+                    f"Action failed for {entity_id}: {e}",
+                    entity_id=entity_id,
+                    trigger=transition.trigger,
+                    error=str(e)
+                )
         
         # Обновляем историю
         history_entry = {

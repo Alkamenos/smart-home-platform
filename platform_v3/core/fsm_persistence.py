@@ -291,12 +291,60 @@ class FSMPersistence:
         current_state = self._fsm_engine.get_state(entity_id)
         
         if current_state and current_state.current != saved_state:
-            # Триггерим восстановление состояния
-            # Используем специальный триггер "restore_state"
-            self._fsm_engine.trigger(entity_id, "restore_state", {
-                "saved_state": saved_state,
-                "reason": "State restoration after restart"
-            })
+            # Находим определение автомата для проверки валидности состояния
+            definition = self._fsm_engine._definitions.get(entity_id)
             
-            # Обновляем кэш
-            self._state_cache[entity_id] = saved_state
+            if definition and saved_state in definition.states:
+                # Прямо устанавливаем состояние в FSM Engine
+                # Это обходной путь т.к. триггер restore_state может не существовать
+                import time
+                
+                now = time.time()
+                
+                # Создаём новую запись в истории
+                history_entry = {
+                    "from": current_state.current,
+                    "to": saved_state,
+                    "trigger": "restore",
+                    "why": "State restoration after restart",
+                    "at": now
+                }
+                new_history = (history_entry,) + current_state.history[:19]
+                
+                # Создаём новое состояние (используем State из того же модуля)
+                from .fsm import State
+                
+                restored_state = State(
+                    entity_id=entity_id,
+                    current=saved_state,
+                    entered_at=now,
+                    entered_by="restore",
+                    entered_why="State restoration after restart",
+                    history=new_history
+                )
+                
+                # Обновляем состояние в движке
+                self._fsm_engine._states[entity_id] = restored_state
+                
+                # Публикуем событие о восстановлении
+                self._event_bus.publish("fsm.restored", {
+                    "entity_id": entity_id,
+                    "restored_state": saved_state,
+                    "previous_state": current_state.current
+                })
+                
+                self._logger.info(
+                    f"State directly restored for {entity_id}: {saved_state}",
+                    entity_id=entity_id,
+                    saved_state=saved_state,
+                    previous_state=current_state.current
+                )
+                
+                # Обновляем кэш
+                self._state_cache[entity_id] = saved_state
+            else:
+                self._logger.warning(
+                    f"Cannot restore invalid state for {entity_id}: {saved_state}",
+                    entity_id=entity_id,
+                    saved_state=saved_state
+                )
