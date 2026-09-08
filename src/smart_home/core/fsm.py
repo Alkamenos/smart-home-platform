@@ -115,8 +115,15 @@ class FSMEngine:
         """Get the current state of an entity."""
         return self._states.get(entity_id)
 
-    async def _cancel_timers(self, entity_id: str) -> None:
-        """Cancel any pending timers for an entity."""
+    async def _cancel_timers(self, entity_id: str, log: Any | None = None) -> None:
+        """Cancel any pending timers for an entity.
+        
+        Args:
+            entity_id: ID of the entity whose timers should be cancelled.
+            log: Optional logger instance with trace_id bound.
+        """
+        if log is None:
+            log = logger
         if entity_id in self._timers:
             timer_task = self._timers[entity_id]
             if not timer_task.done():
@@ -126,23 +133,42 @@ class FSMEngine:
                 except asyncio.CancelledError:
                     pass
             del self._timers[entity_id]
-            logger.debug(f"Cancelled timers for entity {entity_id}")
+            log.debug(f"Cancelled timers for entity {entity_id}")
 
-    def _evaluate_guard(self, guard: Optional[Callable[..., bool]], context: dict[str, Any]) -> bool:
-        """Evaluate a guard condition if specified."""
+    def _evaluate_guard(self, guard: Optional[Callable[..., bool]], context: dict[str, Any], log: Any | None = None) -> bool:
+        """Evaluate a guard condition if specified.
+        
+        Args:
+            guard: Guard function to evaluate.
+            context: Context dictionary for the guard.
+            log: Optional logger instance with trace_id bound.
+        
+        Returns:
+            True if guard passes or is None, False otherwise.
+        """
+        if log is None:
+            log = logger
         if guard is None:
             return True
         
         try:
             result = guard(context)
-            logger.debug(f"Guard '{guard.__name__}' evaluated to {result}")
+            log.debug(f"Guard '{guard.__name__}' evaluated to {result}")
             return result
         except Exception as e:
-            logger.error(f"Guard '{guard.__name__}' raised exception: {e}, denying transition")
+            log.error(f"Guard '{guard.__name__}' raised exception: {e}, denying transition")
             return False
 
-    async def _execute_action(self, action: Optional[Callable[..., Any]], context: dict[str, Any]) -> None:
-        """Execute an action if specified."""
+    async def _execute_action(self, action: Optional[Callable[..., Any]], context: dict[str, Any], log: Any | None = None) -> None:
+        """Execute an action if specified.
+        
+        Args:
+            action: Action function to execute.
+            context: Context dictionary for the action.
+            log: Optional logger instance with trace_id bound.
+        """
+        if log is None:
+            log = logger
         if action is None:
             return
         
@@ -150,11 +176,11 @@ class FSMEngine:
             result = action(context)
             if asyncio.iscoroutine(result):
                 await result
-            logger.debug(f"Action '{action.__name__}' executed successfully")
+            log.debug(f"Action '{action.__name__}' executed successfully")
         except Exception as e:
-            logger.error(f"Action '{action.__name__}' raised exception: {e}")
+            log.error(f"Action '{action.__name__}' raised exception: {e}")
 
-    async def trigger(self, entity_id: str, event: str, external_ctx: Optional[dict[str, Any]] = None) -> bool:
+    async def trigger(self, entity_id: str, event: str, external_ctx: Optional[dict[str, Any]] = None, trace_id: str | None = None) -> bool:
         """
         Trigger an event for an entity's FSM.
 
@@ -162,21 +188,30 @@ class FSMEngine:
             entity_id: The entity identifier.
             event: The event name to trigger.
             external_ctx: Optional external context to merge with internal context.
+            trace_id: Optional trace ID for logging correlation. If not provided,
+                      generates a short UUID.
 
         Returns:
             True if a transition occurred, False otherwise.
         """
+        # Generate or use provided trace_id
+        if trace_id is None:
+            trace_id = str(uuid.uuid4())[:8]
+        
+        # Bind trace_id to logger for this trigger
+        log = logger.bind(trace_id=trace_id)
+        
         # Cancel any existing timers before processing new trigger
-        await self._cancel_timers(entity_id)
+        await self._cancel_timers(entity_id, log)
 
         if entity_id not in self._definitions:
-            logger.warning(f"No FSM definition found for entity {entity_id}")
+            log.warning(f"No FSM definition found for entity {entity_id}")
             return False
 
         definition = self._definitions[entity_id]
         
         if entity_id not in self._states:
-            logger.error(f"No state found for entity {entity_id}")
+            log.error(f"No state found for entity {entity_id}")
             return False
 
         current_state = self._states[entity_id]
@@ -186,7 +221,7 @@ class FSMEngine:
         if entity_id in self._last_transition_time:
             elapsed = now - self._last_transition_time[entity_id]
             if elapsed < definition.debounce_sec:
-                logger.debug(
+                log.debug(
                     f"Entity {entity_id}: Debounce active ({elapsed:.3f}s < {definition.debounce_sec}s), "
                     f"ignoring event '{event}'"
                 )
@@ -199,7 +234,7 @@ class FSMEngine:
         ]
 
         if not matching_transitions:
-            logger.debug(f"Entity {entity_id}: No transitions for event '{event}' from state '{current_state.current_state}'")
+            log.debug(f"Entity {entity_id}: No transitions for event '{event}' from state '{current_state.current_state}'")
             return False
 
         # Merge contexts
@@ -210,15 +245,15 @@ class FSMEngine:
         # Process transitions (first valid one wins)
         for transition in matching_transitions:
             # Evaluate guard
-            if not self._evaluate_guard(transition.guard, merged_context):
-                logger.debug(
+            if not self._evaluate_guard(transition.guard, merged_context, log):
+                log.debug(
                     f"Entity {entity_id}: Guard '{transition.guard}' failed for transition "
                     f"'{current_state.current_state}' -> '{transition.to_state}'"
                 )
                 continue
 
             # Execute action
-            await self._execute_action(transition.action, merged_context)
+            await self._execute_action(transition.action, merged_context, log)
 
             # Create new state
             new_state = State(
@@ -231,7 +266,7 @@ class FSMEngine:
             self._states[entity_id] = new_state
             self._last_transition_time[entity_id] = now
 
-            logger.info(
+            log.info(
                 f"Entity {entity_id}: Transition '{current_state.current_state}' -> '{transition.to_state}' "
                 f"triggered by '{event}'" +
                 (f" (guard: {transition.guard})" if transition.guard else "") +
@@ -241,25 +276,27 @@ class FSMEngine:
             # Schedule timeout if specified
             if transition.timeout_sec is not None and transition.timeout_sec > 0:
                 self._timers[entity_id] = asyncio.create_task(
-                    self._timeout_handler(entity_id, transition.timeout_sec)
+                    self._timeout_handler(entity_id, transition.timeout_sec, log)
                 )
-                logger.debug(
+                log.debug(
                     f"Entity {entity_id}: Scheduled timeout transition in {transition.timeout_sec}s"
                 )
 
             return True
 
-        logger.debug(f"Entity {entity_id}: No valid transitions for event '{event}'")
+        log.debug(f"Entity {entity_id}: No valid transitions for event '{event}'")
         return False
 
-    async def _timeout_handler(self, entity_id: str, timeout_sec: float) -> None:
+    async def _timeout_handler(self, entity_id: str, timeout_sec: float, log: Any | None = None) -> None:
         """Handle timeout-based transitions."""
+        if log is None:
+            log = logger
         try:
             await asyncio.sleep(timeout_sec)
-            logger.debug(f"Entity {entity_id}: Timeout expired, triggering 'timeout' event")
-            await self.trigger(entity_id, "timeout")
+            log.debug(f"Entity {entity_id}: Timeout expired, triggering 'timeout' event")
+            await self.trigger(entity_id, "timeout", trace_id=log.context.get("trace_id"))
         except asyncio.CancelledError:
-            logger.debug(f"Entity {entity_id}: Timeout cancelled")
+            log.debug(f"Entity {entity_id}: Timeout cancelled")
             raise
 
     async def shutdown(self) -> None:
