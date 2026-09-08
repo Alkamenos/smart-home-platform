@@ -67,15 +67,11 @@ type-check:
 # Development
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type d -name "*.pyc" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
-	find . -type d -name ".coverage" -exec rm -rf {} +
-	find . -type f -name "coverage.xml" -exec rm -f {} +
-	rm -rf htmlcov/
-	rm -rf .mypy_cache/
-	rm -rf dist/
-	rm -rf build/
-	rm -rf *.egg-info
+	find . -type f -name ".coverage" -delete
+	find . -type f -name "coverage.xml" -delete
+	rm -rf htmlcov/ .mypy_cache/ dist/ build/ *.egg-info
 
 run-mock:
 	@echo "Starting Mock HA Simulator..."
