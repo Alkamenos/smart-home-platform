@@ -162,13 +162,15 @@ class TestLightingScenarios:
     
     def test_timeout_from_manual(self, lighting_system):
         """Тест таймаута из ручного режима"""
+        import time
+        
         # Включаем ручной режим
         lighting_system.trigger("light.living_room", "manual_change", {})
         assert lighting_system.get_state("light.living_room").current == "MANUAL"
         
- # Прошло 60 минут
+        # Прошло 60 минут - передаём timestamp ручного вмешательства (61 минуту назад)
         result = lighting_system.trigger("light.living_room", "timeout", {
-            "living_room_minutes_since_manual": 60
+            "living_room_manual_entered_at": time.time() - 61*60
         })
         
         assert result is True
