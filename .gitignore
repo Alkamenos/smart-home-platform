@@ -1,42 +1,10 @@
-```
-# Python
+```gitignore
+# Python compiled files
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+*.pyc
+*.pyo
+*.pyd
 
-# Testing
+# Test cache
 .pytest_cache/
-.coverage
-htmlcov/
-.coverage.*
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Environment
-.env
-.env.local
-*.env.*
 ```
