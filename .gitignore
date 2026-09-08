@@ -1,33 +1,8 @@
 ```
 # Compiled Python files
-__pycache__/
 *.pyc
-*.pyo
+__pycache__/
 
-# Dependencies
-.venv/
-venv/
-node_modules/
-
-# Test and coverage
+# Test cache
 .pytest_cache/
-.coverage
-coverage/
-htmlcov/
-
-# Logs
-*.log
-
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-
-# System files
-.DS_Store
-Thumbs.db
 ```
