@@ -30,6 +30,8 @@ class Transition:
     attributes: dict = field(default_factory=dict)  # Атрибуты для команды (brightness, hvac_mode и т.д.)
     debounce_sec: float = 0.0          # Защита от дребезга (мин. время между переходами)
     action: Optional[Callable[[dict], None]] = None  # Действие при выполнении перехода
+    cooldown_sec: float = 0.0          # Мин. время после предыдущего перехода (защита от циклов)
+    manual_lockout_min: float = 0.0    # Блокировка автоматики после ручного (мин)
 
 
 @dataclass(frozen=True)
