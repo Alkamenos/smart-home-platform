@@ -1,12 +1,20 @@
 """
 Home Assistant Adapter - полноценная интеграция с HA через REST и WebSocket
+
+Ключевые особенности:
+- REST API для запросов состояния
+- WebSocket для real-time обновлений
+- Авто-реконнект с Exponential Backoff при обрыве связи
+- Debouncer для игнорирования "эха" (feedback loops)
+- Буферизация событий при отключении
 """
 import asyncio
 import aiohttp
-from typing import Dict, Any, Optional, Callable, List
-from datetime import datetime
-from dataclasses import dataclass
+from typing import Dict, Any, Optional, Callable, List, Set
+from datetime import datetime, timedelta
+from dataclasses import dataclass, field
 from enum import Enum
+import time
 
 from core.event_bus import EventBus
 from core.logger import get_logger
@@ -39,8 +47,9 @@ class HomeAssistantAdapter:
     Поддерживает:
     - REST API для запросов состояния
     - WebSocket для real-time обновлений
-    - Авто-реконнект при обрыве связи
-    - Буферизацию событий при отключении
+    - Авто-реконнект с Exponential Backoff при обрыве связи
+    - Debouncer для игнорирования "эха" (когда FSM сам изменил состояние)
+    - Буферизация событий при отключении
     """
     
     def __init__(
@@ -49,14 +58,18 @@ class HomeAssistantAdapter:
         token: str,
         event_bus: EventBus,
         ws_port: int = 8123,
-        reconnect_interval: int = 5,
+        reconnect_base_delay: float = 2.0,
+        reconnect_max_delay: float = 60.0,
+        debounce_window_sec: float = 2.0,
         timeout: int = 10
     ):
         self.base_url = base_url.rstrip('/')
         self.token = token
         self.event_bus = event_bus
         self.ws_port = ws_port
-        self.reconnect_interval = reconnect_interval
+        self.reconnect_base_delay = reconnect_base_delay
+        self.reconnect_max_delay = reconnect_max_delay
+        self.debounce_window_sec = debounce_window_sec
         self.timeout = timeout
         
         self._session: Optional[aiohttp.ClientSession] = None
@@ -74,6 +87,17 @@ class HomeAssistantAdapter:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
+        
+        # Debouncer для игнорирования "эха"
+        # Ключ: entity_id, Значение: timestamp последней команды от нас
+        self._sent_commands: Dict[str, float] = {}
+        self._debounce_lock = asyncio.Lock()
+        
+        # Счётчик попыток реконнекта для exponential backoff
+        self._reconnect_attempts = 0
+        
+        # Context ID для отслеживания наших команд
+        self._context_id_counter = 0
     
     @property
     def connection_state(self) -> ConnectionState:
@@ -256,9 +280,15 @@ class HomeAssistantAdapter:
             if attributes:
                 payload.update(attributes)
             
+            # Записываем что мы отправили команду (для debouncing эха)
+            context_id = await self._record_command_sent(entity_id)
+            
+            # Добавляем context_id в payload для отслеживания в HA
+            payload['_context_id'] = context_id
+            
             async with self._session.post(url, json=payload) as resp:
                 if resp.status in [200, 201]:
-                    logger.debug(f"Set {entity_id} to {state}")
+                    logger.debug(f"Set {entity_id} to {state} (context_id={context_id})")
                     
                     # Обновляем кэш
                     if entity_id in self._entities_cache:
@@ -268,7 +298,8 @@ class HomeAssistantAdapter:
                     self.event_bus.publish('ha.entity.changed', {
                         'entity_id': entity_id,
                         'state': state,
-                        'attributes': attributes
+                        'attributes': attributes,
+                        'context_id': context_id
                     })
                     
                     return True
@@ -373,8 +404,63 @@ class HomeAssistantAdapter:
         self._message_id += 1
         return self._message_id
     
+    def _generate_context_id(self) -> str:
+        """Сгенерировать уникальный context ID для отслеживания наших команд"""
+        self._context_id_counter += 1
+        return f"platform_v3:{self._context_id_counter}:{time.time()}"
+    
+    async def _record_command_sent(self, entity_id: str) -> str:
+        """
+        Записать что мы отправили команду (для debouncing эха)
+        
+        Returns:
+            context_id: Уникальный ID команды
+        """
+        async with self._debounce_lock:
+            now = time.time()
+            self._sent_commands[entity_id] = now
+            context_id = self._generate_context_id()
+            
+            # Очищаем старые записи (> 10 секунд)
+            cutoff = now - 10.0
+            self._sent_commands = {
+                k: v for k, v in self._sent_commands.items() 
+                if v > cutoff
+            }
+            
+            return context_id
+    
+    def _is_echo_event(self, entity_id: str, event_data: dict) -> bool:
+        """
+        Проверить является ли событие "эхом" от нашей же команды
+        
+        Args:
+            entity_id: ID сущности
+            event_data: Данные события state_changed из HA
+            
+        Returns:
+            True если это эхо (изменение вызвано нами)
+        """
+        # Проверяем когда мы последний раз отправляли команду для этой сущности
+        if entity_id not in self._sent_commands:
+            return False
+        
+        last_command_time = self._sent_commands.get(entity_id, 0)
+        event_time = time.time()
+        
+        # Если событие пришло в течение debounce_window_sec после нашей команды
+        # считаем это "эхом"
+        if event_time - last_command_time < self.debounce_window_sec:
+            logger.debug(
+                f"Ignoring echo event for {entity_id} "
+                f"(command sent {event_time - last_command_time:.2f}s ago)"
+            )
+            return True
+        
+        return False
+    
     async def _listen_events(self):
-        """Слушатель событий WebSocket"""
+        """Слушатель событий WebSocket с защитой от эха и exponential backoff"""
         logger.info("Started listening to HA events")
         
         while self.is_connected and self._ws and not self._ws.closed:
@@ -385,7 +471,24 @@ class HomeAssistantAdapter:
                     event_data = msg.get('event', {})
                     event_type = event_data.get('event_type')
                     
-                    # Публикуем в шину событий
+                    # Обрабатываем state_changed события с проверкой на эхо
+                    if event_type == 'state_changed':
+                        entity_id = event_data.get('data', {}).get('entity_id', '')
+                        
+                        # Игнорируем эхо от наших команд
+                        if self._is_echo_event(entity_id, event_data):
+                            continue
+                        
+                        # Проверяем context.id для дополнительного распознавания
+                        context = event_data.get('data', {}).get('context', {})
+                        context_id = context.get('id', '')
+                        
+                        # Если context.id содержит нашу метку "platform_v3:", это точно эхо
+                        if context_id.startswith('platform_v3:'):
+                            logger.debug(f"Ignoring echo by context.id: {context_id}")
+                            continue
+                    
+                    # Публикуем в шину событий (только не-эхо события)
                     self.event_bus.publish(f'ha.event.{event_type}', event_data)
                     
                     # Вызываем подписчиков
@@ -411,12 +514,78 @@ class HomeAssistantAdapter:
             self._reconnect_task = asyncio.create_task(self._reconnect())
     
     async def _reconnect(self):
-        """Попытка переподключения"""
-        logger.info(f"Attempting to reconnect in {self.reconnect_interval}s")
-        await asyncio.sleep(self.reconnect_interval)
+        """
+        Попытка переподключения с Exponential Backoff
+        
+        Алгоритм:
+        - 1 попытка: ждём 2 секунды
+        - 2 попытка: ждём 4 секунды
+        - 3 попытка: ждём 8 секунд
+        - ...
+        - Максимум: 60 секунд между попытками
+        """
+        self._reconnect_attempts += 1
+        
+        delay = min(
+            self.reconnect_base_delay * (2 ** (self._reconnect_attempts - 1)),
+            self.reconnect_max_delay
+        )
+        
+        logger.info(
+            f"Attempting to reconnect in {delay:.1f}s "
+            f"(attempt #{self._reconnect_attempts})"
+        )
+        await asyncio.sleep(delay)
         
         while not self.is_connected:
             success = await self.connect()
             if success:
+                # Сбрасываем счётчик попыток при успешном подключении
+                self._reconnect_attempts = 0
+                logger.info("Successfully reconnected after backoff")
                 break
-            await asyncio.sleep(self.reconnect_interval)
+            
+            self._reconnect_attempts += 1
+            delay = min(
+                self.reconnect_base_delay * (2 ** (self._reconnect_attempts - 1)),
+                self.reconnect_max_delay
+            )
+            logger.warning(
+                f"Reconnection failed, next attempt in {delay:.1f}s "
+                f"(attempt #{self._reconnect_attempts})"
+            )
+            await asyncio.sleep(delay)
+    
+    async def sync_all_states(self) -> Dict[str, HAEntity]:
+        """
+        Синхронизировать все состояния из HA (StateSync при старте)
+        
+        Используется при инициализации платформы для приведения FSM
+        в соответствие с физическим состоянием устройств.
+        
+        Returns:
+            Dict mapping entity_id -> HAEntity
+        """
+        logger.info("Starting state synchronization with HA")
+        entities = await self.get_all_entities()
+        
+        result = {}
+        for entity in entities:
+            result[entity.entity_id] = entity
+            # Обновляем кэш
+            self._entities_cache[entity.entity_id] = entity
+        
+        logger.info(f"State sync complete: {len(result)} entities")
+        return result
+    
+    async def get_entity_state_fresh(self, entity_id: str) -> Optional[HAEntity]:
+        """
+        Получить свежее состояние сущности напрямую из HA (минуя кэш)
+        
+        Args:
+            entity_id: ID сущности
+            
+        Returns:
+            HAEntity или None если не найдено
+        """
+        return await self.get_entity_state(entity_id)

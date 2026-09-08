@@ -8,31 +8,16 @@ __pycache__/
 env/
 venv/
 .venv/
-.ENV
-.env
-.env.*
-.venv.bak
-env.bak
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.coverage.*
-.noserc
+pip-log.txt
+pip-delete-this-directory.txt
 .tox/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Logs
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
 *.log
-
-# OS
 .DS_Store
 Thumbs.db
 ```
