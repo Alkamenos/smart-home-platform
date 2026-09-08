@@ -1,8 +1,4 @@
 ```
-# Python compiled files
-*.pyc
 __pycache__/
-
-# Test cache
-.pytest_cache/
+*.pyc
 ```

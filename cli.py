@@ -147,7 +147,9 @@ def cmd_run(args):
     # Создаём компоненты
     event_bus = EventBus()
     logger = Logger()
-    fsm = FSMEngine(event_bus, logger)
+    from adapters.asyncio_scheduler import AsyncioScheduler
+    scheduler = AsyncioScheduler()
+    fsm = FSMEngine(event_bus, logger, scheduler)
     
     if args.mock:
         adapter = MockAdapter()
@@ -308,7 +310,9 @@ def cmd_status(args):
     # Создаём временный FSM
     event_bus = EventBus()
     fsm_logger = Logger(component="status", quiet=args.json)  # Тихий режим для JSON
-    fsm = FSMEngine(event_bus, fsm_logger)
+    from adapters.asyncio_scheduler import AsyncioScheduler
+    scheduler = AsyncioScheduler()
+    fsm = FSMEngine(event_bus, fsm_logger, scheduler)
     
     # Регистрируем все автоматы
     lighting_defs = create_lighting_automations(["living_room", "bedroom", "kitchen"])
@@ -594,10 +598,12 @@ def cmd_health_automations(args):
     from core.event_bus import EventBus
     from core.logger import Logger
     from core.manifest_generator import ManifestAutomationGenerator
+    from adapters.asyncio_scheduler import AsyncioScheduler
     
     event_bus = EventBus()
     logger = Logger(component="health", quiet=True)
-    fsm = FSMEngine(event_bus, logger)
+    scheduler = AsyncioScheduler()
+    fsm = FSMEngine(event_bus, logger, scheduler)
     
     # Генерируем автоматы из манифеста
     generator = ManifestAutomationGenerator(manifest, logger)
@@ -888,10 +894,12 @@ def cmd_doctor(args):
         from core.fsm import FSMEngine
         from core.event_bus import EventBus
         from core.logger import Logger
+        from adapters.asyncio_scheduler import AsyncioScheduler
         
         event_bus = EventBus()
         logger = Logger(component="doctor")
-        fsm = FSMEngine(event_bus, logger)
+        scheduler = AsyncioScheduler()
+        fsm = FSMEngine(event_bus, logger, scheduler)
         
         # Пробуем загрузить манифест и сгенерировать автоматы
         if manifest_path.exists():
