@@ -216,7 +216,7 @@ class FSMEngine:
                 entered_by="init",
                 entered_why="Initial state",
                 history=(),
-                last_transition_at=now_mono,
+                last_transition_at=0.0,    # 0 означает что cooldown ещё не применялся
                 last_transition_at_abs=now_abs,
                 manual_override_until=0.0
             )

@@ -137,9 +137,9 @@ class TestEndToEndScenarios:
         state = fsm_engine.get_state("light.bedroom")
         assert state.current == "MANUAL"
         
-        # Проверяем что manual_override_until установлен в будущее
+        # Проверяем что manual_override_until установлен в будущее (используем monotonic)
         import time
-        assert state.manual_override_until > time.time()
+        assert state.manual_override_until > time.monotonic()
         
         # Пытаемся выключить по расписанию (должно быть заблокировано)
         result = fsm_engine.trigger("light.bedroom", "schedule_off", {})

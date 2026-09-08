@@ -399,13 +399,14 @@ class TestMonotonicTime:
         fsm = FSMEngine(event_bus, logger)
         
         # Регистрируем автомат с cooldown 5 секунд
+        # from_state="*" позволяет выполнять переход из любого состояния
         definition = FSMDefinition(
             entity_id="test.cooldown",
             states=("OFF", "ON"),
             initial="OFF",
             transitions=(
                 Transition(
-                    from_state="OFF",
+                    from_state="*",  # Из любого состояния
                     to_state="ON",
                     trigger="turn_on",
                     cooldown_sec=5.0
@@ -473,13 +474,14 @@ class TestMonotonicTime:
         fsm = FSMEngine(event_bus, logger)
         
         # Регистрируем автомат с manual_lockout 1 минута
+        # from_state="*" позволяет выполнять переход из любого состояния
         definition = FSMDefinition(
             entity_id="test.lockout",
             states=("OFF", "ON"),
             initial="OFF",
             transitions=(
                 Transition(
-                    from_state="OFF",
+                    from_state="*",  # Из любого состояния
                     to_state="ON",
                     trigger="turn_on",
                     manual_lockout_min=1.0  # 1 минута блокировки
