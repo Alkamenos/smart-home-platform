@@ -9,6 +9,7 @@ and debounce protection.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional
 
@@ -276,7 +277,7 @@ class FSMEngine:
             # Schedule timeout if specified
             if transition.timeout_sec is not None and transition.timeout_sec > 0:
                 self._timers[entity_id] = asyncio.create_task(
-                    self._timeout_handler(entity_id, transition.timeout_sec, log)
+                    self._timeout_handler(entity_id, transition.timeout_sec, trace_id)
                 )
                 log.debug(
                     f"Entity {entity_id}: Scheduled timeout transition in {transition.timeout_sec}s"
@@ -287,14 +288,19 @@ class FSMEngine:
         log.debug(f"Entity {entity_id}: No valid transitions for event '{event}'")
         return False
 
-    async def _timeout_handler(self, entity_id: str, timeout_sec: float, log: Any | None = None) -> None:
-        """Handle timeout-based transitions."""
-        if log is None:
-            log = logger
+    async def _timeout_handler(self, entity_id: str, timeout_sec: float, trace_id: str) -> None:
+        """Handle timeout-based transitions.
+        
+        Args:
+            entity_id: ID of the entity whose timeout is being handled.
+            timeout_sec: Timeout duration in seconds.
+            trace_id: Trace ID for logging correlation.
+        """
+        log = logger.bind(trace_id=trace_id)
         try:
             await asyncio.sleep(timeout_sec)
             log.debug(f"Entity {entity_id}: Timeout expired, triggering 'timeout' event")
-            await self.trigger(entity_id, "timeout", trace_id=log.context.get("trace_id"))
+            await self.trigger(entity_id, "timeout", trace_id=trace_id)
         except asyncio.CancelledError:
             log.debug(f"Entity {entity_id}: Timeout cancelled")
             raise
