@@ -1,136 +1,467 @@
-# Smart Home Platform (Leonid's House)
+# Platform V3 — Руководство по использованию
 
-Платформа умного дома на базе Home Assistant + pyscript + манифест-ориентированной архитектуры (feature-sliced).
+## Обзор
+
+Platform V3 — это современная, надёжная и легко тестируемая платформа для умного дома на базе Home Assistant с использованием конечных автоматов (FSM).
+
+### Ключевые особенности
+
+- ✅ **Простая архитектура** — минимум абстракций, понятный код
+- ✅ **Полное тестирование** — все компоненты покрыты тестами
+- ✅ **Локальное тестирование** — работает без HA через Mock Adapter
+- ✅ **Структурированные логи** — JSON формат для удобной отладки
+- ✅ **Декларативные фичи** — автоматы описываются как данные
+- ✅ **Event-driven** — все изменения через шину событий
+
+---
+
+## Быстрый старт
+
+### 1. Установка
+
+```bash
+cd platform_v3
+```
+
+Никаких дополнительных зависимостей не требуется (кроме Python 3.11+).
+
+### 2. Запуск тестов
+
+Проверьте, что всё работает:
+
+```bash
+python -m pytest tests/ -p no:libtmux -v
+```
+
+Ожидаемый результат: **24 теста пройдены**.
+
+### 3. Использование CLI
+
+#### Показать статус всех автоматов
+
+```bash
+python cli.py status
+```
+
+#### Показать статус в JSON формате
+
+```bash
+python cli.py status --json
+```
+
+#### Отладка конкретного автомата
+
+```bash
+python cli.py debug light.living_room --state
+python cli.py debug light.living_room --history
+```
+
+#### Запуск платформы с Mock адаптером
+
+```bash
+python cli.py run --mock
+```
+
+#### Деплой в Home Assistant (dry-run)
+
+```bash
+python loader.py --dry-run
+```
+
+#### Полный деплой
+
+```bash
+python loader.py --ha-config ~/.homeassistant --ha-url http://localhost:8123 --token YOUR_TOKEN
+```
+
+---
 
 ## Архитектура
 
-- **Манифест** (`instances/<id>/manifest.yaml`) — единый источник правды инстанса: устройства, группы света, фичи, зоны.
-- **Фича = 4 артефакта**: `schema.py` (resolve), `helpers.py` (provisioning), `ui.py` (карточки), `decide.py` (voters); у контроллеров ещё `runtime.py`.
-- **Runtime**: склейка в `/config/pyscript/manifest_loader.py` через `build/build_pyscript.py` (детерминированный порядок).
-- **Семантика**: ручное ВСЕГДА в real; `feature_*` выключает только автоматику; анти-цикл + блокировка 60 мин после ручного вмешательства; источник команды распознаётся; FSM для принятия решений.
-
-## Структура
-```commandline
-.platform/
-├── shp, cli/ # CLI: validate/build/deploy/helpers/dashboards/check/cleanup/new
-├── core/ # ha.py (REST+WS), manifest.py (instances/), builders.py
-├── features/ # feature-sliced:
-│ ├── lighting/ # schema, helpers, ui, card, caps, decide, state, control, runtime, services, triggers
-│ ├── climate/ # runtime, helpers, ui
-│ ├── ventilation/ # runtime, helpers, ui
-│ └── health/ # runtime
-├── build/ # build_pyscript.py — детерминированная склейка
-├── instances/ # <id>/manifest.yaml — канонический манифест
-├── ha/pyscript/ # registry.py, manifest_loader.py
-├── tools/ # gen_helpers.py, gen_dashboard{home,settings,admin}.py, cleanup_helpers.py
-└── *.md # README, PYSCRIPT_RULES, HANDOFF, CHANGELOG, ENTITY_PROVISIONING
+```
+platform_v3/
+├── core/                      # Ядро (НЕ зависит от HA)
+│   ├── fsm.py                # FSM движок
+│   ├── event_bus.py          # Шина событий (pub/sub)
+│   ├── registry.py           # Реестр автоматов
+│   └── logger.py             # Структурированные логи
+│
+├── adapters/                  # Интеграция с внешним миром
+│   ├── base.py               # Абстрактный адаптер
+│   ├── mock_adapter.py       # Мок для тестирования
+│   └── ha_adapter.py         # Реальный HA адаптер
+│
+├── features/                  # Декларативные описания фич
+│   ├── lighting.py           # Автоматы освещения
+│   └── climate.py            # Автоматы климата
+│
+├── tests/                     # Тесты
+│   ├── test_fsm.py           # Unit-тесты FSM
+│   └── test_lighting.py      # Scenario-тесты
+│
+├── cli.py                     # CLI команды
+└── loader.py                  # Loader для HA PyScript
 ```
 
+---
 
-## Установка
+## Core Layer
+
+### FSM Engine
+
+Универсальный движок конечных автоматов.
+
+**Пример использования:**
+
+```python
+from core.fsm import FSMEngine, FSMDefinition, Transition
+from core.event_bus import EventBus
+from core.logger import Logger
+
+# Создаём компоненты
+event_bus = EventBus()
+logger = Logger()
+fsm = FSMEngine(event_bus, logger)
+
+# Определяем автомат
+light_def = FSMDefinition(
+    entity_id="light.living_room",
+    states=("OFF", "ON", "MANUAL"),
+    initial="OFF",
+    transitions=(
+        Transition(
+            from_state="OFF",
+            to_state="ON",
+            trigger="turn_on",
+            guard=lambda ctx: ctx.get("allowed", True),
+            priority=10,
+            reason="Включение света"
+        ),
+        Transition(
+            from_state="*",
+            to_state="MANUAL",
+            trigger="manual_change",
+            priority=100,
+            reason="Ручное вмешательство"
+        ),
+    )
+)
+
+# Регистрируем и используем
+fsm.register(light_def)
+fsm.trigger("light.living_room", "turn_on", {"allowed": True})
+
+state = fsm.get_state("light.living_room")
+print(f"Состояние: {state.current}")
+```
+
+### Event Bus
+
+Шина событий для связи компонентов (pub/sub).
+
+```python
+from core.event_bus import EventBus
+
+event_bus = EventBus()
+
+# Подписка на события
+def handler(data):
+    print(f"Получено событие: {data}")
+
+event_bus.subscribe("device.state_changed", handler)
+
+# Публикация события
+event_bus.publish("device.state_changed", {
+    "entity_id": "light.living_room",
+    "new_state": "ON"
+})
+```
+
+### Logger
+
+Структурированное логирование в JSON формате.
+
+```python
+from core.logger import Logger
+
+logger = Logger(component="fsm")
+
+logger.info("Transition occurred", 
+            entity_id="light.living_room",
+            from_state="OFF",
+            to_state="ON")
+
+# Вывод:
+# {"timestamp": "2026-09-07T18:30:00Z", "level": "INFO", 
+#  "component": "fsm", "message": "Transition occurred",
+#  "entity_id": "light.living_room", ...}
+```
+
+---
+
+## Adapters Layer
+
+### Mock Adapter
+
+Используется для локального тестирования без HA.
+
+```python
+from adapters.mock_adapter import MockAdapter
+
+adapter = MockAdapter()
+
+# Устанавливаем состояние вручную (для тестов)
+adapter.set_state("light.living_room", "ON")
+
+# Получаем состояние
+state = adapter.get_state("light.living_room")
+
+# Проверяем лог команд
+commands = adapter.get_commands_log()
+```
+
+### HA Adapter
+
+Реальный адаптер для интеграции с Home Assistant.
+
+```python
+from adapters.ha_adapter import HAAdapter
+
+adapter = HAAdapter(
+    url="http://localhost:8123",
+    token="YOUR_LONG_LIVED_TOKEN"
+)
+
+# Получаем состояние из HA
+state = adapter.get_state("light.living_room")
+
+# Отправляем команду
+adapter.send_command("light.living_room", "turn_on", {"brightness": 200})
+
+# Подписываемся на изменения
+def on_change(entity_id, old_state, new_state):
+    print(f"{entity_id}: {old_state} -> {new_state}")
+
+adapter.subscribe_to_changes("light.living_room", on_change)
+```
+
+---
+
+## Features Layer
+
+### Освещение (Lighting)
+
+Автоматы освещения поддерживают состояния:
+- `OFF` — выключено
+- `ON_SCHEDULE` — включено по расписанию
+- `ON_MOTION` — включено по движению
+- `PARTY` — режим вечеринки
+- `NIGHTLIGHT` — ночник
+- `MANUAL` — ручное управление
+
+**Пример создания автоматов:**
+
+```python
+from features.lighting import create_lighting_automations
+
+rooms = ["living_room", "bedroom", "kitchen"]
+definitions = create_lighting_automations(rooms)
+
+for definition in definitions:
+    fsm.register(definition)
+```
+
+### Климат (Climate)
+
+Автоматы климата поддерживают состояния:
+- `IDLE` — ожидание
+- `HEATING` — нагрев
+- `COOLING` — охлаждение
+- `SAFETY_LOCKOUT` — блокировка безопасности
+- `AWAY` — режим отсутствия
+
+**Пример создания автоматов:**
+
+```python
+from features.climate import create_climate_automations
+
+zones = ["zone_1", "zone_2"]
+definitions = create_climate_automations(zones)
+
+for definition in definitions:
+    fsm.register(definition)
+```
+
+---
+
+## Тестирование
+
+### Запуск всех тестов
 
 ```bash
-# 1. Клонировать в /config/.platform
-cd /config && git clone <repo> .platform
-
-# 2. Развернуть: валидация + склейка + копия манифеста в $HA_CONFIG/manifests/active.yaml
-./shp deploy
-
-# 3. Создать helpers (input_boolean, input_select, input_number, input_datetime)
-./shp helpers --instance leonid_house --apply
-
-# 4. Сгенерировать дашборды
-./shp dashboards
+python -m pytest tests/ -p no:libtmux -v
 ```
 
-## CLI команды
+### Запуск конкретных тестов
 
-| Команда | Описание | Пример |
-|---------|----------|--------|
-| `validate` | Проверка манифеста на ошибки | `./shp validate` |
-| `build` | Сборка pyscript файлов в один | `./shp build` |
-| `deploy` | Валидация + сборка + копирование манифеста | `./shp deploy` |
-| `helpers` | Создание вспомогательных сущностей (input_*) | `./shp helpers --instance leonid_house --apply` |
-| `dashboards` | Генерация дашбордов из манифеста | `./shp dashboards` |
-| `cleanup` | Удаление устаревших сущностей | `./shp cleanup --confirm` |
-| `check` | Проверка состояния системы | `./shp check` |
-| `new instance <id>` | Создание нового инстанса из шаблона | `./shp new instance my_house` |
-| `new feature <id>` | Создание новой фичи (4 артефакта) | `./shp new feature irrigation` |
-| `new group <gid>` | Сниппет группы для манифеста | `./shp new group garden_lights` |
-
-**Флаги для `helpers`:**
-- `--instance <name>` — имя инстанса (по умолчанию: leonid_house)
-- `--manifest <path>` — путь к манифесту (альтернатива --instance)
-- `--apply` — применить изменения (без флага — только preview)
-- `--confirm` — подтвердить создание всех сущностей
-
-**Рабочий процесс обновления:**
 ```bash
-git pull
-./shp build
-./shp deploy
-# Перезапуск Home Assistant
+# Только FSM тесты
+python -m pytest tests/test_fsm.py -v
+
+# Только lighting тесты
+python -m pytest tests/test_lighting.py -v
+
+# Один конкретный тест
+python -m pytest tests/test_fsm.py::TestFSMTransitions::test_simple_transition -v
 ```
 
-В configuration.yaml: pyscript: {allow_all_imports: true}, lovelace: с 3 дашбордами и ресурсами (mushroom + vertical-stack-in-card).
-## Фичи
+### Написание собственных тестов
 
-- Освещение (12 групп)
-- Расписание: Закат / Время / Не включать + времена вкл/выкл и окно выключения
-- Движение: режимы Выкл / Включать и выключать / Держать включённым — ортогонально расписанию; таймауты глобальные и свои (санузел + запрет авто ночью)
-- Вечеринка: роли на группу (не включать выключенное; держать включённое до рассвета)
-- Ночник = профиль того же устройства; после него авто-включение восстанавливает яркость/ct
-- Возможности устройств (dim/ct/rgb): авто по supported_color_modes + override caps:; applier применяет только поддерживаемые параметры; контролы на карточке только по возможностям
-- Имитация присутствия, цветовая температура по кривой день→ночь, сезонные варианты, подсветка выключателей, группы с tolerate_unavailable
-- Климат (4 зоны) — конвекторы + AC, двунаправленная оценка, safety (зимний lockout AC с голосовым предупреждением, осушение летом, вентилятор санузла), координация с рекуператорами.
-- Вентиляция (2× рекуператора) — пресеты приток/вытяжка/рекуперация, boost с авто-выключением, свободный нагрев/охлаждение, ночной/away, зимняя пауза, мок открытых дверей.
-- Датчики — недоступность/батарейки со списком покупок; зоны на паузе при мёртвых датчиках.
+```python
+import pytest
+from core.fsm import FSMEngine, FSMDefinition, Transition
+from core.event_bus import EventBus
+from core.logger import Logger
 
-## Диагностика
-```
-# Решения света + причины
-curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
--H "Content-Type: application/json" -d '{}' \
-"$HA_URL/api/services/pyscript/light_debug"
+@pytest.fixture
+def fsm():
+    return FSMEngine(EventBus(), Logger())
 
-# Возможности групп -> sensor.light_caps
-curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
--H "Content-Type: application/json" -d '{}' \
-"$HA_URL/api/services/pyscript/light_caps"
-
-# Сброс блокировок
-curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
--H "Content-Type: application/json" -d '{}' \
-"$HA_URL/api/services/pyscript/override_clear"
+def test_my_feature(fsm):
+    definition = FSMDefinition(
+        entity_id="test.entity",
+        states=("OFF", "ON"),
+        initial="OFF",
+        transitions=(
+            Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
+        )
+    )
+    
+    fsm.register(definition)
+    assert fsm.get_state("test.entity").current == "OFF"
+    
+    fsm.trigger("test.entity", "turn_on", {})
+    assert fsm.get_state("test.entity").current == "ON"
 ```
 
-## Логи:
-Настройки → Журнал, фильтры [light], [climate], [vent], [health].
+---
 
-## Тиражирование и развитие
+## Деплой в Home Assistant
+
+### Шаг 1: Подготовка
+
+Убедитесь, что у вас установлен PyScript в Home Assistant.
+
+### Шаг 2: Запуск loader
+
+```bash
+python loader.py \
+  --ha-config ~/.homeassistant \
+  --ha-url http://localhost:8123 \
+  --token YOUR_TOKEN
 ```
-./shp new instance <id>   # новый инстанс из шаблона манифеста
-./shp new feature <id>    # новая фича (4 артефакта)
-./shp new group <gid>     # snippet группы для манифеста
+
+### Шаг 3: Проверка
+
+Файлы будут скопированы в:
+```
+~/.homeassistant/pyscript/platform_v3/
+├── core/
+├── features/
+├── adapters/
+└── pyscript.yaml
 ```
 
-## FSM (Конечные автоматы)
+Главный скрипт инициализации:
+```
+~/.homeassistant/pyscript/platform_v3_init.py
+```
 
-Система использует универсальный движок конечных автоматов для управления автоматикой:
+### Шаг 4: Перезагрузка PyScript
 
-- **Освещение**: 12 групп света с автоматами (расписание, движение, вечеринка)
-- **Климат**: 4 зоны с автоматами (нагрев, охлаждение, безопасность)
-- **Вентиляция**: 2 рекуператора с автоматами (нормальная, boost, ночная)
-- **Шторы**: 4 шторы с автоматами (открытие, закрытие, ручное управление)
-- **Комната**: автомат контекста (EMPTY, HOME_DAY, SLEEPING, PARTY)
+В Home Assistant перейдите в:
+**Developer Tools > Services > pyscript.reload**
 
-**Документация:**
-- [Руководство пользователя](docs/FSM_USER_GUIDE.md)
-- [Спецификация автоматов](FSM_SPEC.md)
-- [Дашборд FSM](dashboards/fsm_dashboard.yaml)
+Или используйте команду в CLI:
+```bash
+python loader.py --ha-url http://localhost:8123 --token YOUR_TOKEN
+```
 
-**Принципы работы:**
-- Приоритеты: ручное (100) > безопасность (500) > расписание (20) > автоматика (10)
-- Состояния публикуются в сенсоры `sensor.<entity>_fsm_state`
-- Ручное вмешательство блокирует автомат на 60-120 минут
+---
 
+## Сервисы Home Assistant
+
+После деплоя становятся доступны сервисы:
+
+### fsm.debug
+
+Показать состояние автомата:
+
+```yaml
+service: pyscript.fsm_debug
+data:
+  entity_id: light.living_room
+```
+
+### fsm.reset
+
+Сбросить автомат в начальное состояние:
+
+```yaml
+service: pyscript.fsm_reset
+data:
+  entity_id: light.living_room
+```
+
+### fsm.trigger
+
+Вызвать триггер вручную:
+
+```yaml
+service: pyscript.fsm_trigger
+data:
+  entity_id: light.living_room
+  trigger: manual_change
+```
+
+---
+
+## Troubleshooting
+
+### Ошибка: "Module not found"
+
+Убедитесь, что файлы скопированы в правильную директорию и `allow_all_imports: true` указан в `pyscript.yaml`.
+
+### Ошибка: "Permission denied"
+
+Проверьте права доступа к директории HA config.
+
+### Автоматы не регистрируются
+
+Проверьте логи PyScript в Home Assistant (**Settings > System > Logs**).
+
+### Тесты падают
+
+Запустите с флагом `-p no:libtmux` для обхода конфликта плагинов:
+```bash
+python -m pytest tests/ -p no:libtmux -v
+```
+
+---
+
+## Changelog
+
+### v3.0.0 (2026-09-08)
+
+- ✨ Новый FSM движок без `eval()`
+- ✨ Event Bus для связи компонентов
+- ✨ Mock Adapter для локального тестирования
+- ✨ Структурированные логи в JSON
+- ✨ CLI для управления платформой
+- ✨ Loader для деплоя в HA PyScript
+- ✨ Lighting и Climate фичи
+- 🐛 Исправлены проблемы V1/V2 (гонки, баги со sleep)
+
+---
+
+**Документация подготовлена в соответствии со спецификацией v3.md**

@@ -1,6 +1,4 @@
-
-.idea
-
+```
 # Python
 __pycache__/
 *.pyc
@@ -38,3 +36,4 @@ Thumbs.db
 .env
 .env.local
 .env.*
+```
