@@ -1,13 +1,38 @@
 ```
-# Compiled Python files
+# Compiled and build artifacts
 *.pyc
 __pycache__/
+*.o
+*.obj
+*.out
 
-# Environment files
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
 .env
 .env.local
 *.env.*
 
-# Logs
-*.log
+# Editors
+.vscode/
+.idea/
+
+# Test and coverage
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Distribution packages
+dist/
+build/
+*.egg-info/
 ```
