@@ -44,6 +44,36 @@ class Registry:
         """Получить количество зарегистрированных автоматов"""
         return len(self._definitions)
     
+    def get_all_required_entities(self) -> set[str]:
+        """
+        Собирает множество всех entity_id, которые используются в зарегистрированных FSM.
+        Необходимо для создания точечных подписок вместо глобальной '@state_changed("*")'.
+        
+        Returns:
+            set[str]: Множество уникальных entity_id и wildcard-паттернов.
+        """
+        entities = set()
+        for definition in self._definitions.values():
+            # Проверяем триггеры (обычно это entity_id или домены)
+            for transition in definition.transitions:
+                trigger = transition.trigger
+                # Если триггер похож на entity_id (содержит точку) или wildcard
+                if '.' in trigger:
+                    entities.add(trigger)
+            
+            # Проверяем действия (actions), так как они тоже могут зависеть от entity_id
+            for transition in definition.transitions:
+                action = transition.action
+                if action and '.' in action:
+                    # Пытаемся извлечь entity_id из строки действия, если она там есть
+                    # Формат может быть: "light.turn_on(entity_id='light.kitchen')"
+                    import re
+                    match = re.search(r"entity_id=['\"]([^'\"]+)['\"]", action)
+                    if match:
+                        entities.add(match.group(1))
+        
+        return entities
+    
     def clear(self) -> None:
         """Очистить реестр"""
         self._definitions.clear()
