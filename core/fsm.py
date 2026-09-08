@@ -54,6 +54,8 @@ class State:
     entered_by: str
     entered_why: str
     history: tuple[dict, ...] = field(default_factory=tuple)  # Последние 20 переходов
+    last_transition_at: float = 0.0  # Время последнего перехода (для cooldown)
+    manual_override_until: float = 0.0  # До какого момента блокирована автоматика
 
 
 class Scheduler:
@@ -204,13 +206,16 @@ class FSMEngine:
         
         # Инициализируем начальное состояние
         if definition.entity_id not in self._states:
+            now = time.time()
             self._states[definition.entity_id] = State(
                 entity_id=definition.entity_id,
                 current=definition.initial,
-                entered_at=time.time(),
+                entered_at=now,
                 entered_by="init",
                 entered_why="Initial state",
-                history=()
+                history=(),
+                last_transition_at=0.0,
+                manual_override_until=0.0
             )
         
         self._logger.info(
@@ -240,6 +245,20 @@ class FSMEngine:
         definition = self._definitions[entity_id]
         current_state = self._states[entity_id]
         
+        # Проверяем manual_lockout: если сейчас время ручного блокирования, отклоняем автоматические триггеры
+        now = time.time()
+        if current_state.manual_override_until > now:
+            # Это автоматический триггер (не от человека)
+            if context.get("source") != "manual":
+                remaining_sec = current_state.manual_override_until - now
+                self._logger.debug(
+                    f"Automatic trigger blocked due to manual lockout",
+                    entity_id=entity_id,
+                    trigger=trigger,
+                    remaining_lockout_sec=remaining_sec
+                )
+                return False
+        
         # Находим подходящие переходы
         matching_transitions = []
         for transition in definition.transitions:
@@ -254,6 +273,19 @@ class FSMEngine:
                 else:
                     if current_state.current != transition.from_state:
                         continue
+            
+            # Проверяем cooldown_sec: мин. время после предыдущего перехода
+            if transition.cooldown_sec > 0:
+                time_since_last = now - current_state.last_transition_at
+                if time_since_last < transition.cooldown_sec:
+                    remaining_cooldown = transition.cooldown_sec - time_since_last
+                    self._logger.debug(
+                        f"Transition skipped due to cooldown",
+                        entity_id=entity_id,
+                        trigger=trigger,
+                        remaining_cooldown_sec=remaining_cooldown
+                    )
+                    continue
             
             # Проверяем guard условие
             try:
@@ -337,7 +369,28 @@ class FSMEngine:
         # Выполняем действие перехода если указано (например, сохранение timestamp)
         if transition.action is not None:
             try:
-                transition.action(context)
+                # Проверяем является ли action асинхронной функцией
+                if asyncio.iscoroutinefunction(transition.action):
+                    # Для async action пытаемся создать задачу
+                    try:
+                        loop = asyncio.get_running_loop()
+                        task = asyncio.create_task(transition.action(context))
+                        # Логгируем но не ждём выполнения (fire-and-forget)
+                        self._logger.debug(
+                            f"Scheduled async action for {entity_id}",
+                            entity_id=entity_id,
+                            trigger=transition.trigger
+                        )
+                    except RuntimeError:
+                        # Нет running loop - предупреждаем
+                        self._logger.warning(
+                            f"Async action scheduled but no running loop for {entity_id}",
+                            entity_id=entity_id,
+                            trigger=transition.trigger
+                        )
+                else:
+                    # Синхронный action - выполняем сразу
+                    transition.action(context)
             except Exception as e:
                 self._logger.warning(
                     f"Action failed for {entity_id}: {e}",
@@ -356,6 +409,12 @@ class FSMEngine:
         }
         new_history = (history_entry,) + old_state.history[:19]  # Храним последние 20
         
+        # Определяем новый manual_override_until
+        new_manual_override_until = old_state.manual_override_until
+        if transition.manual_lockout_min > 0:
+            # Если в переходе указан manual_lockout_min, блокируем автоматику
+            new_manual_override_until = now + (transition.manual_lockout_min * 60)
+        
         # Создаём новое состояние (иммутабельность)
         new_state = State(
             entity_id=entity_id,
@@ -363,7 +422,9 @@ class FSMEngine:
             entered_at=now,
             entered_by=transition.trigger,
             entered_why=transition.reason,
-            history=new_history
+            history=new_history,
+            last_transition_at=now,
+            manual_override_until=new_manual_override_until
         )
         
         # Обновляем состояние

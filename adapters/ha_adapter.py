@@ -18,6 +18,7 @@ import time
 
 from core.event_bus import EventBus
 from core.logger import get_logger
+from .base import BaseAdapter
 
 logger = get_logger(__name__)
 
@@ -40,7 +41,7 @@ class HAEntity:
     last_updated: datetime
 
 
-class HomeAssistantAdapter:
+class HomeAssistantAdapter(BaseAdapter):
     """
     Адаптер для интеграции с Home Assistant
     
@@ -687,3 +688,46 @@ class HomeAssistantAdapter:
                 callback(event_data)
         except Exception as e:
             logger.error(f"Error in state change callback for {entity_id}: {e}")
+    
+    def subscribe_to_changes(
+        self, 
+        entity_id: str, 
+        callback: Callable[[str, str], None]
+    ) -> None:
+        """
+        Подписаться на изменения состояния устройства (синхронная версия для BaseAdapter)
+        
+        Args:
+            entity_id: ID устройства (например, "light.living_room")
+            callback: Функция обратного вызова (entity_id, new_state)
+        
+        Note: Этот метод создаёт асинхронную задачу для подписки.
+              Для корректной работы требуется запущенный event loop.
+        """
+        # Оборачиваем синхронный callback в асинхронный wrapper
+        async def async_callback_wrapper(event_data: dict):
+            data = event_data.get('data', {})
+            new_entity_id = data.get('entity_id', '')
+            new_state = data.get('new_state', {}).get('state', 'unknown')
+            
+            # Проверяем что это наше устройство
+            if new_entity_id == entity_id:
+                # Вызываем пользовательский callback
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(new_entity_id, new_state)
+                else:
+                    callback(new_entity_id, new_state)
+        
+        # Создаём задачу для асинхронной подписки
+        try:
+            loop = asyncio.get_running_loop()
+            # Если есть running loop, создаём задачу
+            asyncio.create_task(
+                self.subscribe_state_changes({entity_id}, async_callback_wrapper)
+            )
+        except RuntimeError:
+            # Нет running loop - логируем предупреждение
+            logger.warning(
+                f"No running event loop, cannot subscribe to changes for {entity_id}. "
+                f"Call subscribe_to_changes from within an async context."
+            )
