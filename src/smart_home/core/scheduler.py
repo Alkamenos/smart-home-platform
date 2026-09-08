@@ -19,7 +19,14 @@ class ScheduledTask:
         if self.task is None:
             return False
         # Task is active only if it's not done and not being cancelled
-        return not self.task.done() and not self.task.cancelling()
+        if self.task.done():
+            return False
+        # cancelling() available Python 3.11+
+        try:
+            return not self.task.cancelling()
+        except AttributeError:
+            # Fallback for Python < 3.11
+            return True
     
     def __hash__(self) -> int:
         return id(self)
@@ -108,22 +115,14 @@ class Scheduler:
         if entity_id not in self._tasks:
             return 0
         
-        cancelled_count = 0
-        tasks_to_remove = []
+        # Get and clear the set atomically
+        tasks_to_cancel = self._tasks.pop(entity_id, set())
         
-        for scheduled_task in self._tasks[entity_id]:
+        cancelled_count = 0
+        for scheduled_task in tasks_to_cancel:
             if scheduled_task.is_active():
                 scheduled_task.task.cancel()
                 cancelled_count += 1
-            tasks_to_remove.append(scheduled_task)
-        
-        # Remove all tasks for this entity from the set
-        for task in tasks_to_remove:
-            self._tasks[entity_id].discard(task)
-        
-        # Clean up empty sets
-        if not self._tasks[entity_id]:
-            del self._tasks[entity_id]
         
         return cancelled_count
 

@@ -49,5 +49,11 @@ class EventBus:
         for handler in handlers:
             try:
                 await handler(event_type, payload, trace_id=trace_id)
+            except TypeError:
+                # Handler doesn't accept trace_id kwarg, call without it
+                try:
+                    await handler(event_type, payload)
+                except Exception as e:
+                    log_context.error(f"Handler error for event {event_type}: {e}")
             except Exception as e:
                 log_context.error(f"Handler error for event {event_type}: {e}")
