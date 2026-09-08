@@ -99,7 +99,11 @@ class TestEndToEndScenarios:
         commands = mock_adapter.get_commands_log()
         assert len(commands) > 0, "Команды не были отправлены"
         
-        last_command = commands[-1]
+        # Находим последнюю команду типа "command" (а не "state_change")
+        command_entries = [c for c in commands if c.get("type") == "command"]
+        assert len(command_entries) > 0, "Команды не были найдены в логе"
+        
+        last_command = command_entries[-1]
         assert last_command["entity_id"] == "light.hallway"
         assert last_command["command"] == "turn_on"
         assert last_command["attributes"]["brightness"] == 100
@@ -154,21 +158,21 @@ class TestEndToEndScenarios:
         logger = Logger(component="test_e2e", output=None)
         mock_adapter = MockAdapter()
         
-        # Создаём FSM с cooldown
+        # Создаём FSM с cooldown - используем состояние ON_MOTION чтобы ActionBridge сработал
         fsm_def = FSMDefinition(
             entity_id="light.kitchen",
-            states=("OFF", "ON"),
+            states=("OFF", "ON_MOTION"),
             initial="OFF",
             transitions=(
                 Transition(
                     from_state="OFF",
-                    to_state="ON",
+                    to_state="ON_MOTION",
                     trigger="motion",
                     cooldown_sec=5.0,  # 5 секунд cooldown
                     attributes={"brightness": 80}
                 ),
                 Transition(
-                    from_state="ON",
+                    from_state="ON_MOTION",
                     to_state="OFF",
                     trigger="timeout",
                     reason="Таймаут"
@@ -185,7 +189,7 @@ class TestEndToEndScenarios:
         assert result1 is True
         
         state1 = fsm_engine.get_state("light.kitchen")
-        assert state1.current == "ON"
+        assert state1.current == "ON_MOTION"
         
         # Второе событие сразу же - должно быть заблокировано cooldown
         result2 = fsm_engine.trigger("light.kitchen", "motion", {})
@@ -193,11 +197,12 @@ class TestEndToEndScenarios:
         
         # Состояние не изменилось
         state2 = fsm_engine.get_state("light.kitchen")
-        assert state2.current == "ON"
+        assert state2.current == "ON_MOTION"
         
-        # Проверяем лог команд - должна быть только одна команда
+        # Проверяем лог команд - должна быть только одна команда типа "command"
         commands = mock_adapter.get_commands_log()
-        assert len(commands) == 1
+        command_entries = [c for c in commands if c.get("type") == "command"]
+        assert len(command_entries) == 1
     
     def test_debounce_blocks_duplicate_triggers(self):
         """
