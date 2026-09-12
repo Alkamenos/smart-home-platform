@@ -1,0 +1,32 @@
+version: 1
+instance:
+  id: leonids_house
+  name: "Leonid's House"
+  owner: Leo
+  created_at: '2026-09-08'
+zones:
+  - id: kitchen
+    name: Kitchen
+    floor: 1
+devices:
+  - type: light_motion
+    id: light.kitchen
+    room: kitchen
+automation_rules:
+  lighting:
+    motion_enabled: true
+    schedule_enabled: true
+    manual_lockout_min: 60
+  climate:
+    safety_lockout_enabled: true
+    away_mode_enabled: true
+    manual_lockout_min: 30
+  ventilation:
+    humidity_based: true
+    manual_lockout_min: 15
+dashboard:
+  title: "Leonid's House"
+  show_history: true
+  show_climate: true
+  show_motion_sensors: true
+  history_days: 7

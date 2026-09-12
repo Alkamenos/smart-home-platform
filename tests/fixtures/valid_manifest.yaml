@@ -1,0 +1,88 @@
+version: 1
+instance:
+  id: leonids_house
+  name: "Leonid's House"
+  owner: Leo
+  created_at: '2026-09-08'
+zones:
+  - id: kitchen
+    name: Kitchen
+    floor: 1
+  - id: living_room
+    name: Living Room
+    floor: 1
+  - id: bedroom
+    name: Bedroom
+    floor: 1
+  - id: bathroom
+    name: Bathroom
+    floor: 1
+devices:
+  - type: climate_hysteresis
+    id: climate.kitchen
+    name: Климат Kitchen
+    room: kitchen
+    sensor: sensor.kitchen_temperature
+    target: 22.0
+    hysteresis: 0.5
+    modes:
+      - heat
+      - cool
+      - auto
+  - type: climate_hysteresis
+    id: climate.living_room
+    name: Климат Living Room
+    room: living_room
+    sensor: sensor.living_room_temperature
+    target: 22.0
+    hysteresis: 0.5
+    modes:
+      - heat
+      - cool
+      - auto
+  - type: light_motion
+    id: light.kitchen
+    name: Свет в Kitchen
+    room: kitchen
+    motion_sensor: binary_sensor.kitchen_motion
+    motion_timeout_sec: 300
+    schedule: "07:00-23:00"
+  - type: light_motion
+    id: light.living_room
+    name: Свет в Living Room
+    room: living_room
+    motion_sensor: binary_sensor.living_room_motion
+    motion_timeout_sec: 300
+    schedule: "07:00-23:00"
+  - type: light_motion
+    id: light.bedroom
+    name: Свет в Bedroom
+    room: bedroom
+    motion_sensor: binary_sensor.bedroom_motion
+    motion_timeout_sec: 300
+    schedule: "07:00-23:00"
+  - type: ventilation_humidity
+    id: fan.bathroom
+    name: Вентиляция ванной
+    room: bathroom
+    humidity_sensor: sensor.bathroom_humidity
+    humidity_threshold: 65
+    timeout_sec: 1800
+automation_rules:
+  lighting:
+    motion_enabled: true
+    schedule_enabled: true
+    manual_lockout_min: 60
+  climate:
+    safety_lockout_enabled: true
+    away_mode_enabled: true
+    manual_lockout_min: 30
+  ventilation:
+    humidity_based: true
+    manual_lockout_min: 15
+dashboard:
+  title: "Leonid's House"
+  show_history: true
+  show_climate: true
+  show_motion_sensors: true
+  history_days: 7
