@@ -51,18 +51,24 @@ devices:
   id: light.kitchen
   name: Свет в Kitchen
   room: kitchen
+  # Композиция двух поведений для лампы кухни:
+  # 1. night_light (приоритет 20) - ночное освещение с тусклым светом
+  #    Высокий приоритет обеспечивает, что ночью лампа всегда будет в режиме ночника
+  # 2. motion_lighting (приоритет 10) - освещение по движению днем
+  #    Более низкий приоритет позволяет ночнику блокировать яркий свет ночью
   behaviors:
+    - template: night_light
+      priority: 20  # Высокий приоритет: ночник должен доминировать ночью
+      params:
+        brightness: 10  # Тусклый свет для ночи
+        schedule: "23:00-07:00"  # Активен только ночью
     - template: lighting
-      priority: 1
+      priority: 10  # Стандартный приоритет для дневного освещения
       params:
         motion_sensor: binary_sensor.kitchen_motion
         motion_timeout_sec: 300
-        schedule: "07:00-23:00"
-    - template: night_light
-      priority: 2
-      params:
-        brightness: 10
-        schedule: "23:00-07:00"
+        schedule: "07:00-23:00"  # Активен днем
+        brightness: 255  # Яркий свет для дня
 - type: light_motion
   id: light.living_room
   name: Свет в Living Room

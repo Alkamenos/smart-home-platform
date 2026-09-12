@@ -1,6 +1,32 @@
-# Конфигурация FSM для ночного освещения (night_light)
-# Состояния: OFF, ON_NIGHT
-# Примечание: entity_id будет переопределен фабрикой на основе device_id и priority
+# Конфигурация FSM для ночного освещения (night_light) - АБСТРАКТНЫЙ ШАБЛОН
+#
+# Этот файл определяет шаблон поведения для ночного освещения (тусклый свет ночью).
+# Он НЕ содержит хардкода entity_id - вместо этого параметры передаются через манифест.
+#
+# ОЖИДАЕМЫЕ ПАРАМЕТРЫ В params (из манифеста):
+#   - brightness: int - Яркость ночника (например, 10-50 для тусклого света)
+#   - schedule: str - Расписание активности (например, "23:00-07:00" для ночи)
+#   - timeout_sec: float - Таймаут выключения ночника после отсутствия движения
+#
+# ПРИМЕР ИСПОЛЬЗОВАНИЯ В manifest.yaml:
+#   devices:
+#     - type: light_motion
+#       id: light.kitchen
+#       behaviors:
+#         - template: night_light
+#           priority: 20  # Высокий приоритет для ночника
+#           params:
+#             brightness: 10
+#             schedule: "23:00-07:00"
+#             timeout_sec: 60
+#
+# СОСТОЯНИЯ:
+#   - OFF: Ночник выключен
+#   - ON_NIGHT: Ночник включен (тусклый свет)
+#
+# ПРИМЕЧАНИЕ: entity_id будет переопределен фабрикой на основе device_id и priority
+# ПРИОРИТЕТ: Рекомендуется использовать priority=20 или выше для ночника,
+#            чтобы он имел приоритет над обычным освещением по движению (priority=10)
 
 initial_state: "OFF"
 debounce_sec: 0.5
@@ -11,6 +37,7 @@ states:
 
 transitions:
   # Из OFF можно перейти в ON_NIGHT при обнаружении движения ночью
+  # Action turn_on_night_light возвращает CommandIntent с низкой яркостью
   - from_state: "OFF"
     to_state: "ON_NIGHT"
     trigger: "motion_detected"
@@ -21,7 +48,7 @@ transitions:
     to_state: "OFF"
     trigger: "timeout"
     action: "turn_off_night_light"
-    timeout_sec: 60.0
+    timeout_sec: 60.0  # Выключение через 60 секунд
 
   # Из ON_NIGHT можно перейти в OFF при ручном выключении
   - from_state: "ON_NIGHT"

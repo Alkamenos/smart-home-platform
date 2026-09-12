@@ -4,10 +4,31 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
+venv/
+.venv/
+.env
+.env.local
+.env.*
 
 # Coverage
 .coverage
+coverage/
+htmlcov/
 
-# Tests
-.tests/
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
 ```

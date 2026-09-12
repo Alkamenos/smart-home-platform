@@ -64,6 +64,162 @@ flowchart TB
 
 ## 🚀 Quick Start: How to Create a New Automation
 
+## 🔧 How to Add New Behavior
+
+Follow these steps to add a new behavior template to the Smart Home Platform:
+
+### Step 1: Create YAML Template in `features/`
+
+Create a new YAML file (e.g., `features/my_new_behavior.yaml`) that defines your FSM:
+
+```yaml
+# features/my_new_behavior.yaml - ABSTRACT TEMPLATE
+#
+# EXPECTED PARAMETERS in params (from manifest):
+#   - my_param: type - Description of parameter
+#
+# EXAMPLE USAGE in manifest.yaml:
+#   devices:
+#     - type: my_device
+#       id: my_device_id
+#       behaviors:
+#         - template: my_new_behavior
+#           priority: 15
+#           params:
+#             my_param: value
+
+initial_state: "OFF"
+debounce_sec: 0.5
+
+states:
+  - "OFF"
+  - "ON"
+
+transitions:
+  - from_state: "OFF"
+    to_state: "ON"
+    trigger: "my_trigger"
+    action: "my_action"
+```
+
+**Key Points:**
+- Do NOT hardcode `entity_id` - it will be injected from the manifest
+- Add comments explaining expected parameters
+- Include an example usage in comments
+
+### Step 2: Define Action Handlers in Python
+
+Create action handler functions that return `CommandIntent`:
+
+```python
+# In your actions module or initialization code
+from src.smart_home.core.command_dispatcher import CommandIntent
+
+async def my_action(state, context: dict) -> CommandIntent:
+    """My custom action handler."""
+    entity_id = context.get("entity_id", "default_entity")
+    brightness = context.get("params", {}).get("brightness", 255)
+    
+    return CommandIntent(
+        device_id=entity_id,
+        domain="light",
+        service="turn_on",
+        data={"brightness": brightness},
+        priority=context.get("priority", 10),
+        source="my_new_behavior",
+    )
+
+# Register with the engine
+engine.register_action("my_action", my_action)
+```
+
+**Key Points:**
+- Actions receive both `state` and `context` arguments
+- Return `CommandIntent` instead of calling HA directly
+- Use `context.get("entity_id")` for the target device
+- Set appropriate `priority` in the intent
+
+### Step 3: Add Behavior to Manifest with Priority
+
+Edit your instance manifest (e.g., `instances/my_house/manifest.yaml`):
+
+```yaml
+devices:
+  - type: my_device_type
+    id: my_device_id
+    name: My Device
+    room: my_room
+    behaviors:
+      - template: my_new_behavior
+        priority: 15  # Choose priority based on importance
+        params:
+          my_param: value
+          brightness: 100
+```
+
+**Priority Guidelines:**
+| Priority | Use Case |
+|----------|----------|
+| 20+ | Critical/Safety (emergency override) |
+| 20 | Night Light (blocks standard lighting) |
+| 10 | Standard Motion Lighting |
+| 1-9 | Background/Environmental control |
+
+### Step 4: Test Your Behavior
+
+Run tests to verify your behavior works correctly:
+
+```bash
+# Run all tests
+pytest
+
+# Run specific scenario test
+pytest tests/test_composition_scenario.py -v
+
+# Run kitchen demo
+python examples/kitchen_demo.py
+```
+
+### Complete Example: Adding a "Party Mode" Behavior
+
+**1. Create `features/party_mode.yaml`:**
+```yaml
+# Party mode - colorful lighting for parties
+initial_state: "OFF"
+states: ["OFF", "PARTY"]
+transitions:
+  - from_state: "OFF"
+    to_state: "PARTY"
+    trigger: "party_start"
+    action: "start_party_lights"
+  - from_state: "PARTY"
+    to_state: "OFF"
+    trigger: "party_end"
+    action: "stop_party_lights"
+```
+
+**2. Create action handlers:**
+```python
+async def start_party_lights(state, context: dict) -> CommandIntent:
+    return CommandIntent(
+        device_id=context["entity_id"],
+        domain="light",
+        service="turn_on",
+        data={"effect": "colorloop", "brightness": 200},
+        priority=5,  # Low priority, easily overridden
+        source="party_mode",
+    )
+```
+
+**3. Add to manifest:**
+```yaml
+behaviors:
+  - template: party_mode
+    priority: 5
+    params:
+      colors: ["red", "blue", "green"]
+```
+
 ### Step 1: Define Your FSM in YAML
 
 Create a file `config/smart_home/kitchen_motion.yaml`:

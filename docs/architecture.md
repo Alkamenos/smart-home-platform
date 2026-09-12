@@ -4,6 +4,195 @@
 
 The Smart Home FSM Platform is a modular, event-driven automation system built around finite state machines. This document describes the core architectural components, their interactions, and design decisions.
 
+## Composition & Conflict Resolution
+
+### Behaviors Array Concept
+
+In the Smart Home Platform, devices can have **multiple behaviors** that compete for control. This is achieved through the `behaviors` array in the manifest configuration.
+
+**Example from `instances/leonids_house/manifest.yaml`:**
+
+```yaml
+devices:
+- type: light_motion
+  id: light.kitchen
+  behaviors:
+    - template: night_light
+      priority: 20  # High priority for night light
+      params:
+        brightness: 10
+        schedule: "23:00-07:00"
+    - template: lighting
+      priority: 10  # Standard priority for motion lighting
+      params:
+        motion_sensor: binary_sensor.kitchen_motion
+        motion_timeout_sec: 300
+        schedule: "07:00-23:00"
+        brightness: 255
+```
+
+**Why Multiple Behaviors?**
+- A single device (like `light.kitchen`) may need different automation logic at different times
+- Night mode: dim light (brightness=10) when motion detected between 23:00-07:00
+- Day mode: bright light (brightness=255) when motion detected between 07:00-23:00
+- Each behavior is an independent FSM template with its own priority
+
+### Priority System
+
+Priorities determine which behavior wins when multiple behaviors want to control the same device:
+
+| Priority | Behavior | Use Case |
+|----------|----------|----------|
+| 20+ | Critical/Safety | Emergency override, safety systems |
+| 20 | Night Light | Night mode automation (dims other behaviors) |
+| 10 | Motion Lighting | Standard motion-based automation |
+| 1 | Climate/Ventilation | Background environmental control |
+
+**Rules:**
+1. **Higher priority wins**: If `night_light` (priority=20) is active, `motion_lighting` (priority=10) commands are ignored
+2. **Equal priority replaces**: If two behaviors have the same priority, the latest one takes control
+3. **Release mechanism**: Behaviors can explicitly release control, allowing lower-priority behaviors to take over
+
+### CommandDispatcher Architecture
+
+The `CommandDispatcher` is responsible for conflict resolution between FSM behaviors:
+
+```python
+class CommandDispatcher:
+    async def submit(self, intent: CommandIntent) -> bool:
+        """Submit command with priority-based conflict resolution."""
+        
+    def release(self, device_id: str, source: str) -> bool:
+        """Release control of a device."""
+```
+
+**CommandIntent Structure:**
+```python
+@dataclass
+class CommandIntent:
+    device_id: str       # Target device (e.g., "light.kitchen")
+    domain: str          # HA domain (e.g., "light")
+    service: str         # Service to call (e.g., "turn_on")
+    data: dict           # Service parameters (e.g., {"brightness": 10})
+    priority: int        # Priority level (higher = more important)
+    source: str          # Behavior name (e.g., "night_light")
+```
+
+### Command Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         SMART HOME PLATFORM                              │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────┐     ┌──────────────┐     ┌──────────────────────────────┐
+│   FSM #1     │     │   FSM #2     │     │         FSM #N               │
+│  (night_     │     │  (motion_    │     │   (other behaviors...)       │
+│   light)     │     │   lighting)  │     │                              │
+│  priority=20 │     │  priority=10 │     │                              │
+└──────┬───────┘     └──────┬───────┘     └──────────────┬───────────────┘
+       │                    │                            │
+       │ CommandIntent      │ CommandIntent              │ CommandIntent
+       │ {brightness: 10}   │ {brightness: 255}          │ {...}
+       ▼                    ▼                            ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        CommandDispatcher                                │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │  Active Intents per Device:                                       │  │
+│  │  - light.kitchen: {source: "night_light", priority: 20}          │  │
+│  │                                                                   │  │
+│  │  Conflict Resolution Logic:                                       │  │
+│  │  1. If existing.priority > new.priority → REJECT                  │  │
+│  │  2. If existing.priority <= new.priority → ACCEPT & REPLACE       │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ Accepted Command Only
+                                    ▼
+                          ┌──────────────────┐
+                          │    HAAdapter     │
+                          │  (calls service) │
+                          └────────┬─────────┘
+                                   │
+                                   ▼
+                          ┌──────────────────┐
+                          │ Home Assistant   │
+                          │  light.turn_on   │
+                          └──────────────────┘
+```
+
+### Example Scenario: Night vs Motion
+
+**Time: 23:30 (Night)**
+1. Motion detected in kitchen
+2. `night_light` FSM triggers (guard `is_night_time=True`)
+3. Action returns `CommandIntent(priority=20, brightness=10)`
+4. Dispatcher accepts (no existing intent or higher priority)
+5. HA receives: `light.turn_on(brightness=10)`
+
+**Time: 23:35 (Still Night)**
+1. Another motion detected
+2. `motion_lighting` FSM would trigger (if not for guard)
+3. Even if it did, `CommandIntent(priority=10, brightness=255)` would be **rejected**
+4. Dispatcher logs: `"Ignored motion_lighting (10) because night_light (20) is active"`
+5. Light stays dim
+
+**Time: 08:00 (Morning)**
+1. `night_light` releases control (schedule ends)
+2. Dispatcher clears active intent for `light.kitchen`
+3. Motion detected
+4. `motion_lighting` FSM triggers (guard `is_night_time=False`)
+5. Action returns `CommandIntent(priority=10, brightness=255)`
+6. Dispatcher accepts (no competing intent)
+7. HA receives: `light.turn_on(brightness=255)`
+
+### Mermaid Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant M as Motion Sensor
+    participant F1 as FSM (night_light)
+    participant F2 as FSM (motion_lighting)
+    participant D as CommandDispatcher
+    participant H as HAAdapter
+    participant HA as Home Assistant
+
+    Note over M,HA: Time: 23:30 (Night)
+    M->>F1: motion_detected
+    M->>F2: motion_detected
+    
+    F1->>F1: Guard: is_night_time=True ✓
+    F2->>F2: Guard: is_night_time=True ✗ (blocked)
+    
+    F1->>F1: Action: turn_on_night_light
+    F1->>D: CommandIntent{priority:20, brightness:10}
+    D->>D: No existing intent → ACCEPT
+    D->>H: call_service(light.turn_on, brightness=10)
+    H->>HA: Execute service
+    HA-->>H: Success
+    H-->>D: Acknowledged
+    D-->>F1: Intent stored as active
+
+    Note over M,HA: Time: 23:35 (Another motion)
+    M->>F2: motion_detected
+    F2->>F2: Guard: is_night_time=False (day mode)
+    F2->>D: CommandIntent{priority:10, brightness:255}
+    D->>D: Check: existing.priority(20) > new.priority(10)?
+    D->>D: YES → REJECT
+    D-->>F2: Rejected (lower priority)
+    Note right of D: Light stays dim (brightness=10)
+
+    Note over M,HA: Time: 08:00 (Morning)
+    F1->>D: release(light.kitchen, night_light)
+    D->>D: Clear active intent
+    M->>F2: motion_detected
+    F2->>D: CommandIntent{priority:10, brightness:255}
+    D->>D: No existing intent → ACCEPT
+    D->>H: call_service(light.turn_on, brightness=255)
+    H->>HA: Execute service
+    Note right of H: Light now bright (brightness=255)
+```
+
 ## Core Components
 
 ### 1. HAAdapter (`src/smart_home/adapters/ha_adapter.py`)

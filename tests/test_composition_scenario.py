@@ -77,9 +77,15 @@ def dispatcher(mock_ha_adapter):
 
 
 @pytest.fixture
-def fsm_engine(dispatcher):
-    """Создать FSMEngine с CommandDispatcher."""
-    return FSMEngine(command_dispatcher=dispatcher)
+def fsm_engine(dispatcher, registry):
+    """Создать FSMEngine с CommandDispatcher и зарегистрировать guards/actions."""
+    engine = FSMEngine(command_dispatcher=dispatcher)
+    
+    # Регистрируем guard'ы и actions из registry в engine
+    engine._guards = registry._guards
+    engine._actions = registry._actions
+    
+    return engine
 
 
 @pytest.fixture
@@ -315,6 +321,17 @@ class TestCompositionScenario:
             
             # Assert: Больше нет активного intent для этого устройства
             assert entity_id not in dispatcher.active_intents
+            
+            # СБРОСИТЬ СОСТОЯНИЕ FSM в OFF перед следующим тестом
+            # В реальном сценарии это происходит через transition на timeout
+            # Но для теста мы вручную сбрасываем состояние
+            from src.smart_home.core.fsm import State
+            import asyncio
+            fsm_engine._states[entity_id] = State(
+                current_state="OFF",
+                entered_at=asyncio.get_event_loop().time(),
+                context={}
+            )
             
             # ====================================================================
             # Шаг 4: motion_detected утром - должен сработать яркий свет
