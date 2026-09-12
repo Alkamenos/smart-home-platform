@@ -66,6 +66,7 @@ class TestCommandIntent:
         """Test creating a valid CommandIntent."""
         intent = CommandIntent(
             device_id="light.kitchen",
+            domain="light",
             service="turn_on",
             data={"brightness": 255},
             priority=20,
@@ -73,6 +74,7 @@ class TestCommandIntent:
         )
         
         assert intent.device_id == "light.kitchen"
+        assert intent.domain == "light"
         assert intent.service == "turn_on"
         assert intent.data == {"brightness": 255}
         assert intent.priority == 20
@@ -82,6 +84,7 @@ class TestCommandIntent:
         """Test creating an intent with empty data dict."""
         intent = CommandIntent(
             device_id="switch.bedroom",
+            domain="switch",
             service="turn_off",
             data={},
             priority=10,
@@ -102,6 +105,7 @@ class TestSubmit:
         """
         intent = CommandIntent(
             device_id="light.hallway",
+            domain="light",
             service="turn_on",
             data={"brightness": 100},
             priority=20,
@@ -121,6 +125,7 @@ class TestSubmit:
         # HAAdapter.call_service should have been called
         assert len(mock_ha_adapter.call_service_calls) == 1
         call_args = mock_ha_adapter.call_service_calls[0]
+        assert call_args["domain"] == "light"
         assert call_args["entity_id"] == "light.hallway"
         assert call_args["service"] == "turn_on"
         assert call_args["data"] == {"brightness": 100}
@@ -156,6 +161,7 @@ class TestSubmit:
         # First, submit high-priority intent from night_light
         high_priority_intent = CommandIntent(
             device_id="light.hallway",
+            domain="light",
             service="turn_on",
             data={},
             priority=20,
@@ -169,6 +175,7 @@ class TestSubmit:
         # Now submit lower-priority intent from motion_lighting
         low_priority_intent = CommandIntent(
             device_id="light.hallway",
+            domain="light",
             service="turn_on",
             data={},
             priority=10,
@@ -199,6 +206,7 @@ class TestSubmit:
         # First, submit low-priority intent
         low_priority_intent = CommandIntent(
             device_id="light.bedroom",
+            domain="light",
             service="turn_on",
             data={},
             priority=5,
@@ -209,6 +217,7 @@ class TestSubmit:
         # Now submit higher-priority intent
         high_priority_intent = CommandIntent(
             device_id="light.bedroom",
+            domain="light",
             service="turn_on",
             data={"brightness": 255},
             priority=15,
@@ -235,6 +244,7 @@ class TestSubmit:
         # First intent
         intent1 = CommandIntent(
             device_id="light.living_room",
+            domain="light",
             service="turn_on",
             data={},
             priority=10,
@@ -245,6 +255,7 @@ class TestSubmit:
         # Second intent with same priority
         intent2 = CommandIntent(
             device_id="light.living_room",
+            domain="light",
             service="turn_off",
             data={},
             priority=10,
@@ -269,6 +280,7 @@ class TestSubmit:
         """
         intent1 = CommandIntent(
             device_id="light.kitchen",
+            domain="light",
             service="turn_on",
             data={},
             priority=5,
@@ -277,6 +289,7 @@ class TestSubmit:
         
         intent2 = CommandIntent(
             device_id="light.bedroom",
+            domain="light",
             service="turn_on",
             data={},
             priority=10,
@@ -306,6 +319,7 @@ class TestRelease:
         # Submit an intent
         intent = CommandIntent(
             device_id="light.hallway",
+            domain="light",
             service="turn_on",
             data={},
             priority=20,
@@ -327,6 +341,7 @@ class TestRelease:
         # Submit an intent
         intent = CommandIntent(
             device_id="light.hallway",
+            domain="light",
             service="turn_on",
             data={},
             priority=20,
@@ -359,6 +374,7 @@ class TestRelease:
         # Low priority intent
         low_intent = CommandIntent(
             device_id="light.test",
+            domain="light",
             service="turn_on",
             data={},
             priority=5,
@@ -369,6 +385,7 @@ class TestRelease:
         # High priority takes over
         high_intent = CommandIntent(
             device_id="light.test",
+            domain="light",
             service="turn_on",
             data={},
             priority=15,
@@ -401,6 +418,7 @@ class TestIntegration:
         # Step 1: night_light activates with priority 20
         night_intent = CommandIntent(
             device_id="light.hallway",
+            domain="light",
             service="turn_on",
             data={"brightness": 50},
             priority=20,
@@ -412,6 +430,7 @@ class TestIntegration:
         # Step 2: motion_lighting tries with priority 10 - should be rejected
         motion_intent = CommandIntent(
             device_id="light.hallway",
+            domain="light",
             service="turn_on",
             data={"brightness": 255},
             priority=10,

@@ -8,7 +8,7 @@ lower-priority ones for the same device.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Protocol
 
 from loguru import logger
 from pydantic import BaseModel
@@ -20,19 +20,21 @@ class CommandIntent(BaseModel):
     
     Attributes:
         device_id: ID of the target device (e.g., "light.kitchen").
+        domain: Domain of the service (e.g., "light", "switch").
         service: Service name to call (e.g., "turn_on", "turn_off").
         data: Additional service data as a dictionary.
         priority: Priority level (higher number = higher priority).
         source: Name of the feature/module that created this intent.
     """
     device_id: str
+    domain: str
     service: str
     data: dict[str, Any]
     priority: int
     source: str
 
 
-class HAAdapterProtocol:
+class HAAdapterProtocol(Protocol):
     """Protocol defining the interface for HAAdapter."""
     
     async def call_service(
@@ -110,7 +112,7 @@ class CommandDispatcher:
         
         # Call the service via HAAdapter
         await self._ha_adapter.call_service(
-            domain=self._extract_domain(intent.service),
+            domain=intent.domain,
             service=intent.service,
             entity_id=device_id,
             data=intent.data,
@@ -151,20 +153,7 @@ class CommandDispatcher:
         del self._active_intents[device_id]
         logger.info(f"Released device {device_id} from {source}")
         return True
-    
-    def _extract_domain(self, service: str) -> str:
-        """
-        Extract domain from service name.
-        
-        For services like "turn_on", returns "homeassistant" as default domain.
-        Could be extended to handle domain-qualified service names like "light.turn_on".
-        
-        Args:
-            service: Service name.
-        
-        Returns:
-            Domain string.
-        """
-        # Default domain for generic services
-        # Could be enhanced to parse "domain.service" format if needed
-        return "homeassistant"
+
+
+if __name__ == "__main__":
+    pass
