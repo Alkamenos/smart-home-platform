@@ -1,35 +1,26 @@
 ```
-# Coverage reports
-.coverage
-
-# Python cache
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Testing
-.tests/
-.pytest_cache/
+# Dependencies
+.venv/
+venv/
+env/
+.env
+.env.local
+.env.*
 
 # Logs
 *.log
 
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Dependencies
-.venv/
-venv/
-node_modules/
+# Tests
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
 
 # Build artifacts
 dist/

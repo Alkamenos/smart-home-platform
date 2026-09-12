@@ -127,6 +127,21 @@ class FSMEngine:
         """Get the current state of an entity."""
         return self._states.get(entity_id)
 
+    def reset_state(self, entity_id: str, state: str) -> None:
+        """Reset the state of an entity to a specific state.
+        
+        Args:
+            entity_id: ID of the entity to reset.
+            state: The state to reset to.
+        """
+        if entity_id in self._states:
+            self._states[entity_id] = State(
+                current_state=state,
+                entered_at=asyncio.get_event_loop().time(),
+                context={}
+            )
+            logger.debug(f"Reset state for entity {entity_id} to '{state}'")
+
     async def _cancel_timers(self, entity_id: str, log: Any | None = None) -> None:
         """Cancel any pending timers for an entity.
 

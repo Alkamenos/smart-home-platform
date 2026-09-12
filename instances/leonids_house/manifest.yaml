@@ -23,7 +23,7 @@ devices:
   room: kitchen
   behaviors:
     - template: climate_hysteresis
-      priority: 1
+      priority: 10  # Стандартный приоритет для климат-контроля
       params:
         sensor: sensor.kitchen_temperature
         target: 22.0
@@ -38,7 +38,7 @@ devices:
   room: living_room
   behaviors:
     - template: climate_hysteresis
-      priority: 1
+      priority: 10  # Стандартный приоритет для климат-контроля
       params:
         sensor: sensor.living_room_temperature
         target: 22.0
@@ -75,7 +75,7 @@ devices:
   room: living_room
   behaviors:
     - template: lighting
-      priority: 1
+      priority: 10  # Стандартный приоритет для освещения по движению
       params:
         motion_sensor: binary_sensor.living_room_motion
         motion_timeout_sec: 300
@@ -86,7 +86,7 @@ devices:
   room: bedroom
   behaviors:
     - template: lighting
-      priority: 1
+      priority: 10  # Стандартный приоритет для освещения по движению
       params:
         motion_sensor: binary_sensor.bedroom_motion
         motion_timeout_sec: 300
@@ -97,7 +97,7 @@ devices:
   room: bathroom
   behaviors:
     - template: ventilation_humidity
-      priority: 1
+      priority: 10  # Стандартный приоритет для вентиляции по влажности
       params:
         humidity_sensor: sensor.bathroom_humidity
         humidity_threshold: 65

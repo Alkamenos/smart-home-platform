@@ -324,14 +324,8 @@ class TestCompositionScenario:
             
             # СБРОСИТЬ СОСТОЯНИЕ FSM в OFF перед следующим тестом
             # В реальном сценарии это происходит через transition на timeout
-            # Но для теста мы вручную сбрасываем состояние
-            from src.smart_home.core.fsm import State
-            import asyncio
-            fsm_engine._states[entity_id] = State(
-                current_state="OFF",
-                entered_at=asyncio.get_event_loop().time(),
-                context={}
-            )
+            # Но для теста мы используем публичный метод reset_state
+            fsm_engine.reset_state(entity_id, "OFF")
             
             # ====================================================================
             # Шаг 4: motion_detected утром - должен сработать яркий свет

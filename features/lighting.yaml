@@ -38,12 +38,13 @@ states:
   - "ON_MANUAL"
 
 transitions:
-  # Из OFF можно перейти в ON_MOTION при обнаружении движения
-  # Guard is_night_time проверяет, что сейчас ночь (для ночного режима)
+  # Из OFF можно перейти в ON_MOTION при обнаружении движения днем
+  # Guard is_day_time проверяет, что сейчас день (для дневного режима освещения)
+  # Если guard не указан, переход возможен всегда
   - from_state: "OFF"
     to_state: "ON_MOTION"
     trigger: "motion_detected"
-    guard: "is_night_time"  # Функция в Registry (только ночью)
+    guard: "is_day_time"  # Функция в Registry (только днем)
     action: "turn_on_light"
 
   # Из OFF можно перейти в ON_MANUAL при ручном включении

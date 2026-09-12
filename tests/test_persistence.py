@@ -39,14 +39,11 @@ async def test_survive_restart(tmp_path):
     if storage.exists():
         import json
         saved_state = json.loads(storage.read_text())
-        from src.smart_home.core.fsm import State
-        import asyncio
         entity_id = "light.test"
         if entity_id in saved_state:
-            engine2._states[entity_id] = State(
-                current_state=saved_state[entity_id]["current_state"],
-                entered_at=saved_state[entity_id]["entered_at"],
-                context={}
+            engine2.reset_state(
+                entity_id,
+                saved_state[entity_id]["current_state"]
             )
 
     # 4. Проверяем, что состояние сохранилось!
