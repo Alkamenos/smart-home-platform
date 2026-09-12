@@ -2,7 +2,6 @@
 # Состояния: OFF, ON_NIGHT
 # Примечание: entity_id будет переопределен фабрикой на основе device_id и priority
 
-entity_id: "light.bedroom"
 initial_state: "OFF"
 debounce_sec: 0.5
 

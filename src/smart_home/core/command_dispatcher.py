@@ -91,34 +91,38 @@ class CommandDispatcher:
         Returns:
             True if the intent was accepted and processed, False if ignored.
         """
-        device_id = intent.device_id
-        existing_intent = self._active_intents.get(device_id)
-        
-        # Check if there's an existing intent with strictly higher priority
-        if existing_intent is not None and existing_intent.priority > intent.priority:
+        try:
+            device_id = intent.device_id
+            existing_intent = self._active_intents.get(device_id)
+            
+            # Check if there's an existing intent with strictly higher priority
+            if existing_intent is not None and existing_intent.priority > intent.priority:
+                logger.info(
+                    f"Ignored {intent.source} ({intent.priority}) because "
+                    f"{existing_intent.source} ({existing_intent.priority}) is active"
+                )
+                return False
+            
+            # Accept the new intent
+            self._active_intents[device_id] = intent
+            
             logger.info(
-                f"Ignored {intent.source} ({intent.priority}) because "
-                f"{existing_intent.source} ({existing_intent.priority}) is active"
+                f"Accepted intent from {intent.source} (priority={intent.priority}) "
+                f"for device {device_id}"
             )
+            
+            # Call the service via HAAdapter
+            await self._ha_adapter.call_service(
+                domain=intent.domain,
+                service=intent.service,
+                entity_id=device_id,
+                data=intent.data,
+            )
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error submitting CommandIntent: {e}")
             return False
-        
-        # Accept the new intent
-        self._active_intents[device_id] = intent
-        
-        logger.info(
-            f"Accepted intent from {intent.source} (priority={intent.priority}) "
-            f"for device {device_id}"
-        )
-        
-        # Call the service via HAAdapter
-        await self._ha_adapter.call_service(
-            domain=intent.domain,
-            service=intent.service,
-            entity_id=device_id,
-            data=intent.data,
-        )
-        
-        return True
     
     def release(self, device_id: str, source: str) -> bool:
         """

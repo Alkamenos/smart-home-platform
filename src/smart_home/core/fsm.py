@@ -200,10 +200,13 @@ class FSMEngine:
 
             # Если action возвращает CommandIntent и есть dispatcher - отправляем его
             from .command_dispatcher import CommandIntent
-            if isinstance(result, CommandIntent) and self._dispatcher is not None:
-                log.debug(f"Submitting CommandIntent to dispatcher: {result}")
-                await self._dispatcher.submit(result)
-                # Возвращаем пустой патч контекста, т.к. команда отправлена
+            if isinstance(result, CommandIntent):
+                if self._dispatcher is not None:
+                    log.debug(f"Submitting CommandIntent to dispatcher: {result}")
+                    await self._dispatcher.submit(result)
+                else:
+                    log.warning(f"No dispatcher available, skipping CommandIntent: {result}")
+                # Возвращаем пустой патч контекста, т.к. команда отправлена (или пропущена)
                 return {}
             
             # Если action возвращает dict, считаем это патчем для обновления контекста
