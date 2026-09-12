@@ -46,6 +46,8 @@ class YAMLFSMDefinition(BaseModel):
         states: Список допустимых состояний.
         transitions: Список переходов между состояниями.
         debounce_sec: Минимальное время между переходами (защита от дребезга).
+        params: Опциональные параметры для настройки поведения (из BehaviorConfig).
+        target_device_id: ID целевого устройства для управления (оригинальный device.id).
     """
 
     entity_id: str = Field(..., description="Уникальный идентификатор сущности")
@@ -53,6 +55,8 @@ class YAMLFSMDefinition(BaseModel):
     states: list[str] = Field(..., min_length=1, description="Список допустимых состояний")
     transitions: list[YAMLTransition] = Field(..., min_length=1, description="Список переходов")
     debounce_sec: float = Field(0.0, ge=0, description="Защита от дребезга в секундах")
+    params: dict[str, Any] = Field(default_factory=dict, description="Параметры поведения из BehaviorConfig")
+    target_device_id: Optional[str] = Field(None, description="ID целевого устройства для управления")
 
     class Config:
         extra = "forbid"

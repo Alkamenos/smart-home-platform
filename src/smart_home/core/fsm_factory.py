@@ -82,32 +82,42 @@ class FSMFactory:
         return copy.deepcopy(data)
 
     def _apply_params_to_template(
-        self, 
-        template_data: dict[str, Any], 
+        self,
+        template_data: dict[str, Any],
         params: dict[str, Any],
         entity_id: str,
-        behavior_priority: int
+        behavior_priority: int,
+        device_id: str,
+        behavior_template_name: str
     ) -> dict[str, Any]:
         """
         Применить параметры поведения к шаблону.
-        
+
         Args:
             template_data: Данные шаблона.
             params: Параметры поведения из манифеста.
             entity_id: ID устройства.
             behavior_priority: Приоритет поведения.
-            
+            device_id: Оригинальный ID устройства для target_device_id.
+
         Returns:
-            dict: Модифицированные данные шаблона.
+            dict: Модифицированные данные шаблона с params и target_device_id.
         """
         # Переопределяем entity_id для уникальности FSM
         # Формат: {device_id}__{template_name}_{priority}
-        template_name = template_data.get('entity_id', 'unknown').split('.')[0]
-        new_entity_id = f"{entity_id}__{template_name}_{behavior_priority}"
+        # Используем имя поведенческого шаблона (behavior.template), а не entity_id из YAML
+        template_name = behavior_template_name if behavior_template_name else 'fsm'
+        new_entity_id = f"{device_id}__{template_name}_{behavior_priority}"
         template_data['entity_id'] = new_entity_id
-        
-        logger.info(f"Created FSM instance '{new_entity_id}' for device '{entity_id}' (priority={behavior_priority})")
-        
+
+        # Внедряем params из BehaviorConfig
+        template_data['params'] = params
+
+        # Сохраняем оригинальный device_id для роутинга событий
+        template_data['target_device_id'] = device_id
+
+        logger.info(f"Created FSM instance '{new_entity_id}' for device '{device_id}' (priority={behavior_priority}, params={params})")
+
         return template_data
 
     def _yaml_to_transition(self, yaml_transition: YAMLTransition) -> Transition:
@@ -161,6 +171,8 @@ class FSMFactory:
             states=tuple(yaml_def.states),
             transitions=transitions,
             debounce_sec=yaml_def.debounce_sec,
+            params=yaml_def.params,
+            target_device_id=yaml_def.target_device_id,
         )
 
     def _validate_guards_and_actions(self, yaml_def: YAMLFSMDefinition) -> list[str]:
@@ -214,7 +226,9 @@ class FSMFactory:
                 template_data,
                 behavior.params,
                 device_id,
-                behavior.priority
+                behavior.priority,
+                device_id,
+                behavior.template
             )
             
             # Валидация через Pydantic

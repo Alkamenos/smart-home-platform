@@ -64,12 +64,16 @@ class FSMDefinition:
         states: Tuple of valid state names.
         transitions: Tuple of Transition objects defining state changes.
         debounce_sec: Minimum time between state changes to prevent bouncing.
+        params: Optional parameters from BehaviorConfig for template injection.
+        target_device_id: Original device ID for routing events to the correct device.
     """
     entity_id: str
     initial_state: str
     states: tuple[str, ...]
     transitions: tuple[Transition, ...]
     debounce_sec: float = 0.0
+    params: dict[str, Any] = field(default_factory=dict)
+    target_device_id: Optional[str] = None
 
 
 class FSMEngine:
