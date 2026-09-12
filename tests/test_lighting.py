@@ -15,25 +15,27 @@ import os
 # Добавляем parent directory в path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.fsm import FSMEngine
-from core.event_bus import EventBus
-from core.logger import Logger
+from src.smart_home.core.fsm import FSMEngine
+from src.smart_home.core.registry import Registry
 from features.lighting import create_lighting_automations
 
 
 @pytest.fixture
 def lighting_system():
     """Создать систему освещения с одной комнатой"""
-    event_bus = EventBus()
-    logger = Logger(component="test", output=None)
-    fsm = FSMEngine(event_bus, logger)
+    registry = Registry()
+    engine = FSMEngine()
+    
+    # Регистрируем guards и actions из registry в engine
+    engine._guards = registry._guards
+    engine._actions = registry._actions
     
     # Регистрируем автоматы для living_room
     definitions = create_lighting_automations(["living_room"])
     for definition in definitions:
-        fsm.register(definition)
+        engine.register_definition(definition)
     
-    return fsm
+    return engine
 
 
 class TestLightingScenarios:
