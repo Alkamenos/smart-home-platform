@@ -17,53 +17,56 @@ dashboard:
   show_motion_sensors: true
   title: Leonid's House
 devices:
-  climate:
-  - hysteresis: 0.5
-    id: climate.kitchen
-    modes:
-    - heat
-    - cool
-    - auto
-    name: Климат Kitchen
-    room: kitchen
-    sensor: sensor.kitchen_temperature
-    target: 22.0
-  - hysteresis: 0.5
-    id: climate.living_room
-    modes:
-    - heat
-    - cool
-    - auto
-    name: Климат Living Room
-    room: living_room
-    sensor: sensor.living_room_temperature
-    target: 22.0
-  lighting:
-  - id: light.kitchen
-    motion_sensor: binary_sensor.kitchen_motion
-    motion_timeout_sec: 300
-    name: Свет в Kitchen
-    room: kitchen
-    schedule: 07:00-23:00
-  - id: light.living_room
-    motion_sensor: binary_sensor.living_room_motion
-    motion_timeout_sec: 300
-    name: Свет в Living Room
-    room: living_room
-    schedule: 07:00-23:00
-  - id: light.bedroom
-    motion_sensor: binary_sensor.bedroom_motion
-    motion_timeout_sec: 300
-    name: Свет в Bedroom
-    room: bedroom
-    schedule: 07:00-23:00
-  ventilation:
-  - humidity_sensor: sensor.bathroom_humidity
-    humidity_threshold: 65
-    id: fan.bathroom
-    name: Вентиляция ванной
-    room: bathroom
-    timeout_sec: 1800
+- type: climate_hysteresis
+  id: climate.kitchen
+  name: Климат Kitchen
+  room: kitchen
+  sensor: sensor.kitchen_temperature
+  target: 22.0
+  hysteresis: 0.5
+  modes:
+  - heat
+  - cool
+  - auto
+- type: climate_hysteresis
+  id: climate.living_room
+  name: Климат Living Room
+  room: living_room
+  sensor: sensor.living_room_temperature
+  target: 22.0
+  hysteresis: 0.5
+  modes:
+  - heat
+  - cool
+  - auto
+- type: light_motion
+  id: light.kitchen
+  name: Свет в Kitchen
+  room: kitchen
+  motion_sensor: binary_sensor.kitchen_motion
+  motion_timeout_sec: 300
+  schedule: "07:00-23:00"
+- type: light_motion
+  id: light.living_room
+  name: Свет в Living Room
+  room: living_room
+  motion_sensor: binary_sensor.living_room_motion
+  motion_timeout_sec: 300
+  schedule: "07:00-23:00"
+- type: light_motion
+  id: light.bedroom
+  name: Свет в Bedroom
+  room: bedroom
+  motion_sensor: binary_sensor.bedroom_motion
+  motion_timeout_sec: 300
+  schedule: "07:00-23:00"
+- type: ventilation_humidity
+  id: fan.bathroom
+  name: Вентиляция ванной
+  room: bathroom
+  humidity_sensor: sensor.bathroom_humidity
+  humidity_threshold: 65
+  timeout_sec: 1800
 instance:
   created_at: '2026-09-08'
   id: leonids_house
