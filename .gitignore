@@ -5,9 +5,25 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Coverage
-.coverage
+# Dependencies
+.venv/
+venv/
+env/
+.env
+.env.local
+.env.*
+
+# Logs
+*.log
 
 # Tests
-.tests/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
 ```

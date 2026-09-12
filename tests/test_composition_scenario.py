@@ -77,9 +77,15 @@ def dispatcher(mock_ha_adapter):
 
 
 @pytest.fixture
-def fsm_engine(dispatcher):
-    """Создать FSMEngine с CommandDispatcher."""
-    return FSMEngine(command_dispatcher=dispatcher)
+def fsm_engine(dispatcher, registry):
+    """Создать FSMEngine с CommandDispatcher и зарегистрировать guards/actions."""
+    engine = FSMEngine(command_dispatcher=dispatcher)
+    
+    # Регистрируем guard'ы и actions из registry в engine
+    engine._guards = registry._guards
+    engine._actions = registry._actions
+    
+    return engine
 
 
 @pytest.fixture
@@ -315,6 +321,11 @@ class TestCompositionScenario:
             
             # Assert: Больше нет активного intent для этого устройства
             assert entity_id not in dispatcher.active_intents
+            
+            # СБРОСИТЬ СОСТОЯНИЕ FSM в OFF перед следующим тестом
+            # В реальном сценарии это происходит через transition на timeout
+            # Но для теста мы используем публичный метод reset_state
+            fsm_engine.reset_state(entity_id, "OFF")
             
             # ====================================================================
             # Шаг 4: motion_detected утром - должен сработать яркий свет

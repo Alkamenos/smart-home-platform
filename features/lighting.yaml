@@ -1,6 +1,33 @@
-# Конфигурация FSM для умной лампочки (lighting)
-# Состояния: OFF, ON_MOTION, ON_MANUAL
-# Примечание: entity_id будет переопределен фабрикой на основе device_id и priority
+# Конфигурация FSM для умной лампочки (lighting) - АБСТРАКТНЫЙ ШАБЛОН
+#
+# Этот файл определяет шаблон поведения для освещения по движению.
+# Он НЕ содержит хардкода entity_id - вместо этого параметры передаются через манифест.
+#
+# ОЖИДАЕМЫЕ ПАРАМЕТРЫ В params (из манифеста):
+#   - motion_sensor: str - ID датчика движения (например, "binary_sensor.kitchen_motion")
+#   - motion_timeout_sec: float - Таймаут отсутствия движения для выключения света
+#   - schedule: str - Расписание активности (например, "07:00-23:00")
+#   - brightness: int (опционально) - Яркость света (по умолчанию 255)
+#
+# ПРИМЕР ИСПОЛЬЗОВАНИЯ В manifest.yaml:
+#   devices:
+#     - type: light_motion
+#       id: light.kitchen
+#       behaviors:
+#         - template: lighting
+#           priority: 10
+#           params:
+#             motion_sensor: binary_sensor.kitchen_motion
+#             motion_timeout_sec: 300
+#             schedule: "07:00-23:00"
+#             brightness: 255
+#
+# СОСТОЯНИЯ:
+#   - OFF: Свет выключен
+#   - ON_MOTION: Свет включен по движению (автоматически)
+#   - ON_MANUAL: Свет включен вручную (пользовательское переопределение)
+#
+# ПРИМЕЧАНИЕ: entity_id будет переопределен фабрикой на основе device_id и priority
 
 initial_state: "OFF"
 debounce_sec: 0.5
@@ -11,11 +38,13 @@ states:
   - "ON_MANUAL"
 
 transitions:
-  # Из OFF можно перейти в ON_MOTION при обнаружении движения
+  # Из OFF можно перейти в ON_MOTION при обнаружении движения днем
+  # Guard is_day_time проверяет, что сейчас день (для дневного режима освещения)
+  # Если guard не указан, переход возможен всегда
   - from_state: "OFF"
     to_state: "ON_MOTION"
     trigger: "motion_detected"
-    guard: "is_night_time"  # Имя функции в Registry (только ночью)
+    guard: "is_day_time"  # Функция в Registry (только днем)
     action: "turn_on_light"
 
   # Из OFF можно перейти в ON_MANUAL при ручном включении
@@ -35,7 +64,7 @@ transitions:
   - from_state: "ON_MOTION"
     to_state: "ON_MANUAL"
     trigger: "manual_override"
-    guard: "is_manual_override_enabled"  # Имя функции в Registry
+    guard: "is_manual_override_enabled"  # Функция в Registry
 
   # Из ON_MANUAL можно перейти в OFF при ручном выключении
   - from_state: "ON_MANUAL"
