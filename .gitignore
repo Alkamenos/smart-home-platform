@@ -1,28 +1,30 @@
 ```
-# Python
+# Coverage reports
+.coverage
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
+# Testing
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
 # Dependencies
-.venv/
 venv/
-env/
-ENV/
+.venv/
+.env
+.env.local
+.env.*
 
 # Build artifacts
 dist/
 build/
 *.egg-info/
-
-# Logs
-*.log
-
-# Environment files
-.env
-.env.local
-*.env.*
 
 # Editors
 .vscode/
@@ -30,12 +32,10 @@ build/
 *.swp
 *.swo
 
-# Coverage
-.coverage
-coverage/
-htmlcov/
+# Logs
+*.log
 
-# Testing
-.pytest_cache/
-.mypy_cache/
+# OS
+.DS_Store
+Thumbs.db
 ```
