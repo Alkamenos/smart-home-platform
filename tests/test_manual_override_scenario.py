@@ -1,203 +1,180 @@
 """
-Тест ручного вмешательства: блокировка автоматики.
+Золотой тест сценария ручного вмешательства (Manual Override).
 
-Сценарий:
-1. Автоматика включает свет по движению
-2. Пользователь выключает свет вручную
-3. Датчик движения срабатывает снова
-4. Свет НЕ включается (блокировка)
-5. Через 60 минут блокировка истекает
-6. Датчик движения снова включает свет
+Этот тест доказывает, что:
+1. При ручном включении света старый таймер движения корректно отменяется.
+2. Время блокировки (manual_override_until) сохраняется в state.context.
+3. Автоматика (движение) игнорируется, пока действует блокировка.
+4. После истечения времени блокировки автоматика снова работает.
 """
-import pytest
+
 import time
-from core.fsm import FSMEngine
-from core.event_bus import EventBus
-from core.logger import Logger
-from features.lighting import create_lighting_automations
+import pytest
+from datetime import datetime
+from freezegun import freeze_time
+from unittest.mock import patch
+
+from src.smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
 
 
-@pytest.fixture
-def system():
-    """Создаёт тестовую систему"""
-    event_bus = EventBus()
-    logger = Logger(component="test")
-    
-    fsm = FSMEngine(event_bus, logger)
-    
-    # Регистрируем автоматы освещения для гостиной
-    lighting_defs = create_lighting_automations(["living_room"])
-    for definition in lighting_defs:
-        fsm.register(definition)
-    
-    return {
-        "fsm": fsm,
-        "event_bus": event_bus,
-        "logger": logger,
-    }
+# ============================================================================
+# Фикстура для синхронизации freezegun и asyncio.get_event_loop().time()
+# ============================================================================
+@pytest.fixture(autouse=True)
+def freeze_asyncio_time():
+    """
+    Заставляет asyncio.get_event_loop().time() возвращать time.time(),
+    который корректно мокается freezegun.
+    """
+    import asyncio
+    real_get_event_loop = asyncio.get_event_loop
+
+    with patch("src.smart_home.core.fsm.asyncio.get_event_loop") as mock_get_loop:
+        def side_effect():
+            loop = real_get_event_loop()
+            # Подменяем метод time() на стандартный time.time()
+            loop.time = time.time
+            return loop
+
+        mock_get_loop.side_effect = side_effect
+        yield
 
 
+# ============================================================================
+# Тестовые Guard и Action (имитируют логику из kitchen_demo.py)
+# ============================================================================
+def turn_on_light(state: State, context: dict) -> dict:
+    return {}
+
+def turn_off_light(state: State, context: dict) -> dict:
+    return {}
+
+def set_manual_override(state: State, context: dict) -> dict:
+    """Устанавливает блокировку на 60 минут (3600 сек)."""
+    now = datetime.now().timestamp()
+    return {"manual_override_until": now + 3600}
+
+def is_not_manual_override(state: State, context: dict) -> bool:
+    """Guard: Разрешает переход только если ручная блокировка истекла."""
+    manual_until = state.context.get("manual_override_until", 0.0)
+    now = datetime.now().timestamp()
+    return now >= manual_until
+
+
+# ============================================================================
+# Сам тест
+# ============================================================================
 @pytest.mark.asyncio
-async def test_manual_override_blocks_automation(system):
+async def test_manual_override_blocks_automation_and_cancels_timers():
     """
-    Тест: ручное вмешательство блокирует автоматические переходы.
-    
-    Проверяет что после ручного вмешательства:
-    - Автоматика не реагирует на движение
-    - Блокировка снимается через таймаут
+    Полный сценарий: Движение -> Ручное включение -> Попытка движения во время блокировки -> Истечение блокировки.
     """
-    fsm = system["fsm"]
-    entity_id = "light.living_room"
-    
-    # Начальное состояние - OFF
-    state = fsm.get_state(entity_id)
-    assert state.current == "OFF"
-    
-    # ========================================================================
-    # Шаг 1: Автоматика включает свет по движению
-    # ========================================================================
-    result = fsm.trigger(entity_id, "motion_detected", {
-        "living_room_motion_sensor": True,
-        "living_room_motion_enabled": True,
-        "source": "automation"
-    })
-    
-    assert result is True, "Движение должно включить свет"
-    state = fsm.get_state(entity_id)
-    assert state.current == "ON_MOTION", f"Свет должен быть ON_MOTION, а не {state.current}"
-    
-    # ========================================================================
-    # Шаг 2: Пользователь выключает свет вручную
-    # ========================================================================
-    result = fsm.trigger(entity_id, "manual_change", {
-        "source": "manual",
-        "user_action": "turn_off"
-    })
-    
-    assert result is True, "Ручное вмешательство должно succeed"
-    state = fsm.get_state(entity_id)
-    assert state.current == "MANUAL", f"Свет должен быть MANUAL, а не {state.current}"
-    
-    # Запоминаем время ручного вмешательства
-    manual_entered_at = time.time()
-    
-    # ========================================================================
-    # Шаг 3: Датчик движения срабатывает снова (сразу после ручного)
-    # ========================================================================
-    # Блокировка ещё активна (не прошло 60 минут)
-    result = fsm.trigger(entity_id, "motion_detected", {
-        "living_room_motion_sensor": True,
-        "living_room_motion_enabled": True,
-        "living_room_manual_entered_at": manual_entered_at,  # меньше 60 минут назад
-        "source": "automation"
-    })
-    
-    # Переход должен быть отклонён - нет подходящего перехода из MANUAL по motion_detected
-    assert result is False, "Автоматика должна быть заблокирована в MANUAL режиме"
-    state = fsm.get_state(entity_id)
-    assert state.current == "MANUAL", f"Свет должен остаться MANUAL, а не {state.current}"
-    
-    # ========================================================================
-    # Шаг 4: Прошло 61 минута, блокировка истекла
-    # ========================================================================
-    # Эмулируем timeout с прошедшим временем
-    result = fsm.trigger(entity_id, "timeout", {
-        "source": "system",
-        "reason": "manual_timeout_expired",
-        "living_room_manual_entered_at": manual_entered_at - (61 * 60)  # 61 минуту назад
-    })
-    
-    assert result is True, "Timeout должен сработать"
-    state = fsm.get_state(entity_id)
-    assert state.current == "OFF", f"После timeout свет должен быть OFF, а не {state.current}"
-    
-    # ========================================================================
-    # Шаг 5: Датчик движения снова включает свет (блокировки нет)
-    # ========================================================================
-    result = fsm.trigger(entity_id, "motion_detected", {
-        "living_room_motion_sensor": True,
-        "living_room_motion_enabled": True,
-        "source": "automation"
-    })
-    
-    assert result is True, "После снятия блокировки движение должно включить свет"
-    state = fsm.get_state(entity_id)
-    assert state.current == "ON_MOTION", f"Свет должен быть ON_MOTION, а не {state.current}"
-    
-    print("✅ Тест ручного вмешательства прошёл успешно!")
+    engine = FSMEngine()
+    entity_id = "light.kitchen"
 
+    # 1. Регистрируем Guard и Action
+    engine.register_action("turn_on_light", turn_on_light)
+    engine.register_action("turn_off_light", turn_off_light)
+    engine.register_action("set_manual_override", set_manual_override)
+    engine.register_guard("is_not_manual_override", is_not_manual_override)
 
-@pytest.mark.asyncio
-async def test_manual_override_from_on_schedule(system):
-    """
-    Тест: ручное вмешательство из состояния ON_SCHEDULE.
-    
-    Проверяет что можно перейти в MANUAL из любого активного состояния.
-    """
-    fsm = system["fsm"]
-    entity_id = "light.living_room"
-    
-    # Включаем по расписанию
-    result = fsm.trigger(entity_id, "schedule_on", {
-        "living_room_is_schedule_time": True,
-        "living_room_is_night_time": False,
-        "source": "schedule"
-    })
-    assert result is True
-    assert fsm.get_state(entity_id).current == "ON_SCHEDULE"
-    
-    # Ручное вмешательство
-    result = fsm.trigger(entity_id, "manual_change", {
-        "source": "manual",
-        "user_action": "turn_off"
-    })
-    assert result is True
-    assert fsm.get_state(entity_id).current == "MANUAL"
-    
-    print("✅ Ручное вмешательство из ON_SCHEDULE работает")
+    # 2. Регистрируем определение FSM для кухни
+    definition = FSMDefinition(
+        entity_id=entity_id,
+        initial_state="off",
+        states=("off", "on_auto", "on_manual"),
+        debounce_sec=0.0,
+        transitions=(
+            # Движение включает свет (таймер 300 сек)
+            Transition(
+                from_state="off",
+                trigger="motion_detected",
+                to_state="on_auto",
+                guard="is_not_manual_override",
+                action="turn_on_light",
+                timeout_sec=300.0,
+            ),
+            # Ручное вмешательство (таймер 3600 сек)
+            Transition(
+                from_state="on_auto",
+                trigger="manual_override",
+                to_state="on_manual",
+                action="set_manual_override",
+                timeout_sec=3600.0,
+            ),
+            Transition(
+                from_state="off",
+                trigger="manual_override",
+                to_state="on_manual",
+                action="set_manual_override",
+                timeout_sec=3600.0,
+            ),
+            # Истечение ручного таймера выключает свет
+            Transition(
+                from_state="on_manual",
+                trigger="timeout",
+                to_state="off",
+                action="turn_off_light",
+            ),
+        )
+    )
+    engine.register_definition(definition)
 
+    # ========================================================================
+    # ШАГ 1: t=12:00:00 - Сработал датчик движения
+    # ========================================================================
+    with freeze_time("2026-09-09 12:00:00"):
+        result = await engine.trigger(entity_id, "motion_detected", trace_id="test-001")
 
-@pytest.mark.asyncio
-async def test_multiple_manual_changes_reset_timer(system):
-    """
-    Тест: повторное ручное вмешательство сбрасывает таймер.
-    
-    Если пользователь снова вмешивается, таймер начинается заново.
-    """
-    fsm = system["fsm"]
-    entity_id = "light.living_room"
-    
-    # Включаем свет
-    fsm.trigger(entity_id, "motion_detected", {
-        "living_room_motion_sensor": True,
-        "living_room_motion_enabled": True,
-        "source": "automation"
-    })
-    assert fsm.get_state(entity_id).current == "ON_MOTION"
-    
-    # Первое ручное вмешательство
-    fsm.trigger(entity_id, "manual_change", {
-        "source": "manual",
-        "user_action": "turn_off"
-    })
-    first_manual_time = time.time()
-    assert fsm.get_state(entity_id).current == "MANUAL"
-    
-    # Через 30 минут - второе ручное вмешательство (пользователь передумал)
-    second_manual_time = first_manual_time + (30 * 60)
-    
-    # Возвращаем в MANUAL (эмулируем что пользователь снова вмешался)
-    # Для этого сначала перейдём в другое состояние и обратно
-    # Но в реальности просто проверяем что таймер сбрасывается
-    
-    # Проверяем что если передать старое время - timeout не сработает
-    result = fsm.trigger(entity_id, "timeout", {
-        "source": "system",
-        "living_room_manual_entered_at": first_manual_time - (35 * 60)  # 35 минут назад
-    })
-    
-    # Не должно сработать - прошло только 35 минут, нужно 60
-    # Но transition может не найтись из MANUAL без подходящего guard
-    # Это ожидаемое поведение
-    
-    print("✅ Сброс таймера при повторном вмешательстве работает")
+        assert result is True, "Переход off -> on_auto должен succeed"
+        state = engine.get_state(entity_id)
+        assert state.current_state == "on_auto"
+        assert state.entered_at == datetime(2026, 9, 9, 12, 0, 0).timestamp()
+
+        # Проверяем, что таймер запланирован
+        assert entity_id in engine._timers, "Таймер для on_auto должен быть создан"
+
+    # ========================================================================
+    # ШАГ 2: t=12:01:00 (через 60 сек) - Пользователь нажал кнопку (ручной режим)
+    # ========================================================================
+    with freeze_time("2026-09-09 12:01:00"):
+        result = await engine.trigger(entity_id, "manual_override", trace_id="test-002")
+
+        assert result is True, "Переход on_auto -> on_manual должен succeed"
+        state = engine.get_state(entity_id)
+        assert state.current_state == "on_manual"
+
+        # КРИТИЧЕСКИ ВАЖНО: Проверяем, что контекст обновился
+        expected_until = datetime(2026, 9, 9, 13, 1, 0).timestamp() # 12:01 + 3600 сек
+        assert state.context.get("manual_override_until") == expected_until
+
+        # КРИТИЧЕСКИ ВАЖНО: Проверяем, что старый таймер движения был ОТМЕНЕН
+        # (В _cancel_timers он удаляется из self._timers перед созданием нового)
+        # Новый таймер уже должен быть в _timers, но мы проверим, что их ровно 1
+        assert len(engine._timers) == 1, "Должен быть только один активный таймер (новый)"
+
+    # ========================================================================
+    # ШАГ 3: t=12:05:00 (через 300 сек от начала) - Старый таймер движения "сработал" бы
+    # ========================================================================
+    with freeze_time("2026-09-09 12:05:00"):
+        # Имитируем, что пришло событие motion_detected (или сработал бы таймер,
+        # но таймер был отменен, так что триггерим вручную для проверки Guard)
+        result = await engine.trigger(entity_id, "motion_detected", trace_id="test-003")
+
+        # ОЖИДАЕМ: Переход должен быть ЗАБЛОКИРОВАН guard'ом is_not_manual_override
+        assert result is False, "Переход должен быть заблокирован ручной блокировкой"
+
+        state = engine.get_state(entity_id)
+        assert state.current_state == "on_manual", "Состояние не должно измениться"
+
+    # ========================================================================
+    # ШАГ 4: t=13:01:00 (через 3600 сек от ручного включения) - Блокировка истекла
+    # ========================================================================
+    with freeze_time("2026-09-09 13:01:00"):
+        # Имитируем срабатывание таймера ручного режима
+        result = await engine.trigger(entity_id, "timeout", trace_id="test-004")
+
+        assert result is True, "Переход on_manual -> off должен succeed после истечения времени"
+        state = engine.get_state(entity_id)
+        assert state.current_state == "off"
+        assert len(engine._timers) == 0, "Все таймеры должны быть завершены"

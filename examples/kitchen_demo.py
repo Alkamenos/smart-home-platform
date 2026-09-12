@@ -14,9 +14,9 @@ Features:
 
 Usage:
     make run-mock
-    
+
     or
-    
+
     python examples/kitchen_demo.py
 """
 
@@ -53,50 +53,36 @@ def setup_kitchen_automations(
     kitchen_motion = "binary_sensor.kitchen_motion"
 
     # Register guard: Check if manual override is active
-    def is_not_manual_override(entity_id: str, state: State) -> bool:
-        """Return False if manual override is active."""
+    def is_not_manual_override(state: State, context: dict) -> bool:
+        """Guard: Проверяет, не активна ли ручная блокировка."""
         manual_until = state.context.get("manual_override_until", 0.0)
         now = datetime.now().timestamp()
-        is_active = now < manual_until
 
-        if is_active:
-            logger.bind(trace_id="demo").debug(
-                f"{entity_id}: Manual override active until "
-                f"{datetime.fromtimestamp(manual_until).strftime('%H:%M:%S')}"
-            )
+        if now < manual_until:
+            log.debug(f"🛡️ GUARD: Ручная блокировка активна, переход отклонен.")
+            return False
+        return True
 
-        return not is_active
+    def turn_on_light(state: State, context: dict) -> dict:
+        """Включает свет. Не меняет контекст."""
+        log.info("💡 LIGHT_ON: Включаем свет на кухне")
+        # Здесь был бы вызов adapter.call_service("light.turn_on", ...)
+        return {}
 
-    # Register action: Turn on light
-    async def turn_on_light(entity_id: str, state: State) -> None:
-        """Turn on the kitchen light."""
-        log.info(f"Turning ON {entity_id}")
-        await adapter.call_service(
-            "light", "turn_on", entity_id, {"brightness": 200}, state.context
-        )
+    def turn_off_light(state: State, context: dict) -> dict:
+        """Выключает свет."""
+        log.info("⬛ LIGHT_OFF: Выключаем свет на кухне")
+        return {}
 
-    # Register action: Turn off light
-    async def turn_off_light(entity_id: str, state: State) -> None:
-        """Turn off the kitchen light."""
-        log.info(f"Turning OFF {entity_id}")
-        await adapter.call_service("light", "turn_off", entity_id, {}, state.context)
-
-    # Register action: Set manual override
-    async def set_manual_override(
-        entity_id: str, state: State, duration_minutes: int = 60
-    ) -> None:
-        """Set manual override for specified duration."""
+    def set_manual_override(state: State, context: dict) -> dict:
+        """Устанавливает ручное управление и возвращает время истечения блокировки."""
         now = datetime.now().timestamp()
-        until = now + (duration_minutes * 60)
-        new_context = {**state.context, "manual_override_until": until}
-
+        override_until = now + 3600  # 60 минут
         log.info(
-            f"{entity_id}: Manual override set for {duration_minutes} minutes "
-            f"(until {datetime.fromtimestamp(until).strftime('%H:%M:%S')})"
-        )
+            f"✋ MANUAL: Ручное управление. Блокировка до {datetime.fromtimestamp(override_until).strftime('%H:%M:%S')}")
 
-        # Update state context (in real scenario, this would be done by FSM)
-        state.context.update(new_context)
+        # Возвращаем патч, который FSM добавит в state.context
+        return {"manual_override_until": override_until}
 
     # Register guards and actions directly on engine
     engine.register_guard("not_manual_override", is_not_manual_override)
@@ -227,11 +213,11 @@ async def run_demo() -> None:
     print("📍 Step 2: Rapid motion triggers (testing timer cancellation)")
     await asyncio.sleep(0.5)
     for i in range(3):
-        print(f"  Trigger {i+1}/3")
+        print(f"  Trigger {i + 1}/3")
         await adapter.simulate_event(
             kitchen_light,
             "motion_detected",
-            {"trace_id": f"demo000{i+2}"},
+            {"trace_id": f"demo000{i + 2}"},
         )
         await asyncio.sleep(0.3)
     await asyncio.sleep(1)
