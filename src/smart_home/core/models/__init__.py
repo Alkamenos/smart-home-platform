@@ -11,6 +11,7 @@ from .manifest import (
     InstanceInfo,
     AutomationRules,
     Dashboard,
+    BehaviorConfig,
     load_manifest,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "InstanceInfo",
     "AutomationRules",
     "Dashboard",
+    "BehaviorConfig",
     "load_manifest",
 ]

@@ -1,0 +1,30 @@
+# Конфигурация FSM для ночного освещения (night_light)
+# Состояния: OFF, ON_NIGHT
+
+entity_id: "night_light"
+initial_state: "OFF"
+debounce_sec: 0.5
+
+states:
+  - "OFF"
+  - "ON_NIGHT"
+
+transitions:
+  # Из OFF можно перейти в ON_NIGHT при обнаружении движения ночью
+  - from_state: "OFF"
+    to_state: "ON_NIGHT"
+    trigger: "motion_detected"
+    action: "turn_on_night_light"
+
+  # Из ON_NIGHT можно перейти в OFF при отсутствии движения (таймаут)
+  - from_state: "ON_NIGHT"
+    to_state: "OFF"
+    trigger: "timeout"
+    action: "turn_off_night_light"
+    timeout_sec: 60.0
+
+  # Из ON_NIGHT можно перейти в OFF при ручном выключении
+  - from_state: "ON_NIGHT"
+    to_state: "OFF"
+    trigger: "manual_switch_off"
+    action: "turn_off_night_light"
