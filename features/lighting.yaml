@@ -2,6 +2,7 @@
 # Состояния: OFF, ON_MOTION, ON_MANUAL
 # Примечание: entity_id будет переопределен фабрикой на основе device_id и priority
 
+entity_id: "light.kitchen"
 initial_state: "OFF"
 debounce_sec: 0.5
 
