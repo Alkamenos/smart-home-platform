@@ -21,52 +21,81 @@ devices:
   id: climate.kitchen
   name: Климат Kitchen
   room: kitchen
-  sensor: sensor.kitchen_temperature
-  target: 22.0
-  hysteresis: 0.5
-  modes:
-  - heat
-  - cool
-  - auto
+  behaviors:
+    - template: climate_hysteresis
+      priority: 1
+      params:
+        sensor: sensor.kitchen_temperature
+        target: 22.0
+        hysteresis: 0.5
+        modes:
+          - heat
+          - cool
+          - auto
 - type: climate_hysteresis
   id: climate.living_room
   name: Климат Living Room
   room: living_room
-  sensor: sensor.living_room_temperature
-  target: 22.0
-  hysteresis: 0.5
-  modes:
-  - heat
-  - cool
-  - auto
+  behaviors:
+    - template: climate_hysteresis
+      priority: 1
+      params:
+        sensor: sensor.living_room_temperature
+        target: 22.0
+        hysteresis: 0.5
+        modes:
+          - heat
+          - cool
+          - auto
 - type: light_motion
   id: light.kitchen
   name: Свет в Kitchen
   room: kitchen
-  motion_sensor: binary_sensor.kitchen_motion
-  motion_timeout_sec: 300
-  schedule: "07:00-23:00"
+  behaviors:
+    - template: lighting
+      priority: 1
+      params:
+        motion_sensor: binary_sensor.kitchen_motion
+        motion_timeout_sec: 300
+        schedule: "07:00-23:00"
+    - template: night_light
+      priority: 2
+      params:
+        brightness: 10
+        schedule: "23:00-07:00"
 - type: light_motion
   id: light.living_room
   name: Свет в Living Room
   room: living_room
-  motion_sensor: binary_sensor.living_room_motion
-  motion_timeout_sec: 300
-  schedule: "07:00-23:00"
+  behaviors:
+    - template: lighting
+      priority: 1
+      params:
+        motion_sensor: binary_sensor.living_room_motion
+        motion_timeout_sec: 300
+        schedule: "07:00-23:00"
 - type: light_motion
   id: light.bedroom
   name: Свет в Bedroom
   room: bedroom
-  motion_sensor: binary_sensor.bedroom_motion
-  motion_timeout_sec: 300
-  schedule: "07:00-23:00"
+  behaviors:
+    - template: lighting
+      priority: 1
+      params:
+        motion_sensor: binary_sensor.bedroom_motion
+        motion_timeout_sec: 300
+        schedule: "07:00-23:00"
 - type: ventilation_humidity
   id: fan.bathroom
   name: Вентиляция ванной
   room: bathroom
-  humidity_sensor: sensor.bathroom_humidity
-  humidity_threshold: 65
-  timeout_sec: 1800
+  behaviors:
+    - template: ventilation_humidity
+      priority: 1
+      params:
+        humidity_sensor: sensor.bathroom_humidity
+        humidity_threshold: 65
+        timeout_sec: 1800
 instance:
   created_at: '2026-09-08'
   id: leonids_house

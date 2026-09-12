@@ -4,10 +4,23 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 
 import yaml
 from pydantic import BaseModel, Field
+
+
+class BehaviorConfig(BaseModel):
+    """Конфигурация поведения устройства.
+    
+    Attributes:
+        template: Имя YAML-файла шаблона из features/.
+        priority: Приоритет поведения (чем меньше число, тем выше приоритет).
+        params: Опциональные параметры для настройки поведения.
+    """
+    template: str = Field(..., description="Имя YAML-файла шаблона из features/")
+    priority: int = Field(..., ge=0, description="Приоритет поведения (меньше = выше приоритет)")
+    params: dict[str, Any] = Field(default_factory=dict, description="Опциональные параметры поведения")
 
 
 class DeviceBase(BaseModel):
@@ -16,34 +29,25 @@ class DeviceBase(BaseModel):
     id: str
     name: str
     room: str
+    behaviors: list[BehaviorConfig] = Field(default_factory=list, description="Список поведений устройства")
 
 
 class LightMotionDevice(DeviceBase):
     """Устройство освещения с датчиком движения."""
 
     type: Literal["light_motion"]
-    motion_sensor: str
-    motion_timeout_sec: int
-    schedule: str | None = None
 
 
 class ClimateHysteresisDevice(DeviceBase):
     """Климатическое устройство с гистерезисом."""
 
     type: Literal["climate_hysteresis"]
-    sensor: str
-    target: float
-    hysteresis: float
-    modes: list[str]
 
 
 class VentilationHumidityDevice(DeviceBase):
     """Вентиляционное устройство с контролем влажности."""
 
     type: Literal["ventilation_humidity"]
-    humidity_sensor: str
-    humidity_threshold: int
-    timeout_sec: int
 
 
 AnyDevice = Annotated[
