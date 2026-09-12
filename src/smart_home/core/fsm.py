@@ -11,9 +11,12 @@ from __future__ import annotations
 import asyncio
 import uuid
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from .command_dispatcher import CommandDispatcher, CommandIntent
 
 
 # @dataclass (frozen=True)
@@ -43,13 +46,14 @@ class Transition:
         trigger: The event name that triggers this transition.
         guard: Optional callable condition function that must return True.
         action: Optional callable action function to execute on transition.
+            Actions now return CommandIntent (or None) instead of calling HA directly.
         timeout_sec: Optional timeout in seconds to auto-trigger 'timeout' event.
     """
     from_state: str
     to_state: str
     trigger: str
     guard: Optional[Callable[..., bool]] = None
-    action: Optional[Callable[..., Any]] = None
+    action: Optional[Callable[..., Optional["CommandIntent"]]] = None
     timeout_sec: Optional[float] = None
 
 
@@ -88,13 +92,14 @@ class FSMEngine:
     - Comprehensive logging via loguru
     """
 
-    def __init__(self) -> None:
+    def __init__(self, command_dispatcher: Optional["CommandDispatcher"] = None) -> None:
         self._states: dict[str, State] = {}
         self._definitions: dict[str, FSMDefinition] = {}
         self._timers: dict[str, asyncio.Task[None]] = {}
         self._last_transition_time: dict[str, float] = {}
         self._guards: dict[str, Callable[..., bool]] = {}
         self._actions: dict[str, Callable[..., Any]] = {}
+        self._dispatcher = command_dispatcher
 
     def register_definition(self, definition: FSMDefinition) -> None:
         """Register an FSM definition for an entity."""
@@ -170,7 +175,11 @@ class FSMEngine:
 
     async def _execute_action(self, action: str | Callable[..., Any] | None, entity_id: str,
                               context: dict[str, Any], log: Any | None = None) -> dict[str, Any]:
-        """Execute an action. Returns a context patch to update the State immutably."""
+        """Execute an action. Returns a context patch to update the State immutably.
+        
+        If the action returns a CommandIntent and a dispatcher is available,
+        the intent is submitted to the dispatcher for execution.
+        """
         if log is None:
             log = logger
 
@@ -189,7 +198,16 @@ class FSMEngine:
             if asyncio.iscoroutine(result):
                 result = await result
 
+            # Если action возвращает CommandIntent и есть dispatcher - отправляем его
+            from .command_dispatcher import CommandIntent
+            if isinstance(result, CommandIntent) and self._dispatcher is not None:
+                log.debug(f"Submitting CommandIntent to dispatcher: {result}")
+                await self._dispatcher.submit(result)
+                # Возвращаем пустой патч контекста, т.к. команда отправлена
+                return {}
+            
             # Если action возвращает dict, считаем это патчем для обновления контекста
+            # (для обратной совместимости)
             context_patch = result if isinstance(result, dict) else {}
 
             name = action_fn.__name__ if hasattr(action_fn, "__name__") else str(action_fn)
