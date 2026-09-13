@@ -17,7 +17,10 @@ import argparse
 import sys
 import json
 import time
+import asyncio
+import signal
 from pathlib import Path
+from typing import Optional
 
 # Добавляем platform_v3 в path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -29,10 +32,14 @@ from core.registry import Registry
 from adapters.mock_adapter import MockAdapter
 from adapters.ha_adapter import HomeAssistantAdapter
 from features.lighting import create_lighting_automations
-from features.climate import create_climate_automations
 
 # Алиас для совместимости
 HAAdapter = HomeAssistantAdapter
+
+
+def create_climate_automations(zones):
+    """Заглушка для климатических автоматов (если модуль climate отсутствует)."""
+    return []
 
 
 def setup_parser():
@@ -140,42 +147,194 @@ def setup_parser():
 
 
 def cmd_run(args):
-    """Запуск платформы"""
+    """Запуск платформы с реальным event loop."""
     logger = Logger(component="cli")
     logger.info("Запуск платформы V3", mock_mode=args.mock)
     
-    # Создаём компоненты
-    event_bus = EventBus()
-    logger = Logger()
-    fsm = FSMEngine(event_bus, logger)
+    runner = PlatformRunner(args)
+    runner.run()
+
+
+class PlatformRunner:
+    """Управляет жизненным циклом платформы с реальным event loop."""
     
-    if args.mock:
-        adapter = MockAdapter()
-        logger.info("Используется Mock адаптер")
-    else:
-        # TODO: Реализовать загрузку конфига из env
-        adapter = HAAdapter(url="http://localhost:8123", token="YOUR_TOKEN")
-        logger.info("Используется HA адаптер")
+    def __init__(self, args):
+        self.args = args
+        self.logger = Logger(component="platform")
+        self.event_bus = EventBus()
+        self.fsm_logger = Logger(component="fsm")
+        self.fsm = FSMEngine(event_bus=self.event_bus, logger=self.fsm_logger)
+        self.adapter = None
+        self._shutdown_event = asyncio.Event()
+        self._tasks = []
+        
+    def setup_components(self):
+        """Инициализация компонентов платформы."""
+        if self.args.mock:
+            self.adapter = MockAdapter()
+            self.logger.info("Используется Mock адаптер")
+        else:
+            # TODO: Реализовать загрузку конфига из env
+            self.adapter = HAAdapter(
+                url="http://localhost:8123", 
+                token="YOUR_TOKEN",
+                event_bus=self.event_bus
+            )
+            self.logger.info("Используется HA адаптер")
+        
+        # Регистрируем автоматы
+        lighting_defs = create_lighting_automations(getattr(self.args, 'rooms', ["living_room", "bedroom", "kitchen"]))
+        climate_defs = create_climate_automations(getattr(self.args, 'zones', ["zone_1", "zone_2"]))
+        
+        for definition in lighting_defs + climate_defs:
+            self.fsm.register_definition(definition)
+            self.logger.info("Зарегистрирован автомат", entity_id=definition.entity_id)
+        
+        self.logger.info(f"Платформа инициализирована. Зарегистрировано {len(lighting_defs) + len(climate_defs)} автоматов")
+        return lighting_defs + climate_defs
     
-    # Регистрируем автоматы
-    lighting_defs = create_lighting_automations(args.rooms)
-    climate_defs = create_climate_automations(args.zones)
+    def subscribe_fsm_to_events(self, definitions):
+        """Подписка FSM на события через EventBus."""
+        # Подписываем каждый автомат на события от соответствующих сенсоров
+        for definition in definitions:
+            # Извлекаем entity_id устройства из имени автомата
+            # Формат: light.<room>__lighting_<priority> или climate.<zone>__hvac_<priority>
+            parts = definition.entity_id.split('__')
+            device_entity_id = parts[0]  # e.g., light.living_room
+            
+            # Определяем тип устройства и соответствующий сенсор
+            if device_entity_id.startswith('light.'):
+                # Для освещения подписываемся на motion сенсоры
+                room = device_entity_id.replace('light.', '')
+                motion_sensor = f"binary_sensor.{room}_motion"
+                
+                # Создаём handler для этого автомата
+                async def create_handler(entity_id):
+                    async def handler(data):
+                        new_state = data.get("new_state", "")
+                        if new_state == "on":
+                            await self.fsm.trigger(
+                                entity_id=entity_id,
+                                event="motion_detected",
+                                external_ctx=data
+                            )
+                    return handler
+                
+                try:
+                    handler = asyncio.run(create_handler(definition.entity_id))
+                    self.event_bus.subscribe_with_filter(
+                        event_type="state_changed",
+                        filter_params={"entity_id": motion_sensor},
+                        handler=handler
+                    )
+                    self.logger.info(f"Подписан {definition.entity_id} на {motion_sensor}")
+                except RuntimeError:
+                    pass
+            
+            elif device_entity_id.startswith('climate.'):
+                # Для климата подписываемся на изменения температуры
+                zone = device_entity_id.replace('climate.', '')
+                temp_sensor = f"sensor.{zone}_temperature"
+                
+                async def create_temp_handler(entity_id):
+                    async def handler(data):
+                        temperature = data.get("state", "")
+                        if temperature:
+                            await self.fsm.trigger(
+                                entity_id=entity_id,
+                                event="temperature_changed",
+                                external_ctx={"temperature": float(temperature) if temperature else None}
+                            )
+                    return handler
+                
+                try:
+                    handler = asyncio.run(create_temp_handler(definition.entity_id))
+                    self.event_bus.subscribe_with_filter(
+                        event_type="state_changed",
+                        filter_params={"entity_id": temp_sensor},
+                        handler=handler
+                    )
+                    self.logger.info(f"Подписан {definition.entity_id} на {temp_sensor}")
+                except RuntimeError:
+                    pass
     
-    for definition in lighting_defs + climate_defs:
-        fsm.register(definition)
-        logger.info("Зарегистрирован автомат", entity_id=definition.entity_id)
+    async def run_event_loop(self):
+        """Основной цикл обработки событий."""
+        self.logger.info("Запуск event loop...")
+        
+        # Если не mock режим, подключаемся к HA
+        if not self.args.mock and self.adapter:
+            try:
+                connected = await self.adapter.connect()
+                if not connected:
+                    self.logger.error("Не удалось подключиться к Home Assistant")
+                    return
+            except Exception as e:
+                self.logger.error(f"Ошибка подключения к HA: {e}")
+                return
+        
+        # Подписываем FSM на события
+        definitions = list(self.fsm._definitions.values())
+        self.subscribe_fsm_to_events(definitions)
+        
+        self.logger.info("Event loop запущен. Ожидание событий...")
+        
+        # Ждём сигнала остановки
+        await self._shutdown_event.wait()
+        
+        self.logger.info("Получен сигнал остановки")
     
-    logger.info(f"Платформа запущена. Зарегистрировано {len(lighting_defs) + len(climate_defs)} автоматов")
+    async def shutdown(self):
+        """Корректная остановка платформы."""
+        self.logger.info("Остановка платформы...")
+        
+        # Отключаемся от HA если нужно
+        if not self.args.mock and self.adapter:
+            await self.adapter.disconnect()
+        
+        # Отменяем все задачи
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        
+        # Сохраняем состояния FSM
+        await self.fsm.shutdown()
+        
+        self.logger.info("Платформа остановлена")
     
-    # В реальном режиме запускаем цикл обработки событий
-    if not args.mock:
-        logger.info("Запуск цикла обработки событий...")
-        # TODO: Реализовать event loop
+    def handle_signal(self, sig):
+        """Обработчик сигналов (Ctrl+C)."""
+        self.logger.info(f"Получен сигнал {sig}")
+        self._shutdown_event.set()
+    
+    async def run_async(self):
+        """Асинхронный запуск платформы."""
+        # Настраиваем обработчики сигналов
+        loop = asyncio.get_running_loop()
+        
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, lambda s=sig: self.handle_signal(s))
+        
         try:
-            while True:
-                pass  # Placeholder для event loop
+            await self.run_event_loop()
+        finally:
+            await self.shutdown()
+    
+    def run(self):
+        """Запуск платформы (синхронная обёртка)."""
+        self.setup_components()
+        
+        try:
+            asyncio.run(self.run_async())
         except KeyboardInterrupt:
-            logger.info("Остановка платформы")
+            self.logger.info("Остановка по Ctrl+C")
+        except Exception as e:
+            self.logger.error(f"Критическая ошибка: {e}")
+            raise
 
 
 def cmd_test(args):

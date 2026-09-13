@@ -1,57 +1,16 @@
 ```
-# Coverage reports
-.coverage
-
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv/
-.venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage*
-.pytest_cache/
-.mypy_cache/
-.hypothesis/
 
-# Testing
-nosetests.xml
-coverage/
-htmlcov/
-*.cover
+# Logs and temp files
 *.log
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
+*.tmp
 
 # Environment
 .env
 .env.local
 *.env.*
-
-# Build and distribution
-dist/
-build/
-*.egg-info/
-.eggs/
-.installed.cfg
-lib/
-lib64/
-parts/
-sdist/
-develop-eggs/
 ```
