@@ -3,6 +3,7 @@ automation_rules:
     away_mode_enabled: true
     manual_lockout_min: 30
     safety_lockout_enabled: true
+  global_manual_lockout_min: 60
   lighting:
     manual_lockout_min: 60
     motion_enabled: true

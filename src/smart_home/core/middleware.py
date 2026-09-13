@@ -16,6 +16,12 @@ from loguru import logger
 from .command_dispatcher import CommandIntent
 from .models.manifest import AutomationRules
 
+# Import ControlTracker from core package
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from core.control_tracker import ControlTracker, TriggerSource
+
 
 class Middleware(ABC):
     """
@@ -46,28 +52,32 @@ class ManualLockoutMiddleware(Middleware):
     """
     Middleware that enforces manual lockout rules from automation_rules.
     
-    This middleware checks if a device was manually controlled within the
-    last manual_lockout_min minutes. If so, it blocks automated commands
-    to prevent conflicts with manual user control.
+    This middleware uses ControlTracker to check if a device was manually
+    controlled within the last manual_lockout_min minutes. If so, it blocks
+    automated commands to prevent conflicts with manual user control.
     
     Attributes:
         _automation_rules: The automation rules from the manifest.
-        _manual_control_times: Dictionary tracking last manual control time per device.
+        _control_tracker: ControlTracker instance for tracking manual interventions.
     """
     
-    def __init__(self, automation_rules: AutomationRules) -> None:
+    def __init__(self, automation_rules: AutomationRules, control_tracker: ControlTracker) -> None:
         """
         Initialize ManualLockoutMiddleware.
         
         Args:
             automation_rules: AutomationRules instance from the manifest.
+            control_tracker: ControlTracker instance for tracking manual control events.
         """
         self._automation_rules = automation_rules
-        self._manual_control_times: Dict[str, datetime] = {}
+        self._control_tracker = control_tracker
     
     def _get_lockout_minutes(self, domain: str) -> int:
         """
         Get the lockout duration in minutes for a given domain.
+        
+        First checks for a global lockout setting, then falls back to
+        domain-specific settings.
         
         Args:
             domain: The device domain (e.g., "light", "climate", "ventilation").
@@ -75,6 +85,12 @@ class ManualLockoutMiddleware(Middleware):
         Returns:
             The lockout duration in minutes, or 0 if not configured.
         """
+        # First check global lockout setting
+        global_lockout = getattr(self._automation_rules, 'global_manual_lockout_min', 0)
+        if global_lockout > 0:
+            return global_lockout
+        
+        # Fall back to domain-specific settings
         if domain == "light":
             return self._automation_rules.lighting.manual_lockout_min
         elif domain == "climate" or domain == "thermostat":
@@ -100,7 +116,7 @@ class ManualLockoutMiddleware(Middleware):
     
     def record_manual_control(self, device_id: str) -> None:
         """
-        Record that a device was manually controlled.
+        Record that a device was manually controlled using ControlTracker.
         
         This should be called when a manual control command is detected
         to start the lockout period.
@@ -108,12 +124,15 @@ class ManualLockoutMiddleware(Middleware):
         Args:
             device_id: The ID of the device that was manually controlled.
         """
-        self._manual_control_times[device_id] = datetime.now()
-        logger.info(f"Recorded manual control for device {device_id}")
+        self._control_tracker.record(device_id, TriggerSource.MANUAL, "manual_control")
+        logger.info(f"Recorded manual control for device {device_id} via ControlTracker")
     
     def _is_in_lockout_period(self, device_id: str, domain: str) -> bool:
         """
         Check if a device is currently in a manual lockout period.
+        
+        Uses ControlTracker to determine if there was a manual intervention
+        within the lockout period.
         
         Args:
             device_id: The ID of the device to check.
@@ -122,17 +141,13 @@ class ManualLockoutMiddleware(Middleware):
         Returns:
             True if the device is in lockout period, False otherwise.
         """
-        if device_id not in self._manual_control_times:
-            return False
-        
-        last_manual_time = self._manual_control_times[device_id]
         lockout_minutes = self._get_lockout_minutes(domain)
         
         if lockout_minutes <= 0:
             return False
         
-        lockout_end = last_manual_time + timedelta(minutes=lockout_minutes)
-        return datetime.now() < lockout_end
+        # Use ControlTracker to check for recent manual intervention
+        return self._control_tracker.was_manual_within(device_id, lockout_minutes)
     
     async def process(self, intent: CommandIntent) -> Optional[CommandIntent]:
         """
@@ -159,11 +174,11 @@ class ManualLockoutMiddleware(Middleware):
         
         # Check if we're in a lockout period for automated commands
         if self._is_in_lockout_period(device_id, domain):
-            last_manual = self._manual_control_times.get(device_id)
+            last_manual = self._control_tracker.get_last_manual(device_id)
             lockout_minutes = self._get_lockout_minutes(domain)
             logger.info(
                 f"Blocked automated command from {source} for {device_id}: "
-                f"manual lockout active (last manual control at {last_manual}, "
+                f"manual lockout active (last manual control at {last_manual.timestamp if last_manual else 'unknown'}, "
                 f"lockout duration: {lockout_minutes} min)"
             )
             return None
