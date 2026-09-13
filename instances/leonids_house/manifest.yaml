@@ -108,7 +108,7 @@ instance:
   id: leonids_house
   name: Leonid's House
   owner: Leo
-version: 1
+version: 2
 zones:
 - floor: 1
   id: kitchen
