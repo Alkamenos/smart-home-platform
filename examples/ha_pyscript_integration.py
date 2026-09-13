@@ -63,6 +63,8 @@ try:
     from src.smart_home.core.event_bus import EventBus
     from src.smart_home.core.loader import DefinitionLoader
     from src.smart_home.core.registry import StateRegistry
+    from src.smart_home.core.event_router import EventRouter
+    from src.smart_home.core.models.manifest import load_manifest
 except ImportError:
     # Fallback for environments where modules aren't available
     HAAdapter = None  # type: ignore
@@ -70,6 +72,8 @@ except ImportError:
     EventBus = None  # type: ignore
     DefinitionLoader = None  # type: ignore
     StateRegistry = None  # type: ignore
+    EventRouter = None  # type: ignore
+    load_manifest = None  # type: ignore
 
 
 # -----------------------------------------------------------------------------
@@ -121,18 +125,23 @@ def init_smart_home() -> bool:
         # Link event_bus to engine (if your architecture requires it)
         engine.event_bus = event_bus  # type: ignore
         
-        # Initialize HA adapter in pyscript mode
+        # Load manifest and create EventRouter for routing sensor events to FSMs
+        manifest = load_manifest("instances/leonids_house/manifest.yaml")
+        router = EventRouter(manifest, engine)
+        
+        # Initialize HA adapter in pyscript mode with EventRouter
         # 'hass' is automatically available in pyscript context
         adapter = HAAdapter(
             mode="pyscript",
             engine=engine,
             hass=hass,  # noqa: F821 - 'hass' is provided by pyscript
+            event_router=router,
         )
         
         # Load FSM definitions from YAML files
         # loader.load_definitions("/config/smart_home/definitions/")
         
-        print("[smart_home] Initialization complete")
+        print("[smart_home] Initialization complete with EventRouter")
         return True
         
     except Exception as e:
