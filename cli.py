@@ -166,8 +166,11 @@ def cmd_run(args):
     # Загружаем FSM из манифеста через FSMFactory
     from src.smart_home.core.fsm_factory import FSMFactory
     from src.smart_home.core.registry import Registry
+    from src.smart_home.core.guards.schedule_guard import is_within_schedule
     
     registry = Registry()
+    # Регистрируем guard для проверки расписания
+    registry.register_guard("is_within_schedule", is_within_schedule)
     factory = FSMFactory(ctx.fsm, registry, features_dir="features", event_bus=ctx.event_bus)
     definitions = factory.create_from_manifest(ctx.manifest)
     
@@ -403,8 +406,11 @@ def cmd_debug(args):
     # Загружаем FSM из манифеста через FSMFactory
     from src.smart_home.core.fsm_factory import FSMFactory
     from src.smart_home.core.registry import Registry
+    from src.smart_home.core.guards.schedule_guard import is_within_schedule
     
     registry = Registry()
+    # Регистрируем guard для проверки расписания
+    registry.register_guard("is_within_schedule", is_within_schedule)
     factory = FSMFactory(ctx.fsm, registry, features_dir="features")
     definitions = factory.create_from_manifest(ctx.manifest)
     
@@ -516,8 +522,11 @@ def cmd_status(args):
     # Загружаем FSM из манифеста через FSMFactory
     from src.smart_home.core.fsm_factory import FSMFactory
     from src.smart_home.core.registry import Registry
+    from src.smart_home.core.guards.schedule_guard import is_within_schedule
     
     registry = Registry()
+    # Регистрируем guard для проверки расписания
+    registry.register_guard("is_within_schedule", is_within_schedule)
     factory = FSMFactory(ctx.fsm, registry, features_dir="features")
     definitions = factory.create_from_manifest(ctx.manifest)
     
@@ -1065,8 +1074,11 @@ def cmd_doctor(args):
     try:
         from src.smart_home.core.fsm_factory import FSMFactory
         from src.smart_home.core.registry import Registry
+        from src.smart_home.core.guards.schedule_guard import is_within_schedule
         
         registry = Registry()
+        # Регистрируем guard для проверки расписания
+        registry.register_guard("is_within_schedule", is_within_schedule)
         factory = FSMFactory(ctx.fsm, registry, features_dir="features")
         definitions = factory.create_from_manifest(ctx.manifest)
         

@@ -129,13 +129,14 @@ class FSMFactory:
 
         return template_data
 
-    def _yaml_to_transition(self, yaml_transition: YAMLTransition) -> Transition:
+    def _yaml_to_transition(self, yaml_transition: YAMLTransition, schedule_guard_fn=None) -> Transition:
         """
         Преобразовать YAMLTransition в Transition, резолвя строки в функции.
         
         Args:
             yaml_transition: Валидированная YAML-модель перехода.
-            
+            schedule_guard_fn: Опциональная функция guard для расписания.
+        
         Returns:
             Transition: Объект перехода для FSM с резолвленными функциями.
         """
@@ -151,6 +152,17 @@ class FSMFactory:
             if action_fn is None:
                 logger.warning(f"Action '{yaml_transition.action}' not found in registry!")
 
+        # Если есть schedule_guard_fn, оборачиваем существующий guard или создаем новый
+        if schedule_guard_fn is not None:
+            original_guard = guard_fn
+            if original_guard is not None:
+                # Комбинируем оба guard: оба должны вернуть True
+                def combined_guard(state, context):
+                    return original_guard(state, context) and schedule_guard_fn(context)
+                guard_fn = combined_guard
+            else:
+                guard_fn = lambda state, context: schedule_guard_fn(context)
+
         return Transition(
             from_state=yaml_transition.from_state,
             to_state=yaml_transition.to_state,
@@ -160,18 +172,19 @@ class FSMFactory:
             timeout_sec=yaml_transition.timeout_sec,
         )
 
-    def _yaml_to_fsm_definition(self, yaml_def: YAMLFSMDefinition) -> FSMDefinition:
+    def _yaml_to_fsm_definition(self, yaml_def: YAMLFSMDefinition, schedule_guard_fn=None) -> FSMDefinition:
         """
         Преобразовать YAMLFSMDefinition в FSMDefinition.
         
         Args:
             yaml_def: Валидированная YAML-модель определения FSM.
-            
+            schedule_guard_fn: Опциональная функция guard для расписания.
+        
         Returns:
             FSMDefinition: Объект определения FSM для двигателя.
         """
         transitions = tuple(
-            self._yaml_to_transition(t) for t in yaml_def.transitions
+            self._yaml_to_transition(t, schedule_guard_fn) for t in yaml_def.transitions
         )
         
         return FSMDefinition(
@@ -248,8 +261,14 @@ class FSMFactory:
             for warning in warnings:
                 logger.warning(warning)
             
-            # Преобразование в FSMDefinition
-            fsm_def = self._yaml_to_fsm_definition(yaml_def)
+            # Если в params есть schedule, создаем guard функцию для проверки расписания
+            schedule_guard_fn = None
+            if behavior.params and "schedule" in behavior.params:
+                from .guards.schedule_guard import is_within_schedule
+                schedule_guard_fn = is_within_schedule
+            
+            # Преобразование в FSMDefinition (с применением schedule guard если есть)
+            fsm_def = self._yaml_to_fsm_definition(yaml_def, schedule_guard_fn)
             definitions.append(fsm_def)
             
             logger.info(f"Loaded FSM for behavior '{behavior.template}' on device '{device_id}'")
