@@ -192,6 +192,18 @@ class CommandDispatcher:
         del self._active_intents[device_id]
         logger.info(f"Released device {device_id} from {source}")
         return True
+    
+    def add_middleware(self, middleware: MiddlewareProtocol) -> None:
+        """
+        Add a middleware instance to the processing chain.
+        
+        Allows adding middleware after the dispatcher has been created.
+        Middleware are processed in the order they were added.
+        
+        Args:
+            middleware: Middleware instance to add.
+        """
+        self._middlewares.append(middleware)
 
 
 if __name__ == "__main__":

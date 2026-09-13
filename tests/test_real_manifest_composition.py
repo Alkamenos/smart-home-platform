@@ -145,7 +145,7 @@ class TestRealManifestComposition:
         # ====================================================================
         engine = FSMEngine()
         mock_adapter = MockAdapter()
-        dispatcher = CommandDispatcher(ha_adapter=mock_adapter)
+        dispatcher = CommandDispatcher(ha_adapter=mock_adapter, middlewares=[])
 
         factory = FSMFactory(engine, registry, features_dir="features")
 

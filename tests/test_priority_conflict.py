@@ -127,7 +127,7 @@ async def test_night_light_blocks_regular_lighting() -> None:
     engine = FSMEngine()
     registry = Registry()
     mock = MockAdapter()
-    dispatcher = CommandDispatcher(ha_adapter=mock)
+    dispatcher = CommandDispatcher(ha_adapter=mock, middlewares=[])
 
     # Регистрируем guards и actions
     def is_day_time(context: dict[str, Any]) -> bool:
@@ -316,7 +316,7 @@ async def test_release_allows_lower_priority() -> None:
     engine = FSMEngine()
     registry = Registry()
     mock = MockAdapter()
-    dispatcher = CommandDispatcher(ha_adapter=mock)
+    dispatcher = CommandDispatcher(ha_adapter=mock, middlewares=[])
 
     registry.register_guard("is_day_time", lambda ctx: True)  # Теперь день
     registry.register_guard("is_night_time", lambda ctx: False)
@@ -484,7 +484,7 @@ async def test_ownership_protection() -> None:
     # Инициализация
     # ========================================================================
     mock = MockAdapter()
-    dispatcher = CommandDispatcher(ha_adapter=mock)
+    dispatcher = CommandDispatcher(ha_adapter=mock, middlewares=[])
 
     # night_light захватывает устройство
     night_intent = CommandIntent(
