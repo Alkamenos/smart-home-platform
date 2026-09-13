@@ -232,9 +232,8 @@ class ConfigWatcher:
             
             # Remove old FSMs that are no longer needed
             for fsm_id in fsm_defs_to_remove:
-                logger.info(f"Removing FSM: {fsm_id}")
-                # Note: FSMEngine doesn't have an unregister method yet
-                # We'll just log this for now
+                logger.info(f"Unregistering FSM: {fsm_id}")
+                self._engine.unregister(fsm_id)
             
             # Recreate all FSMs from the new manifest
             # In production, you'd want to be more selective about which FSMs to recreate
@@ -290,6 +289,15 @@ class ConfigWatcher:
                     # Recreate FSMs for affected devices
                     for device_id, behavior in affected_devices:
                         try:
+                            # First, unregister old FSMs for this device/behavior
+                            # Find existing FSM entity IDs that match this device
+                            current_fsm_ids = set(self._engine.get_all_states().keys())
+                            for fsm_id in current_fsm_ids:
+                                if fsm_id.startswith(device_id):
+                                    logger.info(f"Unregistering old FSM: {fsm_id}")
+                                    self._engine.unregister(fsm_id)
+                            
+                            # Create and register new FSMs
                             definitions = self._factory.create_from_behavior(device_id, behavior)
                             for definition in definitions:
                                 logger.info(f"Re-registering FSM: {definition.entity_id}")

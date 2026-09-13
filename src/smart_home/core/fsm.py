@@ -448,6 +448,41 @@ class FSMEngine:
             log.debug(f"Entity {entity_id}: Timeout cancelled")
             raise
 
+    def unregister(self, entity_id: str) -> None:
+        """Unregister an FSM, removing it from internal state and cancelling all timers.
+
+        Args:
+            entity_id: ID of the entity to unregister.
+        """
+        # Cancel any pending timers for this entity
+        if entity_id in self._timers:
+            timer_task = self._timers[entity_id]
+            if not timer_task.done():
+                timer_task.cancel()
+                try:
+                    # In synchronous context, we can't await, so just cancel
+                    pass
+                except asyncio.CancelledError:
+                    pass
+            del self._timers[entity_id]
+            logger.debug(f"Cancelled timers for entity {entity_id} during unregister")
+        
+        # Remove from states dictionary
+        if entity_id in self._states:
+            del self._states[entity_id]
+            logger.debug(f"Removed state for entity {entity_id}")
+        
+        # Remove from definitions dictionary
+        if entity_id in self._definitions:
+            del self._definitions[entity_id]
+            logger.debug(f"Removed definition for entity {entity_id}")
+        
+        # Clean up other tracking dictionaries
+        if entity_id in self._last_transition_time:
+            del self._last_transition_time[entity_id]
+        
+        logger.info(f"Unregistered FSM for entity {entity_id}")
+
     async def shutdown(self) -> None:
         """Shutdown the engine, cancelling all pending timers."""
         for entity_id in list(self._timers.keys()):
