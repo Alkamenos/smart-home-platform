@@ -7,9 +7,10 @@ FSM Factory - Фабрика для создания FSM на основе ко�
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Coroutine
 
 import yaml
 from loguru import logger
@@ -40,7 +41,13 @@ class FSMFactory:
         factory.create_from_manifest(manifest)
     """
 
-    def __init__(self, engine: FSMEngine, registry: Registry, features_dir: str = "features") -> None:
+    def __init__(
+        self,
+        engine: FSMEngine,
+        registry: Registry,
+        features_dir: str = "features",
+        event_bus: Any | None = None,
+    ) -> None:
         """
         Инициализировать фабрику.
         
@@ -48,11 +55,13 @@ class FSMFactory:
             engine: Экземпляр FSMEngine для регистрации автоматов.
             registry: Экземпляр Registry для получения guard/action функций.
             features_dir: Путь к папке с YAML шаблонами.
+            event_bus: Опциональный EventBus для подписки на события сенсоров.
         """
         self._engine = engine
         self._registry = registry
         self._features_dir = Path(features_dir)
         self._template_cache: dict[str, dict[str, Any]] = {}
+        self._event_bus = event_bus
 
     def _load_template(self, template_name: str) -> dict[str, Any]:
         """
@@ -245,12 +254,90 @@ class FSMFactory:
             
             logger.info(f"Loaded FSM for behavior '{behavior.template}' on device '{device_id}'")
             
+            # Подписаться на события сенсоров из params, если есть event_bus
+            if self._event_bus is not None and behavior.params:
+                self._subscribe_to_sensor_events(
+                    device_id,
+                    fsm_def.entity_id,
+                    behavior.params,
+                    behavior.template
+                )
+            
         except FileNotFoundError as e:
             logger.error(str(e))
         except Exception as e:
             logger.error(f"Failed to create FSM from behavior '{behavior.template}' for device '{device_id}': {e}")
         
         return definitions
+    
+    def _subscribe_to_sensor_events(
+        self,
+        device_id: str,
+        fsm_entity_id: str,
+        params: dict[str, Any],
+        template_name: str,
+    ) -> None:
+        """
+        Подписать FSM на события сенсоров из params.
+        
+        Для lighting и night_light шаблонов подписывает на motion_sensor events.
+        
+        Args:
+            device_id: ID устройства.
+            fsm_entity_id: entity_id созданной FSM.
+            params: Параметры поведения (могут содержать motion_sensor).
+            template_name: Имя шаблона (lighting, night_light, etc.).
+        """
+        # Извлекаем motion_sensor из params, если есть
+        motion_sensor = params.get("motion_sensor")
+        
+        if motion_sensor:
+            # Создаем handler для этой FSM
+            async def motion_event_handler(
+                event_type: str,
+                payload: dict[str, Any],
+                trace_id: str | None = None,
+            ) -> None:
+                """Обработчик событий motion sensor."""
+                log = logger.bind(trace_id=trace_id or "unknown")
+                
+                # Определяем тип события по состоянию сенсора
+                new_state = payload.get("new_state", "")
+                if new_state == "on":
+                    trigger_event = "motion_detected"
+                elif new_state == "off":
+                    trigger_event = "motion_cleared"
+                else:
+                    log.debug(f"Unknown state {new_state} for motion sensor {motion_sensor}")
+                    return
+                
+                log.info(
+                    f"FSMFactory: Motion event from {motion_sensor} -> "
+                    f"triggering '{trigger_event}' for FSM '{fsm_entity_id}'"
+                )
+                
+                # Триггерим событие в FSM
+                try:
+                    await self._engine.trigger(
+                        entity_id=fsm_entity_id,
+                        event=trigger_event,
+                        external_ctx=payload,
+                        trace_id=trace_id,
+                    )
+                except Exception as e:
+                    log.error(f"Failed to trigger FSM '{fsm_entity_id}': {e}")
+            
+            # Подписываемся с фильтром по entity_id сенсора
+            self._event_bus.subscribe_with_filter(
+                event_type="state_change",
+                filter_params={"entity_id": motion_sensor},
+                handler=motion_event_handler,
+            )
+            
+            logger.info(
+                f"Subscribed FSM '{fsm_entity_id}' to motion sensor '{motion_sensor}' "
+                f"(template: {template_name})"
+            )
 
     def create_from_manifest(self, manifest: Any) -> list[FSMDefinition]:
         """
