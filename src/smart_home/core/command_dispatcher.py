@@ -8,7 +8,7 @@ lower-priority ones for the same device.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 from loguru import logger
 from pydantic import BaseModel
@@ -32,6 +32,22 @@ class CommandIntent(BaseModel):
     data: dict[str, Any]
     priority: int
     source: str
+
+
+class MiddlewareProtocol(Protocol):
+    """Protocol defining the interface for middleware."""
+    
+    async def process(self, intent: CommandIntent) -> Optional[CommandIntent]:
+        """
+        Process a command intent.
+        
+        Args:
+            intent: The CommandIntent to process.
+        
+        Returns:
+            The processed CommandIntent if it should continue, or None to block.
+        """
+        ...
 
 
 class HAAdapterProtocol(Protocol):
@@ -60,17 +76,24 @@ class CommandDispatcher:
     Attributes:
         _active_intents: Dictionary mapping device_id to active CommandIntent.
         _ha_adapter: HAAdapter instance for calling services.
+        _middlewares: List of middleware instances to process intents.
     """
     
-    def __init__(self, ha_adapter: HAAdapterProtocol) -> None:
+    def __init__(
+        self,
+        ha_adapter: HAAdapterProtocol,
+        middlewares: List[MiddlewareProtocol] | None = None,
+    ) -> None:
         """
         Initialize CommandDispatcher.
         
         Args:
             ha_adapter: HAAdapter instance for calling Home Assistant services.
+            middlewares: Optional list of middleware instances to process intents.
         """
         self._active_intents: Dict[str, CommandIntent] = {}
         self._ha_adapter = ha_adapter
+        self._middlewares: List[MiddlewareProtocol] = middlewares or []
     
     @property
     def active_intents(self) -> Dict[str, CommandIntent]:
@@ -81,42 +104,54 @@ class CommandDispatcher:
         """
         Submit a command intent for processing.
         
-        If there's already an active intent for the same device with strictly
-        higher priority, the new intent is ignored. Otherwise, the new intent
-        becomes active and is sent to HAAdapter.
+        The intent is first processed through all middlewares in order.
+        If any middleware returns None, the command is blocked.
+        Otherwise, priority-based conflict resolution is applied.
         
         Args:
             intent: The CommandIntent to submit.
         
         Returns:
-            True if the intent was accepted and processed, False if ignored.
+            True if the intent was accepted and processed, False if ignored or blocked.
         """
         try:
-            device_id = intent.device_id
+            # Process through middlewares first
+            processed_intent = intent
+            for middleware in self._middlewares:
+                result = await middleware.process(processed_intent)
+                if result is None:
+                    logger.info(
+                        f"Blocked intent from {intent.source} for device "
+                        f"{intent.device_id} by middleware"
+                    )
+                    return False
+                processed_intent = result
+            
+            device_id = processed_intent.device_id
             existing_intent = self._active_intents.get(device_id)
             
             # Check if there's an existing intent with strictly higher priority
-            if existing_intent is not None and existing_intent.priority > intent.priority:
+            if existing_intent is not None and existing_intent.priority > processed_intent.priority:
                 logger.info(
-                    f"Ignored {intent.source} ({intent.priority}) because "
+                    f"Ignored {processed_intent.source} ({processed_intent.priority}) because "
                     f"{existing_intent.source} ({existing_intent.priority}) is active"
                 )
                 return False
             
             # Accept the new intent
-            self._active_intents[device_id] = intent
+            self._active_intents[device_id] = processed_intent
             
             logger.info(
-                f"Accepted intent from {intent.source} (priority={intent.priority}) "
+                f"Accepted intent from {processed_intent.source} (priority={processed_intent.priority}) "
                 f"for device {device_id}"
             )
             
             # Call the service via HAAdapter
             await self._ha_adapter.call_service(
-                domain=intent.domain,
-                service=intent.service,
+                domain=processed_intent.domain,
+                service=processed_intent.service,
                 entity_id=device_id,
-                data=intent.data,
+                data=processed_intent.data,
             )
             
             return True
