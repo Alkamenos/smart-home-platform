@@ -597,13 +597,27 @@ async def _run_platform_async(ctx, args):
                 logger.error(f"Ошибка при остановке задачи: {result}")
     
     # Отключаемся от HA если подключены
-    if ha_adapter and hasattr(ha_adapter, 'disconnect') and ha_adapter.is_connected:
+    if ha_adapter and hasattr(ha_adapter, 'stop'):
+        await ha_adapter.stop()
+        logger.info("WebSocket соединение закрыто")
+    elif ha_adapter and hasattr(ha_adapter, 'disconnect') and ha_adapter.is_connected:
         await ha_adapter.disconnect()
         logger.info("Отключено от Home Assistant")
     
-    # Сохраняем состояния FSM
+    # Отменяем все scheduled timeouts через FSM engine
     await ctx.fsm.shutdown()
-    logger.info("FSM Engine остановлен")
+    logger.info("Все timers отменены")
+    
+    # Сохраняем состояния через StatePersistence
+    from src.smart_home.core.state_persistence import StatePersistence
+    persistence = StatePersistence()
+    states = ctx.fsm.get_all_states()
+    states_dict = {
+        entity_id: (state.current_state, state.context)
+        for entity_id, state in states.items()
+    }
+    persistence.save_all(states_dict)
+    logger.info("Состояния сохранены")
     
     logger.info("Платформа полностью остановлена")
 
