@@ -169,13 +169,32 @@ class MockAdapter:
 
         self.log.debug("State cleared")
 
-    def get_service_calls(self) -> list[dict[str, Any]]:
-        """Get service call log.
+    def get_service_calls(
+        self,
+        domain: str | None = None,
+        service: str | None = None,
+        entity_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get service call log with optional filtering.
+
+        Args:
+            domain: Filter by domain (optional).
+            service: Filter by service name (optional).
+            entity_id: Filter by device ID (optional).
 
         Returns:
-            List of service call records.
+            List of service call records matching filters.
         """
-        return list(self._service_calls)
+        result = []
+        for call in self._service_calls:
+            if domain is not None and call.get("domain") != domain:
+                continue
+            if service is not None and call.get("service") != service:
+                continue
+            if entity_id is not None and call.get("entity_id") != entity_id:
+                continue
+            result.append(call)
+        return result
 
     def count_service_calls(
         self,
