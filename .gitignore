@@ -4,17 +4,11 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Logs and temp files
-*.log
-*.tmp
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Dependencies
-.venv/
+.Python
+env/
 venv/
+.venv/
+.ENV
+.env
+.coverage
 ```
