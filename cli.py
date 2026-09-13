@@ -446,6 +446,14 @@ def setup_parser():
     dry_run_parser.add_argument("--features-dir", default="features",
                                 help="Директория с feature шаблонами")
     
+    # ===== КОМАНДА GENERATE-DASHBOARD =====
+    # Команда generate-dashboard
+    gen_dash_parser = subparsers.add_parser("generate-dashboard", help="Генерация Lovelace дашборда из манифеста")
+    gen_dash_parser.add_argument("manifest_path", help="Путь к манифесту")
+    gen_dash_parser.add_argument("--output", "-o", required=True,
+                                 help="Путь для сохранения YAML файла дашборда")
+    gen_dash_parser.add_argument("--fsm-states", help="JSON файл с состояниями FSM (опционально)")
+    
     return parser
 
 
