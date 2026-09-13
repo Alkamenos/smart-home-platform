@@ -234,8 +234,8 @@ async def test_night_light_blocks_regular_lighting() -> None:
     # ========================================================================
     with freeze_time("2024-01-01 23:00:00"):
         # Эмулируем событие для night_light
-        # FSM для night_light имеет entity_id вида "light.kitchen_night_light_20"
-        night_light_fsm_id = "light.kitchen_night_light_20"
+        # FSM для night_light имеет entity_id вида "light.kitchen__night_light_20" (с двумя подчеркиваниями)
+        night_light_fsm_id = "light.kitchen__night_light_20"
 
         # Триггерим transition в night_light FSM
         await engine.trigger(night_light_fsm_id, "motion_detected", {"entity_id": "light.kitchen"})
