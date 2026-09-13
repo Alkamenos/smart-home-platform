@@ -244,13 +244,14 @@ class FSMEngine:
         
         This ensures action handlers receive the real device ID (e.g., light.kitchen)
         instead of the internal FSM entity_id (e.g., light.kitchen__night_light_20).
+        Also adds dispatcher to context so actions can call release().
         
         Args:
             entity_id: The internal FSM entity_id.
             context: The original context dictionary.
             
         Returns:
-            dict: Enriched context with target_device_id and params.
+            dict: Enriched context with target_device_id, params, and dispatcher.
         """
         enriched = {**context}
         
@@ -263,6 +264,10 @@ class FSMEngine:
             # Add params from FSM definition
             if definition.params:
                 enriched["params"] = definition.params
+        
+        # Add dispatcher to context so actions can call release()
+        if self._dispatcher is not None:
+            enriched["dispatcher"] = self._dispatcher
         
         return enriched
 

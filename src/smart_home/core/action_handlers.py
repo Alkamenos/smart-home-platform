@@ -154,12 +154,35 @@ def turn_off_night_light(state: Any, context: dict[str, Any]) -> Optional[Comman
     )
 
 
+def release_device(state: Any, context: dict) -> None:
+    """
+    Освобождает устройство от захвата FSM.
+    
+    Args:
+        state: Current FSM state (not used for this action).
+        context: Context dictionary containing dispatcher, target_device_id, and source.
+    """
+    dispatcher = context.get("dispatcher")
+    entity_id = context.get("target_device_id")
+    source = context.get("source")
+
+    if dispatcher and entity_id and source:
+        dispatcher.release(entity_id, source)
+        logger.info(f"Released device {entity_id} from {source}")
+    else:
+        logger.warning(
+            f"release_device: Missing dispatcher={dispatcher}, "
+            f"entity_id={entity_id}, or source={source}"
+        )
+
+
 # Dictionary of all available action handlers for easy registration
 ACTION_HANDLERS: dict[str, Any] = {
     "turn_on_light": turn_on_light,
     "turn_off_light": turn_off_light,
     "turn_on_night_light": turn_on_night_light,
     "turn_off_night_light": turn_off_night_light,
+    "release_device": release_device,
 }
 
 
