@@ -92,7 +92,11 @@ class FSMEngine:
     - Comprehensive logging via loguru
     """
 
-    def __init__(self, command_dispatcher: Optional["CommandDispatcher"] = None) -> None:
+    def __init__(
+        self,
+        command_dispatcher: Optional["CommandDispatcher"] = None,
+        persistence: Optional["StatePersistence"] = None,
+    ) -> None:
         self._states: dict[str, State] = {}
         self._definitions: dict[str, FSMDefinition] = {}
         self._timers: dict[str, asyncio.Task[None]] = {}
@@ -100,18 +104,55 @@ class FSMEngine:
         self._guards: dict[str, Callable[..., bool]] = {}
         self._actions: dict[str, Callable[..., Any]] = {}
         self._dispatcher = command_dispatcher
+        self._persistence = persistence
 
-    def register_definition(self, definition: FSMDefinition) -> None:
-        """Register an FSM definition for an entity."""
+    def register_definition(
+        self, definition: FSMDefinition, restore_state: bool = True
+    ) -> None:
+        """Register an FSM definition for an entity.
+        
+        Args:
+            definition: The FSM definition to register.
+            restore_state: If True, attempt to restore saved state from persistence.
+        """
         self._definitions[definition.entity_id] = definition
-        if definition.entity_id not in self._states:
+        
+        # Check if we have a persisted state to restore
+        restored_state: Optional[Tuple[str, dict]] = None
+        if restore_state and self._persistence is not None:
+            restored_state = self._persistence.load_state(definition.entity_id)
+        
+        if restored_state is not None:
+            saved_state, saved_context = restored_state
+            # Validate that the saved state is valid for this FSM
+            if saved_state in definition.states:
+                self._states[definition.entity_id] = State(
+                    current_state=saved_state,
+                    entered_at=asyncio.get_event_loop().time(),
+                    context=saved_context
+                )
+                logger.info(
+                    f"Registered FSM for entity {definition.entity_id} with restored state '{saved_state}'"
+                )
+            else:
+                logger.warning(
+                    f"Saved state '{saved_state}' for entity {definition.entity_id} is invalid, "
+                    f"using initial state '{definition.initial_state}'"
+                )
+                self._states[definition.entity_id] = State(
+                    current_state=definition.initial_state,
+                    entered_at=asyncio.get_event_loop().time(),
+                    context={}
+                )
+        elif definition.entity_id not in self._states:
             self._states[definition.entity_id] = State(
                 current_state=definition.initial_state,
                 entered_at=asyncio.get_event_loop().time(),
                 context={}
             )
-        logger.debug(
-            f"Registered FSM for entity {definition.entity_id} with initial state '{definition.initial_state}'")
+            logger.debug(
+                f"Registered FSM for entity {definition.entity_id} with initial state '{definition.initial_state}'"
+            )
 
     def register_guard(self, name: str, guard_fn: Callable[..., bool]) -> None:
         """Register a guard condition function by name."""
@@ -360,6 +401,10 @@ class FSMEngine:
             # Update state
             self._states[entity_id] = new_state
             self._last_transition_time[entity_id] = now
+
+            # Persist state if persistence is enabled
+            if self._persistence is not None:
+                self._persistence.save_state(entity_id, transition.to_state, new_context)
 
             log.info(
                 f"Entity {entity_id}: Transition '{current_state.current_state}' -> '{transition.to_state}' "

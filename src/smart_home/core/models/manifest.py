@@ -118,6 +118,16 @@ class InstanceInfo(BaseModel):
     created_at: str
 
 
+class PersistenceConfig(BaseModel):
+    """Configuration for state persistence."""
+    
+    enabled: bool = Field(default=True, description="Enable state persistence")
+    storage_path: str = Field(
+        default="/config/smart_home/state.json",
+        description="Path to the JSON file for storing states"
+    )
+
+
 class Manifest(BaseModel):
     """Корневая модель манифеста умного дома."""
 
@@ -127,6 +137,10 @@ class Manifest(BaseModel):
     devices: list[AnyDevice]
     automation_rules: AutomationRules
     dashboard: Dashboard
+    persistence: PersistenceConfig = Field(
+        default_factory=PersistenceConfig,
+        description="Configuration for state persistence"
+    )
 
 
 def load_manifest(path: str) -> Manifest:

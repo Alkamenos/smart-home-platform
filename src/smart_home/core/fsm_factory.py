@@ -404,16 +404,26 @@ class FSMFactory:
         
         logger.info(f"Registered {len(definitions)} FSM definitions in engine")
 
-    def create_and_register(self, manifest: Any) -> list[FSMDefinition]:
+    def create_and_register(
+        self, manifest: Any, restore_states: bool = True
+    ) -> list[FSMDefinition]:
         """
         Создать FSM из манифеста и сразу зарегистрировать их в двигателе.
         
         Args:
             manifest: Валидированный объект Manifest.
-            
+            restore_states: If True, attempt to restore saved states from persistence.
+                           The FSM engine will check for persisted states and use them
+                           instead of initial_state if valid saved states exist.
+        
         Returns:
             list[FSMDefinition]: Список всех созданных и зарегистрированных определений.
         """
         definitions = self.create_from_manifest(manifest)
-        self.register_in_engine(definitions)
+        
+        # Register each definition with state restoration enabled
+        for definition in definitions:
+            self._engine.register_definition(definition, restore_state=restore_states)
+        
+        logger.info(f"Created and registered {len(definitions)} FSM definitions")
         return definitions
