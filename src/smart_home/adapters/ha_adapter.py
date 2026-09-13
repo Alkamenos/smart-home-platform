@@ -16,8 +16,9 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any, Callable, Coroutine, Optional, TYPE_CHECKING
 
 import aiohttp
 from loguru import logger
@@ -29,6 +30,10 @@ try:
 except ImportError:
     HAS_WS_LIBRARY = False
     HomeAssistantWS = None  # type: ignore
+
+# Forward reference for ManualOverrideMiddleware
+if TYPE_CHECKING:
+    from ..core.middlewares.manual_override_middleware import ManualOverrideMiddleware
 
 
 class HAAdapter:
@@ -73,6 +78,7 @@ class HAAdapter:
         hass: Any | None = None,
         ws_url: str | None = None,
         token: str | None = None,
+        manual_override_middleware: "ManualOverrideMiddleware" | None = None,
     ) -> None:
         """
         Initialize HAAdapter.
@@ -83,7 +89,9 @@ class HAAdapter:
             hass: Home Assistant instance (required for pyscript mode).
             ws_url: WebSocket URL for HA (required for websocket mode).
             token: Long-lived access token for HA (required for websocket mode).
-        
+            manual_override_middleware: Optional ManualOverrideMiddleware instance
+                                        for registering manual overrides.
+
         Raises:
             ValueError: If required parameters are missing for the selected mode.
         """
@@ -96,6 +104,7 @@ class HAAdapter:
         self._ws_url = ws_url
         self._token = token
         
+        self._manual_override_middleware = manual_override_middleware
         self._ws_client: HomeAssistantWS | None = None
         self._session: aiohttp.ClientSession | None = None
         self._shutdown_event = asyncio.Event()
@@ -170,7 +179,11 @@ class HAAdapter:
         """
         context = context or {}
         
-        # Extract or generate trace_id
+        # If so, register manual override to block automation
+        user_id = context.get("user_id")
+        if user_id and self._manual_override_middleware:
+            self._manual_override_middleware.register_manual_override(entity_id)
+
         trace_id = context.get("trace_id") or self._generate_trace_id()
         log = self._get_logger(trace_id)
         
