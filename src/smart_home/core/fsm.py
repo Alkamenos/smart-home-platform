@@ -168,6 +168,10 @@ class FSMEngine:
         """Get the current state of an entity."""
         return self._states.get(entity_id)
 
+    def get_all_states(self) -> dict[str, State]:
+        """Get all current states of all entities."""
+        return dict(self._states)
+
     def reset_state(self, entity_id: str, state: str) -> None:
         """Reset the state of an entity to a specific state.
         
