@@ -245,3 +245,21 @@ class StatePersistence:
         """Clear all saved states."""
         if self.storage_path.exists():
             self.storage_path.unlink()
+    
+    def save_all(self, states: dict) -> None:
+        """
+        Save all FSM states to the storage file at once.
+        
+        This method is useful for graceful shutdown when you need to persist
+        all current states in a single operation.
+        
+        Args:
+            states: Dictionary mapping entity_id to (state, context) tuples.
+        """
+        data = {}
+        for entity_id, (state, context) in states.items():
+            data[entity_id] = {
+                "state": state,
+                "context": context
+            }
+        self._save_data(data)
