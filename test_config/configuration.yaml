@@ -1,0 +1,20 @@
+# Home Assistant Test Configuration
+
+default_config:
+
+# Enable WebSocket API for integration tests
+websocket_api:
+
+# Enable API for REST calls
+api:
+
+# HTTP configuration
+http:
+  server_port: 8123
+
+# No authentication for testing
+auth_providers: []
+
+# Logger
+logger:
+  default: info

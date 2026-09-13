@@ -8,13 +8,25 @@ __pycache__/
 env/
 venv/
 .venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
+.ENV
+.ENV.local
+
+# Logs
+*.log
+
+# Testing
 .coverage
 coverage/
 htmlcov/
+.pytest_cache/
 
-# Generated files
-generated_dashboards/
+# Environment specific
+.env
+.env.local
+*.env.*
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
 ```
