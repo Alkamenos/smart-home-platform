@@ -208,8 +208,11 @@ class FSMEngine:
 
         state = self._states.get(entity_id)
         try:
-            # ПЕРЕДАЕМ ОБА АРГУМЕНТА: state и context
-            result = action_fn(state, context)
+            # enrich context with target_device_id and params from FSM definition
+            enriched_context = self._enrich_context_for_action(entity_id, context)
+            
+            # ПЕРЕДАЕМ ОБА АРГУМЕНТА: state и enriched_context
+            result = action_fn(state, enriched_context)
             if asyncio.iscoroutine(result):
                 result = await result
 
@@ -235,6 +238,33 @@ class FSMEngine:
             name = action_fn.__name__ if hasattr(action_fn, "__name__") else str(action_fn)
             log.error(f"Action '{name}' raised exception: {e}")
             return {}
+
+    def _enrich_context_for_action(self, entity_id: str, context: dict[str, Any]) -> dict[str, Any]:
+        """Enrich context with target_device_id and params from FSM definition.
+        
+        This ensures action handlers receive the real device ID (e.g., light.kitchen)
+        instead of the internal FSM entity_id (e.g., light.kitchen__night_light_20).
+        
+        Args:
+            entity_id: The internal FSM entity_id.
+            context: The original context dictionary.
+            
+        Returns:
+            dict: Enriched context with target_device_id and params.
+        """
+        enriched = {**context}
+        
+        definition = self._definitions.get(entity_id)
+        if definition is not None:
+            # Add target_device_id as entity_id for action handlers
+            if definition.target_device_id is not None:
+                enriched["entity_id"] = definition.target_device_id
+                enriched["target_device_id"] = definition.target_device_id
+            # Add params from FSM definition
+            if definition.params:
+                enriched["params"] = definition.params
+        
+        return enriched
 
     async def trigger(self, entity_id: str, event: str, external_ctx: Optional[dict[str, Any]] = None,
                       trace_id: str | None = None) -> bool:
