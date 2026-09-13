@@ -4,21 +4,30 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.ENV.local
+.env.*
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
 
-# Logs and temp files
+# Logs
 *.log
-*.tmp
 
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
+# Editor/IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*.tmp
 
-# Dependencies
-.venv/
-venv/
+# OS
+.DS_Store
+Thumbs.db
 ```
