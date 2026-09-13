@@ -1,43 +1,52 @@
-```python
+```
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv/
-.ENV
-.ENV.local
+
+# Logs
+*.log
+
+# Environment
 .env
 .env.local
 .env.*
 
-# Build and distribution artifacts
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Build artifacts
 dist/
 build/
 *.egg-info/
-.eggs/
 
-# Testing
+# Coverage
 .coverage
 coverage/
 htmlcov/
-.pytest_cache/
-.mypy_cache/
 
-# IDE
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-*.tmp
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# MyPy
+.mypy_cache/
+
+# Pytest
+.pytest_cache/
+
+# Compiled extensions
+*.so
+*.dylib
+*.dll
+*.exe
 ```
