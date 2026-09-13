@@ -19,8 +19,11 @@
 
 import yaml
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from adapters.ha_adapter import HomeAssistantAdapter
 
 
 class DashboardGenerator:
@@ -32,6 +35,9 @@ class DashboardGenerator:
     - Управления устройствами (кнопки)
     - Истории переходов (логи)
     """
+    
+    # Кэш warnings после валидации
+    _validation_warnings: list[str] = []
 
     # Иконки для типов устройств
     DEVICE_ICONS = {
@@ -573,3 +579,129 @@ class DashboardGenerator:
             )
 
         return errors
+
+    def validate_with_ha(self, adapter: "HomeAssistantAdapter") -> list[str]:
+        """
+        Валидирует устройства из манифеста через HA адаптер.
+        
+        Для каждого устройства в манифесте вызывает adapter.get_state(entity_id).
+        Если устройство не существует, добавляет warning в список.
+        Также проверяет существование motion_sensor и других params.
+        
+        Args:
+            adapter: Экземпляр HomeAssistantAdapter для проверки
+            
+        Returns:
+            list[str]: Список warnings о несуществующих entity_id
+        """
+        import asyncio
+        
+        warnings = []
+        devices_config = self._manifest.get("devices", {})
+        
+        # Собираем все entity_id для проверки
+        entities_to_check = set()
+        
+        # Основные устройства по типам
+        for device_type in ["lighting", "climate", "ventilation", "cover", "switch"]:
+            devices = devices_config.get(device_type, [])
+            for device in devices:
+                entity_id = device.get("id")
+                if entity_id:
+                    entities_to_check.add(entity_id)
+                
+                # Проверяем motion_sensor
+                motion_sensor = device.get("motion_sensor")
+                if motion_sensor:
+                    entities_to_check.add(motion_sensor)
+                
+                # Проверяем sensor для climate
+                sensor = device.get("sensor")
+                if sensor:
+                    entities_to_check.add(sensor)
+                
+                # Проверяем humidity_sensor для ventilation
+                humidity_sensor = device.get("humidity_sensor")
+                if humidity_sensor:
+                    entities_to_check.add(humidity_sensor)
+        
+        # Асинхронная проверка существования устройств
+        async def check_entities():
+            missing_entities = []
+            for entity_id in entities_to_check:
+                try:
+                    state = await adapter.get_entity_state(entity_id)
+                    if state is None:
+                        missing_entities.append(entity_id)
+                except Exception as e:
+                    # Если ошибка при проверке, считаем устройство отсутствующим
+                    missing_entities.append(entity_id)
+            return missing_entities
+        
+        # Запускаем асинхронную проверку
+        try:
+            loop = asyncio.get_running_loop()
+            missing_entities = asyncio.run_coroutine_threadsafe(
+                check_entities(), loop
+            ).result(timeout=30)
+        except RuntimeError:
+            # Нет running loop, используем asyncio.run()
+            missing_entities = asyncio.run(check_entities())
+        except Exception as e:
+            self._log(f"Ошибка при валидации с HA: {e}", "warning")
+            missing_entities = list(entities_to_check)
+        
+        # Формируем warnings
+        for entity_id in missing_entities:
+            warning = f"⚠️ Устройство не найдено в HA: {entity_id}"
+            warnings.append(warning)
+        
+        # Сохраняем warnings для последующего использования
+        self._validation_warnings = warnings
+        
+        return warnings
+    
+    def save_to_file(
+        self,
+        output_dir: str = "generated_dashboards",
+        filename: Optional[str] = None,
+    ) -> Path:
+        """
+        Генерирует и сохраняет дашборд в отдельный файл.
+        
+        Удобно для тестирования и отладки.
+        
+        Args:
+            output_dir: Директория для сохранения
+            filename: Имя файла (по умолчанию dashboard_<instance>.yaml)
+            
+        Returns:
+            Path: Путь к сохранённому файлу
+        """
+        if filename is None:
+            instance_id = self._manifest.get("instance", {}).get("id", "smart_home")
+            filename = f"dashboard_{instance_id}.yaml"
+        
+        output_path = Path(output_dir) / filename
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        dashboard = self.generate_full_dashboard()
+        
+        with open(output_path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                dashboard,
+                f,
+                allow_unicode=True,
+                default_flow_style=False,
+                sort_keys=False,
+            )
+        
+        # Выводим warnings если есть проблемы
+        if self._validation_warnings:
+            self._log(f"Внимание: обнаружены проблемы при валидации ({len(self._validation_warnings)}):", "warning")
+            for warning in self._validation_warnings:
+                self._log(f"  - {warning}", "warning")
+        else:
+            self._log(f"Дашборд сохранён в {output_path}")
+        
+        return output_path
