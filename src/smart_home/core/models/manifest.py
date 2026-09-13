@@ -93,6 +93,10 @@ class AutomationRules(BaseModel):
     lighting: LightingAutomation
     climate: ClimateAutomation
     ventilation: VentilationAutomation
+    global_manual_lockout_min: int = Field(
+        default=0,
+        description="Глобальное время блокировки автоматизации после ручного управления (минуты). 0 = отключено"
+    )
 
 
 class Dashboard(BaseModel):
