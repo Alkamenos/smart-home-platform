@@ -16,12 +16,7 @@ from src.smart_home.core.fsm import FSMEngine
 from src.smart_home.core.middleware import ManualLockoutMiddleware
 from src.smart_home.core.models.manifest import Manifest, load_manifest
 from src.smart_home.adapters.mock_adapter import MockAdapter
-
-# Import ControlTracker from core package
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from core.control_tracker import ControlTracker
+from src.smart_home.core.control_tracker import ControlTracker
 
 
 @dataclass

@@ -56,7 +56,7 @@ class TestBootstrapPlatform:
         ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
         
         assert ctx.control_tracker is not None
-        from core.control_tracker import ControlTracker
+        from src.smart_home.core.control_tracker import ControlTracker
         assert isinstance(ctx.control_tracker, ControlTracker)
     
     def test_platform_context_contains_adapter(self):

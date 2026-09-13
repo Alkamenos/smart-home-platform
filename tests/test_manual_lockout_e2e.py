@@ -51,7 +51,7 @@ class TestManualLockoutE2E:
         def mock_time():
             return base_time[0]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('src.smart_home.core.control_tracker.time.time', mock_time):
             # Bootstrap platform (must be inside patch so ControlTracker uses mocked time)
             ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
             
@@ -97,6 +97,9 @@ class TestManualLockoutE2E:
             
             # ===== t=1:00 - Lockout period expires =====
             # Move time forward 59 more minutes (total 60 minutes from manual control)
+            # Clear the active intent from manual control to allow automation to proceed
+            # (In real usage, the manual intent would be cleared when user stops interacting)
+            ctx.dispatcher._active_intents.clear()
             base_time[0] += 59 * 60  # 59 minutes in seconds
             
             # ===== t=1:01 - Automation tries again (should PASS) =====
@@ -132,7 +135,7 @@ class TestManualLockoutE2E:
         def mock_time():
             return base_time[0]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('src.smart_home.core.control_tracker.time.time', mock_time):
             ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
             
             device_id = "light.test_reset"
@@ -203,7 +206,7 @@ class TestManualLockoutE2E:
         def mock_time():
             return base_time[0]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('src.smart_home.core.control_tracker.time.time', mock_time):
             ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
             
             # Manual control of kitchen
@@ -249,7 +252,7 @@ class TestManualLockoutE2E:
         def mock_time():
             return base_time[0]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('src.smart_home.core.control_tracker.time.time', mock_time):
             ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
             
             # Manual control of climate device

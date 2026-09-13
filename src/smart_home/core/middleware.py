@@ -15,12 +15,7 @@ from loguru import logger
 
 from .command_dispatcher import CommandIntent
 from .models.manifest import AutomationRules
-
-# Import ControlTracker from core package
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from core.control_tracker import ControlTracker, TriggerSource
+from .control_tracker import ControlTracker, TriggerSource
 
 
 class Middleware(ABC):
