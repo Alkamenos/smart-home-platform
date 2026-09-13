@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Coroutine
 
 import yaml
 from loguru import logger
@@ -18,6 +18,7 @@ from .definitions import YAMLFSMDefinition, YAMLTransition
 from .fsm import FSMDefinition, Transition, FSMEngine
 from .registry import Registry
 from .models.manifest import BehaviorConfig
+from .event_bus import EventBus
 
 
 class FSMFactory:
@@ -29,28 +30,38 @@ class FSMFactory:
     2. Создает отдельный экземпляр FSM для каждого поведения
     3. Применяет параметры из params к шаблону
     4. Регистрирует все FSM в engine с уникальными entity_id
+    5. Подписывает FSM на события из params (например, motion_sensor)
     
     Usage:
         engine = FSMEngine()
         registry = Registry()
-        factory = FSMFactory(engine, registry)
+        event_bus = EventBus()
+        factory = FSMFactory(engine, registry, event_bus)
         
         # Загрузить behaviors из манифеста
         manifest = load_manifest("instances/leonids_house/manifest.yaml")
         factory.create_from_manifest(manifest)
     """
 
-    def __init__(self, engine: FSMEngine, registry: Registry, features_dir: str = "features") -> None:
+    def __init__(
+        self,
+        engine: FSMEngine,
+        registry: Registry,
+        event_bus: EventBus,
+        features_dir: str = "features"
+    ) -> None:
         """
         Инициализировать фабрику.
         
         Args:
             engine: Экземпляр FSMEngine для регистрации автоматов.
             registry: Экземпляр Registry для получения guard/action функций.
+            event_bus: Экземпляр EventBus для подписки на события сенсоров.
             features_dir: Путь к папке с YAML шаблонами.
         """
         self._engine = engine
         self._registry = registry
+        self._event_bus = event_bus
         self._features_dir = Path(features_dir)
         self._template_cache: dict[str, dict[str, Any]] = {}
 
@@ -243,6 +254,9 @@ class FSMFactory:
             fsm_def = self._yaml_to_fsm_definition(yaml_def)
             definitions.append(fsm_def)
             
+            # Подписка FSM на события из params (например, motion_sensor)
+            self._subscribe_fsm_to_events(fsm_def, behavior.params)
+            
             logger.info(f"Loaded FSM for behavior '{behavior.template}' on device '{device_id}'")
             
         except FileNotFoundError as e:
@@ -297,6 +311,63 @@ class FSMFactory:
             self._engine.register_definition(definition)
         
         logger.info(f"Registered {len(definitions)} FSM definitions in engine")
+
+    def _subscribe_fsm_to_events(self, fsm_def: FSMDefinition, params: dict[str, Any]) -> None:
+        """
+        Подписать FSM на события сенсоров из params.
+        
+        Для каждого параметра типа motion_sensor в params создает подписку
+        через EventBus.subscribe_with_filter, чтобы FSM получала события
+        от указанного сенсора.
+        
+        Args:
+            fsm_def: Определение FSM для подписки.
+            params: Параметры поведения из манифеста.
+        """
+        # Извлекаем motion_sensor из params если он указан
+        motion_sensor = params.get("motion_sensor")
+        
+        if motion_sensor:
+            # Создаем handler для этой FSM
+            async def event_handler(
+                event_type: str,
+                payload: dict[str, Any],
+                trace_id: str | None = None
+            ) -> None:
+                """Обработчик событий сенсора для FSM."""
+                # Определяем тип события по состоянию сенсора
+                new_state = payload.get("new_state", "")
+                if new_state == "on":
+                    trigger_event = "motion_detected"
+                elif new_state == "off":
+                    trigger_event = "motion_cleared"
+                else:
+                    return  # Игнорируем другие состояния
+                
+                # Запускаем триггер FSM
+                log_context = logger.bind(trace_id=trace_id) if trace_id else logger
+                log_context.debug(
+                    f"FSM {fsm_def.entity_id}: handling {trigger_event} from sensor {motion_sensor}"
+                )
+                
+                await self._engine.trigger(
+                    entity_id=fsm_def.entity_id,
+                    event=trigger_event,
+                    external_ctx=payload,
+                    trace_id=trace_id,
+                )
+            
+            # Подписываемся на state_change события с фильтром по entity_id сенсора
+            filter_params = {"entity_id": motion_sensor}
+            self._event_bus.subscribe_with_filter(
+                event_type="state_change",
+                filter_params=filter_params,
+                handler=event_handler,
+            )
+            logger.info(
+                f"Subscribed FSM '{fsm_def.entity_id}' to sensor '{motion_sensor}' "
+                f"(filter={filter_params})"
+            )
 
     def create_and_register(self, manifest: Any) -> list[FSMDefinition]:
         """
