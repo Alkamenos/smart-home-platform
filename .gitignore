@@ -8,19 +8,21 @@ __pycache__/
 env/
 venv/
 .venv/
-.ENV
-.ENV.local
-.env.*
+.venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
 .coverage
-coverage/
 htmlcov/
+.coverage.*
+.nox/
+
+# Testing
 .pytest_cache/
-.mypy_cache/
+.hypothesis/
+cover/
 
-# Logs
-*.log
-
-# Editor/IDE
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -30,4 +32,7 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
 ```

@@ -31,7 +31,8 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> Optional[CommandIntent
     Returns:
         CommandIntent to turn on the light, or None if entity_id is missing.
     """
-    entity_id = context.get("entity_id") or context.get("device_id")
+    # Use target_device_id as primary source, fallback to entity_id
+    entity_id = context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
     if not entity_id:
         logger.warning("turn_on_light: No entity_id in context")
         return None
@@ -67,7 +68,8 @@ def turn_off_light(state: Any, context: dict[str, Any]) -> Optional[CommandInten
     Returns:
         CommandIntent to turn off the light, or None if entity_id is missing.
     """
-    entity_id = context.get("entity_id") or context.get("device_id")
+    # Use target_device_id as primary source, fallback to entity_id
+    entity_id = context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
     if not entity_id:
         logger.warning("turn_off_light: No entity_id in context")
         return None
@@ -98,7 +100,8 @@ def turn_on_night_light(state: Any, context: dict[str, Any]) -> Optional[Command
     Returns:
         CommandIntent to turn on the night light, or None if entity_id is missing.
     """
-    entity_id = context.get("entity_id") or context.get("device_id")
+    # Use target_device_id as primary source, fallback to entity_id
+    entity_id = context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
     if not entity_id:
         logger.warning("turn_on_night_light: No entity_id in context")
         return None
@@ -130,7 +133,8 @@ def turn_off_night_light(state: Any, context: dict[str, Any]) -> Optional[Comman
     Returns:
         CommandIntent to turn off the night light, or None if entity_id is missing.
     """
-    entity_id = context.get("entity_id") or context.get("device_id")
+    # Use target_device_id as primary source, fallback to entity_id
+    entity_id = context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
     if not entity_id:
         logger.warning("turn_off_night_light: No entity_id in context")
         return None

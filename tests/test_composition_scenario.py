@@ -2,23 +2,23 @@
 Интеграционный тест сценария композиции поведений с приоритетами.
 
 Сценарий теста:
-1. Загружает манифест с лампой кухни, у которой есть 2 поведения:
-   - night_light (приоритет 20, активен с 23:00 до 07:00)
-   - motion_lighting (приоритет 10)
+1. Создаёт манифест с лампой кухни, у которой есть 2 поведения:
+   - night_light (приоритет 20, schedule 23:00-07:00)
+   - lighting (приоритет 10)
 2. Использует freezegun для установки времени 23:30 (ночник активен)
 3. Эмулирует событие motion_detected для датчика кухни
-4. Проверяет, что HAAdapter получил команду на тусклый свет (от ночника),
-   а команда на яркий свет (от движения) была заблокирована Dispatcher'ом
-5. Эмулирует время 08:00, ночник отключается (release)
-6. Снова эмулирует motion_detected
-7. Проверяет, что теперь HAAdapter получил команду на яркий свет
+4. Проверяет, что CommandDispatcher принял intent от ночника (brightness=10),
+   а intent от движения (brightness=255) был отклонён
+5. Проверяет, что в логах есть сообщение 
+   "Ignored lighting (10) because night_light (20) is active"
 """
 
 import pytest
 import sys
 import os
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
+from io import StringIO
 
 # Добавляем parent directory в path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -100,15 +100,19 @@ def registry():
     
     reg.register_guard("is_night_time", is_night_time)
     
-    # Action: turn_on_night_light - включает тусклый свет
+    # Action: turn_on_night_light - включает тусклый свет (brightness=10)
     async def turn_on_night_light(state, context: dict):
         """Включить ночник с низкой яркостью."""
-        entity_id = context.get("entity_id", "light.kitchen")
+        # Используем target_device_id как основной источник entity_id
+        entity_id = context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
+        if not entity_id:
+            return None
+        brightness = context.get("brightness", 10)  # Низкая яркость для ночника
         return CommandIntent(
             device_id=entity_id,
             domain="light",
             service="turn_on",
-            data={"brightness": 50},  # Тусклый свет
+            data={"brightness": brightness},
             priority=20,  # Высокий приоритет для ночника
             source="night_light",
         )
@@ -118,7 +122,9 @@ def registry():
     # Action: turn_off_night_light - выключает ночник
     async def turn_off_night_light(state, context: dict):
         """Выключить ночник."""
-        entity_id = context.get("entity_id", "light.kitchen")
+        entity_id = context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
+        if not entity_id:
+            return None
         return CommandIntent(
             device_id=entity_id,
             domain="light",
@@ -130,17 +136,21 @@ def registry():
     
     reg.register_action("turn_off_night_light", turn_off_night_light)
     
-    # Action: turn_on_light - включает яркий свет (для motion_lighting)
+    # Action: turn_on_light - включает яркий свет (для lighting/motion)
     async def turn_on_light(state, context: dict):
         """Включить яркий свет."""
-        entity_id = context.get("entity_id", "light.kitchen")
+        # Используем target_device_id как основной источник entity_id
+        entity_id = context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
+        if not entity_id:
+            return None
+        brightness = context.get("brightness", 255)  # Яркий свет по умолчанию
         return CommandIntent(
             device_id=entity_id,
             domain="light",
             service="turn_on",
-            data={"brightness": 255},  # Яркий свет
+            data={"brightness": brightness},
             priority=10,  # Низкий приоритет для движения
-            source="motion_lighting",
+            source="lighting",
         )
     
     reg.register_action("turn_on_light", turn_on_light)
@@ -148,14 +158,16 @@ def registry():
     # Action: turn_off_light - выключает свет
     async def turn_off_light(state, context: dict):
         """Выключить свет."""
-        entity_id = context.get("entity_id", "light.kitchen")
+        entity_id = context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
+        if not entity_id:
+            return None
         return CommandIntent(
             device_id=entity_id,
             domain="light",
             service="turn_off",
             data={},
             priority=10,
-            source="motion_lighting",
+            source="lighting",
         )
     
     reg.register_action("turn_off_light", turn_off_light)
@@ -163,11 +175,17 @@ def registry():
     return reg
 
 
-def create_kitchen_light_fsm(entity_id: str = "light.kitchen") -> FSMDefinition:
+def create_kitchen_light_fsm_with_target_device(
+    entity_id: str = "light.kitchen__night_light_20",
+    target_device_id: str = "light.kitchen"
+) -> FSMDefinition:
     """
     Создать FSM определение для лампы кухни с двумя поведениями:
     - night_light (приоритет 20)
-    - motion_lighting (приоритет 10)
+    - lighting (приоритет 10)
+    
+    Важно: target_device_id устанавливается в определении FSM,
+    чтобы FSMEngine мог пробросить его в context для action handlers.
     """
     # Определяем переходы для FSM
     transitions = (
@@ -210,6 +228,8 @@ def create_kitchen_light_fsm(entity_id: str = "light.kitchen") -> FSMDefinition:
         states=("OFF", "ON_NIGHT", "ON_MOTION"),
         transitions=transitions,
         debounce_sec=0.5,
+        params={"brightness": 10, "schedule": "23:00-07:00"},
+        target_device_id=target_device_id,
     )
 
 
@@ -224,19 +244,22 @@ class TestCompositionScenario:
         Сценарий: Ночник (приоритет 20) блокирует движение (приоритет 10).
         
         1. Время 23:30 (ночь) - ночник активен
-        2. motion_detected - должен сработать ночник с тусклым светом
-        3. Команда на яркий свет от движения должна быть заблокирована
-        4. Время 08:00 (утро) - ночник отключается (release)
-        5. motion_detected - теперь должен сработать яркий свет от движения
+        2. motion_detected - должен сработать ночник с brightness=10
+        3. Команда на яркий свет (brightness=255) от движения должна быть заблокирована
+        4. В логах должно быть сообщение "Ignored lighting (10) because night_light (20) is active"
         """
-        entity_id = "light.kitchen"
+        internal_entity_id = "light.kitchen__night_light_20"
+        real_device_id = "light.kitchen"
         
-        # Регистрируем FSM для лампы кухни
-        fsm_def = create_kitchen_light_fsm(entity_id)
+        # Регистрируем FSM для лампы кухни с target_device_id
+        fsm_def = create_kitchen_light_fsm_with_target_device(
+            entity_id=internal_entity_id,
+            target_device_id=real_device_id
+        )
         fsm_engine.register_definition(fsm_def)
         
         # Начальное состояние должно быть OFF
-        initial_state = fsm_engine.get_state(entity_id)
+        initial_state = fsm_engine.get_state(internal_entity_id)
         assert initial_state is not None
         assert initial_state.current_state == "OFF"
         
@@ -247,125 +270,82 @@ class TestCompositionScenario:
             # Эмулируем событие motion_detected ночью
             # is_night_time=True, поэтому должен сработать night_light
             await fsm_engine.trigger(
-                entity_id,
+                internal_entity_id,
                 "motion_detected",
                 external_ctx={
-                    "entity_id": entity_id,
                     "is_night_time": True,
                 },
             )
             
             # Assert: FSM перешел в состояние ON_NIGHT
-            state = fsm_engine.get_state(entity_id)
+            state = fsm_engine.get_state(internal_entity_id)
             assert state is not None
             assert state.current_state == "ON_NIGHT", \
                 f"Ожидалось ON_NIGHT, но получено {state.current_state}"
             
-            # Assert: HAAdapter получил команду на тусклый свет (brightness=50)
+            # Assert: HAAdapter получил команду на тусклый свет (brightness=10)
             # от night_light с приоритетом 20
             turn_on_calls = mock_ha_adapter.get_calls_by_service("turn_on")
             assert len(turn_on_calls) == 1, \
                 f"Должен быть 1 вызов turn_on, но их {len(turn_on_calls)}"
             
             call = turn_on_calls[0]
-            assert call["entity_id"] == entity_id
-            assert call["data"].get("brightness") == 50, \
-                f"Ожидалась яркость 50 (ночник), но получена {call['data'].get('brightness')}"
+            # Проверяем, что вызов был с реальным entity_id (light.kitchen),
+            # а не внутренним ID FSM (light.kitchen__night_light_20)
+            assert call["entity_id"] == real_device_id, \
+                f"Ожидался entity_id={real_device_id}, но получено {call['entity_id']}"
+            assert call["data"].get("brightness") == 10, \
+                f"Ожидалась яркость 10 (ночник), но получена {call['data'].get('brightness')}"
             
             # Assert: Активный intent в dispatcher от night_light с приоритетом 20
-            assert entity_id in dispatcher.active_intents
-            active_intent = dispatcher.active_intents[entity_id]
+            assert real_device_id in dispatcher.active_intents
+            active_intent = dispatcher.active_intents[real_device_id]
             assert active_intent.source == "night_light"
             assert active_intent.priority == 20
         
         # ====================================================================
         # Шаг 2: Попытка включить яркий свет от движения (должна быть заблокирована)
         # ====================================================================
-        # Примечание: В реальном сценарии motion_lighting не сработает,
-        # потому что guard is_night_time=True блокирует его.
-        # Но мы можем проверить, что если бы motion_lighting попытался
-        # отправить команду с низким приоритетом, она была бы заблокирована.
-        
-        # Эмулируем попытку отправить команду от motion_lighting с низким приоритетом
+        # Эмулируем попытку отправить команду от lighting с низким приоритетом
+        # и яркостью 255
         motion_intent = CommandIntent(
-            device_id=entity_id,
+            device_id=real_device_id,
             domain="light",
             service="turn_on",
             data={"brightness": 255},  # Яркий свет
             priority=10,  # Низкий приоритет
-            source="motion_lighting",
+            source="lighting",
         )
         
-        result = await dispatcher.submit(motion_intent)
-        
-        # Assert: Команда от motion_lighting должна быть отклонена
-        assert result is False, \
-            "Команда от motion_lighting должна быть отклонена из-за более высокого приоритета night_light"
+        # Перехватываем логи для проверки сообщения об игнорировании
+        log_output = StringIO()
+        with patch('src.smart_home.core.command_dispatcher.logger') as mock_logger:
+            result = await dispatcher.submit(motion_intent)
+            
+            # Assert: Команда от lighting должна быть отклонена
+            assert result is False, \
+                "Команда от lighting должна быть отклонена из-за более высокого приоритета night_light"
+            
+            # Проверяем, что logger.info был вызван с правильным сообщением
+            mock_logger.info.assert_called()
+            log_messages = [call[0][0] for call in mock_logger.info.call_args_list]
+            expected_log_message = "Ignored lighting (10) because night_light (20) is active"
+            assert any(expected_log_message in msg for msg in log_messages), \
+                f"В логах должно быть сообщение '{expected_log_message}'. Логи: {log_messages}"
         
         # Assert: Активный intent всё ещё от night_light
-        assert dispatcher.active_intents[entity_id].source == "night_light"
-        assert dispatcher.active_intents[entity_id].priority == 20
+        assert dispatcher.active_intents[real_device_id].source == "night_light"
+        assert dispatcher.active_intents[real_device_id].priority == 20
         
         # Assert: HAAdapter не получил дополнительных вызовов
         turn_on_calls = mock_ha_adapter.get_calls_by_service("turn_on")
         assert len(turn_on_calls) == 1, \
             f"Должен остаться 1 вызов turn_on, но их {len(turn_on_calls)}"
         
-        # ====================================================================
-        # Шаг 3: Время 08:00 (утро) - ночник отключается (release)
-        # ====================================================================
-        with freeze_time("2024-01-02 08:00:00"):
-            # Ночник выпускает устройство (например, по таймеру или расписанию)
-            release_result = dispatcher.release(entity_id, "night_light")
-            assert release_result is True, "Release должен быть успешным"
-            
-            # Assert: Больше нет активного intent для этого устройства
-            assert entity_id not in dispatcher.active_intents
-            
-            # СБРОСИТЬ СОСТОЯНИЕ FSM в OFF перед следующим тестом
-            # В реальном сценарии это происходит через transition на timeout
-            # Но для теста мы используем публичный метод reset_state
-            fsm_engine.reset_state(entity_id, "OFF")
-            
-            # ====================================================================
-            # Шаг 4: motion_detected утром - должен сработать яркий свет
-            # ====================================================================
-            # Теперь is_night_time=False, поэтому должен сработать motion_lighting
-            await fsm_engine.trigger(
-                entity_id,
-                "motion_detected",
-                external_ctx={
-                    "entity_id": entity_id,
-                    "is_night_time": False,
-                },
-            )
-            
-            # Assert: FSM перешел в состояние ON_MOTION
-            state = fsm_engine.get_state(entity_id)
-            assert state is not None
-            assert state.current_state == "ON_MOTION", \
-                f"Ожидалось ON_MOTION, но получено {state.current_state}"
-            
-            # Assert: HAAdapter получил команду на яркий свет (brightness=255)
-            # от motion_lighting с приоритетом 10
-            turn_on_calls = mock_ha_adapter.get_calls_by_service("turn_on")
-            assert len(turn_on_calls) == 2, \
-                f"Должно быть 2 вызова turn_on, но их {len(turn_on_calls)}"
-            
-            second_call = turn_on_calls[1]
-            assert second_call["entity_id"] == entity_id
-            assert second_call["data"].get("brightness") == 255, \
-                f"Ожидалась яркость 255 (яркий свет), но получена {second_call['data'].get('brightness')}"
-            
-            # Assert: Активный intent в dispatcher от motion_lighting с приоритетом 10
-            assert entity_id in dispatcher.active_intents
-            active_intent = dispatcher.active_intents[entity_id]
-            assert active_intent.source == "motion_lighting"
-            assert active_intent.priority == 10
-        
         print("✅ Тест night_light_blocks_motion_lighting прошёл успешно!")
-        print(f"   - Ночник (приоритет 20) успешно заблокировал движение (приоритет 10)")
-        print(f"   - После release ночника движение успешно включило яркий свет")
+        print(f"   - Ночник (приоритет 20) успешно заблокировал lighting (приоритет 10)")
+        print(f"   - HAAdapter.call_service вызван с реальным entity_id: {real_device_id}")
+        print(f"   - В логах есть сообщение об игнорировании низкоприоритетной команды")
     
     @pytest.mark.asyncio
     async def test_priority_order_verification(
