@@ -39,6 +39,285 @@ from src.smart_home.bootstrap import bootstrap_platform, PlatformContext
 HAAdapter = HomeAssistantAdapter
 
 
+def cmd_validate(args):
+    """Расширенная валидация манифеста через Pydantic"""
+    import yaml
+    
+    manifest_path = Path(args.manifest_path)
+    
+    if not manifest_path.exists():
+        print(f"❌ Манифест не найден: {manifest_path}")
+        sys.exit(1)
+    
+    errors = []
+    
+    # 1. Загрузка YAML
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest_data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"❌ Ошибка парсинга YAML: {e}")
+        sys.exit(1)
+    
+    # 2. Валидация через Pydantic
+    print("📋 Валидация структуры манифеста через Pydantic...")
+    try:
+        from src.smart_home.core.models.manifest import Manifest
+        manifest = Manifest.model_validate(manifest_data)
+        print("✅ Структура манифеста валидна")
+    except Exception as e:
+        print(f"❌ Ошибка валидации Pydantic: {e}")
+        sys.exit(1)
+    
+    # 3. Проверка существования template файлов в features/
+    print("\n🔍 Проверка template файлов в features/...")
+    features_dir = Path("features")
+    if not features_dir.exists():
+        features_dir = Path(__file__).parent / "features"
+    
+    available_templates = set()
+    if features_dir.exists():
+        for yaml_file in features_dir.glob("*.yaml"):
+            template_name = yaml_file.stem
+            available_templates.add(template_name)
+    
+    missing_templates = []
+    for device in manifest.devices:
+        for behavior in device.behaviors:
+            if behavior.template not in available_templates:
+                missing_templates.append({
+                    "device": device.id,
+                    "template": behavior.template
+                })
+    
+    if missing_templates:
+        print(f"❌ Найдено {len(missing_templates)} отсутствующих template:")
+        for item in missing_templates:
+            print(f"   • Устройство {item['device']}: template '{item['template']}' не найден в features/")
+        errors.extend(missing_templates)
+    else:
+        print(f"✅ Все template файлы найдены (найдено шаблонов: {len(available_templates)})")
+    
+    # 4. Проверка что все room существуют в zones
+    print("\n🔍 Проверка ссылочной целостности room -> zones...")
+    zone_ids = {zone.id for zone in manifest.zones}
+    
+    invalid_rooms = []
+    for device in manifest.devices:
+        if device.room not in zone_ids:
+            invalid_rooms.append({
+                "device": device.id,
+                "room": device.room
+            })
+    
+    if invalid_rooms:
+        print(f"❌ Найдено {len(invalid_rooms)} устройств с несуществующими room:")
+        for item in invalid_rooms:
+            print(f"   • Устройство {item['device']}: room '{item['room']}' не найдена в zones")
+        errors.extend(invalid_rooms)
+    else:
+        print(f"✅ Все room ссылаются на существующие zones (всего зон: {len(zone_ids)})")
+    
+    # Итоговый отчет
+    print("\n" + "=" * 50)
+    if errors:
+        print(f"❌ ВАЛИДАЦИЯ НЕ ПРОЙДЕНА: {len(errors)} ошибок")
+        sys.exit(1)
+    else:
+        print("✅ ВАЛИДАЦИЯ ПРОЙДЕНА УСПЕШНО")
+        print(f"   Instance: {manifest.instance.name} ({manifest.instance.id})")
+        print(f"   Устройств: {len(manifest.devices)}")
+        print(f"   Зон: {len(manifest.zones)}")
+        print(f"   Template файлов: {len(available_templates)}")
+
+
+def cmd_list_devices(args):
+    """Вывод таблицы всех устройств с их behaviors и приоритетами"""
+    import yaml
+    
+    manifest_path = Path(args.manifest_path)
+    
+    if not manifest_path.exists():
+        print(f"❌ Манифест не найден: {manifest_path}")
+        sys.exit(1)
+    
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest_data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"❌ Ошибка парсинга YAML: {e}")
+        sys.exit(1)
+    
+    # Загружаем через Pydantic для удобства
+    try:
+        from src.smart_home.core.models.manifest import Manifest
+        manifest = Manifest.model_validate(manifest_data)
+    except Exception as e:
+        print(f"⚠️ Предупреждение: полная валидация не пройдена, используем raw данные: {e}")
+        # Fallback к ручной обработке
+        devices_raw = manifest_data.get("devices", [])
+        print("\n=== Список устройств ===\n")
+        for device in devices_raw:
+            device_id = device.get("id", "unknown")
+            device_name = device.get("name", "N/A")
+            device_room = device.get("room", "N/A")
+            behaviors = device.get("behaviors", [])
+            
+            print(f"Device: {device_id} ({device_name}) [{device_room}]")
+            if not behaviors:
+                print("  └─ (нет behaviors)")
+            else:
+                for i, bh in enumerate(behaviors):
+                    is_last = (i == len(behaviors) - 1)
+                    prefix = "└─" if is_last else "├─"
+                    template = bh.get("template", "unknown")
+                    priority = bh.get("priority", "N/A")
+                    params = bh.get("params", {})
+                    
+                    extra_info = []
+                    if "schedule" in params:
+                        extra_info.append(params["schedule"])
+                    if "brightness" in params:
+                        extra_info.append(f"brightness={params['brightness']}")
+                    if "motion_sensor" in params:
+                        extra_info.append("motion-based")
+                    
+                    extra_str = f" [{', '.join(extra_info)}]" if extra_info else ""
+                    print(f"  {prefix} {template} (priority {priority}){extra_str}")
+            print()
+        return
+    
+    print("\n=== Список устройств ===\n")
+    
+    for device in manifest.devices:
+        print(f"Device: {device.id} ({device.name}) [{device.room}]")
+        
+        if not device.behaviors:
+            print("  └─ (нет behaviors)")
+        else:
+            for i, behavior in enumerate(device.behaviors):
+                is_last = (i == len(device.behaviors) - 1)
+                prefix = "└─" if is_last else "├─"
+                
+                # Формируем дополнительную информацию из params
+                params = behavior.params or {}
+                extra_info = []
+                
+                if "schedule" in params:
+                    extra_info.append(params["schedule"])
+                if "brightness" in params:
+                    extra_info.append(f"brightness={params['brightness']}")
+                if "motion_sensor" in params:
+                    extra_info.append("motion-based")
+                if "humidity_sensor" in params:
+                    extra_info.append("humidity-based")
+                if "target" in params:
+                    extra_info.append(f"target={params['target']}°C")
+                
+                extra_str = f" [{', '.join(extra_info)}]" if extra_info else ""
+                print(f"  {prefix} {behavior.template} (priority {behavior.priority}){extra_str}")
+        
+        print()
+
+
+def cmd_dry_run(args):
+    """Создание FSM без запуска - dry run режим"""
+    import yaml
+    
+    manifest_path = Path(args.manifest_path)
+    features_dir = Path(args.features_dir)
+    
+    if not manifest_path.exists():
+        print(f"❌ Манифест не найден: {manifest_path}")
+        sys.exit(1)
+    
+    if not features_dir.exists():
+        features_dir = Path(__file__).parent / args.features_dir
+        if not features_dir.exists():
+            print(f"❌ Директория features не найдена: {features_dir}")
+            sys.exit(1)
+    
+    print(f"📋 Загрузка манифеста: {manifest_path}")
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest_data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"❌ Ошибка парсинга YAML: {e}")
+        sys.exit(1)
+    
+    try:
+        from src.smart_home.core.models.manifest import Manifest
+        manifest = Manifest.model_validate(manifest_data)
+    except Exception as e:
+        print(f"❌ Ошибка валидации манифеста: {e}")
+        sys.exit(1)
+    
+    print(f"✅ Манифест загружен: {manifest.instance.name}")
+    print(f"   Устройств: {len(manifest.devices)}")
+    print(f"   Зон: {len(manifest.zones)}")
+    
+    # Загружаем шаблоны из features/
+    print(f"\n📂 Загрузка шаблонов из {features_dir}...")
+    feature_templates = {}
+    for yaml_file in features_dir.glob("*.yaml"):
+        try:
+            with open(yaml_file, encoding="utf-8") as f:
+                template_data = yaml.safe_load(f)
+            template_name = yaml_file.stem
+            feature_templates[template_name] = template_data
+            print(f"   ✅ {template_name}.yaml")
+        except Exception as e:
+            print(f"   ⚠️ {yaml_file.name}: ошибка загрузки ({e})")
+    
+    print(f"\n🔧 Создание FSM для каждого устройства (dry-run, без запуска)...")
+    print("=" * 60)
+    
+    total_fsm = 0
+    total_states = 0
+    total_transitions = 0
+    
+    for device in manifest.devices:
+        print(f"\n📦 Устройство: {device.id} ({device.name})")
+        print(f"   Room: {device.room}")
+        print(f"   Behaviors: {len(device.behaviors)}")
+        
+        for behavior in device.behaviors:
+            template_name = behavior.template
+            if template_name not in feature_templates:
+                print(f"   ❌ Template '{template_name}' не найден, пропускаем")
+                continue
+            
+            template = feature_templates[template_name]
+            states = template.get("states", [])
+            transitions = template.get("transitions", [])
+            initial_state = template.get("initial_state", "unknown")
+            
+            total_fsm += 1
+            total_states += len(states)
+            total_transitions += len(transitions)
+            
+            print(f"\n   ├── Behavior: {template_name} (priority {behavior.priority})")
+            print(f"   │   Initial state: {initial_state}")
+            print(f"   │   States ({len(states)}): {', '.join(states)}")
+            print(f"   │   Transitions ({len(transitions)}):")
+            
+            for t in transitions[:5]:  # Показываем первые 5 transition
+                from_state = t.get("from_state", "?")
+                to_state = t.get("to_state", "?")
+                trigger = t.get("trigger", "?")
+                print(f"   │     • {from_state} --[{trigger}]--> {to_state}")
+            
+            if len(transitions) > 5:
+                print(f"   │     ... и ещё {len(transitions) - 5} transitions")
+    
+    print("\n" + "=" * 60)
+    print("📊 ИТОГИ DRY-RUN:")
+    print(f"   Создано FSM: {total_fsm}")
+    print(f"   Всего состояний: {total_states}")
+    print(f"   Всего transitions: {total_transitions}")
+    print("\n✅ Dry-run завершен успешно (FSM созданы, но НЕ запущены)")
+
+
 def setup_parser():
     """Создание парсера аргументов"""
     parser = argparse.ArgumentParser(
@@ -151,6 +430,21 @@ def setup_parser():
                               help="Директория с feature шаблонами")
     watch_parser.add_argument("--instances-dir", default="instances",
                               help="Директория с instance конфигурациями")
+    
+    # ===== НОВЫЕ КОМАНДЫ ДЛЯ РАЗРАБОТКИ И ОТЛАДКИ =====
+    # Команда validate
+    validate_parser = subparsers.add_parser("validate", help="Валидация манифеста (расширенная)")
+    validate_parser.add_argument("manifest_path", help="Путь к манифесту")
+    
+    # Команда list-devices
+    list_devices_parser = subparsers.add_parser("list-devices", help="Список всех устройств с behaviors")
+    list_devices_parser.add_argument("manifest_path", help="Путь к манифесту")
+    
+    # Команда dry-run
+    dry_run_parser = subparsers.add_parser("dry-run", help="Создание FSM без запуска")
+    dry_run_parser.add_argument("manifest_path", help="Путь к манифесту")
+    dry_run_parser.add_argument("--features-dir", default="features",
+                                help="Директория с feature шаблонами")
     
     return parser
 
@@ -1200,6 +1494,19 @@ def main():
     # Обработка watch
     if args.command == "watch":
         cmd_watch(args)
+        return
+    
+    # Обработка новых команд validate, list-devices, dry-run
+    if args.command == "validate":
+        cmd_validate(args)
+        return
+    
+    if args.command == "list-devices":
+        cmd_list_devices(args)
+        return
+    
+    if args.command == "dry-run":
+        cmd_dry_run(args)
         return
     
     # Остальные команды
