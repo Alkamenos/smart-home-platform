@@ -143,6 +143,15 @@ def setup_parser():
                                help="Путь к манифесту")
     doctor_parser.add_argument("--json", action="store_true", help="Вывод в JSON формате")
     
+    # Команда watch - hot reload monitoring
+    watch_parser = subparsers.add_parser("watch", help="Запуск hot-reload мониторинга YAML файлов")
+    watch_parser.add_argument("--manifest-path", default="instances/leonids_house/manifest.yaml",
+                              help="Путь к манифесту")
+    watch_parser.add_argument("--features-dir", default="features",
+                              help="Директория с feature шаблонами")
+    watch_parser.add_argument("--instances-dir", default="instances",
+                              help="Директория с instance конфигурациями")
+    
     return parser
 
 
@@ -1186,6 +1195,11 @@ def main():
     # Обработка doctor
     if args.command == "doctor":
         cmd_doctor(args)
+        return
+    
+    # Обработка watch
+    if args.command == "watch":
+        cmd_watch(args)
         return
     
     # Остальные команды
