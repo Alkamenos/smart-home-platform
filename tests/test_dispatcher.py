@@ -56,7 +56,7 @@ def mock_ha_adapter():
 @pytest.fixture
 def dispatcher(mock_ha_adapter):
     """Create a CommandDispatcher with mock adapter."""
-    return CommandDispatcher(ha_adapter=mock_ha_adapter)
+    return CommandDispatcher(ha_adapter=mock_ha_adapter, middlewares=[])
 
 
 class TestCommandIntent:

@@ -73,7 +73,7 @@ def mock_ha_adapter():
 @pytest.fixture
 def dispatcher(mock_ha_adapter):
     """Создать CommandDispatcher с mock adapter."""
-    return CommandDispatcher(ha_adapter=mock_ha_adapter)
+    return CommandDispatcher(ha_adapter=mock_ha_adapter, middlewares=[])
 
 
 @pytest.fixture
