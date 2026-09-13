@@ -17,6 +17,8 @@ import argparse
 import sys
 import json
 import time
+import signal
+import os
 from pathlib import Path
 
 # Добавляем platform_v3 в path
@@ -146,6 +148,8 @@ def setup_parser():
 
 def cmd_run(args):
     """Запуск платформы"""
+    import asyncio
+    
     logger = Logger(component="cli")
     logger.info("Запуск платформы V3", mock_mode=args.mock)
     
@@ -164,7 +168,7 @@ def cmd_run(args):
     from src.smart_home.core.registry import Registry
     
     registry = Registry()
-    factory = FSMFactory(ctx.fsm, registry, features_dir="features")
+    factory = FSMFactory(ctx.fsm, registry, features_dir="features", event_bus=ctx.event_bus)
     definitions = factory.create_from_manifest(ctx.manifest)
     
     for fsm_def in definitions:
@@ -174,14 +178,196 @@ def cmd_run(args):
     logger.info(f"Платформа запущена. Зарегистрировано {len(definitions)} FSM")
     logger.info(f"ManualLockoutMiddleware активен: {len(ctx.dispatcher._middlewares)} middleware")
     
-    # В реальном режиме запускаем цикл обработки событий
-    if not args.mock:
-        logger.info("Запуск цикла обработки событий...")
+    # Запускаем async event loop
+    try:
+        asyncio.run(_run_platform_async(ctx, args))
+    except KeyboardInterrupt:
+        logger.info("Остановка платформы по сигналу Ctrl+C")
+
+
+async def _run_platform_async(ctx, args):
+    """
+    Асинхронный запуск платформы с реальным event loop.
+    
+    Args:
+        ctx: PlatformContext с компонентами платформы
+        args: Аргументы командной строки
+    """
+    from src.smart_home.adapters.ha_adapter import HomeAssistantAdapter
+    
+    logger = Logger(component="cli")
+    shutdown_event = asyncio.Event()
+    
+    # Setup signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
+    
+    def handle_signal():
+        logger.info("Получен сигнал остановки (Ctrl+C)")
+        shutdown_event.set()
+    
+    # Register signal handlers
+    for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            while True:
-                pass  # Placeholder для event loop
-        except KeyboardInterrupt:
-            logger.info("Остановка платформы")
+            loop.add_signal_handler(sig, handle_signal)
+        except NotImplementedError:
+            # Windows doesn't support add_signal_handler
+            pass
+    
+    # Запускаем EventBus listener task
+    event_bus_task = asyncio.create_task(
+        _event_bus_listener(ctx.event_bus, shutdown_event),
+        name="event_bus_listener"
+    )
+    logger.info("EventBus listener запущен")
+    
+    # Если не mock режим, подключаемся к реальному HA
+    ha_adapter = None
+    ha_listen_task = None
+    
+    if not args.mock:
+        # Получаем параметры подключения из манифеста или используем дефолтные
+        ha_url = os.environ.get("HA_URL", "http://localhost:8123")
+        ha_token = os.environ.get("HA_TOKEN", "")
+        
+        if ha_token:
+            logger.info(f"Подключение к Home Assistant: {ha_url}")
+            ha_adapter = HomeAssistantAdapter(
+                base_url=ha_url,
+                token=ha_token,
+                event_bus=ctx.event_bus,
+            )
+            
+            # Подключаемся к HA
+            connected = await ha_adapter.connect()
+            if connected:
+                logger.info("Успешное подключение к Home Assistant")
+                # Запускаем задачу прослушивания событий HA
+                ha_listen_task = asyncio.create_task(
+                    _ha_event_listener(ha_adapter, shutdown_event),
+                    name="ha_event_listener"
+                )
+            else:
+                logger.error("Не удалось подключиться к Home Assistant, работа в режиме ожидания")
+        else:
+            logger.warning("HA_TOKEN не установлен. Работа без подключения к Home Assistant.")
+            logger.info("Установите переменную окружения HA_TOKEN для подключения к HA")
+    else:
+        logger.info("Режим Mock Adapter - эмуляция событий")
+        # В mock режиме эмулируем периодические события для демонстрации
+        ha_adapter = ctx.adapter  # MockAdapter
+        ha_listen_task = asyncio.create_task(
+            _mock_event_listener(ctx, shutdown_event),
+            name="mock_event_listener"
+        )
+    
+    # Ждем сигнала остановки
+    await shutdown_event.wait()
+    
+    # Graceful shutdown
+    logger.info("Начало корректной остановки платформы...")
+    
+    # Отменяем задачи
+    tasks_to_cancel = []
+    if ha_listen_task:
+        ha_listen_task.cancel()
+        tasks_to_cancel.append(ha_listen_task)
+    
+    event_bus_task.cancel()
+    tasks_to_cancel.append(event_bus_task)
+    
+    # Ждем отмены задач
+    if tasks_to_cancel:
+        results = await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+        for i, result in enumerate(results):
+            if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                logger.error(f"Ошибка при остановке задачи: {result}")
+    
+    # Отключаемся от HA если подключены
+    if ha_adapter and hasattr(ha_adapter, 'disconnect') and ha_adapter.is_connected:
+        await ha_adapter.disconnect()
+        logger.info("Отключено от Home Assistant")
+    
+    # Сохраняем состояния FSM
+    await ctx.fsm.shutdown()
+    logger.info("FSM Engine остановлен")
+    
+    logger.info("Платформа полностью остановлена")
+
+
+async def _event_bus_listener(event_bus, shutdown_event):
+    """
+    Фоновая задача для обработки событий EventBus.
+    
+    Эта задача постоянно работает, обрабатывая события от подписчиков.
+    В реальной реализации EventBus асинхронный и не требует отдельного цикла,
+    но эта задача нужна для поддержания жизненного цикла шины событий.
+    """
+    try:
+        await shutdown_event.wait()
+    except asyncio.CancelledError:
+        pass
+
+
+async def _ha_event_listener(ha_adapter, shutdown_event):
+    """
+    Задача прослушивания событий от Home Assistant.
+    
+    HAAdapter уже запускает _listen_events() внутри себя при connect(),
+    поэтому эта задача просто ждет сигнала остановки.
+    """
+    try:
+        await shutdown_event.wait()
+    except asyncio.CancelledError:
+        pass
+
+
+async def _mock_event_listener(ctx, shutdown_event):
+    """
+    Эмулятор событий для Mock режима.
+    
+    Генерирует периодические события для демонстрации работы платформы.
+    """
+    logger = Logger(component="mock_listener")
+    logger.info("Mock event listener запущен - эмуляция событий каждые 5 секунд")
+    
+    counter = 0
+    try:
+        while not shutdown_event.is_set():
+            await asyncio.sleep(5.0)
+            
+            if shutdown_event.is_set():
+                break
+            
+            counter += 1
+            
+            # Эмулируем событие motion detection
+            logger.info(f"Эмуляция события motion_detected (счетчик: {counter})")
+            
+            # Публикуем событие через EventBus
+            await ctx.event_bus.publish(
+                event_type="state_change",
+                payload={
+                    "entity_id": "binary_sensor.kitchen_motion",
+                    "new_state": "on",
+                    "old_state": "off",
+                },
+            )
+            
+            # Даем время на обработку
+            await asyncio.sleep(0.5)
+            
+            # Эмулируем clearing motion
+            await ctx.event_bus.publish(
+                event_type="state_change",
+                payload={
+                    "entity_id": "binary_sensor.kitchen_motion",
+                    "new_state": "off",
+                    "old_state": "on",
+                },
+            )
+            
+    except asyncio.CancelledError:
+        logger.info("Mock event listener остановлен")
 
 
 def cmd_test(args):
