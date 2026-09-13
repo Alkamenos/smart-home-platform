@@ -193,6 +193,277 @@ sequenceDiagram
     Note right of H: Light now bright (brightness=255)
 ```
 
+## Middleware System
+
+### Overview
+
+The Middleware System provides a pluggable architecture for applying global rules to all commands from all behaviors automatically. Middleware components intercept `CommandIntent` objects before they reach the `CommandDispatcher`, allowing for centralized cross-cutting concerns like manual lockout, safety checks, and logging.
+
+### Middleware Interface
+
+All middleware must implement the `Middleware` protocol:
+
+```python
+class Middleware(ABC):
+    @abstractmethod
+    async def process(self, intent: CommandIntent) -> Optional[CommandIntent]:
+        """
+        Process a command intent.
+        
+        Args:
+            intent: The CommandIntent to process.
+        
+        Returns:
+            The processed CommandIntent if it should continue,
+            or None to block the command.
+        """
+        pass
+```
+
+### Built-in Middleware: ManualLockoutMiddleware
+
+The platform includes `ManualLockoutMiddleware` which prevents automated commands from interfering with manual user control.
+
+**How It Works:**
+
+1. When a manual control command is detected (from sources like "manual", "user", "home_assistant", "voice"), the middleware records the event using `ControlTracker`
+2. For subsequent automated commands, the middleware checks if the device is within the lockout period
+3. If in lockout, the automated command is blocked; otherwise, it passes through
+
+**Configuration via `automation_rules`:**
+
+```yaml
+automation_rules:
+  # Global lockout applies to all domains
+  global_manual_lockout_min: 60
+  
+  # Domain-specific overrides
+  lighting:
+    manual_lockout_min: 60
+  climate:
+    manual_lockout_min: 90
+  ventilation:
+    manual_lockout_min: 15
+```
+
+**Middleware Chain Execution:**
+
+```
+CommandIntent from FSM Behavior
+         │
+         ▼
+┌─────────────────────────┐
+│  Middleware #1          │
+│  (ManualLockout)        │
+│  - Check lockout status │
+│  - Block or pass        │
+└───────────┬─────────────┘
+            │ (if passed)
+            ▼
+┌─────────────────────────┐
+│  Middleware #2          │
+│  (Custom middleware...) │
+│  - Custom logic         │
+└───────────┬─────────────┘
+            │ (if passed)
+            ▼
+┌─────────────────────────┐
+│  CommandDispatcher      │
+│  - Priority resolution  │
+│  - Execute command      │
+└─────────────────────────┘
+```
+
+**Example: Manual Lockout in Action**
+
+```
+Time: 14:00
+User manually turns on light.kitchen via HA UI
+    │
+    ▼
+ManualLockoutMiddleware.record_manual_control("light.kitchen")
+    │
+    ▼
+ControlTracker stores: {device_id: "light.kitchen", timestamp: 14:00, source: MANUAL}
+
+Time: 14:30 (30 minutes later)
+Motion detected → lighting behavior wants to turn on light
+    │
+    ▼
+ManualLockoutMiddleware.process(intent)
+    │
+    ├─ Check: Was manual control within 60 min? → YES (30 min ago)
+    ├─ Source is "lighting" (automated) → BLOCK
+    │
+    ▼
+Command blocked, light stays in manual state
+
+Time: 15:05 (65 minutes after manual control)
+Motion detected → lighting behavior wants to turn on light
+    │
+    ▼
+ManualLockoutMiddleware.process(intent)
+    │
+    ├─ Check: Was manual control within 60 min? → NO (65 min ago)
+    ├─ Allow command
+    │
+    ▼
+Command passes to CommandDispatcher → light controlled by automation
+```
+
+### Adding Custom Middleware
+
+To create custom middleware:
+
+```python
+from src.smart_home.core.middleware import Middleware
+from src.smart_home.core.command_dispatcher import CommandIntent
+from typing import Optional
+
+class SafetyCheckMiddleware(Middleware):
+    async def process(self, intent: CommandIntent) -> Optional[CommandIntent]:
+        # Example: Block commands during maintenance mode
+        if self._is_maintenance_mode(intent.device_id):
+            logger.warning(f"Blocked command during maintenance: {intent.device_id}")
+            return None
+        
+        # Example: Validate command parameters
+        if not self._is_safe_brightness(intent.data):
+            logger.warning(f"Unsafe brightness value: {intent.data}")
+            return None
+        
+        return intent
+```
+
+## Migrations
+
+### Overview
+
+The Migration System ensures backward compatibility when manifest schema changes. It automatically updates old manifest files to the current format during loading, allowing users to upgrade seamlessly without manual configuration edits.
+
+### Architecture
+
+```
+┌─────────────────────────┐
+│   Manifest YAML File    │
+│   (version: 0 or N/A)   │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│   MigrationRunner       │
+│   - Discovers migrations│
+│   - Applies sequentially│
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│   Migration #1          │
+│   (_001_...)            │
+│   - Transforms data     │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│   Migration #N          │
+│   (_00N_...)            │
+│   - Final transformation│
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│   Updated Manifest      │
+│   (version: latest)     │
+└─────────────────────────┘
+```
+
+### Creating a Migration
+
+Each migration is a class that implements `up()` and `down()` methods:
+
+```python
+# src/smart_home/migrations/_001_convert_devices_to_flat_list.py
+
+from src.smart_home.migrations import Migration
+
+class ConvertDevicesToFlatList(Migration):
+    @property
+    def version(self) -> int:
+        return 1
+    
+    def up(self, manifest: dict) -> dict:
+        """Convert nested devices structure to flat list."""
+        # Migration logic here
+        # Example: Transform old format to new format
+        if "rooms" in manifest:
+            manifest["devices"] = []
+            for room in manifest.get("rooms", []):
+                for device in room.get("devices", []):
+                    device["room"] = room["id"]
+                    manifest["devices"].append(device)
+            del manifest["rooms"]
+        
+        return manifest
+    
+    def down(self, manifest: dict) -> dict:
+        """Rollback: Convert flat list back to nested structure."""
+        # Reverse migration logic
+        return manifest
+```
+
+### Migration Runner
+
+The `MigrationRunner` automatically discovers and applies migrations:
+
+```python
+from src.smart_home.migrations.runner import MigrationRunner
+
+runner = MigrationRunner()
+
+# Get current and target versions
+current = runner.get_current_version(manifest)  # e.g., 0
+target = runner.get_target_version()            # e.g., 1
+
+# Apply all necessary migrations
+updated_manifest = runner.migrate(manifest)
+
+# The manifest now has version=target and updated structure
+```
+
+### Version Tracking
+
+Migrations are tracked via the `version` field in the manifest:
+
+```yaml
+# Old manifest (before migration)
+instance:
+  id: my_house
+  name: My House
+# No version field → assumed version 0
+
+# After migration
+instance:
+  id: my_house
+  name: My House
+version: 1  # Automatically added by migration
+```
+
+### Migration Discovery
+
+Migrations are auto-discovered from the `src/smart_home/migrations/` package:
+
+1. Files matching pattern `_NNN_*.py` are loaded
+2. Classes inheriting from `Migration` are instantiated
+3. Migrations are sorted by `version` property
+4. Applied sequentially from current version to target
+
+### Best Practices
+
+1. **Never modify existing migrations**: Create a new migration for schema changes
+2. **Always implement `down()`**: Enable rollback capability
+3. **Test migrations**: Verify both `up()` and `down()` work correctly
+4. **Increment version numbers**: Each migration must have unique, sequential version
+
 ## Core Components
 
 ### 1. HAAdapter (`src/smart_home/adapters/ha_adapter.py`)

@@ -1,0 +1,214 @@
+# Пример 3: Офисное помещение
+# Конфигурация для офиса с рабочими зонами, переговорными и общими пространствами
+
+instance:
+  id: office_space
+  name: Modern Office Space
+  owner: TechCorp LLC
+  created_at: '2024-02-01'
+
+version: 1
+
+zones:
+  - id: reception
+    name: Reception Area
+    floor: 1
+  - id: open_workspace
+    name: Open Workspace
+    floor: 1
+  - id: meeting_room_a
+    name: Meeting Room A
+    floor: 1
+  - id: meeting_room_b
+    name: Meeting Room B
+    floor: 1
+  - id: conference_room
+    name: Conference Room
+    floor: 1
+  - id: kitchenette
+    name: Kitchenette
+    floor: 1
+  - id: restrooms
+    name: Restrooms
+    floor: 1
+
+automation_rules:
+  lighting:
+    motion_enabled: true
+    schedule_enabled: true
+    manual_lockout_min: 15
+  climate:
+    safety_lockout_enabled: true
+    away_mode_enabled: true
+    manual_lockout_min: 120
+  ventilation:
+    humidity_based: false
+    manual_lockout_min: 10
+  global_manual_lockout_min: 15
+
+dashboard:
+  title: "TechCorp Office Dashboard"
+  show_history: true
+  show_motion_sensors: true
+  show_climate: true
+  history_days: 30
+  working_hours: "09:00-18:00"
+
+devices:
+  # Ресепшен - приветственное освещение
+  - type: light_motion
+    id: light.reception
+    name: Reception Light
+    room: reception
+    behaviors:
+      - template: lighting
+        priority: 10
+        params:
+          motion_sensor: binary_sensor.reception_motion
+          motion_timeout_sec: 600
+          schedule: "08:00-20:00"
+          brightness: 255
+
+  # Открытое пространство - несколько зон освещения
+  - type: light_motion
+    id: light.workspace_zone_1
+    name: Workspace Zone 1 Light
+    room: open_workspace
+    behaviors:
+      - template: lighting
+        priority: 10
+        params:
+          motion_sensor: binary_sensor.workspace_motion_1
+          motion_timeout_sec: 900
+          schedule: "08:00-20:00"
+          brightness: 255
+
+  - type: light_motion
+    id: light.workspace_zone_2
+    name: Workspace Zone 2 Light
+    room: open_workspace
+    behaviors:
+      - template: lighting
+        priority: 10
+        params:
+          motion_sensor: binary_sensor.workspace_motion_2
+          motion_timeout_sec: 900
+          schedule: "08:00-20:00"
+          brightness: 255
+
+  # Переговорная A
+  - type: light_motion
+    id: light.meeting_room_a
+    name: Meeting Room A Light
+    room: meeting_room_a
+    behaviors:
+      - template: lighting
+        priority: 10
+        params:
+          motion_sensor: binary_sensor.meeting_room_a_motion
+          motion_timeout_sec: 300
+          schedule: "08:00-20:00"
+          brightness: 255
+
+  # Переговорная B
+  - type: light_motion
+    id: light.meeting_room_b
+    name: Meeting Room B Light
+    room: meeting_room_b
+    behaviors:
+      - template: lighting
+        priority: 10
+        params:
+          motion_sensor: binary_sensor.meeting_room_b_motion
+          motion_timeout_sec: 300
+          schedule: "08:00-20:00"
+          brightness: 255
+
+  # Конференц-зал
+  - type: light_motion
+    id: light.conference_room
+    name: Conference Room Light
+    room: conference_room
+    behaviors:
+      - template: lighting
+        priority: 10
+        params:
+          motion_sensor: binary_sensor.conference_room_motion
+          motion_timeout_sec: 600
+          schedule: "08:00-20:00"
+          brightness: 255
+
+  # Кухня
+  - type: light_motion
+    id: light.kitchenette
+    name: Kitchenette Light
+    room: kitchenette
+    behaviors:
+      - template: lighting
+        priority: 10
+        params:
+          motion_sensor: binary_sensor.kitchenette_motion
+          motion_timeout_sec: 300
+          schedule: "07:00-21:00"
+          brightness: 255
+
+  # Санузлы
+  - type: light_motion
+    id: light.restrooms
+    name: Restrooms Light
+    room: restrooms
+    behaviors:
+      - template: lighting
+        priority: 10
+        params:
+          motion_sensor: binary_sensor.restrooms_motion
+          motion_timeout_sec: 180
+          schedule: "always"
+          brightness: 200
+
+  # Климат-контроль открытого пространства
+  - type: climate_hysteresis
+    id: climate.workspace
+    name: Climate Workspace
+    room: open_workspace
+    behaviors:
+      - template: climate_hysteresis
+        priority: 10
+        params:
+          sensor: sensor.workspace_temperature
+          target: 22.0
+          hysteresis: 0.5
+          modes:
+            - heat
+            - cool
+            - auto
+
+  # Климат-контроль переговорных
+  - type: climate_hysteresis
+    id: climate.meeting_rooms
+    name: Climate Meeting Rooms
+    room: meeting_room_a
+    behaviors:
+      - template: climate_hysteresis
+        priority: 10
+        params:
+          sensor: sensor.meeting_area_temperature
+          target: 21.0
+          hysteresis: 0.5
+          modes:
+            - heat
+            - cool
+            - auto
+
+  # Вентиляция (общая система)
+  - type: ventilation_humidity
+    id: fan.office_ventilation
+    name: Office Ventilation
+    room: open_workspace
+    behaviors:
+      - template: ventilation_humidity
+        priority: 10
+        params:
+          humidity_sensor: sensor.office_humidity
+          humidity_threshold: 60
+          timeout_sec: 3600
