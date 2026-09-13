@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test lint format clean install install-dev run-mock run-tests watch
+.PHONY: help test lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose
 
 # Default target
 help:
@@ -14,6 +14,7 @@ help:
 	@echo "  make test          - Run all tests with coverage"
 	@echo "  make test-verbose  - Run tests with verbose output"
 	@echo "  make test-fast     - Run tests without coverage (faster)"
+	@echo "  make test-integration - Run integration tests with real HA in Docker"
 	@echo "  make watch         - Run tests in watch mode (auto-rerun on changes)"
 	@echo ""
 	@echo "Code Quality:"
@@ -53,6 +54,21 @@ test-single:
 
 watch:
 	ptw --runner "pytest -x"
+
+# Integration Tests
+test-integration:
+	@echo "Running integration tests with Home Assistant in Docker..."
+	@echo ""
+	@echo "Prerequisites:"
+	@echo "  - Docker must be running"
+	@echo "  - testcontainers-python must be installed: pip install testcontainers"
+	@echo "  - homeassistant-websocket must be installed: pip install homeassistant-websocket"
+	@echo ""
+	pytest tests/integration/ -v --tb=short
+
+test-integration-verbose:
+	@echo "Running integration tests with verbose output..."
+	pytest tests/integration/ -v -s --tb=long
 
 # Code Quality
 lint:
