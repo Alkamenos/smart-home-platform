@@ -31,9 +31,10 @@ except ImportError:
     HAS_WS_LIBRARY = False
     HomeAssistantWS = None  # type: ignore
 
-# Forward reference for ManualOverrideMiddleware
+# Forward reference for ManualOverrideMiddleware and EventRouter
 if TYPE_CHECKING:
     from ..core.middlewares.manual_override_middleware import ManualOverrideMiddleware
+    from ..core.event_router import EventRouter
 
 
 class HAAdapter:
@@ -79,6 +80,7 @@ class HAAdapter:
         ws_url: str | None = None,
         token: str | None = None,
         manual_override_middleware: "ManualOverrideMiddleware" | None = None,
+        event_router: "EventRouter" | None = None,
     ) -> None:
         """
         Initialize HAAdapter.
@@ -91,6 +93,8 @@ class HAAdapter:
             token: Long-lived access token for HA (required for websocket mode).
             manual_override_middleware: Optional ManualOverrideMiddleware instance
                                         for registering manual overrides.
+            event_router: Optional EventRouter instance for routing state changes
+                          to appropriate FSMs based on manifest configuration.
 
         Raises:
             ValueError: If required parameters are missing for the selected mode.
@@ -105,6 +109,7 @@ class HAAdapter:
         self._token = token
         
         self._manual_override_middleware = manual_override_middleware
+        self._event_router = event_router
         self._ws_client: HomeAssistantWS | None = None
         self._session: aiohttp.ClientSession | None = None
         self._shutdown_event = asyncio.Event()
@@ -225,6 +230,19 @@ class HAAdapter:
                 log.error(f"HAAdapter: failed to trigger FSM: {e}")
         else:
             log.warning("HAAdapter: No engine attached, event not processed")
+        
+        # Route state change through EventRouter if provided
+        if self._event_router is not None:
+            try:
+                await self._event_router.route_state_change(
+                    entity_id=entity_id,
+                    new_state=new_state,
+                    old_state=old_state,
+                    context=context,
+                )
+                log.debug(f"HAAdapter: state change routed via EventRouter for {entity_id}")
+            except Exception as e:
+                log.error(f"HAAdapter: EventRouter.route_state_change failed for {entity_id}: {e}")
     
     async def call_service(
         self,
