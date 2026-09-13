@@ -4,23 +4,26 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv/
-.venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-htmlcov/
-.coverage.*
-.nox/
 
-# Testing
-.pytest_cache/
-.hypothesis/
-cover/
+# Dependencies
+.venv/
+venv/
+.env
+.env.local
+.env.*
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
 
 # IDE
 .vscode/
@@ -32,7 +35,4 @@ cover/
 # OS
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
 ```
