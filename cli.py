@@ -29,7 +29,9 @@ from core.registry import Registry
 from adapters.mock_adapter import MockAdapter
 from adapters.ha_adapter import HomeAssistantAdapter
 from features.lighting import create_lighting_automations
-from features.climate import create_climate_automations
+
+# Импорт bootstrap для инициализации платформы
+from src.smart_home.bootstrap import bootstrap_platform, PlatformContext
 
 # Алиас для совместимости
 HAAdapter = HomeAssistantAdapter
@@ -51,6 +53,9 @@ def setup_parser():
                           help="Список комнат для освещения")
     run_parser.add_argument("--zones", nargs="+", default=["zone_1", "zone_2"],
                           help="Список климатических зон")
+    run_parser.add_argument("--manifest-path", 
+                          default="instances/leonids_house/manifest.yaml",
+                          help="Путь к манифесту (по умолчанию: instances/leonids_house/manifest.yaml)")
     
     # Команда test
     test_parser = subparsers.add_parser("test", help="Запуск тестов")
@@ -144,33 +149,34 @@ def cmd_run(args):
     logger = Logger(component="cli")
     logger.info("Запуск платформы V3", mock_mode=args.mock)
     
-    # Создаём компоненты
-    event_bus = EventBus()
-    logger = Logger()
-    fsm = FSMEngine(event_bus, logger)
+    # Используем bootstrap для инициализации
+    manifest_path = getattr(args, 'manifest_path', None) or "instances/leonids_house/manifest.yaml"
     
-    if args.mock:
-        adapter = MockAdapter()
-        logger.info("Используется Mock адаптер")
-    else:
-        # TODO: Реализовать загрузку конфига из env
-        adapter = HAAdapter(url="http://localhost:8123", token="YOUR_TOKEN")
-        logger.info("Используется HA адаптер")
+    try:
+        ctx = bootstrap_platform(manifest_path)
+        logger.info("Платформа инициализирована через bootstrap")
+    except Exception as e:
+        logger.error(f"Ошибка инициализации платформы: {e}")
+        sys.exit(1)
     
-    # Регистрируем автоматы
-    lighting_defs = create_lighting_automations(args.rooms)
-    climate_defs = create_climate_automations(args.zones)
+    # Загружаем FSM из манифеста через FSMFactory
+    from src.smart_home.core.fsm_factory import FSMFactory
+    from src.smart_home.core.registry import Registry
     
-    for definition in lighting_defs + climate_defs:
-        fsm.register(definition)
-        logger.info("Зарегистрирован автомат", entity_id=definition.entity_id)
+    registry = Registry()
+    factory = FSMFactory(ctx.fsm, registry, features_dir="features")
+    definitions = factory.create_from_manifest(ctx.manifest)
     
-    logger.info(f"Платформа запущена. Зарегистрировано {len(lighting_defs) + len(climate_defs)} автоматов")
+    for fsm_def in definitions:
+        ctx.fsm.register_definition(fsm_def)
+        logger.info("Зарегистрирован FSM", entity_id=fsm_def.entity_id)
+    
+    logger.info(f"Платформа запущена. Зарегистрировано {len(definitions)} FSM")
+    logger.info(f"ManualLockoutMiddleware активен: {len(ctx.dispatcher._middlewares)} middleware")
     
     # В реальном режиме запускаем цикл обработки событий
     if not args.mock:
         logger.info("Запуск цикла обработки событий...")
-        # TODO: Реализовать event loop
         try:
             while True:
                 pass  # Placeholder для event loop
@@ -199,19 +205,27 @@ def cmd_debug(args):
     """Отладка автомата"""
     logger = Logger(component="cli")
     
-    # Создаём временный FSM для отладки
-    event_bus = EventBus()
-    fsm_logger = Logger()
-    fsm = FSMEngine(event_bus, fsm_logger)
+    # Используем bootstrap для инициализации
+    manifest_path = getattr(args, 'manifest_path', None) or "instances/leonids_house/manifest.yaml"
     
-    # Регистрируем все автоматы
-    lighting_defs = create_lighting_automations(["living_room", "bedroom", "kitchen"])
-    climate_defs = create_climate_automations(["zone_1", "zone_2"])
+    try:
+        ctx = bootstrap_platform(manifest_path)
+    except Exception as e:
+        logger.error(f"Ошибка инициализации платформы: {e}")
+        sys.exit(1)
     
-    for definition in lighting_defs + climate_defs:
-        fsm.register(definition)
+    # Загружаем FSM из манифеста через FSMFactory
+    from src.smart_home.core.fsm_factory import FSMFactory
+    from src.smart_home.core.registry import Registry
     
-    state = fsm.get_state(args.entity_id)
+    registry = Registry()
+    factory = FSMFactory(ctx.fsm, registry, features_dir="features")
+    definitions = factory.create_from_manifest(ctx.manifest)
+    
+    for fsm_def in definitions:
+        ctx.fsm.register_definition(fsm_def)
+    
+    state = ctx.fsm.get_state(args.entity_id)
     if state is None:
         logger.error("Автомат не найден", entity_id=args.entity_id)
         sys.exit(1)
@@ -303,25 +317,34 @@ def cmd_deploy(args):
 def cmd_status(args):
     """Статус всех автоматов"""
     
-    # Создаём временный FSM
-    event_bus = EventBus()
-    fsm_logger = Logger(component="status", quiet=args.json)  # Тихий режим для JSON
-    fsm = FSMEngine(event_bus, fsm_logger)
+    # Используем bootstrap для инициализации
+    manifest_path = getattr(args, 'manifest_path', None) or "instances/leonids_house/manifest.yaml"
     
-    # Регистрируем все автоматы
-    lighting_defs = create_lighting_automations(["living_room", "bedroom", "kitchen"])
-    climate_defs = create_climate_automations(["zone_1", "zone_2"])
+    try:
+        ctx = bootstrap_platform(manifest_path)
+    except Exception as e:
+        logger = Logger(component="cli")
+        logger.error(f"Ошибка инициализации платформы: {e}")
+        sys.exit(1)
     
-    for definition in lighting_defs + climate_defs:
-        fsm.register(definition)
+    # Загружаем FSM из манифеста через FSMFactory
+    from src.smart_home.core.fsm_factory import FSMFactory
+    from src.smart_home.core.registry import Registry
+    
+    registry = Registry()
+    factory = FSMFactory(ctx.fsm, registry, features_dir="features")
+    definitions = factory.create_from_manifest(ctx.manifest)
+    
+    for fsm_def in definitions:
+        ctx.fsm.register_definition(fsm_def)
     
     statuses = {}
-    for definition in lighting_defs + climate_defs:
-        state = fsm.get_state(definition.entity_id)
+    for definition in definitions:
+        state = ctx.fsm.get_state(definition.entity_id)
         statuses[definition.entity_id] = {
-            "state": state.current,
+            "state": state.current_state,
             "since": state.entered_at,
-            "by": state.entered_by
+            "by": state.context.get("entered_by", "N/A")
         }
     
     if args.json:
@@ -773,7 +796,6 @@ def cmd_health_performance(args):
 
 def cmd_health(args):
     """Проверка здоровья платформы (общая)"""
-    import yaml
     
     # Если указана подкоманда, вызываем соответствующую функцию
     if hasattr(args, 'health_command') and args.health_command:
@@ -785,30 +807,22 @@ def cmd_health(args):
             cmd_health_performance(args)
         return
     
-    # Общая проверка (для обратной совместимости)
+    # Общая проверка с использованием bootstrap
     print("🏥 Здоровье платформы")
     print("=" * 50)
     
-    # 1. Проверка манифеста
-    manifest_path = Path(args.manifest_path)
-    if manifest_path.exists():
-        try:
-            with open(manifest_path) as f:
-                manifest = yaml.safe_load(f)
-            from core.manifest_validator import ManifestValidator
-            validator = ManifestValidator()
-            errors = validator.validate(manifest)
-            if errors:
-                print(f"📋 Манифест: ❌ {len(errors)} ошибок")
-                for e in errors[:3]:  # Показываем первые 3
-                    print(f"     - {e.field}: {e.message}")
-            else:
-                print(f"📋 Манифест: ✅ Валиден")
-                print(f"     Instance: {manifest.get('instance', {}).get('name', 'N/A')}")
-        except Exception as e:
-            print(f"📋 Манифест: ❌ Ошибка чтения: {e}")
-    else:
-        print(f"📋 Манифест: ❌ Не найден ({manifest_path})")
+    manifest_path = getattr(args, 'manifest_path', None) or "instances/leonids_house/manifest.yaml"
+    
+    # 1. Проверка инициализации платформы через bootstrap
+    try:
+        ctx = bootstrap_platform(manifest_path)
+        print(f"📋 Платформа: ✅ Инициализирована через bootstrap")
+        print(f"     Instance: {ctx.manifest.instance.name}")
+        print(f"     Middleware: {len(ctx.dispatcher._middlewares)} registered")
+    except Exception as e:
+        print(f"📋 Платформа: ❌ Ошибка инициализации: {e}")
+        print(f"     Instance: N/A")
+        print(f"     Middleware: 0 registered")
     
     # 2. Проверка файлов ядра
     core_dir = Path("/workspace/core")
@@ -835,7 +849,6 @@ def cmd_health(args):
 
 def cmd_doctor(args):
     """Автоматическая диагностика проблем"""
-    import yaml
     
     print("👨‍⚕️ Диагностика платформы\n")
     
@@ -843,67 +856,37 @@ def cmd_doctor(args):
     checks_passed = 0
     checks_total = 0
     
-    # 1. Проверка манифеста
+    manifest_path = getattr(args, 'manifest_path', None) or "instances/leonids_house/manifest.yaml"
+    
+    # 1. Проверка манифеста через bootstrap
     print("Проверяю манифест...", end=" ")
     checks_total += 1
-    manifest_path = Path(args.manifest_path)
-    if manifest_path.exists():
-        try:
-            with open(manifest_path) as f:
-                manifest = yaml.safe_load(f)
-            from core.manifest_validator import ManifestValidator
-            validator = ManifestValidator()
-            errors = validator.validate(manifest)
-            if errors:
-                print(f"⚠️ {len(errors)} предупреждений")
-                issues.append({
-                    'type': 'manifest_warnings',
-                    'message': f"Манифест содержит {len(errors)} предупреждений",
-                    'fix': "Запустите `python cli.py manifest validate` для деталей"
-                })
-            else:
-                print("✅")
-                checks_passed += 1
-        except Exception as e:
-            print(f"❌ {e}")
-            issues.append({
-                'type': 'manifest_error',
-                'message': f"Ошибка чтения манифеста: {e}",
-                'fix': "Проверьте путь к манифесту и формат YAML"
-            })
-    else:
-        print("❌ Не найден")
+    try:
+        ctx = bootstrap_platform(manifest_path)
+        print(f"✅ Instance: {ctx.manifest.instance.name}")
+        checks_passed += 1
+    except Exception as e:
+        print(f"❌ {e}")
         issues.append({
-            'type': 'manifest_missing',
-            'message': f"Манифест не найден: {manifest_path}",
-            'fix': f"Запустите `python cli.py manifest migrate --output {manifest_path}`"
+            'type': 'manifest_error',
+            'message': f"Ошибка инициализации платформы: {e}",
+            'fix': "Проверьте путь к манифесту и формат YAML"
         })
     
-    # 2. Проверка автоматов
+    # 2. Проверка автоматов через FSMFactory
     print("Проверяю автоматы...", end=" ")
     checks_total += 1
     try:
-        from core.fsm import FSMEngine
-        from core.event_bus import EventBus
-        from core.logger import Logger
+        from src.smart_home.core.fsm_factory import FSMFactory
+        from src.smart_home.core.registry import Registry
         
-        event_bus = EventBus()
-        logger = Logger(component="doctor")
-        fsm = FSMEngine(event_bus, logger)
+        registry = Registry()
+        factory = FSMFactory(ctx.fsm, registry, features_dir="features")
+        definitions = factory.create_from_manifest(ctx.manifest)
         
-        # Пробуем загрузить манифест и сгенерировать автоматы
-        if manifest_path.exists():
-            with open(manifest_path) as f:
-                manifest = yaml.safe_load(f)
-            from core.manifest_generator import ManifestAutomationGenerator
-            generator = ManifestAutomationGenerator(manifest)
-            result = generator.generate_all()
-            
-            total_automata = len(result.lighting_definitions) + len(result.climate_definitions) + len(result.ventilation_definitions)
-            print(f"✅ {total_automata} автоматов")
-            checks_passed += 1
-        else:
-            print("⚠️ Пропущено (нет манифеста)")
+        total_automata = len(definitions)
+        print(f"✅ {total_automata} автоматов")
+        checks_passed += 1
     except Exception as e:
         print(f"❌ {e}")
         issues.append({
