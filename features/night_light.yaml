@@ -47,7 +47,7 @@ transitions:
   - from_state: "ON_NIGHT"
     to_state: "OFF"
     trigger: "timeout"
-    action: "turn_off_night_light"
+    action: "release_device"
     timeout_sec: 60.0  # Выключение через 60 секунд
 
   # Из ON_NIGHT можно перейти в OFF при ручном выключении
@@ -55,3 +55,10 @@ transitions:
     to_state: "OFF"
     trigger: "manual_switch_off"
     action: "turn_off_night_light"
+
+  # Из ON_NIGHT можно перейти в OFF по расписанию (например, утром)
+  # Это позволяет FSM "отпустить" устройство, когда таймер ночника истекает
+  - from_state: "ON_NIGHT"
+    to_state: "OFF"
+    trigger: "schedule_end"
+    action: "release_device"
