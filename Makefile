@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap
+.PHONY: help test lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog
 
 # Default target
 help:
@@ -134,3 +134,9 @@ sync-roadmap:
 	@echo "📊 Syncing roadmap..."
 	@python .ai/scripts/sync_roadmap.py
 	@echo "✅ ROADMAP.md updated"
+
+# Changelog generation
+changelog:
+	@echo "📝 Generating changelog..."
+	@python scripts/generate_changelog.py
+	@echo "✅ CHANGELOG.md updated"

@@ -2,6 +2,11 @@
 
 *Автоматически сгенерировано из `.ai/03_ROADMAP.md`. Не редактировать вручную.*
 
+## Release History
+
+- **v3.0.0** (2024-09-14) - FSM Engine v3, EventRouter, Behavior Composition, Middleware System
+- **v2.x** - Previous stable release
+
 ```mermaid
 gantt
     title Development Timeline
@@ -32,7 +37,7 @@ gantt
 - ✅ Completed
 - [ ] In Progress
 - [ ] Planned
-- ✅ Cancelled
+- ~~Cancelled~~
 
 ## ✅ Phase 1: Foundation
 
@@ -86,7 +91,7 @@ gantt
 
 ## 📋 Phase 5: Advanced Features
 
-**Status:** PLANNED
+**Status:** PLANNED - Target: v3.1.0
 
 - [ ] Device-level sensors (avoid duplication in behavior params)
 - Add `sensors:` field to device in manifest
@@ -103,7 +108,7 @@ gantt
 
 ## 🔮 Phase 6: Platform Maturity
 
-**Status:** FUTURE
+**Status:** FUTURE - Target: v3.2.0+
 
 - [ ] Plugin system for custom behaviors
 - [ ] Multi-instance support (multiple houses)
@@ -143,3 +148,30 @@ gantt
 ### Visual FSM editor
 - **Reason:** YAML with composition pattern is more maintainable than visual editing.
 - **Date cancelled:** 2026-09-13
+
+## 📅 Upcoming Releases
+
+### v3.1.0 - Advanced Features (Q4 2024)
+
+Focus on usability and observability:
+
+- Device-level sensor configuration
+- Web-based manifest editor
+- Prometheus metrics integration
+- Hot-reload capability
+
+### v3.2.0 - Platform Maturity (Q1 2025)
+
+Focus on extensibility and intelligence:
+
+- Plugin architecture for custom behaviors
+- Multi-instance support
+- ML-based behavior optimization
+- Enhanced debugging tools
+
+### Future Considerations
+
+- Voice assistant integrations
+- Mobile application
+- Cloud sync capabilities
+- Advanced scheduling features
