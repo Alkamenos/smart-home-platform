@@ -9,7 +9,7 @@
 - Кнопками manual override
 
 Использование:
-    from src.smart_home.services.dashboard_generator import DashboardGenerator
+    from smart_home.services.dashboard_generator import DashboardGenerator
     
     manifest = load_manifest("instances/leonids_house/manifest.yaml")
     generator = DashboardGenerator(manifest)
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Optional, Any
 from datetime import datetime
 
-from src.smart_home.core.models.manifest import Manifest, Zone, AnyDevice, BehaviorConfig
+from smart_home.core.models.manifest import Manifest, Zone, AnyDevice, BehaviorConfig
 
 
 class DashboardGenerator:
@@ -710,7 +710,7 @@ def generate_dashboard_from_manifest(
     Returns:
         bool: True если успешно, False иначе
     """
-    from src.smart_home.core.models.manifest import load_manifest
+    from smart_home.core.models.manifest import load_manifest
 
     try:
         manifest = load_manifest(manifest_path)

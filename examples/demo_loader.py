@@ -12,9 +12,9 @@ from typing import Any
 
 from loguru import logger
 
-from src.smart_home.core.fsm import FSMEngine
-from src.smart_home.core.registry import Registry
-from src.smart_home.core.loader import Loader
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.registry import Registry
+from smart_home.core.loader import Loader
 
 
 # Пример guard функции - проверка ночного времени

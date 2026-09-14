@@ -18,11 +18,11 @@ from pathlib import Path
 # Добавляем parent directory в path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.smart_home.core.event_bus import EventBus
-from src.smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
-from src.smart_home.core.fsm_factory import FSMFactory
-from src.smart_home.core.registry import Registry
-from src.smart_home.bootstrap import bootstrap_platform
+from smart_home.core.event_bus import EventBus
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.fsm_factory import FSMFactory
+from smart_home.core.registry import Registry
+from smart_home.bootstrap import bootstrap_platform
 
 
 class TestEventLoopBasic:
@@ -290,7 +290,7 @@ class TestMockEventListener:
     @pytest.mark.asyncio
     async def test_mock_listener_emits_events(self):
         """Тест: Mock listener эмулирует периодические события."""
-        from src.smart_home.adapters.mock_adapter import MockAdapter
+        from smart_home.adapters.mock_adapter import MockAdapter
         
         event_bus = EventBus()
         engine = FSMEngine()

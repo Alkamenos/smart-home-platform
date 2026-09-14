@@ -23,7 +23,7 @@
         ...
 """
 
-from src.smart_home.migrations import Migration
+from smart_home.migrations import Migration
 
 
 class Migration001ConvertDevicesToFlatList(Migration):

@@ -2,9 +2,9 @@
 
 import pytest
 
-from src.smart_home.migrations import Migration
-from src.smart_home.migrations.runner import MigrationRunner
-from src.smart_home.migrations._001_convert_devices_to_flat_list import (
+from smart_home.migrations import Migration
+from smart_home.migrations.runner import MigrationRunner
+from smart_home.migrations._001_convert_devices_to_flat_list import (
     Migration001ConvertDevicesToFlatList,
 )
 
@@ -369,7 +369,7 @@ class TestIntegrationWithManifest:
     
     def test_migrated_manifest_validates_with_pydantic(self):
         """Мигрированный манифест должен проходить валидацию Pydantic."""
-        from src.smart_home.core.models.manifest import Manifest
+        from smart_home.core.models.manifest import Manifest
         
         runner = MigrationRunner()
         

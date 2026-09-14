@@ -16,11 +16,11 @@ import os
 # Добавляем parent directory в path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.smart_home.core.event_bus import EventBus
-from src.smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
-from src.smart_home.core.fsm_factory import FSMFactory
-from src.smart_home.core.registry import Registry
-from src.smart_home.core.models.manifest import BehaviorConfig, LightMotionDevice
+from smart_home.core.event_bus import EventBus
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.fsm_factory import FSMFactory
+from smart_home.core.registry import Registry
+from smart_home.core.models.manifest import BehaviorConfig, LightMotionDevice
 
 
 class TestEventBusWithFilters:

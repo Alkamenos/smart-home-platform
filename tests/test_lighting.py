@@ -15,8 +15,8 @@ import os
 # Добавляем parent directory в path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.smart_home.core.fsm import FSMEngine
-from src.smart_home.core.registry import Registry
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.registry import Registry
 from smart_home.features.lighting import create_lighting_automations
 
 

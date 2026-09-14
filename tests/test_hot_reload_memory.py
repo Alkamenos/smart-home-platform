@@ -12,8 +12,8 @@ from typing import Any, Optional
 
 import pytest
 
-from src.smart_home.core.fsm import FSMEngine, FSMDefinition, Transition, State
-from src.smart_home.core.state_persistence import StatePersistence
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition, State
+from smart_home.core.state_persistence import StatePersistence
 
 
 class MockPersistence:

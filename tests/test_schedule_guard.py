@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime
 from freezegun import freeze_time
 
-from src.smart_home.core.guards.schedule_guard import is_within_schedule
+from smart_home.core.guards.schedule_guard import is_within_schedule
 
 
 class TestScheduleGuard:

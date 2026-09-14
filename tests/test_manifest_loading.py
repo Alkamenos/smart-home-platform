@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.smart_home.core.models.manifest import (
+from smart_home.core.models.manifest import (
     Manifest,
     LightMotionDevice,
     ClimateHysteresisDevice,

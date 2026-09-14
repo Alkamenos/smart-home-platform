@@ -14,10 +14,10 @@ from unittest.mock import patch
 import pytest
 from freezegun import freeze_time
 
-from src.smart_home.core.fsm import FSMEngine
-from src.smart_home.core.registry import Registry
-from src.smart_home.core.loader import Loader
-from src.smart_home.adapters.mock_adapter import MockAdapter
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.registry import Registry
+from smart_home.core.loader import Loader
+from smart_home.adapters.mock_adapter import MockAdapter
 
 
 # ============================================================================

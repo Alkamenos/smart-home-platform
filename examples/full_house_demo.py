@@ -25,13 +25,13 @@ from typing import Any
 from loguru import logger
 
 # Import core components
-from src.smart_home.core.fsm import FSMEngine
-from src.smart_home.core.registry import Registry
-from src.smart_home.core.event_bus import EventBus
-from src.smart_home.core.event_router import EventRouter
-from src.smart_home.core.fsm_factory import FSMFactory
-from src.smart_home.core.models.manifest import load_manifest, Manifest
-from src.smart_home.adapters.ha_adapter import HAAdapter
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.registry import Registry
+from smart_home.core.event_bus import EventBus
+from smart_home.core.event_router import EventRouter
+from smart_home.core.fsm_factory import FSMFactory
+from smart_home.core.models.manifest import load_manifest, Manifest
+from smart_home.adapters.ha_adapter import HAAdapter
 
 
 class MockHass:

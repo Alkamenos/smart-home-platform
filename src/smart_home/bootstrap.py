@@ -10,13 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from src.smart_home.core.command_dispatcher import CommandDispatcher
-from src.smart_home.core.event_bus import EventBus
-from src.smart_home.core.fsm import FSMEngine
-from src.smart_home.core.middleware import ManualLockoutMiddleware
-from src.smart_home.core.models.manifest import Manifest, load_manifest
-from src.smart_home.adapters.mock_adapter import MockAdapter
-from src.smart_home.core.control_tracker import ControlTracker
+from smart_home.core.command_dispatcher import CommandDispatcher
+from smart_home.core.event_bus import EventBus
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.middleware import ManualLockoutMiddleware
+from smart_home.core.models.manifest import Manifest, load_manifest
+from smart_home.adapters.mock_adapter import MockAdapter
+from smart_home.core.control_tracker import ControlTracker
 
 
 @dataclass

@@ -115,9 +115,9 @@ except ImportError:
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from src.smart_home.adapters.ha_adapter import HAAdapter
-from src.smart_home.core.event_bus import EventBus
-from src.smart_home.core.registry import Registry as FSMRegistry
+from smart_home.adapters.ha_adapter import HAAdapter
+from smart_home.core.event_bus import EventBus
+from smart_home.core.registry import Registry as FSMRegistry
 
 
 # Test constants

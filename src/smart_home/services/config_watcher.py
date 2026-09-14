@@ -23,10 +23,10 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent, FileDeletedEvent
 
 if TYPE_CHECKING:
-    from src.smart_home.core.loader import Loader
-    from src.smart_home.core.fsm_factory import FSMFactory
-    from src.smart_home.core.fsm import FSMEngine, FSMDefinition
-    from src.smart_home.core.models.manifest import Manifest
+    from smart_home.core.loader import Loader
+    from smart_home.core.fsm_factory import FSMFactory
+    from smart_home.core.fsm import FSMEngine, FSMDefinition
+    from smart_home.core.models.manifest import Manifest
 
 
 class YAMLFileHandler(FileSystemEventHandler):
@@ -207,7 +207,7 @@ class ConfigWatcher:
         
         try:
             # Load new manifest
-            from src.smart_home.core.models.manifest import load_manifest
+            from smart_home.core.models.manifest import load_manifest
             new_manifest = load_manifest(str(path))
             
             # Store reference

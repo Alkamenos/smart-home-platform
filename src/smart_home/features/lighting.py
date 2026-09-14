@@ -5,8 +5,8 @@ This module defines action handlers and FSM definitions for the lighting feature
 It is used by tests and CLI tools to create lighting automations.
 """
 
-from src.smart_home.core.fsm import FSMDefinition, Transition
-from src.smart_home.core.command_dispatcher import CommandIntent
+from smart_home.core.fsm import FSMDefinition, Transition
+from smart_home.core.command_dispatcher import CommandIntent
 
 
 async def turn_on_light(state, context: dict):

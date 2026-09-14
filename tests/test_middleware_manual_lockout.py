@@ -20,9 +20,9 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'core'))
 
-from src.smart_home.core.middleware import Middleware, ManualLockoutMiddleware
-from src.smart_home.core.command_dispatcher import CommandIntent
-from src.smart_home.core.models.manifest import AutomationRules, LightingAutomation, ClimateAutomation, VentilationAutomation
+from smart_home.core.middleware import Middleware, ManualLockoutMiddleware
+from smart_home.core.command_dispatcher import CommandIntent
+from smart_home.core.models.manifest import AutomationRules, LightingAutomation, ClimateAutomation, VentilationAutomation
 from smart_home.core.control_tracker import ControlTracker, TriggerSource
 
 

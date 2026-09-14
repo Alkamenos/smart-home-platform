@@ -11,8 +11,8 @@ Tests cover:
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.smart_home.core.command_dispatcher import CommandDispatcher, CommandIntent
-from src.smart_home.adapters.mock_adapter import MockAdapter
+from smart_home.core.command_dispatcher import CommandDispatcher, CommandIntent
+from smart_home.adapters.mock_adapter import MockAdapter
 
 
 class BlockingMiddleware:
