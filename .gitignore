@@ -1,4 +1,4 @@
-```
+
 # Python
 __pycache__/
 *.py[cod]
@@ -71,4 +71,3 @@ MANIFEST
 # System
 .DS_Store
 Thumbs.db
-```

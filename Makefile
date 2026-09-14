@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose
+.PHONY: help test lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap
 
 # Default target
 help:
@@ -113,3 +113,24 @@ build:
 verify:
 	pip install twine
 	twine check dist/*
+
+# AI Harness targets
+ai-setup:
+	@echo "🤖 Setting up AI harness..."
+	@mkdir -p .ai/scripts
+	@chmod +x .ai/scripts/run_checks.sh
+	@chmod +x .ai/scripts/sync_roadmap.py
+	@echo "✅ AI harness ready"
+	@echo ""
+	@echo "Usage:"
+	@echo "  make ai-checks      - Run all quality checks"
+	@echo "  make sync-roadmap   - Sync roadmap from .ai/ to root"
+
+ai-checks:
+	@echo "🏥 Running quality checks..."
+	@.ai/scripts/run_checks.sh
+
+sync-roadmap:
+	@echo "📊 Syncing roadmap..."
+	@python .ai/scripts/sync_roadmap.py
+	@echo "✅ ROADMAP.md updated"
