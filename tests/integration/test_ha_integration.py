@@ -505,12 +505,12 @@ async def test_ha_integration_full_cycle(ha_container, ha_token, mock_engine):
             assert len(mock_engine.commands_sent) > 0, "FSM did not send any commands"
 
             command = mock_engine.commands_sent[0]
-            assert command["domain"] == "light", (
-                f"Expected 'light' domain, got '{command['domain']}'"
-            )
-            assert command["service"] == "turn_on", (
-                f"Expected 'turn_on' service, got '{command['service']}'"
-            )
+            assert (
+                command["domain"] == "light"
+            ), f"Expected 'light' domain, got '{command['domain']}'"
+            assert (
+                command["service"] == "turn_on"
+            ), f"Expected 'turn_on' service, got '{command['service']}'"
 
             # Send the command to HA
             result = await adapter.call_service(
