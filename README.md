@@ -524,25 +524,49 @@ smart-home-fsm-platform/
 │   ├── adapters/
 │   │   ├── ha_adapter.py       # HA integration (Pyscript/WebSocket)
 │   │   └── mock_adapter.py     # Mock adapter for testing
+│   ├── bootstrap.py            # Platform bootstrap and initialization
+│   ├── cli/
+│   │   ├── __init__.py
+│   │   ├── main.py             # CLI entry point
+│   │   └── commands/           # CLI commands
 │   ├── core/
 │   │   ├── fsm.py              # FSM Engine, State, Transition
 │   │   ├── event_bus.py        # Event distribution
 │   │   ├── scheduler.py        # Timer management
 │   │   ├── registry.py         # Guard/Action registration
 │   │   └── loader.py           # YAML definition loader
+│   ├── dashboard/
+│   │   └── lovelace_generator.py  # Dashboard generation
+│   ├── features/
+│   │   └── lighting.py         # Lighting automation templates
+│   ├── migrations/
+│   │   └── runner.py           # Manifest migration system
 │   └── services/
+│       ├── config_watcher.py   # Configuration file watcher
+│       ├── dashboard_generator.py  # Dashboard generation service
 │       └── watchdog.py         # Health monitoring
 ├── tests/
 │   ├── test_fsm.py             # FSM engine tests
 │   ├── test_ha_adapter.py      # Adapter tests
 │   └── test_scenarios.py       # End-to-end scenarios
 ├── examples/
+│   ├── generated_dashboards/   # Generated dashboard examples
+│   ├── instances/
+│   │   └── leonids_house/      # Example instance configuration
+│   ├── demo_loader.py          # Loader demonstration
+│   ├── full_house_demo.py      # Full house automation demo
 │   ├── ha_pyscript_integration.py  # Pyscript example
 │   └── kitchen_demo.py         # Kitchen automation demo
+├── scripts/
+│   ├── cleanup_branches.sh     # Git branch cleanup
+│   ├── generate_docs.sh        # Documentation generation
+│   └── run_mock.sh             # Mock server runner
 ├── docs/
 │   └── architecture.md         # Architecture documentation
+├── cli.py                      # Backward compatibility shim
 ├── Makefile                    # Build aliases
-└── pyproject.toml              # Project configuration
+├── pyproject.toml              # Project configuration
+└── README.md                   # This file
 ```
 
 ## 🔄 HA Adapter Modes
