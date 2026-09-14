@@ -6,7 +6,6 @@ Manifest Schema - Схема валидации манифеста платфо�
 
 from typing import Any
 
-
 MANIFEST_SCHEMA = {
     "version": {"type": "integer", "required": True},
     "instance": {
@@ -16,56 +15,66 @@ MANIFEST_SCHEMA = {
             "id": {"type": "string", "required": True},
             "name": {"type": "string", "required": True},
             "owner": {"type": "string"},
-            "created_at": {"type": "string"}
-        }
+            "created_at": {"type": "string"},
+        },
     },
     "devices": {
         "type": "dict",
         "required": True,
         "schema": {
-            "lighting": {"type": "list", "required": True, "schema": {
-                "type": "dict",
+            "lighting": {
+                "type": "list",
+                "required": True,
                 "schema": {
-                    "id": {"type": "string", "required": True},
-                    "name": {"type": "string", "required": True},
-                    "room": {"type": "string", "required": True},
-                    "motion_sensor": {"type": "string"},
-                    "schedule": {"type": "string"},
-                    "motion_timeout_sec": {"type": "integer"}
-                }
-            }},
-            "climate": {"type": "list", "schema": {
-                "type": "dict",
+                    "type": "dict",
+                    "schema": {
+                        "id": {"type": "string", "required": True},
+                        "name": {"type": "string", "required": True},
+                        "room": {"type": "string", "required": True},
+                        "motion_sensor": {"type": "string"},
+                        "schedule": {"type": "string"},
+                        "motion_timeout_sec": {"type": "integer"},
+                    },
+                },
+            },
+            "climate": {
+                "type": "list",
                 "schema": {
-                    "id": {"type": "string", "required": True},
-                    "name": {"type": "string", "required": True},
-                    "room": {"type": "string", "required": True},
-                    "sensor": {"type": "string", "required": True},
-                    "target": {"type": "float"},
-                    "hysteresis": {"type": "float"},
-                    "modes": {"type": "list"}
-                }
-            }},
-            "ventilation": {"type": "list", "schema": {
-                "type": "dict",
+                    "type": "dict",
+                    "schema": {
+                        "id": {"type": "string", "required": True},
+                        "name": {"type": "string", "required": True},
+                        "room": {"type": "string", "required": True},
+                        "sensor": {"type": "string", "required": True},
+                        "target": {"type": "float"},
+                        "hysteresis": {"type": "float"},
+                        "modes": {"type": "list"},
+                    },
+                },
+            },
+            "ventilation": {
+                "type": "list",
                 "schema": {
-                    "id": {"type": "string", "required": True},
-                    "name": {"type": "string", "required": True},
-                    "room": {"type": "string", "required": True},
-                    "humidity_sensor": {"type": "string"},
-                    "humidity_threshold": {"type": "float"},
-                    "timeout_sec": {"type": "integer"}
-                }
-            }}
-        }
+                    "type": "dict",
+                    "schema": {
+                        "id": {"type": "string", "required": True},
+                        "name": {"type": "string", "required": True},
+                        "room": {"type": "string", "required": True},
+                        "humidity_sensor": {"type": "string"},
+                        "humidity_threshold": {"type": "float"},
+                        "timeout_sec": {"type": "integer"},
+                    },
+                },
+            },
+        },
     },
     "automation_rules": {
         "type": "dict",
         "schema": {
             "lighting": {"type": "dict"},
             "climate": {"type": "dict"},
-            "ventilation": {"type": "dict"}
-        }
+            "ventilation": {"type": "dict"},
+        },
     },
     "zones": {
         "type": "list",
@@ -75,9 +84,9 @@ MANIFEST_SCHEMA = {
             "schema": {
                 "id": {"type": "string", "required": True},
                 "name": {"type": "string", "required": True},
-                "floor": {"type": "integer"}
-            }
-        }
+                "floor": {"type": "integer"},
+            },
+        },
     },
     "dashboard": {
         "type": "dict",
@@ -86,9 +95,9 @@ MANIFEST_SCHEMA = {
             "show_motion_sensors": {"type": "boolean"},
             "show_climate": {"type": "boolean"},
             "show_history": {"type": "boolean"},
-            "history_days": {"type": "integer"}
-        }
-    }
+            "history_days": {"type": "integer"},
+        },
+    },
 }
 
 

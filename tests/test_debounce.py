@@ -48,14 +48,10 @@ class TestDebounceSpam:
                     from_state="OFF",
                     to_state="ON_MOTION",
                     trigger="motion_detected",
-                    action="count_transitions"
+                    action="count_transitions",
                 ),
-                Transition(
-                    from_state="ON_MOTION",
-                    to_state="OFF",
-                    trigger="motion_cleared"
-                ),
-            )
+                Transition(from_state="ON_MOTION", to_state="OFF", trigger="motion_cleared"),
+            ),
         )
 
         fsm_engine.register_definition(definition)
@@ -83,7 +79,7 @@ class TestDebounceSpam:
             transitions=(
                 Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
                 Transition(from_state="ON", to_state="OFF", trigger="turn_off"),
-            )
+            ),
         )
 
         fsm_engine.register_definition(definition)
@@ -113,13 +109,8 @@ class TestDebounceSpam:
             initial_state="OFF",
             states=("OFF", "ON"),
             transitions=(
-                Transition(
-                    from_state="OFF",
-                    to_state="ON",
-                    trigger="turn_on",
-                    guard="flaky_guard"
-                ),
-            )
+                Transition(from_state="OFF", to_state="ON", trigger="turn_on", guard="flaky_guard"),
+            ),
         )
 
         fsm_engine.register_definition(definition)
@@ -147,7 +138,7 @@ class TestDebounceFeature:
                 Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
                 Transition(from_state="ON", to_state="OFF", trigger="turn_off"),
             ),
-            debounce_sec=0.1  # 100ms debounce
+            debounce_sec=0.1,  # 100ms debounce
         )
 
         fsm_engine.register_definition(definition)
@@ -178,7 +169,7 @@ class TestDebounceFeature:
                 Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
                 Transition(from_state="ON", to_state="AUTO", trigger="auto"),
             ),
-            debounce_sec=0.0  # No debounce
+            debounce_sec=0.0,  # No debounce
         )
 
         fsm_engine.register_definition(definition)

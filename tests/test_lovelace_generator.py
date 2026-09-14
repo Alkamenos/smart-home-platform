@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from smart_home.core.models.manifest import Manifest, load_manifest
+from smart_home.core.models.manifest import load_manifest
 from smart_home.dashboard.lovelace_generator import LovelaceGenerator
 
 
@@ -147,14 +147,14 @@ class TestLovelaceGenerator:
     def test_device_control_card_exists(self, generator, test_manifest_with_behaviors):
         """Проверка, что для каждого устройства создана карточка управления."""
         result = generator.generate(test_manifest_with_behaviors)
-        
+
         # Проверяем каждую зону
         for view in result["views"]:
             if view["path"] == "kitchen":
                 # Kitchen Light должен иметь карточку управления
                 control_cards = [c for c in view["cards"] if c.get("type") == "entities"]
                 assert len(control_cards) >= 1
-        
+
         # Проверяем living_room с climate устройством
         living_room_view = next(v for v in result["views"] if v["path"] == "living_room")
         thermostat_cards = [c for c in living_room_view["cards"] if c.get("type") == "thermostat"]
@@ -163,14 +163,14 @@ class TestLovelaceGenerator:
     def test_behavior_indicators_exist(self, generator, test_manifest_with_behaviors):
         """Проверка, что для каждого behavior создан индикатор активности."""
         result = generator.generate(test_manifest_with_behaviors)
-        
+
         # Считаем количество behavior indicator карточек
         behavior_indicators = []
         for view in result["views"]:
             for card in view["cards"]:
                 if card.get("type") == "entity-button":
                     behavior_indicators.append(card)
-        
+
         # У нас 4 behavior в манифесте:
         # - Kitchen Light: motion_detection, night_mode (2)
         # - Living Room Climate: eco_mode (1)
@@ -180,7 +180,7 @@ class TestLovelaceGenerator:
     def test_behavior_indicator_has_priority(self, generator, test_manifest_with_behaviors):
         """Проверка, что индикатор поведения содержит информацию о приоритете."""
         result = generator.generate(test_manifest_with_behaviors)
-        
+
         for view in result["views"]:
             for card in view["cards"]:
                 if card.get("type") == "entity-button":
@@ -193,7 +193,7 @@ class TestLovelaceGenerator:
         yaml_output = yaml.dump(result, default_flow_style=False, allow_unicode=True)
         assert yaml_output is not None
         assert len(yaml_output) > 0
-        
+
         # Проверяем, что YAML валидный
         parsed = yaml.safe_load(yaml_output)
         assert parsed == result
@@ -201,7 +201,7 @@ class TestLovelaceGenerator:
     def test_all_devices_have_cards(self, generator, test_manifest_with_behaviors):
         """Проверка, что все устройства из манифеста имеют карточки."""
         result = generator.generate(test_manifest_with_behaviors)
-        
+
         # Собираем все названия устройств из карточек
         device_names_in_cards = set()
         for view in result["views"]:
@@ -210,7 +210,7 @@ class TestLovelaceGenerator:
                     device_names_in_cards.add(card["title"])
                 elif card.get("type") == "thermostat" and card.get("name"):
                     device_names_in_cards.add(card["name"])
-        
+
         # Проверяем, что все устройства представлены
         expected_devices = {"Kitchen Light", "Living Room Climate", "Bathroom Fan"}
         assert expected_devices.issubset(device_names_in_cards)
@@ -251,7 +251,7 @@ dashboard:
         manifest_path = tmp_path / "empty_manifest.yaml"
         manifest_path.write_text(manifest_content)
         manifest = load_manifest(str(manifest_path))
-        
+
         result = generator.generate(manifest)
         empty_view = next(v for v in result["views"] if v["path"] == "empty_room")
         # В пустой зоне должна быть markdown карточка
@@ -260,7 +260,7 @@ dashboard:
     def test_entity_id_generation(self, generator, test_manifest_with_behaviors):
         """Проверка корректной генерации entity_id."""
         result = generator.generate(test_manifest_with_behaviors)
-        
+
         # Проверяем, что entity_id имеют правильный формат
         for view in result["views"]:
             for card in view["cards"]:
@@ -268,7 +268,7 @@ dashboard:
                     for entity in card["entities"]:
                         entity_id = entity.get("entity", "")
                         assert "." in entity_id  # domain.entity_id format
-                
+
                 if card.get("type") == "thermostat":
                     entity_id = card.get("entity", "")
                     assert "." in entity_id
@@ -276,18 +276,18 @@ dashboard:
     def test_complete_dashboard_structure(self, generator, test_manifest_with_behaviors):
         """Проверка полной структуры дашборда."""
         result = generator.generate(test_manifest_with_behaviors)
-        
+
         # Проверка верхнеуровневой структуры
         assert "title" in result
         assert "views" in result
-        
+
         # Проверка структуры каждой вкладки
         for view in result["views"]:
             assert "title" in view
             assert "path" in view
             assert "cards" in view
             assert isinstance(view["cards"], list)
-            
+
             # Проверка структуры каждой карточки
             for card in view["cards"]:
                 assert "type" in card

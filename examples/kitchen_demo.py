@@ -25,7 +25,7 @@ from datetime import datetime
 from loguru import logger
 
 from smart_home.adapters.mock_adapter import MockAdapter
-from smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
+from smart_home.core.fsm import FSMDefinition, FSMEngine, State, Transition
 
 
 def setup_kitchen_automations(engine: FSMEngine, adapter: MockAdapter) -> None:
@@ -41,7 +41,9 @@ def setup_kitchen_automations(engine: FSMEngine, adapter: MockAdapter) -> None:
         now = datetime.now().timestamp()
         if now < manual_until:
             remaining = int(manual_until - now)
-            log.debug(f"🛡️ GUARD: Ручная блокировка активна (осталось {remaining}с), переход отклонен.")
+            log.debug(
+                f"🛡️ GUARD: Ручная блокировка активна (осталось {remaining}с), переход отклонен."
+            )
             return False
         return True
 
@@ -57,7 +59,8 @@ def setup_kitchen_automations(engine: FSMEngine, adapter: MockAdapter) -> None:
         now = datetime.now().timestamp()
         override_until = now + 10  # ДЕМО: 10 секунд вместо 3600 для наглядности
         log.info(
-            f"✋ MANUAL: Ручное управление. Блокировка на 10с (до {datetime.fromtimestamp(override_until).strftime('%H:%M:%S')})")
+            f"✋ MANUAL: Ручное управление. Блокировка на 10с (до {datetime.fromtimestamp(override_until).strftime('%H:%M:%S')})"
+        )
         return {"manual_override_until": override_until}
 
     def increment_motion_count(state: State, context: dict) -> dict:
@@ -146,7 +149,8 @@ async def run_demo() -> None:
     print("🏠 Smart Home FSM - Kitchen Demo (Async & Context)")
     print("=" * 70)
     print(
-        "⚠️  ПРИМЕЧАНИЕ: Таймауты в демо уменьшены (3с и 10с) для наглядности\n    асинхронных действий. В продакшене используйте 300с и 3600с.")
+        "⚠️  ПРИМЕЧАНИЕ: Таймауты в демо уменьшены (3с и 10с) для наглядности\n    асинхронных действий. В продакшене используйте 300с и 3600с."
+    )
     print("-" * 70)
 
     engine = FSMEngine()
@@ -166,7 +170,9 @@ async def run_demo() -> None:
     print("\n📍 Шаг 2: Быстрое повторное движение (через 1 сек)")
     print("   (Ожидается: игнорирование из-за debounce_sec=2.0)")
     await asyncio.sleep(1.0)
-    result = await adapter.simulate_event(kitchen_light, "motion_detected", {"trace_id": "demo-002"})
+    result = await adapter.simulate_event(
+        kitchen_light, "motion_detected", {"trace_id": "demo-002"}
+    )
     if not result:
         print("   ✅ Событие успешно заблокировано debounce!")
 
@@ -178,7 +184,9 @@ async def run_demo() -> None:
 
     # Проверяем состояние до таймаута
     state = engine.get_state(kitchen_light)
-    print(f"   ⏳ Текущее состояние: {state.current_state}, Таймеров активно: {len(engine._timers)}")
+    print(
+        f"   ⏳ Текущее состояние: {state.current_state}, Таймеров активно: {len(engine._timers)}"
+    )
 
     await asyncio.sleep(3.5)  # Даем таймеру сработать
 
@@ -193,7 +201,9 @@ async def run_demo() -> None:
 
     print("\n📍 Шаг 5: Попытка срабатывания датчика движения во время блокировки")
     await asyncio.sleep(0.5)
-    result = await adapter.simulate_event(kitchen_light, "motion_detected", {"trace_id": "demo-004"})
+    result = await adapter.simulate_event(
+        kitchen_light, "motion_detected", {"trace_id": "demo-004"}
+    )
     if not result:
         print("   ✅ Переход заблокирован guard'ом 'not_manual_override'!")
 

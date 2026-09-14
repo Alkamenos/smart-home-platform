@@ -6,11 +6,10 @@ Logger - Структурированное логирование с конте
 """
 
 from __future__ import annotations
+
 import json
-import time
 import logging
 from datetime import datetime, timezone
-
 
 # Глобальный кэш логгеров
 _loggers_cache = {}
@@ -19,33 +18,32 @@ _loggers_cache = {}
 def get_logger(component: str = "platform") -> logging.Logger:
     """
     Получить инстанс логгера для компонента
-    
+
     Args:
         component: Название компонента
-        
+
     Returns:
         logging.Logger: Настроенный логгер
     """
     if component in _loggers_cache:
         return _loggers_cache[component]
-    
+
     # Создаем логгер
     logger = logging.getLogger(f"platform_v3.{component}")
     logger.setLevel(logging.DEBUG)
-    
+
     # Если еще нет handlers, добавляем
     if not logger.handlers:
         handler = logging.StreamHandler()
         handler.setLevel(logging.DEBUG)
-        
+
         # Формат с компонентом
         formatter = logging.Formatter(
-            '%(asctime)s [%(name)s] %(levelname)s: %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            "%(asctime)s [%(name)s] %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-    
+
     _loggers_cache[component] = logger
     return logger
 

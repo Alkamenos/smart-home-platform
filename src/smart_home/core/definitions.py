@@ -7,7 +7,7 @@ that define finite state machines for smart home automation.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -28,9 +28,9 @@ class YAMLTransition(BaseModel):
     from_state: str = Field(..., description="Исходное состояние")
     to_state: str = Field(..., description="Целевое состояние")
     trigger: str = Field(..., description="Событие триггера")
-    guard: Optional[str] = Field(None, description="Имя функции guard для проверки условия")
-    action: Optional[str] = Field(None, description="Имя функции action для выполнения")
-    timeout_sec: Optional[float] = Field(None, ge=0, description="Таймаут в секундах")
+    guard: str | None = Field(None, description="Имя функции guard для проверки условия")
+    action: str | None = Field(None, description="Имя функции action для выполнения")
+    timeout_sec: float | None = Field(None, ge=0, description="Таймаут в секундах")
 
     class Config:
         extra = "forbid"
@@ -55,8 +55,12 @@ class YAMLFSMDefinition(BaseModel):
     states: list[str] = Field(..., min_length=1, description="Список допустимых состояний")
     transitions: list[YAMLTransition] = Field(..., min_length=1, description="Список переходов")
     debounce_sec: float = Field(0.0, ge=0, description="Защита от дребезга в секундах")
-    params: dict[str, Any] = Field(default_factory=dict, description="Параметры поведения из BehaviorConfig")
-    target_device_id: Optional[str] = Field(None, description="ID целевого устройства для управления")
+    params: dict[str, Any] = Field(
+        default_factory=dict, description="Параметры поведения из BehaviorConfig"
+    )
+    target_device_id: str | None = Field(
+        None, description="ID целевого устройства для управления"
+    )
 
     class Config:
         extra = "forbid"

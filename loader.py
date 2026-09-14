@@ -222,13 +222,6 @@ Platform V3 - Инициализация
 Этот скрипт запускается при старте PyScript и инициализирует платформу.
 """
 
-import sys
-from pathlib import Path
-
-# Добавляем platform_v3 в path
-platform_dir = Path(__file__).parent / "platform_v3"
-sys.path.insert(0, str(platform_dir))
-
 # Импортируем компоненты
 from smart_home.core.fsm import FSMEngine
 from smart_home.core.event_bus import EventBus

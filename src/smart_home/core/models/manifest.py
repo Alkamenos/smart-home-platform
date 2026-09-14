@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -12,15 +12,18 @@ from pydantic import BaseModel, Field
 
 class BehaviorConfig(BaseModel):
     """Конфигурация поведения устройства.
-    
+
     Attributes:
         template: Имя YAML-файла шаблона из features/.
         priority: Приоритет поведения (чем меньше число, тем выше приоритет).
         params: Опциональные параметры для настройки поведения.
     """
+
     template: str = Field(..., description="Имя YAML-файла шаблона из features/")
     priority: int = Field(..., ge=0, description="Приоритет поведения (меньше = выше приоритет)")
-    params: dict[str, Any] = Field(default_factory=dict, description="Опциональные параметры поведения")
+    params: dict[str, Any] = Field(
+        default_factory=dict, description="Опциональные параметры поведения"
+    )
 
 
 class DeviceBase(BaseModel):
@@ -29,7 +32,9 @@ class DeviceBase(BaseModel):
     id: str
     name: str
     room: str
-    behaviors: list[BehaviorConfig] = Field(default_factory=list, description="Список поведений устройства")
+    behaviors: list[BehaviorConfig] = Field(
+        default_factory=list, description="Список поведений устройства"
+    )
 
 
 class LightMotionDevice(DeviceBase):
@@ -51,7 +56,7 @@ class VentilationHumidityDevice(DeviceBase):
 
 
 AnyDevice = Annotated[
-    Union[LightMotionDevice, ClimateHysteresisDevice, VentilationHumidityDevice],
+    LightMotionDevice | ClimateHysteresisDevice | VentilationHumidityDevice,
     Field(discriminator="type"),
 ]
 
@@ -95,7 +100,7 @@ class AutomationRules(BaseModel):
     ventilation: VentilationAutomation
     global_manual_lockout_min: int = Field(
         default=0,
-        description="Глобальное время блокировки автоматизации после ручного управления (минуты). 0 = отключено"
+        description="Глобальное время блокировки автоматизации после ручного управления (минуты). 0 = отключено",
     )
 
 
@@ -120,11 +125,11 @@ class InstanceInfo(BaseModel):
 
 class PersistenceConfig(BaseModel):
     """Configuration for state persistence."""
-    
+
     enabled: bool = Field(default=True, description="Enable state persistence")
     storage_path: str = Field(
         default="/config/smart_home/state.json",
-        description="Path to the JSON file for storing states"
+        description="Path to the JSON file for storing states",
     )
 
 
@@ -138,8 +143,7 @@ class Manifest(BaseModel):
     automation_rules: AutomationRules
     dashboard: Dashboard
     persistence: PersistenceConfig = Field(
-        default_factory=PersistenceConfig,
-        description="Configuration for state persistence"
+        default_factory=PersistenceConfig, description="Configuration for state persistence"
     )
 
 
@@ -164,7 +168,7 @@ def load_manifest(path: str) -> Manifest:
     if not yaml_path.exists():
         raise FileNotFoundError(f"Manifest file not found: {path}")
 
-    with open(yaml_path, "r", encoding="utf-8") as f:
+    with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     try:

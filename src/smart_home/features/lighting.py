@@ -5,8 +5,8 @@ This module defines action handlers and FSM definitions for the lighting feature
 It is used by tests and CLI tools to create lighting automations.
 """
 
-from smart_home.core.fsm import FSMDefinition, Transition
 from smart_home.core.command_dispatcher import CommandIntent
+from smart_home.core.fsm import FSMDefinition, Transition
 
 
 async def turn_on_light(state, context: dict):
@@ -64,18 +64,18 @@ async def turn_off_night_light(state, context: dict):
 def create_lighting_automations(rooms: list[str]) -> list[FSMDefinition]:
     """
     Create lighting FSM definitions for given rooms.
-    
+
     Args:
         rooms: List of room IDs (e.g., ["living_room", "kitchen"])
-    
+
     Returns:
         List of FSMDefinition objects for each room's light
     """
     definitions = []
-    
+
     for room in rooms:
         entity_id = f"light.{room}"
-        
+
         transitions = (
             Transition(
                 from_state="OFF",
@@ -105,7 +105,7 @@ def create_lighting_automations(rooms: list[str]) -> list[FSMDefinition]:
                 timeout_sec=60.0,
             ),
         )
-        
+
         fsm_def = FSMDefinition(
             entity_id=entity_id,
             initial_state="OFF",
@@ -114,5 +114,5 @@ def create_lighting_automations(rooms: list[str]) -> list[FSMDefinition]:
             debounce_sec=0.5,
         )
         definitions.append(fsm_def)
-    
+
     return definitions

@@ -24,14 +24,14 @@ from typing import Any
 
 from loguru import logger
 
+from smart_home.adapters.ha_adapter import HAAdapter
+from smart_home.core.event_router import EventRouter
+
 # Import core components
 from smart_home.core.fsm import FSMEngine
-from smart_home.core.registry import Registry
-from smart_home.core.event_bus import EventBus
-from smart_home.core.event_router import EventRouter
 from smart_home.core.fsm_factory import FSMFactory
-from smart_home.core.models.manifest import load_manifest, Manifest
-from smart_home.adapters.ha_adapter import HAAdapter
+from smart_home.core.models.manifest import Manifest, load_manifest
+from smart_home.core.registry import Registry
 
 
 class MockHass:
@@ -96,11 +96,11 @@ async def setup_full_house_demo() -> tuple[FSMEngine, HAAdapter, EventRouter, Ma
     event_bus = MockEventBus()
 
     # Register standard guards and actions from features
-    from features.lighting import (
-        turn_on_light,
+    from smart_home.features.lighting import (
         turn_off_light,
-        turn_on_night_light,
         turn_off_night_light,
+        turn_on_light,
+        turn_on_night_light,
     )
 
     registry.register_guard("is_night_time", lambda state, ctx: False)  # Simple mock

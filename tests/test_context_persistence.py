@@ -4,21 +4,24 @@
 Проверяет, что данные в state.context не теряются при переходах между состояниями.
 """
 
-import pytest
-from datetime import datetime
-from freezegun import freeze_time
-from unittest.mock import patch
 import time
+from datetime import datetime
+from unittest.mock import patch
 
-from smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
+import pytest
+from freezegun import freeze_time
+
+from smart_home.core.fsm import FSMDefinition, FSMEngine, State, Transition
 
 
 @pytest.fixture(autouse=True)
 def freeze_asyncio_time():
     import asyncio
+
     real_get_event_loop = asyncio.get_event_loop
 
     with patch("src.smart_home.core.fsm.asyncio.get_event_loop") as mock_get_loop:
+
         def side_effect():
             loop = real_get_event_loop()
             loop.time = time.time
@@ -63,10 +66,16 @@ async def test_context_persists_across_transitions():
         states=("state_a", "state_b", "state_c"),
         debounce_sec=0.0,
         transitions=(
-            Transition(from_state="state_a", trigger="next", to_state="state_b", action="add_counter"),
-            Transition(from_state="state_b", trigger="next", to_state="state_c", action="add_timestamp"),
-            Transition(from_state="state_c", trigger="next", to_state="state_a", action="preserve_context"),
-        )
+            Transition(
+                from_state="state_a", trigger="next", to_state="state_b", action="add_counter"
+            ),
+            Transition(
+                from_state="state_b", trigger="next", to_state="state_c", action="add_timestamp"
+            ),
+            Transition(
+                from_state="state_c", trigger="next", to_state="state_a", action="preserve_context"
+            ),
+        ),
     )
     engine.register_definition(definition)
 
@@ -89,8 +98,9 @@ async def test_context_persists_across_transitions():
         await engine.trigger(entity_id, "next", trace_id="ctx-003")
         state = engine.get_state(entity_id)
         assert state.context.get("counter") == 1, "Counter должен сохраниться"
-        assert state.context.get("last_action") == datetime(2026, 9, 9, 12, 0,
-                                                            1).timestamp(), "last_action должен сохраниться"
+        assert (
+            state.context.get("last_action") == datetime(2026, 9, 9, 12, 0, 1).timestamp()
+        ), "last_action должен сохраниться"
 
 
 @pytest.mark.asyncio
@@ -111,7 +121,7 @@ async def test_context_accumulation():
         transitions=(
             Transition(from_state="off", trigger="toggle", to_state="on", action="add_counter"),
             Transition(from_state="on", trigger="toggle", to_state="off", action="add_counter"),
-        )
+        ),
     )
     engine.register_definition(definition)
 

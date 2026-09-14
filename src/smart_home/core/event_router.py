@@ -8,13 +8,13 @@ sensor devices and automation behaviors.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any
 
 from loguru import logger
 
 from .fsm import FSMEngine
-from .models.manifest import Manifest, LightMotionDevice
+from .models.manifest import LightMotionDevice, Manifest
 
 
 @dataclass
@@ -50,7 +50,7 @@ class EventRouter:
         """
         self._manifest = manifest
         self._engine = engine
-        self._sensor_to_fsms: Dict[str, List[Tuple[str, str]]] = {}
+        self._sensor_to_fsms: dict[str, list[tuple[str, str]]] = {}
         self._build_mapping()
 
     def _build_mapping(self) -> None:
@@ -97,18 +97,19 @@ class EventRouter:
 
             # Special handling for light_motion device type
             # Map the device itself to manual switch events
-            if isinstance(device, LightMotionDevice) or getattr(device, "type", None) == "light_motion":
+            if (
+                isinstance(device, LightMotionDevice)
+                or getattr(device, "type", None) == "light_motion"
+            ):
                 device_id = device.id
                 # For each FSM associated with this device, add manual switch mappings
                 for fsm_entity_id in fsm_entity_ids:
                     self._add_mapping(device_id, fsm_entity_id, "manual_switch_on")
                     self._add_mapping(device_id, fsm_entity_id, "manual_switch_off")
 
-        logger.info(
-            f"EventRouter built mapping for {len(self._sensor_to_fsms)} sensors"
-        )
+        logger.info(f"EventRouter built mapping for {len(self._sensor_to_fsms)} sensors")
 
-    def _get_fsm_entity_ids_for_device(self, device_id: str) -> List[str]:
+    def _get_fsm_entity_ids_for_device(self, device_id: str) -> list[str]:
         """
         Get all FSM entity IDs registered for a given device.
 
@@ -124,9 +125,7 @@ class EventRouter:
                 fsm_ids.append(registered_id)
         return fsm_ids
 
-    def _add_mapping(
-        self, sensor_id: str, fsm_entity_id: str, event_name: str
-    ) -> None:
+    def _add_mapping(self, sensor_id: str, fsm_entity_id: str, event_name: str) -> None:
         """
         Add a mapping entry from sensor to FSM.
 
@@ -147,7 +146,7 @@ class EventRouter:
         entity_id: str,
         new_state: str,
         old_state: str,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         """
         Route a state change event to all registered FSMs.
@@ -174,15 +173,11 @@ class EventRouter:
         for fsm_entity_id, event_name in mappings:
             # Filter events based on state for motion sensors
             if event_name == "motion_detected" and new_state != "on":
-                logger.debug(
-                    f"Skipping motion_detected for {entity_id}: new_state={new_state}"
-                )
+                logger.debug(f"Skipping motion_detected for {entity_id}: new_state={new_state}")
                 continue
 
             if event_name == "motion_cleared" and new_state != "off":
-                logger.debug(
-                    f"Skipping motion_cleared for {entity_id}: new_state={new_state}"
-                )
+                logger.debug(f"Skipping motion_cleared for {entity_id}: new_state={new_state}")
                 continue
 
             # Trigger the FSM with the event
@@ -204,7 +199,7 @@ class EventRouter:
                 external_ctx=external_ctx,
             )
 
-    def get_mapping_for_sensor(self, sensor_id: str) -> List[Tuple[str, str]]:
+    def get_mapping_for_sensor(self, sensor_id: str) -> list[tuple[str, str]]:
         """
         Get the FSM mappings for a specific sensor.
 

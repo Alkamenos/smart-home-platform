@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from smart_home.core.models.manifest import Manifest, Zone, AnyDevice, BehaviorConfig
+from smart_home.core.models.manifest import AnyDevice, BehaviorConfig, Manifest, Zone
 
 
 class LovelaceGenerator:
@@ -60,10 +60,7 @@ class LovelaceGenerator:
 
         # Если нет устройств, добавим пустую карточку
         if not cards:
-            cards.append({
-                "type": "markdown",
-                "content": f"В зоне '{zone.name}' нет устройств."
-            })
+            cards.append({"type": "markdown", "content": f"В зоне '{zone.name}' нет устройств."})
 
         return {
             "title": zone.name,
@@ -190,10 +187,6 @@ class LovelaceGenerator:
             "entity": sensor_entity_id,
             "name": f"{behavior_name} (приоритет {behavior.priority})",
             "icon": "mdi:automation",
-            "tap_action": {
-                "action": "more-info"
-            },
-            "hold_action": {
-                "action": "none"
-            },
+            "tap_action": {"action": "more-info"},
+            "hold_action": {"action": "none"},
         }

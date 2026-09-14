@@ -9,12 +9,13 @@
 """
 
 import time
-import pytest
 from datetime import datetime
-from freezegun import freeze_time
 from unittest.mock import patch
 
-from smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
+import pytest
+from freezegun import freeze_time
+
+from smart_home.core.fsm import FSMDefinition, FSMEngine, State, Transition
 
 
 # ============================================================================
@@ -27,9 +28,11 @@ def freeze_asyncio_time():
     который корректно мокается freezegun.
     """
     import asyncio
+
     real_get_event_loop = asyncio.get_event_loop
 
     with patch("src.smart_home.core.fsm.asyncio.get_event_loop") as mock_get_loop:
+
         def side_effect():
             loop = real_get_event_loop()
             # Подменяем метод time() на стандартный time.time()
@@ -46,13 +49,16 @@ def freeze_asyncio_time():
 def turn_on_light(state: State, context: dict) -> dict:
     return {}
 
+
 def turn_off_light(state: State, context: dict) -> dict:
     return {}
+
 
 def set_manual_override(state: State, context: dict) -> dict:
     """Устанавливает блокировку на 60 минут (3600 сек)."""
     now = datetime.now().timestamp()
     return {"manual_override_until": now + 3600}
+
 
 def is_not_manual_override(state: State, context: dict) -> bool:
     """Guard: Разрешает переход только если ручная блокировка истекла."""
@@ -116,7 +122,7 @@ async def test_manual_override_blocks_automation_and_cancels_timers():
                 to_state="off",
                 action="turn_off_light",
             ),
-        )
+        ),
     )
     engine.register_definition(definition)
 
@@ -145,7 +151,7 @@ async def test_manual_override_blocks_automation_and_cancels_timers():
         assert state.current_state == "on_manual"
 
         # КРИТИЧЕСКИ ВАЖНО: Проверяем, что контекст обновился
-        expected_until = datetime(2026, 9, 9, 13, 1, 0).timestamp() # 12:01 + 3600 сек
+        expected_until = datetime(2026, 9, 9, 13, 1, 0).timestamp()  # 12:01 + 3600 сек
         assert state.context.get("manual_override_until") == expected_until
 
         # КРИТИЧЕСКИ ВАЖНО: Проверяем, что старый таймер движения был ОТМЕНЕН

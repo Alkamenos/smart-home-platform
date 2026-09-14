@@ -8,12 +8,13 @@ Tests for Manifest Schema and Validator
 - Ссылочная целостность проверяется
 """
 
-import pytest
-import yaml
 from pathlib import Path
 
+import pytest
+import yaml
+
 from smart_home.core.manifest_schema import MANIFEST_SCHEMA, get_schema
-from smart_home.core.manifest_validator import ManifestValidator, ValidationError, validate_manifest
+from smart_home.core.manifest_validator import ManifestValidator, validate_manifest
 
 
 # Фикстуры
@@ -22,11 +23,7 @@ def valid_manifest():
     """Валидный манифест для тестов"""
     return {
         "version": 1,
-        "instance": {
-            "id": "test_house",
-            "name": "Test House",
-            "owner": "Test Owner"
-        },
+        "instance": {"id": "test_house", "name": "Test House", "owner": "Test Owner"},
         "devices": {
             "lighting": [
                 {
@@ -35,7 +32,7 @@ def valid_manifest():
                     "room": "kitchen",
                     "motion_sensor": "binary_sensor.kitchen_motion",
                     "schedule": "07:00-23:00",
-                    "motion_timeout_sec": 300
+                    "motion_timeout_sec": 300,
                 }
             ],
             "climate": [
@@ -45,7 +42,7 @@ def valid_manifest():
                     "room": "living_room",
                     "sensor": "sensor.living_room_temperature",
                     "target": 22.0,
-                    "hysteresis": 0.5
+                    "hysteresis": 0.5,
                 }
             ],
             "ventilation": [
@@ -55,22 +52,20 @@ def valid_manifest():
                     "room": "bathroom",
                     "humidity_sensor": "sensor.bathroom_humidity",
                     "humidity_threshold": 65,
-                    "timeout_sec": 1800
+                    "timeout_sec": 1800,
                 }
-            ]
+            ],
         },
         "zones": [
             {"id": "kitchen", "name": "Kitchen", "floor": 1},
             {"id": "living_room", "name": "Living Room", "floor": 1},
-            {"id": "bathroom", "name": "Bathroom", "floor": 1}
+            {"id": "bathroom", "name": "Bathroom", "floor": 1},
         ],
         "automation_rules": {
             "lighting": {"manual_lockout_min": 60},
-            "climate": {"manual_lockout_min": 30}
+            "climate": {"manual_lockout_min": 30},
         },
-        "dashboard": {
-            "title": "Test House"
-        }
+        "dashboard": {"title": "Test House"},
     }
 
 
@@ -180,7 +175,7 @@ class TestManifestValidator:
         """Пустой файл → ошибка"""
         errors = validator.validate(None)
         assert len(errors) > 0
-        
+
         errors = validator.validate({})
         assert len(errors) > 0
 
@@ -205,14 +200,15 @@ class TestManifestFileLoading:
         """Валидный манифест читается из YAML"""
         # Создаём временный файл
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(valid_manifest, f)
             temp_path = f.name
 
         try:
-            with open(temp_path, 'r', encoding='utf-8') as f:
+            with open(temp_path, encoding="utf-8") as f:
                 loaded = yaml.safe_load(f)
-            
+
             assert loaded["version"] == 1
             assert loaded["instance"]["id"] == "test_house"
             assert len(loaded["devices"]["lighting"]) == 1
@@ -247,10 +243,9 @@ class TestManifestCLI:
         """CLI команда работает (базовая проверка)"""
         import subprocess
         import tempfile
-        import os
 
         # Создаём временный файл с манифестом
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(valid_manifest, f)
             temp_path = f.name
 
@@ -260,9 +255,9 @@ class TestManifestCLI:
                 ["python", "cli.py", "manifest", "validate", "--file", temp_path],
                 capture_output=True,
                 text=True,
-                cwd="/workspace"
+                cwd="/workspace",
             )
-            
+
             # Команда должна выполниться (код может быть 0 или 1 в зависимости от реализации)
             # Главное что не упала с исключением
             assert result.returncode in (0, 1, 2)

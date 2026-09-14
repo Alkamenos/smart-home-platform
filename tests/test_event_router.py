@@ -7,30 +7,29 @@ Tests verify that:
 3. Unknown sensor_id does not cause errors
 """
 
-import asyncio
-import pytest
-from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import AsyncMock, MagicMock, Mock
+import os
 
 # Add parent directory to path
 import sys
-import os
+from typing import Any
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from smart_home.core.event_router import EventRouter
-from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.fsm import FSMDefinition
 from smart_home.core.models.manifest import (
-    Manifest,
-    LightMotionDevice,
-    BehaviorConfig,
-    InstanceInfo,
-    Zone,
-    LightingAutomation,
-    ClimateAutomation,
-    VentilationAutomation,
     AutomationRules,
+    BehaviorConfig,
+    ClimateAutomation,
     Dashboard,
+    InstanceInfo,
+    LightingAutomation,
+    LightMotionDevice,
+    Manifest,
+    VentilationAutomation,
+    Zone,
 )
 
 
@@ -38,8 +37,8 @@ class MockFSMEngine:
     """Mock FSMEngine for testing EventRouter."""
 
     def __init__(self) -> None:
-        self._definitions: Dict[str, FSMDefinition] = {}
-        self.trigger_calls: List[Tuple[str, str, Dict[str, Any]]] = []
+        self._definitions: dict[str, FSMDefinition] = {}
+        self.trigger_calls: list[tuple[str, str, dict[str, Any]]] = []
 
     def register_definition(self, definition: FSMDefinition) -> None:
         """Register an FSM definition."""
@@ -49,8 +48,8 @@ class MockFSMEngine:
         self,
         entity_id: str,
         event: str,
-        external_ctx: Optional[Dict[str, Any]] = None,
-        trace_id: Optional[str] = None,
+        external_ctx: dict[str, Any] | None = None,
+        trace_id: str | None = None,
     ) -> bool:
         """Mock trigger that records calls."""
         self.trigger_calls.append((entity_id, event, external_ctx or {}))

@@ -8,7 +8,6 @@ recently manually controlled a device through Home Assistant UI.
 from __future__ import annotations
 
 import time
-from typing import Dict, Optional
 
 from loguru import logger
 
@@ -37,9 +36,9 @@ class ManualOverrideMiddleware:
                             Default is 3600 seconds (1 hour).
         """
         self.lockout_seconds = lockout_seconds
-        self._manual_overrides: Dict[str, float] = {}  # entity_id -> timestamp
+        self._manual_overrides: dict[str, float] = {}  # entity_id -> timestamp
 
-    async def process(self, intent: CommandIntent) -> Optional[CommandIntent]:
+    async def process(self, intent: CommandIntent) -> CommandIntent | None:
         """
         Process a command intent, blocking automation during manual override.
 
@@ -60,9 +59,7 @@ class ManualOverrideMiddleware:
         if last_manual and (time.time() - last_manual) < self.lockout_seconds:
             # Block automated commands during lockout
             if intent.source.lower() not in ("manual", "user"):
-                logger.info(
-                    f"Blocked {intent.source} for {entity_id}: manual override active"
-                )
+                logger.info(f"Blocked {intent.source} for {entity_id}: manual override active")
                 return None  # Block the command
 
         return intent  # Allow the command
