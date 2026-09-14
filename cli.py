@@ -24,13 +24,13 @@ from pathlib import Path
 # Добавляем platform_v3 в path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.fsm import FSMEngine
-from core.event_bus import EventBus
-from core.logger import Logger
-from core.registry import Registry
-from adapters.mock_adapter import MockAdapter
-from adapters.ha_adapter import HomeAssistantAdapter
-from features.lighting import create_lighting_automations
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.event_bus import EventBus
+from smart_home.core.logger import Logger
+from smart_home.core.registry import Registry
+from smart_home.adapters.mock_adapter import MockAdapter
+from smart_home.adapters.ha_adapter import HomeAssistantAdapter
+from smart_home.features.lighting import create_lighting_automations
 
 # Импорт bootstrap для инициализации платформы
 from src.smart_home.bootstrap import bootstrap_platform, PlatformContext
@@ -903,7 +903,7 @@ def cmd_manifest_validate(args):
         print(f"❌ Ошибка парсинга YAML: {e}")
         sys.exit(1)
     
-    from core.manifest_validator import ManifestValidator
+    from smart_home.core.manifest_validator import ManifestValidator
     validator = ManifestValidator()
     errors = validator.validate(manifest)
     
@@ -984,8 +984,8 @@ def cmd_manifest_generate(args):
         print(f"❌ Ошибка парсинга YAML: {e}")
         sys.exit(1)
     
-    from core.manifest_validator import ManifestValidator
-    from core.manifest_generator import ManifestAutomationGenerator
+    from smart_home.core.manifest_validator import ManifestValidator
+    from smart_home.core.manifest_generator import ManifestAutomationGenerator
     
     # Валидация
     validator = ManifestValidator()
@@ -1090,7 +1090,7 @@ def cmd_manifest_migrate(args):
     }
     
     # Валидация перед сохранением
-    from core.manifest_validator import ManifestValidator
+    from smart_home.core.manifest_validator import ManifestValidator
     validator = ManifestValidator()
     errors = validator.validate(manifest)
     
@@ -1131,10 +1131,10 @@ def cmd_health_automations(args):
         return
     
     # Создаём временный FSM для проверки
-    from core.fsm import FSMEngine
-    from core.event_bus import EventBus
-    from core.logger import Logger
-    from core.manifest_generator import ManifestAutomationGenerator
+    from smart_home.core.fsm import FSMEngine
+    from smart_home.core.event_bus import EventBus
+    from smart_home.core.logger import Logger
+    from smart_home.core.manifest_generator import ManifestAutomationGenerator
     
     event_bus = EventBus()
     logger = Logger(component="health", quiet=True)
@@ -1422,8 +1422,8 @@ def cmd_doctor(args):
     print("Проверяю подключения...", end=" ")
     checks_total += 1
     try:
-        from adapters.ha_adapter import HomeAssistantAdapter
-        from adapters.mock_adapter import MockAdapter
+        from smart_home.adapters.ha_adapter import HomeAssistantAdapter
+        from smart_home.adapters.mock_adapter import MockAdapter
         
         # Mock адаптер всегда доступен
         mock = MockAdapter()

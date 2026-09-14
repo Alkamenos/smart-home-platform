@@ -22,7 +22,7 @@ from smart_home.core.logger import get_logger
 if TYPE_CHECKING:
     from smart_home.core.fsm import FSMEngine
     from smart_home.core.registry import Registry
-    from adapters.ha_adapter import HomeAssistantAdapter
+    from smart_home.adapters.ha_adapter import HomeAssistantAdapter
 
 logger = get_logger(__name__)
 
