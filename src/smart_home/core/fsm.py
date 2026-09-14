@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -30,6 +31,7 @@ class State:
         entered_at: Unix timestamp when this state was entered.
         context: Dictionary for internal memory (e.g., last manual intervention time).
     """
+
     current_state: str
     entered_at: float
     context: dict[str, Any] = field(default_factory=dict)
@@ -49,12 +51,13 @@ class Transition:
             Actions now return CommandIntent (or None) instead of calling HA directly.
         timeout_sec: Optional timeout in seconds to auto-trigger 'timeout' event.
     """
+
     from_state: str
     to_state: str
     trigger: str
-    guard: Optional[Callable[..., bool]] = None
-    action: Optional[Callable[..., Optional["CommandIntent"]]] = None
-    timeout_sec: Optional[float] = None
+    guard: Callable[..., bool] | None = None
+    action: Callable[..., CommandIntent | None] | None = None
+    timeout_sec: float | None = None
 
 
 @dataclass(frozen=True)
@@ -71,13 +74,14 @@ class FSMDefinition:
         params: Optional parameters from BehaviorConfig for template injection.
         target_device_id: Original device ID for routing events to the correct device.
     """
+
     entity_id: str
     initial_state: str
     states: tuple[str, ...]
     transitions: tuple[Transition, ...]
     debounce_sec: float = 0.0
     params: dict[str, Any] = field(default_factory=dict)
-    target_device_id: Optional[str] = None
+    target_device_id: str | None = None
 
 
 class FSMEngine:
@@ -94,8 +98,8 @@ class FSMEngine:
 
     def __init__(
         self,
-        command_dispatcher: Optional["CommandDispatcher"] = None,
-        persistence: Optional["StatePersistence"] = None,
+        command_dispatcher: CommandDispatcher | None = None,
+        persistence: StatePersistence | None = None,
     ) -> None:
         self._states: dict[str, State] = {}
         self._definitions: dict[str, FSMDefinition] = {}
@@ -106,22 +110,20 @@ class FSMEngine:
         self._dispatcher = command_dispatcher
         self._persistence = persistence
 
-    def register_definition(
-        self, definition: FSMDefinition, restore_state: bool = True
-    ) -> None:
+    def register_definition(self, definition: FSMDefinition, restore_state: bool = True) -> None:
         """Register an FSM definition for an entity.
-        
+
         Args:
             definition: The FSM definition to register.
             restore_state: If True, attempt to restore saved state from persistence.
         """
         self._definitions[definition.entity_id] = definition
-        
+
         # Check if we have a persisted state to restore
-        restored_state: Optional[Tuple[str, dict]] = None
+        restored_state: Tuple[str, dict] | None = None
         if restore_state and self._persistence is not None:
             restored_state = self._persistence.load_state(definition.entity_id)
-        
+
         if restored_state is not None:
             saved_state, saved_context = restored_state
             # Validate that the saved state is valid for this FSM
@@ -129,7 +131,7 @@ class FSMEngine:
                 self._states[definition.entity_id] = State(
                     current_state=saved_state,
                     entered_at=asyncio.get_event_loop().time(),
-                    context=saved_context
+                    context=saved_context,
                 )
                 logger.info(
                     f"Registered FSM for entity {definition.entity_id} with restored state '{saved_state}'"
@@ -142,7 +144,7 @@ class FSMEngine:
                 self._states[definition.entity_id] = State(
                     current_state=definition.initial_state,
                     entered_at=asyncio.get_event_loop().time(),
-                    context={}
+                    context={},
                 )
         elif definition.entity_id not in self._states:
             try:
@@ -152,9 +154,7 @@ class FSMEngine:
                 # No event loop in current thread (e.g., during sync test setup)
                 entered_at = 0.0
             self._states[definition.entity_id] = State(
-                current_state=definition.initial_state,
-                entered_at=entered_at,
-                context={}
+                current_state=definition.initial_state, entered_at=entered_at, context={}
             )
             logger.debug(
                 f"Registered FSM for entity {definition.entity_id} with initial state '{definition.initial_state}'"
@@ -170,7 +170,7 @@ class FSMEngine:
         self._actions[name] = action_fn
         logger.debug(f"Registered action '{name}'")
 
-    def get_state(self, entity_id: str) -> Optional[State]:
+    def get_state(self, entity_id: str) -> State | None:
         """Get the current state of an entity."""
         return self._states.get(entity_id)
 
@@ -180,16 +180,14 @@ class FSMEngine:
 
     def reset_state(self, entity_id: str, state: str) -> None:
         """Reset the state of an entity to a specific state.
-        
+
         Args:
             entity_id: ID of the entity to reset.
             state: The state to reset to.
         """
         if entity_id in self._states:
             self._states[entity_id] = State(
-                current_state=state,
-                entered_at=asyncio.get_event_loop().time(),
-                context={}
+                current_state=state, entered_at=asyncio.get_event_loop().time(), context={}
             )
             logger.debug(f"Reset state for entity {entity_id} to '{state}'")
 
@@ -213,8 +211,13 @@ class FSMEngine:
             del self._timers[entity_id]
             log.debug(f"Cancelled timers for entity {entity_id}")
 
-    def _evaluate_guard(self, guard: str | Callable[..., bool] | None, entity_id: str, context: dict[str, Any],
-                        log: Any | None = None) -> bool:
+    def _evaluate_guard(
+        self,
+        guard: str | Callable[..., bool] | None,
+        entity_id: str,
+        context: dict[str, Any],
+        log: Any | None = None,
+    ) -> bool:
         """Evaluate a guard condition. Passes both State and external context."""
         if log is None:
             log = logger
@@ -239,10 +242,15 @@ class FSMEngine:
             log.error(f"Guard '{name}' raised exception: {e}, denying transition")
             return False
 
-    async def _execute_action(self, action: str | Callable[..., Any] | None, entity_id: str,
-                              context: dict[str, Any], log: Any | None = None) -> dict[str, Any]:
+    async def _execute_action(
+        self,
+        action: str | Callable[..., Any] | None,
+        entity_id: str,
+        context: dict[str, Any],
+        log: Any | None = None,
+    ) -> dict[str, Any]:
         """Execute an action. Returns a context patch to update the State immutably.
-        
+
         If the action returns a CommandIntent and a dispatcher is available,
         the intent is submitted to the dispatcher for execution.
         """
@@ -261,7 +269,7 @@ class FSMEngine:
         try:
             # enrich context with target_device_id and params from FSM definition
             enriched_context = self._enrich_context_for_action(entity_id, context)
-            
+
             # ПЕРЕДАЕМ ОБА АРГУМЕНТА: state и enriched_context
             result = action_fn(state, enriched_context)
             if asyncio.iscoroutine(result):
@@ -269,6 +277,7 @@ class FSMEngine:
 
             # Если action возвращает CommandIntent и есть dispatcher - отправляем его
             from .command_dispatcher import CommandIntent
+
             if isinstance(result, CommandIntent):
                 if self._dispatcher is not None:
                     log.debug(f"Submitting CommandIntent to dispatcher: {result}")
@@ -277,7 +286,7 @@ class FSMEngine:
                     log.warning(f"No dispatcher available, skipping CommandIntent: {result}")
                 # Возвращаем пустой патч контекста, т.к. команда отправлена (или пропущена)
                 return {}
-            
+
             # Если action возвращает dict, считаем это патчем для обновления контекста
             # (для обратной совместимости)
             context_patch = result if isinstance(result, dict) else {}
@@ -292,20 +301,20 @@ class FSMEngine:
 
     def _enrich_context_for_action(self, entity_id: str, context: dict[str, Any]) -> dict[str, Any]:
         """Enrich context with target_device_id and params from FSM definition.
-        
+
         This ensures action handlers receive the real device ID (e.g., light.kitchen)
         instead of the internal FSM entity_id (e.g., light.kitchen__night_light_20).
         Also adds dispatcher to context so actions can call release().
-        
+
         Args:
             entity_id: The internal FSM entity_id.
             context: The original context dictionary.
-            
+
         Returns:
             dict: Enriched context with target_device_id, params, and dispatcher.
         """
         enriched = {**context}
-        
+
         definition = self._definitions.get(entity_id)
         if definition is not None:
             # Add target_device_id as entity_id for action handlers
@@ -315,15 +324,20 @@ class FSMEngine:
             # Add params from FSM definition
             if definition.params:
                 enriched["params"] = definition.params
-        
+
         # Add dispatcher to context so actions can call release()
         if self._dispatcher is not None:
             enriched["dispatcher"] = self._dispatcher
-        
+
         return enriched
 
-    async def trigger(self, entity_id: str, event: str, external_ctx: Optional[dict[str, Any]] = None,
-                      trace_id: str | None = None) -> bool:
+    async def trigger(
+        self,
+        entity_id: str,
+        event: str,
+        external_ctx: dict[str, Any] | None = None,
+        trace_id: str | None = None,
+    ) -> bool:
         """
         Trigger an event for an entity's FSM.
 
@@ -372,13 +386,15 @@ class FSMEngine:
 
         # Find matching transitions
         matching_transitions = [
-            t for t in definition.transitions
+            t
+            for t in definition.transitions
             if t.from_state == current_state.current_state and t.trigger == event
         ]
 
         if not matching_transitions:
             log.debug(
-                f"Entity {entity_id}: No transitions for event '{event}' from state '{current_state.current_state}'")
+                f"Entity {entity_id}: No transitions for event '{event}' from state '{current_state.current_state}'"
+            )
             return False
 
         # Merge contexts
@@ -397,15 +413,15 @@ class FSMEngine:
                 continue
 
             # Execute action
-            context_patch = await self._execute_action(transition.action, entity_id, merged_context, log)
+            context_patch = await self._execute_action(
+                transition.action, entity_id, merged_context, log
+            )
 
             new_context = {**merged_context, **context_patch}
 
             # Create new state
             new_state = State(
-                current_state=transition.to_state,
-                entered_at=now,
-                context=new_context
+                current_state=transition.to_state, entered_at=now, context=new_context
             )
 
             # Update state
@@ -418,9 +434,9 @@ class FSMEngine:
 
             log.info(
                 f"Entity {entity_id}: Transition '{current_state.current_state}' -> '{transition.to_state}' "
-                f"triggered by '{event}'" +
-                (f" (guard: {transition.guard})" if transition.guard else "") +
-                (f" (action: {transition.action})" if transition.action else "")
+                f"triggered by '{event}'"
+                + (f" (guard: {transition.guard})" if transition.guard else "")
+                + (f" (action: {transition.action})" if transition.action else "")
             )
 
             # Schedule timeout if specified
@@ -472,21 +488,21 @@ class FSMEngine:
                     pass
             del self._timers[entity_id]
             logger.debug(f"Cancelled timers for entity {entity_id} during unregister")
-        
+
         # Remove from states dictionary
         if entity_id in self._states:
             del self._states[entity_id]
             logger.debug(f"Removed state for entity {entity_id}")
-        
+
         # Remove from definitions dictionary
         if entity_id in self._definitions:
             del self._definitions[entity_id]
             logger.debug(f"Removed definition for entity {entity_id}")
-        
+
         # Clean up other tracking dictionaries
         if entity_id in self._last_transition_time:
             del self._last_transition_time[entity_id]
-        
+
         logger.info(f"Unregistered FSM for entity {entity_id}")
 
     async def shutdown(self) -> None:

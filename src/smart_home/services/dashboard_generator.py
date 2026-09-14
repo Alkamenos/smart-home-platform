@@ -10,21 +10,20 @@
 
 Использование:
     from smart_home.services.dashboard_generator import DashboardGenerator
-    
+
     manifest = load_manifest("instances/leonids_house/manifest.yaml")
     generator = DashboardGenerator(manifest)
-    
+
     # Сгенерировать полную панель
     dashboard = generator.generate_full_dashboard()
     generator.save_to_file(dashboard, "/config/dashboards/ui-lovelace.yaml")
 """
 
-import yaml
 from pathlib import Path
-from typing import Optional, Any
-from datetime import datetime
 
-from smart_home.core.models.manifest import Manifest, Zone, AnyDevice, BehaviorConfig
+import yaml
+
+from smart_home.core.models.manifest import AnyDevice, Manifest, Zone
 
 
 class DashboardGenerator:
@@ -59,17 +58,17 @@ class DashboardGenerator:
 
     # Цвета состояний для индикаторов
     STATE_COLORS = {
-        "OFF": "#6c757d",      # серый
-        "ON": "#28a745",        # зелёный
-        "ACTIVE": "#28a745",    # зелёный
+        "OFF": "#6c757d",  # серый
+        "ON": "#28a745",  # зелёный
+        "ACTIVE": "#28a745",  # зелёный
         "INACTIVE": "#6c757d",  # серый
-        "MANUAL": "#ffc107",    # жёлтый
-        "HEATING": "#dc3545",   # красный
-        "COOLING": "#007bff",   # синий
-        "IDLE": "#28a745",      # зелёный
+        "MANUAL": "#ffc107",  # жёлтый
+        "HEATING": "#dc3545",  # красный
+        "COOLING": "#007bff",  # синий
+        "IDLE": "#28a745",  # зелёный
     }
 
-    def __init__(self, manifest: Manifest, fsm_states: Optional[dict] = None):
+    def __init__(self, manifest: Manifest, fsm_states: dict | None = None):
         """
         Инициализация генератора.
 
@@ -120,11 +119,13 @@ class DashboardGenerator:
             if climate_card:
                 main_cards.append(climate_card)
 
-        views.append({
-            "title": "Главная",
-            "icon": "mdi:home",
-            "cards": main_cards,
-        })
+        views.append(
+            {
+                "title": "Главная",
+                "icon": "mdi:home",
+                "cards": main_cards,
+            }
+        )
 
         # === Вкладки по комнатам (для каждой зоны) ===
         for zone in self._manifest.zones:
@@ -134,11 +135,13 @@ class DashboardGenerator:
 
         # === Страница истории (если включено) ===
         if dashboard_config.show_history:
-            views.append({
-                "title": "История",
-                "icon": "mdi:history",
-                "cards": [self._generate_history_card()],
-            })
+            views.append(
+                {
+                    "title": "История",
+                    "icon": "mdi:history",
+                    "cards": [self._generate_history_card()],
+                }
+            )
 
         return {
             "title": title,
@@ -243,12 +246,14 @@ class DashboardGenerator:
             fsm_state = self._fsm_states.get(entity_id, {})
             current_state = fsm_state.get("state", "unknown")
 
-            entities.append({
-                "entity": sensor_entity,
-                "name": device.name,
-                "icon": self.DEVICE_ICONS.get(device.type, "mdi:robot"),
-                "secondary_info": "last-changed",
-            })
+            entities.append(
+                {
+                    "entity": sensor_entity,
+                    "name": device.name,
+                    "icon": self.DEVICE_ICONS.get(device.type, "mdi:robot"),
+                    "secondary_info": "last-changed",
+                }
+            )
 
         return {
             "type": "entities",
@@ -348,24 +353,28 @@ class DashboardGenerator:
 
         for behavior in device.behaviors:
             behavior_name = behavior.template
-            sensor_entity = f"binary_sensor.platform_v3_{device.id.replace('.', '_')}_{behavior_name}_active"
+            sensor_entity = (
+                f"binary_sensor.platform_v3_{device.id.replace('.', '_')}_{behavior_name}_active"
+            )
 
             # Выбираем иконку для behavior
             icon = self.BEHAVIOR_ICONS.get(behavior_name, "mdi:automation")
 
-            cards.append({
-                "type": "entity-button",
-                "entity": sensor_entity,
-                "name": f"{behavior_name}",
-                "subtitle": f"Приоритет: {behavior.priority}",
-                "icon": icon,
-                "tap_action": {
-                    "action": "more-info",
-                },
-                "hold_action": {
-                    "action": "none",
-                },
-            })
+            cards.append(
+                {
+                    "type": "entity-button",
+                    "entity": sensor_entity,
+                    "name": f"{behavior_name}",
+                    "subtitle": f"Приоритет: {behavior.priority}",
+                    "icon": icon,
+                    "tap_action": {
+                        "action": "more-info",
+                    },
+                    "hold_action": {
+                        "action": "none",
+                    },
+                }
+            )
 
         return cards
 
@@ -400,10 +409,12 @@ class DashboardGenerator:
             trigger = entry.get("trigger", "?")
             timestamp = entry.get("timestamp", "")
 
-            entities_list.append({
-                "content": f"{i}. `{from_state}` → `{to_state}` [{trigger}] {timestamp}",
-                "type": "custom:markdown",
-            })
+            entities_list.append(
+                {
+                    "content": f"{i}. `{from_state}` → `{to_state}` [{trigger}] {timestamp}",
+                    "type": "custom:markdown",
+                }
+            )
 
         return {
             "type": "entities",
@@ -489,7 +500,7 @@ class DashboardGenerator:
             ],
         }
 
-    def _generate_motion_sensors_card(self) -> Optional[dict]:
+    def _generate_motion_sensors_card(self) -> dict | None:
         """
         Генерирует карточку датчиков движения.
 
@@ -505,12 +516,14 @@ class DashboardGenerator:
                 motion_sensor = behavior.params.get("motion_sensor")
                 if motion_sensor and motion_sensor not in seen_sensors:
                     seen_sensors.add(motion_sensor)
-                    entities.append({
-                        "entity": motion_sensor,
-                        "name": f"Движение: {device.name}",
-                        "icon": "mdi:motion-sensor",
-                        "secondary_info": "last-changed",
-                    })
+                    entities.append(
+                        {
+                            "entity": motion_sensor,
+                            "name": f"Движение: {device.name}",
+                            "icon": "mdi:motion-sensor",
+                            "secondary_info": "last-changed",
+                        }
+                    )
 
         if not entities:
             return None
@@ -522,7 +535,7 @@ class DashboardGenerator:
             "entities": entities,
         }
 
-    def _generate_climate_overview_card(self) -> Optional[dict]:
+    def _generate_climate_overview_card(self) -> dict | None:
         """
         Генерирует карточку обзора климата.
 
@@ -537,12 +550,14 @@ class DashboardGenerator:
                 for behavior in device.behaviors:
                     sensor_entity = behavior.params.get("sensor")
                     if sensor_entity:
-                        entities.append({
-                            "entity": sensor_entity,
-                            "name": device.name,
-                            "icon": "mdi:thermometer",
-                            "secondary_info": "last-changed",
-                        })
+                        entities.append(
+                            {
+                                "entity": sensor_entity,
+                                "name": device.name,
+                                "icon": "mdi:thermometer",
+                                "secondary_info": "last-changed",
+                            }
+                        )
 
         if not entities:
             return None
@@ -567,11 +582,13 @@ class DashboardGenerator:
         for device in self._manifest.devices:
             history_entity = f"sensor.platform_v3_{device.id.replace('.', '_')}_history"
 
-            entities.append({
-                "entity": history_entity,
-                "name": device.name,
-                "secondary_info": "last-changed",
-            })
+            entities.append(
+                {
+                    "entity": history_entity,
+                    "name": device.name,
+                    "secondary_info": "last-changed",
+                }
+            )
 
         return {
             "type": "entities",
@@ -583,8 +600,8 @@ class DashboardGenerator:
 
     def save_to_file(
         self,
-        dashboard: Optional[dict] = None,
-        output_path: Optional[str] = None,
+        dashboard: dict | None = None,
+        output_path: str | None = None,
         preserve_existing: bool = True,
     ) -> bool:
         """
@@ -610,7 +627,7 @@ class DashboardGenerator:
         existing = {}
         if preserve_existing and output_path.exists():
             try:
-                with open(output_path, "r", encoding="utf-8") as f:
+                with open(output_path, encoding="utf-8") as f:
                     existing = yaml.safe_load(f) or {}
             except Exception:
                 existing = {}
@@ -638,7 +655,7 @@ class DashboardGenerator:
     def generate_and_save(
         self,
         output_dir: str = "generated_dashboards",
-        filename: Optional[str] = None,
+        filename: str | None = None,
     ) -> Path:
         """
         Генерирует и сохраняет дашборд в отдельный файл.
@@ -687,9 +704,7 @@ class DashboardGenerator:
         # Проверка диапазонов
         history_days = dashboard_config.history_days
         if not (1 <= history_days <= 365):
-            errors.append(
-                f"dashboard.history_days: Значение {history_days} вне диапазона 1-365"
-            )
+            errors.append(f"dashboard.history_days: Значение {history_days} вне диапазона 1-365")
 
         return errors
 
@@ -697,7 +712,7 @@ class DashboardGenerator:
 def generate_dashboard_from_manifest(
     manifest_path: str,
     output_path: str,
-    fsm_states: Optional[dict] = None,
+    fsm_states: dict | None = None,
 ) -> bool:
     """
     Удобная функция для генерации дашборда из манифеста.

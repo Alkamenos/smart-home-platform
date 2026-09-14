@@ -5,22 +5,23 @@
 и только один таймер активен в любой момент времени.
 """
 
-import pytest
 import asyncio
-from datetime import datetime
-from freezegun import freeze_time
-from unittest.mock import patch
 import time
+from unittest.mock import patch
 
-from smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
+import pytest
+from freezegun import freeze_time
+
+from smart_home.core.fsm import FSMDefinition, FSMEngine, State, Transition
 
 
 @pytest.fixture(autouse=True)
 def freeze_asyncio_time():
-    import asyncio
+
     real_get_event_loop = asyncio.get_event_loop
 
     with patch("src.smart_home.core.fsm.asyncio.get_event_loop") as mock_get_loop:
+
         def side_effect():
             loop = real_get_event_loop()
             loop.time = time.time
@@ -49,10 +50,28 @@ async def test_timer_cancellation_on_rapid_transitions():
         states=("off", "on", "dimmed"),
         debounce_sec=0.0,
         transitions=(
-            Transition(from_state="off", trigger="turn_on", to_state="on", action=action_noop, timeout_sec=10.0),
-            Transition(from_state="on", trigger="dim", to_state="dimmed", action=action_noop, timeout_sec=20.0),
-            Transition(from_state="dimmed", trigger="brighten", to_state="on", action=action_noop, timeout_sec=15.0),
-        )
+            Transition(
+                from_state="off",
+                trigger="turn_on",
+                to_state="on",
+                action=action_noop,
+                timeout_sec=10.0,
+            ),
+            Transition(
+                from_state="on",
+                trigger="dim",
+                to_state="dimmed",
+                action=action_noop,
+                timeout_sec=20.0,
+            ),
+            Transition(
+                from_state="dimmed",
+                trigger="brighten",
+                to_state="on",
+                action=action_noop,
+                timeout_sec=15.0,
+            ),
+        ),
     )
     engine.register_definition(definition)
 
@@ -80,7 +99,9 @@ async def test_timer_cancellation_on_rapid_transitions():
         assert len(engine._timers) == 1, "Должен быть 1 таймер"
         timer_task_3 = engine._timers[entity_id]
 
-        assert timer_task_2.cancelled() or timer_task_2.done(), "Предыдущий таймер должен быть отменен"
+        assert (
+            timer_task_2.cancelled() or timer_task_2.done()
+        ), "Предыдущий таймер должен быть отменен"
         assert timer_task_3 is not timer_task_2, "Должен быть новый таймер"
 
 
@@ -100,7 +121,7 @@ async def test_no_timer_without_timeout():
         transitions=(
             Transition(from_state="off", trigger="turn_on", to_state="on", action=action_noop),
             # Нет timeout_sec!
-        )
+        ),
     )
     engine.register_definition(definition)
 

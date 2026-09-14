@@ -7,20 +7,21 @@ Registry - Реестр для регистрации guard и action функц
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 class Registry:
     """
     Реестр для регистрации guard и action функций.
-    
+
     Позволяет безопасно вызывать функции по имени из YAML-конфигураций.
-    
+
     Usage:
         registry = Registry()
         registry.register_guard("is_night_time", is_night_time_fn)
         registry.register_action("turn_on_light", turn_on_light_fn)
-        
+
         # Проверка наличия
         if registry.has_guard("is_night_time"):
             result = registry.get_guard("is_night_time")(context)
@@ -33,7 +34,7 @@ class Registry:
     def register_guard(self, name: str, guard_fn: Callable[..., bool]) -> None:
         """
         Зарегистрировать функцию guard по имени.
-        
+
         Args:
             name: Имя для регистрации (используется в YAML).
             guard_fn: Функция, принимающая контекст и возвращающая bool.
@@ -43,7 +44,7 @@ class Registry:
     def register_action(self, name: str, action_fn: Callable[..., Any]) -> None:
         """
         Зарегистрировать функцию action по имени.
-        
+
         Args:
             name: Имя для регистрации (используется в YAML).
             action_fn: Функция, принимающая контекст (может быть async).

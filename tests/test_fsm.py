@@ -34,9 +34,7 @@ class TestFSMRegistration:
             entity_id="test.entity",
             initial_state="OFF",
             states=("OFF", "ON"),
-            transitions=(
-                Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
-            )
+            transitions=(Transition(from_state="OFF", to_state="ON", trigger="turn_on"),),
         )
 
         fsm_engine.register_definition(definition)
@@ -52,9 +50,7 @@ class TestFSMRegistration:
                 entity_id=f"test.entity_{i}",
                 initial_state="OFF",
                 states=("OFF", "ON"),
-                transitions=(
-                    Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
-                )
+                transitions=(Transition(from_state="OFF", to_state="ON", trigger="turn_on"),),
             )
             fsm_engine.register_definition(definition)
 
@@ -71,9 +67,7 @@ class TestFSMTransitions:
             entity_id="test.entity",
             initial_state="OFF",
             states=("OFF", "ON"),
-            transitions=(
-                Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
-            )
+            transitions=(Transition(from_state="OFF", to_state="ON", trigger="turn_on"),),
         )
 
         fsm_engine.register_definition(definition)
@@ -89,9 +83,7 @@ class TestFSMTransitions:
             entity_id="test.entity",
             initial_state="OFF",
             states=("OFF", "ON"),
-            transitions=(
-                Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
-            )
+            transitions=(Transition(from_state="OFF", to_state="ON", trigger="turn_on"),),
         )
 
         fsm_engine.register_definition(definition)
@@ -119,12 +111,9 @@ class TestFSMGuards:
             states=("OFF", "ON"),
             transitions=(
                 Transition(
-                    from_state="OFF",
-                    to_state="ON",
-                    trigger="turn_on",
-                    guard="allowed_guard"
+                    from_state="OFF", to_state="ON", trigger="turn_on", guard="allowed_guard"
                 ),
-            )
+            ),
         )
 
         fsm_engine.register_definition(definition)
@@ -149,12 +138,9 @@ class TestFSMGuards:
             states=("OFF", "ON"),
             transitions=(
                 Transition(
-                    from_state="OFF",
-                    to_state="ON",
-                    trigger="turn_on",
-                    guard="allowed_guard"
+                    from_state="OFF", to_state="ON", trigger="turn_on", guard="allowed_guard"
                 ),
-            )
+            ),
         )
 
         fsm_engine.register_definition(definition)
@@ -179,12 +165,9 @@ class TestFSMGuards:
             states=("OFF", "ON"),
             transitions=(
                 Transition(
-                    from_state="OFF",
-                    to_state="ON",
-                    trigger="turn_on",
-                    guard="failing_guard"
+                    from_state="OFF", to_state="ON", trigger="turn_on", guard="failing_guard"
                 ),
-            )
+            ),
         )
 
         fsm_engine.register_definition(definition)
@@ -205,9 +188,7 @@ class TestFSMImmutability:
             entity_id="test.entity",
             initial_state="OFF",
             states=("OFF", "ON"),
-            transitions=(
-                Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
-            )
+            transitions=(Transition(from_state="OFF", to_state="ON", trigger="turn_on"),),
         )
 
         fsm_engine.register_definition(definition)
@@ -232,9 +213,7 @@ class TestFSMReset:
             entity_id="test.entity",
             initial_state="OFF",
             states=("OFF", "ON"),
-            transitions=(
-                Transition(from_state="OFF", to_state="ON", trigger="turn_on"),
-            )
+            transitions=(Transition(from_state="OFF", to_state="ON", trigger="turn_on"),),
         )
 
         fsm_engine.register_definition(definition)

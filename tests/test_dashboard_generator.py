@@ -5,10 +5,11 @@
 из манифеста.
 """
 
-import pytest
-import yaml
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+import pytest
+import yaml
 
 # Импортируем тестируемые модули
 from tools.dashboard_generator import DashboardGenerator
@@ -182,9 +183,7 @@ class TestControlCard:
         """Тест: кнопки вызывают правильные сервисы"""
         card = generator.generate_control_card()
 
-        services_called = {
-            btn["tap_action"]["service"] for btn in card["cards"]
-        }
+        services_called = {btn["tap_action"]["service"] for btn in card["cards"]}
 
         expected_services = {
             "platform_v3.enable_automation",
@@ -280,9 +279,7 @@ class TestFullDashboard:
         """Тест: главная страница присутствует"""
         dashboard = generator.generate_full_dashboard()
 
-        main_view = next(
-            (v for v in dashboard["views"] if v["title"] == "Главная"), None
-        )
+        main_view = next((v for v in dashboard["views"] if v["title"] == "Главная"), None)
         assert main_view is not None
         assert "cards" in main_view
 
@@ -290,18 +287,14 @@ class TestFullDashboard:
         """Тест: страница истории присутствует когда включено"""
         dashboard = generator.generate_full_dashboard()
 
-        history_view = next(
-            (v for v in dashboard["views"] if v["title"] == "История"), None
-        )
+        history_view = next((v for v in dashboard["views"] if v["title"] == "История"), None)
         assert history_view is not None
 
     def test_dashboard_has_rooms_view_when_zones_exist(self, generator):
         """Тест: страница комнат присутствует когда есть зоны"""
         dashboard = generator.generate_full_dashboard()
 
-        rooms_view = next(
-            (v for v in dashboard["views"] if v["title"] == "Комнаты"), None
-        )
+        rooms_view = next((v for v in dashboard["views"] if v["title"] == "Комнаты"), None)
         assert rooms_view is not None
 
     def test_dashboard_respects_dashboard_settings(self, sample_manifest):
@@ -326,7 +319,7 @@ class TestWriteToHA:
             assert result is True
             assert output_path.exists()
 
-            with open(output_path, "r") as f:
+            with open(output_path) as f:
                 content = yaml.safe_load(f)
 
             assert "platform_v3_dashboard" in content
@@ -348,7 +341,7 @@ class TestWriteToHA:
             generator.write_to_ha(output_path=str(output_path))
 
             # Читаем обратно
-            with open(output_path, "r") as f:
+            with open(output_path) as f:
                 content = yaml.safe_load(f)
 
             # Проверяем что старое содержимое сохранилось
@@ -371,7 +364,7 @@ class TestWriteToHA:
             gen2.write_to_ha(output_path=str(output_path))
 
             # Читаем обратно
-            with open(output_path, "r") as f:
+            with open(output_path) as f:
                 content = yaml.safe_load(f)
 
             assert content["platform_v3_dashboard"]["title"] == "Updated Title"

@@ -8,21 +8,22 @@ Watchdog Service - периодическое логирование состо�
 Usage:
     watchdog = WatchdogService(fsm_engine, registry, ha_adapter)
     await watchdog.start()
-    
+
     # Или ручной вызов
     await watchdog.log_snapshot_now()
 """
+
 import asyncio
 import json
 from datetime import datetime
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from smart_home.core.logger import get_logger
 
 if TYPE_CHECKING:
+    from smart_home.adapters.ha_adapter import HomeAssistantAdapter
     from smart_home.core.fsm import FSMEngine
     from smart_home.core.registry import Registry
-    from smart_home.adapters.ha_adapter import HomeAssistantAdapter
 
 logger = get_logger(__name__)
 
@@ -30,38 +31,38 @@ logger = get_logger(__name__)
 class WatchdogService:
     """
     Сервис периодического мониторинга состояний FSM.
-    
+
     Функции:
     - Автоматическое логирование состояний раз в N секунд
     - Ручной вызов логирования по требованию
     - Форматирование вывода в JSON для удобного парсинга
     """
-    
+
     def __init__(
         self,
-        fsm_engine: 'FSMEngine',
-        registry: 'Registry',
-        ha_adapter: 'HomeAssistantAdapter',
-        interval_sec: int = 60
+        fsm_engine: "FSMEngine",
+        registry: "Registry",
+        ha_adapter: "HomeAssistantAdapter",
+        interval_sec: int = 60,
     ):
         self.fsm_engine = fsm_engine
         self.registry = registry
         self.ha_adapter = ha_adapter
         self.interval_sec = interval_sec
-        
-        self._task: Optional[asyncio.Task] = None
+
+        self._task: asyncio.Task | None = None
         self._running = False
-    
+
     async def start(self):
         """Запустить фоновую задачу периодического логирования"""
         if self._running:
             logger.warning("Watchdog already running")
             return
-        
+
         self._running = True
         self._task = asyncio.create_task(self._watchdog_loop())
         logger.info(f"Watchdog started (interval={self.interval_sec}s)")
-    
+
     async def stop(self):
         """Остановить фоновую задачу"""
         self._running = False
@@ -72,7 +73,7 @@ class WatchdogService:
             except asyncio.CancelledError:
                 pass
         logger.info("Watchdog stopped")
-    
+
     async def _watchdog_loop(self):
         """Фоновый цикл логирования"""
         while self._running:
@@ -84,11 +85,11 @@ class WatchdogService:
             except Exception as e:
                 logger.error(f"Watchdog error: {e}")
                 await asyncio.sleep(self.interval_sec)
-    
+
     def log_snapshot_now(self):
         """
         Логировать текущий снимок состояний всех FSM.
-        
+
         Формат вывода (JSON):
         {
             "timestamp": "2024-01-15T10:30:00",
@@ -101,68 +102,65 @@ class WatchdogService:
         """
         try:
             states = self.fsm_engine.get_all_states()
-            
+
             snapshot = {
                 "timestamp": datetime.now().isoformat(),
                 "fsm_count": len(states),
-                "states": {}
+                "states": {},
             }
-            
+
             for entity_id, state_obj in states.items():
                 # Сериализуем состояние
                 # State - это dataclass, нужно извлечь поле current
-                if hasattr(state_obj, 'current'):
+                if hasattr(state_obj, "current"):
                     state_value = state_obj.current
-                elif hasattr(state_obj, 'state'):
+                elif hasattr(state_obj, "state"):
                     state_value = state_obj.state
                 else:
                     state_value = str(state_obj)
-                
+
                 state_data = {
                     "state": state_value,
                 }
-                
+
                 # Добавляем context если есть
-                if hasattr(state_obj, 'context') and state_obj.context:
+                if hasattr(state_obj, "context") and state_obj.context:
                     state_data["context"] = state_obj.context
-                
+
                 snapshot["states"][entity_id] = state_data
-            
+
             # Логируем в JSON формате
             snapshot_json = json.dumps(snapshot, ensure_ascii=False)
             logger.info(f"[WATCHDOG] {snapshot_json}")
-            
+
             # Также можно отправить в HA как событие (опционально)
             # self.event_bus.publish('platform.watchdog.snapshot', snapshot)
-            
+
             return snapshot
-            
+
         except Exception as e:
             logger.error(f"Failed to create watchdog snapshot: {e}")
             return None
 
 
 # Глобальный экземпляр для использования в PyScript
-_watchdog_instance: Optional[WatchdogService] = None
+_watchdog_instance: WatchdogService | None = None
 
 
 def create_watchdog(
-    fsm_engine: 'FSMEngine',
-    registry: 'Registry',
-    ha_adapter: 'HomeAssistantAdapter',
-    interval_sec: int = 60
+    fsm_engine: "FSMEngine",
+    registry: "Registry",
+    ha_adapter: "HomeAssistantAdapter",
+    interval_sec: int = 60,
 ) -> WatchdogService:
     """Создать и вернуть экземпляр WatchdogService"""
     global _watchdog_instance
     _watchdog_instance = WatchdogService(
-        fsm_engine=fsm_engine,
-        registry=registry,
-        ha_adapter=ha_adapter,
-        interval_sec=interval_sec
+        fsm_engine=fsm_engine, registry=registry, ha_adapter=ha_adapter, interval_sec=interval_sec
     )
     return _watchdog_instance
 
 
-def get_watchdog() -> Optional[WatchdogService]:
+def get_watchdog() -> WatchdogService | None:
     """Получить глобальный экземпляр WatchdogService"""
     return _watchdog_instance

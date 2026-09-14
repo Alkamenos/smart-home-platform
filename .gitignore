@@ -1,26 +1,22 @@
 ```
-# Compiled Python files
-*.pyc
+# Python
 __pycache__/
-
-# Coverage reports
-.coverage
-
-# Dependencies
-.venv/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
 venv/
-node_modules/
-
-# Logs and temp files
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
 *.log
-*.tmp
-
-# Editors
-.vscode/
-.idea/
-
-# Environment files
-.env
-.env.local
-*.env.*
+.DS_Store
 ```

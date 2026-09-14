@@ -13,8 +13,8 @@ from typing import Any
 from loguru import logger
 
 from smart_home.core.fsm import FSMEngine
-from smart_home.core.registry import Registry
 from smart_home.core.loader import Loader
+from smart_home.core.registry import Registry
 
 
 # Пример guard функции - проверка ночного времени
@@ -72,9 +72,7 @@ async def main() -> None:
     # Сценарий 1: Ночное время, обнаружение движения
     print("\n--- Scenario 1: Night time motion detection ---")
     await engine.trigger(
-        "light.kitchen",
-        "motion_detected",
-        external_ctx={"hour": 23, "entity_id": "light.kitchen"}
+        "light.kitchen", "motion_detected", external_ctx={"hour": 23, "entity_id": "light.kitchen"}
     )
     state = engine.get_state("light.kitchen")
     print(f"Current state: {state.current_state if state else 'unknown'}")
@@ -89,9 +87,7 @@ async def main() -> None:
     # Сценарий 3: Ручное включение
     print("\n--- Scenario 3: Manual switch on ---")
     await engine.trigger(
-        "light.kitchen",
-        "manual_switch_on",
-        external_ctx={"entity_id": "light.kitchen"}
+        "light.kitchen", "manual_switch_on", external_ctx={"entity_id": "light.kitchen"}
     )
     state = engine.get_state("light.kitchen")
     print(f"Current state: {state.current_state if state else 'unknown'}")

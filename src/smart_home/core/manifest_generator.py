@@ -8,9 +8,11 @@ Manifest Generator - Генератор автоматов из манифест
 """
 
 from __future__ import annotations
+
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from smart_home.core.fsm import FSMDefinition, Transition
 
@@ -18,6 +20,7 @@ from smart_home.core.fsm import FSMDefinition, Transition
 @dataclass
 class TriggerMapping:
     """Маппинг триггера от сенсора к автомату"""
+
     source_entity: str
     source_value: str  # "on" | "off" | числовое значение
     target_entity: str
@@ -28,6 +31,7 @@ class TriggerMapping:
 @dataclass
 class GeneratorResult:
     """Результат генерации автоматов"""
+
     lighting_definitions: list[FSMDefinition]
     lighting_mappings: list[TriggerMapping]
     climate_definitions: list[FSMDefinition]
@@ -60,7 +64,7 @@ class ManifestAutomationGenerator:
             climate_mappings=self._generate_climate_mappings(),
             ventilation_definitions=self._generate_ventilation(),
             ventilation_mappings=self._generate_ventilation_mappings(),
-            automation_rules=self._extract_automation_rules()
+            automation_rules=self._extract_automation_rules(),
         )
 
     def _generate_lighting(self) -> list[FSMDefinition]:
@@ -86,7 +90,7 @@ class ManifestAutomationGenerator:
                         guard=lambda ctx, r=room, d=device: self._is_schedule_time(ctx, d),
                         priority=10,
                         reason="Включение по расписанию",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Выключение по расписанию
                     Transition(
@@ -96,7 +100,7 @@ class ManifestAutomationGenerator:
                         guard=lambda ctx, r=room, d=device: not self._is_schedule_time(ctx, d),
                         priority=10,
                         reason="Выключение по расписанию",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Включение по движению
                     Transition(
@@ -107,7 +111,7 @@ class ManifestAutomationGenerator:
                         priority=20,
                         reason="Обнаружено движение",
                         attributes={"entity_id": entity_id},
-                        timeout_sec=motion_timeout
+                        timeout_sec=motion_timeout,
                     ),
                     # Таймаут без движения
                     Transition(
@@ -116,7 +120,7 @@ class ManifestAutomationGenerator:
                         trigger="timeout",
                         priority=10,
                         reason="Таймаут без движения",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Ручное вмешательство
                     Transition(
@@ -125,8 +129,10 @@ class ManifestAutomationGenerator:
                         trigger="manual_change",
                         priority=100,
                         reason="Ручное вмешательство",
-                        action=lambda ctx, r=room: ctx.update({f"{r}_manual_entered_at": time.time()}),
-                        manual_lockout_min=manual_lockout
+                        action=lambda ctx, r=room: ctx.update(
+                            {f"{r}_manual_entered_at": time.time()}
+                        ),
+                        manual_lockout_min=manual_lockout,
                     ),
                     # Возврат из MANUAL после таймаута
                     Transition(
@@ -135,9 +141,9 @@ class ManifestAutomationGenerator:
                         trigger="timeout",
                         guard=lambda ctx, r=room: self._check_manual_timeout(ctx, r),
                         priority=50,
-                        reason="Автоматическое восстановление после ручного управления"
+                        reason="Автоматическое восстановление после ручного управления",
                     ),
-                )
+                ),
             )
             definitions.append(definition)
 
@@ -154,21 +160,25 @@ class ManifestAutomationGenerator:
                 room = device.get("room", entity_id.split(".")[-1])
 
                 # Датчик движения on
-                mappings.append(TriggerMapping(
-                    source_entity=motion_sensor,
-                    source_value="on",
-                    target_entity=entity_id,
-                    trigger="motion_detected",
-                    context_builder=lambda e, r=room: {f"{r}_motion_sensor": True}
-                ))
+                mappings.append(
+                    TriggerMapping(
+                        source_entity=motion_sensor,
+                        source_value="on",
+                        target_entity=entity_id,
+                        trigger="motion_detected",
+                        context_builder=lambda e, r=room: {f"{r}_motion_sensor": True},
+                    )
+                )
                 # Датчик движения off
-                mappings.append(TriggerMapping(
-                    source_entity=motion_sensor,
-                    source_value="off",
-                    target_entity=entity_id,
-                    trigger="motion_cleared",
-                    context_builder=lambda e, r=room: {f"{r}_motion_sensor": False}
-                ))
+                mappings.append(
+                    TriggerMapping(
+                        source_entity=motion_sensor,
+                        source_value="off",
+                        target_entity=entity_id,
+                        trigger="motion_cleared",
+                        context_builder=lambda e, r=room: {f"{r}_motion_sensor": False},
+                    )
+                )
 
         return mappings
 
@@ -195,24 +205,22 @@ class ManifestAutomationGenerator:
                         to_state="HEATING",
                         trigger="temp_low",
                         guard=lambda ctx, r=room, t=target, h=hysteresis: (
-                            ctx.get(f"{r}_temp_current", 0) < t - h and
-                            ctx.get(f"{r}_mode", "auto") in ("heat", "auto")
+                            ctx.get(f"{r}_temp_current", 0) < t - h
+                            and ctx.get(f"{r}_mode", "auto") in ("heat", "auto")
                         ),
                         priority=30,
                         reason="Температура ниже целевой",
-                        attributes={"entity_id": entity_id, "hvac_mode": "heat"}
+                        attributes={"entity_id": entity_id, "hvac_mode": "heat"},
                     ),
                     # Выключение нагрева
                     Transition(
                         from_state="HEATING",
                         to_state="IDLE",
                         trigger="temp_reached",
-                        guard=lambda ctx, r=room, t=target: (
-                            ctx.get(f"{r}_temp_current", 0) >= t
-                        ),
+                        guard=lambda ctx, r=room, t=target: (ctx.get(f"{r}_temp_current", 0) >= t),
                         priority=30,
                         reason="Температура достигнута",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Включение охлаждения
                     Transition(
@@ -220,24 +228,22 @@ class ManifestAutomationGenerator:
                         to_state="COOLING",
                         trigger="temp_high",
                         guard=lambda ctx, r=room, t=target, h=hysteresis: (
-                            ctx.get(f"{r}_temp_current", 0) > t + h and
-                            ctx.get(f"{r}_mode", "auto") in ("cool", "auto")
+                            ctx.get(f"{r}_temp_current", 0) > t + h
+                            and ctx.get(f"{r}_mode", "auto") in ("cool", "auto")
                         ),
                         priority=30,
                         reason="Температура выше целевой",
-                        attributes={"entity_id": entity_id, "hvac_mode": "cool"}
+                        attributes={"entity_id": entity_id, "hvac_mode": "cool"},
                     ),
                     # Выключение охлаждения
                     Transition(
                         from_state="COOLING",
                         to_state="IDLE",
                         trigger="temp_reached",
-                        guard=lambda ctx, r=room, t=target: (
-                            ctx.get(f"{r}_temp_current", 0) <= t
-                        ),
+                        guard=lambda ctx, r=room, t=target: (ctx.get(f"{r}_temp_current", 0) <= t),
                         priority=30,
                         reason="Температура достигнута",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Режим отсутствия
                     Transition(
@@ -246,7 +252,7 @@ class ManifestAutomationGenerator:
                         trigger="away_mode_on",
                         priority=40,
                         reason="Режим отсутствия включён",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     Transition(
                         from_state="AWAY",
@@ -254,7 +260,7 @@ class ManifestAutomationGenerator:
                         trigger="away_mode_off",
                         priority=40,
                         reason="Режим отсутствия выключен",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Блокировка безопасности
                     Transition(
@@ -263,7 +269,7 @@ class ManifestAutomationGenerator:
                         trigger="safety_alarm",
                         priority=200,
                         reason="Сработала система безопасности",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     Transition(
                         from_state="SAFETY_LOCKOUT",
@@ -271,7 +277,7 @@ class ManifestAutomationGenerator:
                         trigger="safety_reset",
                         priority=200,
                         reason="Блокировка сброшена",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Ручное вмешательство
                     Transition(
@@ -280,10 +286,12 @@ class ManifestAutomationGenerator:
                         trigger="manual_change",
                         priority=100,
                         reason="Ручное вмешательство",
-                        action=lambda ctx, r=room: ctx.update({f"{r}_manual_entered_at": time.time()}),
-                        manual_lockout_min=manual_lockout
+                        action=lambda ctx, r=room: ctx.update(
+                            {f"{r}_manual_entered_at": time.time()}
+                        ),
+                        manual_lockout_min=manual_lockout,
                     ),
-                )
+                ),
             )
             definitions.append(definition)
 
@@ -300,15 +308,17 @@ class ManifestAutomationGenerator:
                 room = device.get("room", entity_id.split(".")[-1])
 
                 # Маппинг температуры
-                mappings.append(TriggerMapping(
-                    source_entity=sensor,
-                    source_value="*",  # Любое значение
-                    target_entity=entity_id,
-                    trigger="temperature_changed",
-                    context_builder=lambda e, r=room: {
-                        f"{r}_temp_current": float(e.get("new_state", {}).get("state", 0))
-                    }
-                ))
+                mappings.append(
+                    TriggerMapping(
+                        source_entity=sensor,
+                        source_value="*",  # Любое значение
+                        target_entity=entity_id,
+                        trigger="temperature_changed",
+                        context_builder=lambda e, r=room: {
+                            f"{r}_temp_current": float(e.get("new_state", {}).get("state", 0))
+                        },
+                    )
+                )
 
         return mappings
 
@@ -339,7 +349,7 @@ class ManifestAutomationGenerator:
                         priority=20,
                         reason="Влажность выше порога",
                         attributes={"entity_id": entity_id},
-                        timeout_sec=timeout_sec
+                        timeout_sec=timeout_sec,
                     ),
                     # Выключение по таймауту
                     Transition(
@@ -348,7 +358,7 @@ class ManifestAutomationGenerator:
                         trigger="timeout",
                         priority=10,
                         reason="Таймаут вентиляции",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Выключение когда влажность упала
                     Transition(
@@ -360,7 +370,7 @@ class ManifestAutomationGenerator:
                         ),
                         priority=20,
                         reason="Влажность в норме",
-                        attributes={"entity_id": entity_id}
+                        attributes={"entity_id": entity_id},
                     ),
                     # Ручное вмешательство
                     Transition(
@@ -369,10 +379,12 @@ class ManifestAutomationGenerator:
                         trigger="manual_change",
                         priority=100,
                         reason="Ручное вмешательство",
-                        action=lambda ctx, r=room: ctx.update({f"{r}_manual_entered_at": time.time()}),
-                        manual_lockout_min=manual_lockout
+                        action=lambda ctx, r=room: ctx.update(
+                            {f"{r}_manual_entered_at": time.time()}
+                        ),
+                        manual_lockout_min=manual_lockout,
                     ),
-                )
+                ),
             )
             definitions.append(definition)
 
@@ -390,15 +402,17 @@ class ManifestAutomationGenerator:
                 threshold = device.get("humidity_threshold", 65)
 
                 # Маппинг влажности
-                mappings.append(TriggerMapping(
-                    source_entity=sensor,
-                    source_value="*",
-                    target_entity=entity_id,
-                    trigger="humidity_changed",
-                    context_builder=lambda e, r=room: {
-                        f"{r}_humidity": float(e.get("new_state", {}).get("state", 0))
-                    }
-                ))
+                mappings.append(
+                    TriggerMapping(
+                        source_entity=sensor,
+                        source_value="*",
+                        target_entity=entity_id,
+                        trigger="humidity_changed",
+                        context_builder=lambda e, r=room: {
+                            f"{r}_humidity": float(e.get("new_state", {}).get("state", 0))
+                        },
+                    )
+                )
 
         return mappings
 
@@ -414,6 +428,7 @@ class ManifestAutomationGenerator:
     def _is_schedule_time(self, ctx: dict, device: dict) -> bool:
         """Проверить, сейчас ли время расписания"""
         from datetime import datetime
+
         schedule = device.get("schedule", "00:00-23:59")
         start, end = schedule.split("-")
         now = datetime.now().strftime("%H:%M")
@@ -430,7 +445,15 @@ class ManifestAutomationGenerator:
 
 class _DummyLogger:
     """Заглушка логгера если не передан"""
-    def debug(self, msg, **kwargs): pass
-    def info(self, msg, **kwargs): pass
-    def warning(self, msg, **kwargs): pass
-    def error(self, msg, **kwargs): pass
+
+    def debug(self, msg, **kwargs):
+        pass
+
+    def info(self, msg, **kwargs):
+        pass
+
+    def warning(self, msg, **kwargs):
+        pass
+
+    def error(self, msg, **kwargs):
+        pass

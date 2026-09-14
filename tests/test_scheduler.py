@@ -1,7 +1,9 @@
 """Unit tests for the Scheduler module."""
 
 import asyncio
+
 import pytest
+
 from smart_home.core.scheduler import Scheduler
 
 
@@ -54,6 +56,7 @@ async def test_cancel_multiple_tasks_for_same_entity():
     async def callback_maker(idx):
         async def callback(entity_id, trigger, ctx):
             fired_callbacks.append(idx)
+
         return callback
 
     # Schedule multiple tasks for the same entity
@@ -72,7 +75,7 @@ async def test_cancel_multiple_tasks_for_same_entity():
     # Verify all tasks are active
     for task in tasks:
         assert task.is_active()
-    
+
     assert len(scheduler.get_active_tasks(entity_id)) == 5
 
     # Cancel all tasks for this entity
@@ -82,7 +85,7 @@ async def test_cancel_multiple_tasks_for_same_entity():
     # Verify no tasks are active
     for task in tasks:
         assert not task.is_active()
-    
+
     assert len(scheduler.get_active_tasks(entity_id)) == 0
 
     # Wait and verify no callbacks fired
@@ -101,12 +104,13 @@ async def test_cancel_does_not_affect_other_entities():
     async def callback_maker(entity_name):
         async def callback(entity_id, trigger, ctx):
             fired_callbacks.append(entity_name)
+
         return callback
 
     # Schedule tasks for different entities
     cb_a = await callback_maker("a")
     cb_b = await callback_maker("b")
-    
+
     task_a = scheduler.schedule(
         entity_id=entity_a,
         trigger="trigger_a",
@@ -114,7 +118,7 @@ async def test_cancel_does_not_affect_other_entities():
         ctx={},
         callback=cb_a,
     )
-    
+
     task_b = scheduler.schedule(
         entity_id=entity_b,
         trigger="trigger_b",
@@ -141,7 +145,7 @@ async def test_cancel_does_not_affect_other_entities():
 async def test_cancel_returns_zero_for_nonexistent_entity():
     """Test that cancel() returns 0 when entity has no tasks."""
     scheduler = Scheduler()
-    
+
     cancelled_count = scheduler.cancel("nonexistent_entity")
     assert cancelled_count == 0
 
@@ -155,6 +159,7 @@ async def test_cancel_all_graceful_shutdown():
     async def callback_maker(idx):
         async def callback(entity_id, trigger, ctx):
             fired_callbacks.append(idx)
+
         return callback
 
     # Schedule tasks for multiple entities
@@ -209,7 +214,7 @@ async def test_task_completes_if_not_cancelled():
     # Verify callback fired with correct context
     assert callback_fired is True
     assert callback_ctx == {"key": "value"}
-    
+
     # Verify no active tasks remain
     assert not scheduler.has_active_tasks("test_entity")
 
@@ -232,13 +237,13 @@ async def test_cancel_immediately_after_schedule():
         ctx={},
         callback=callback,
     )
-    
+
     # Cancel before any sleep
     scheduler.cancel("test_entity")
-    
+
     # Task should be marked as done/cancelled
     assert task.task.done() or not task.is_active()
-    
+
     # Wait and verify callback didn't fire
     await asyncio.sleep(0.3)
     assert callback_fired is False

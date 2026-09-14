@@ -10,6 +10,7 @@ Manifest Validator - Валидатор манифеста платформы у
 """
 
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -18,10 +19,11 @@ from typing import Any
 @dataclass
 class ValidationError:
     """Ошибка валидации манифеста"""
+
     field: str
     message: str
     severity: str = "error"  # "error" | "warning"
-    
+
     def __str__(self) -> str:
         return f"{self.field}: {self.message}"
 
@@ -44,26 +46,26 @@ class ManifestValidator:
         Пустой список = манифест валиден.
         """
         errors = []
-        
+
         if not isinstance(manifest, dict):
             errors.append(ValidationError("manifest", "Манифест должен быть словарём"))
             return errors
-        
+
         # 1. Структурные проверки
         errors.extend(self._validate_structure(manifest))
-        
+
         # 2. Типы данных
         errors.extend(self._validate_types(manifest))
-        
+
         # 3. Форматы
         errors.extend(self._validate_formats(manifest))
-        
+
         # 4. Ссылочная целостность
         errors.extend(self._validate_references(manifest))
-        
+
         # 5. Логические ограничения
         errors.extend(self._validate_logic(manifest))
-        
+
         return errors
 
     def _validate_structure(self, manifest: dict) -> list[ValidationError]:
@@ -82,7 +84,7 @@ class ManifestValidator:
 
         if "devices" not in manifest:
             errors.append(ValidationError("devices", "Отсутствует секция devices"))
-        
+
         if "zones" not in manifest:
             errors.append(ValidationError("zones", "Отсутствует секция zones"))
 
@@ -91,27 +93,31 @@ class ManifestValidator:
     def _validate_types(self, manifest: dict) -> list[ValidationError]:
         """Проверка типов данных"""
         errors = []
-        
+
         # Проверка version
         version = manifest.get("version")
         if version is not None and not isinstance(version, int):
-            errors.append(ValidationError("version", f"Версия должна быть целым числом, получено {type(version).__name__}"))
-        
+            errors.append(
+                ValidationError(
+                    "version", f"Версия должна быть целым числом, получено {type(version).__name__}"
+                )
+            )
+
         # Проверка instance
         instance = manifest.get("instance")
         if instance and not isinstance(instance, dict):
             errors.append(ValidationError("instance", "instance должен быть словарём"))
-        
+
         # Проверка devices
         devices = manifest.get("devices")
         if devices and not isinstance(devices, dict):
             errors.append(ValidationError("devices", "devices должен быть словарём"))
-        
+
         # Проверка zones
         zones = manifest.get("zones")
         if zones is not None and not isinstance(zones, list):
             errors.append(ValidationError("zones", "zones должен быть списком"))
-        
+
         return errors
 
     def _validate_formats(self, manifest: dict) -> list[ValidationError]:
@@ -122,54 +128,63 @@ class ManifestValidator:
         for device in manifest.get("devices", {}).get("lighting", []):
             device_id = device.get("id", "")
             if not self._is_valid_entity_id(device_id):
-                errors.append(ValidationError(
-                    f"devices.lighting[{device_id}].id",
-                    f"Невалидный entity_id: {device_id}"
-                ))
+                errors.append(
+                    ValidationError(
+                        f"devices.lighting[{device_id}].id", f"Невалидный entity_id: {device_id}"
+                    )
+                )
 
             # Проверка расписания
             if "schedule" in device:
                 if not self._is_valid_schedule(device["schedule"]):
-                    errors.append(ValidationError(
-                        f"devices.lighting[{device_id}].schedule",
-                        f"Невалидный формат расписания: {device['schedule']}"
-                    ))
-            
+                    errors.append(
+                        ValidationError(
+                            f"devices.lighting[{device_id}].schedule",
+                            f"Невалидный формат расписания: {device['schedule']}",
+                        )
+                    )
+
             # Проверка motion_sensor
             if "motion_sensor" in device:
                 sensor_id = device["motion_sensor"]
                 if not self._is_valid_entity_id(sensor_id):
-                    errors.append(ValidationError(
-                        f"devices.lighting[{device_id}].motion_sensor",
-                        f"Невалидный entity_id сенсора: {sensor_id}"
-                    ))
+                    errors.append(
+                        ValidationError(
+                            f"devices.lighting[{device_id}].motion_sensor",
+                            f"Невалидный entity_id сенсора: {sensor_id}",
+                        )
+                    )
 
         # Проверка climate устройств
         for device in manifest.get("devices", {}).get("climate", []):
             device_id = device.get("id", "")
             if not self._is_valid_entity_id(device_id):
-                errors.append(ValidationError(
-                    f"devices.climate[{device_id}].id",
-                    f"Невалидный entity_id: {device_id}"
-                ))
-            
+                errors.append(
+                    ValidationError(
+                        f"devices.climate[{device_id}].id", f"Невалидный entity_id: {device_id}"
+                    )
+                )
+
             # Проверка sensor
             if "sensor" in device:
                 sensor_id = device["sensor"]
                 if not self._is_valid_entity_id(sensor_id):
-                    errors.append(ValidationError(
-                        f"devices.climate[{device_id}].sensor",
-                        f"Невалидный entity_id сенсора: {sensor_id}"
-                    ))
+                    errors.append(
+                        ValidationError(
+                            f"devices.climate[{device_id}].sensor",
+                            f"Невалидный entity_id сенсора: {sensor_id}",
+                        )
+                    )
 
         # Проверка ventilation устройств
         for device in manifest.get("devices", {}).get("ventilation", []):
             device_id = device.get("id", "")
             if not self._is_valid_entity_id(device_id):
-                errors.append(ValidationError(
-                    f"devices.ventilation[{device_id}].id",
-                    f"Невалидный entity_id: {device_id}"
-                ))
+                errors.append(
+                    ValidationError(
+                        f"devices.ventilation[{device_id}].id", f"Невалидный entity_id: {device_id}"
+                    )
+                )
 
         return errors
 
@@ -185,10 +200,12 @@ class ManifestValidator:
             for device in manifest.get("devices", {}).get(device_type, []):
                 room = device.get("room")
                 if room and room not in zone_ids:
-                    errors.append(ValidationError(
-                        f"devices.{device_type}[{device.get('id')}].room",
-                        f"Комната '{room}' не найдена в zones"
-                    ))
+                    errors.append(
+                        ValidationError(
+                            f"devices.{device_type}[{device.get('id')}].room",
+                            f"Комната '{room}' не найдена в zones",
+                        )
+                    )
 
         return errors
 
@@ -203,10 +220,12 @@ class ManifestValidator:
                 device_id = device.get("id")
                 if device_id:
                     if device_id in seen_ids:
-                        errors.append(ValidationError(
-                            f"devices.{device_type}[{device_id}].id",
-                            f"Дубликат ID: {device_id}"
-                        ))
+                        errors.append(
+                            ValidationError(
+                                f"devices.{device_type}[{device_id}].id",
+                                f"Дубликат ID: {device_id}",
+                            )
+                        )
                     seen_ids.add(device_id)
 
         # Проверка уникальности ID зон
@@ -215,10 +234,9 @@ class ManifestValidator:
             zone_id = zone.get("id")
             if zone_id:
                 if zone_id in zone_ids:
-                    errors.append(ValidationError(
-                        f"zones[{zone_id}].id",
-                        f"Дубликат ID зоны: {zone_id}"
-                    ))
+                    errors.append(
+                        ValidationError(f"zones[{zone_id}].id", f"Дубликат ID зоны: {zone_id}")
+                    )
                 zone_ids.add(zone_id)
 
         # Проверка диапазонов температур
@@ -226,28 +244,34 @@ class ManifestValidator:
             target = device.get("target")
             if target is not None:
                 if not (10.0 <= target <= 35.0):
-                    errors.append(ValidationError(
-                        f"devices.climate[{device.get('id')}].target",
-                        f"Целевая температура {target} вне диапазона 10-35"
-                    ))
-            
+                    errors.append(
+                        ValidationError(
+                            f"devices.climate[{device.get('id')}].target",
+                            f"Целевая температура {target} вне диапазона 10-35",
+                        )
+                    )
+
             hysteresis = device.get("hysteresis")
             if hysteresis is not None:
                 if not (0.1 <= hysteresis <= 5.0):
-                    errors.append(ValidationError(
-                        f"devices.climate[{device.get('id')}].hysteresis",
-                        f"Гистерезис {hysteresis} вне диапазона 0.1-5.0"
-                    ))
+                    errors.append(
+                        ValidationError(
+                            f"devices.climate[{device.get('id')}].hysteresis",
+                            f"Гистерезис {hysteresis} вне диапазона 0.1-5.0",
+                        )
+                    )
 
         # Проверка порогов влажности для вентиляции
         for device in manifest.get("devices", {}).get("ventilation", []):
             threshold = device.get("humidity_threshold")
             if threshold is not None:
                 if not (0 <= threshold <= 100):
-                    errors.append(ValidationError(
-                        f"devices.ventilation[{device.get('id')}].humidity_threshold",
-                        f"Порог влажности {threshold} вне диапазона 0-100"
-                    ))
+                    errors.append(
+                        ValidationError(
+                            f"devices.ventilation[{device.get('id')}].humidity_threshold",
+                            f"Порог влажности {threshold} вне диапазона 0-100",
+                        )
+                    )
 
         return errors
 
