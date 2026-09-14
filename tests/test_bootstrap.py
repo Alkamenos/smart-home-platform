@@ -15,8 +15,13 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pathlib import Path
+
 from smart_home.bootstrap import PlatformContext, bootstrap_platform
 from smart_home.core.middleware import ManualLockoutMiddleware
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MANIFEST_PATH = PROJECT_ROOT / "examples" / "instances" / "leonids_house" / "manifest.yaml"
 
 
 class TestBootstrapPlatform:
@@ -24,13 +29,13 @@ class TestBootstrapPlatform:
 
     def test_bootstrap_returns_platform_context(self):
         """Test that bootstrap_platform returns a PlatformContext."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert isinstance(ctx, PlatformContext)
 
     def test_platform_context_contains_manifest(self):
         """Test that PlatformContext contains manifest."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.manifest is not None
         assert ctx.manifest.instance.id == "leonids_house"
@@ -38,7 +43,7 @@ class TestBootstrapPlatform:
 
     def test_platform_context_contains_event_bus(self):
         """Test that PlatformContext contains EventBus."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.event_bus is not None
         from smart_home.core.event_bus import EventBus
@@ -47,7 +52,7 @@ class TestBootstrapPlatform:
 
     def test_platform_context_contains_fsm_engine(self):
         """Test that PlatformContext contains FSMEngine."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.fsm is not None
         from smart_home.core.fsm import FSMEngine
@@ -56,7 +61,7 @@ class TestBootstrapPlatform:
 
     def test_platform_context_contains_control_tracker(self):
         """Test that PlatformContext contains ControlTracker."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.control_tracker is not None
         from smart_home.core.control_tracker import ControlTracker
@@ -65,7 +70,7 @@ class TestBootstrapPlatform:
 
     def test_platform_context_contains_adapter(self):
         """Test that PlatformContext contains MockAdapter."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.adapter is not None
         from smart_home.adapters.mock_adapter import MockAdapter
@@ -74,7 +79,7 @@ class TestBootstrapPlatform:
 
     def test_platform_context_contains_dispatcher(self):
         """Test that PlatformContext contains CommandDispatcher."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.dispatcher is not None
         from smart_home.core.command_dispatcher import CommandDispatcher
@@ -83,7 +88,7 @@ class TestBootstrapPlatform:
 
     def test_manual_lockout_middleware_added_to_dispatcher(self):
         """Test that ManualLockoutMiddleware is added to dispatcher."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         # Check that dispatcher has middleware
         assert len(ctx.dispatcher._middlewares) == 1
@@ -94,7 +99,7 @@ class TestBootstrapPlatform:
 
     def test_middleware_has_automation_rules_from_manifest(self):
         """Test that middleware has automation_rules from manifest."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         middleware = ctx.dispatcher._middlewares[0]
 
@@ -109,7 +114,7 @@ class TestBootstrapPlatform:
 
     def test_middleware_has_control_tracker(self):
         """Test that middleware has ControlTracker."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         middleware = ctx.dispatcher._middlewares[0]
 
@@ -121,14 +126,14 @@ class TestBootstrapPlatform:
 
     def test_adapter_linked_to_fsm_engine(self):
         """Test that adapter is linked to FSM engine."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         # Check that adapter has fsm_engine set
         assert ctx.adapter._fsm_engine is ctx.fsm
 
     def test_manifest_devices_loaded(self):
         """Test that manifest devices are loaded correctly."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert len(ctx.manifest.devices) == 6
 
@@ -142,7 +147,7 @@ class TestBootstrapPlatform:
 
     def test_manifest_zones_loaded(self):
         """Test that manifest zones are loaded correctly."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert len(ctx.manifest.zones) == 4
 
@@ -155,7 +160,7 @@ class TestBootstrapPlatform:
     @pytest.mark.asyncio
     async def test_dispatcher_with_middleware_blocks_automated_commands(self):
         """Test that dispatcher with middleware blocks automated commands during lockout."""
-        ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
+        ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         from smart_home.core.command_dispatcher import CommandIntent
 

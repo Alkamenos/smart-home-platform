@@ -118,7 +118,7 @@ async def setup_full_house_demo() -> tuple[FSMEngine, HAAdapter, EventRouter, Ma
     print(f"   ✅ Создано и зарегистрировано {len(definitions)} FSM определений")
 
     # Print registered FSMs
-    for fsm_id in engine._definitions.keys():
+    for fsm_id in engine._definitions:
         state = engine.get_state(fsm_id)
         print(f"      • {fsm_id}: initial_state={state.current_state}")
 
@@ -129,7 +129,7 @@ async def setup_full_house_demo() -> tuple[FSMEngine, HAAdapter, EventRouter, Ma
 
     # Show sensor mappings
     print("\n   📋 Маршруты сенсоров:")
-    for sensor_id in router._sensor_to_fsms.keys():
+    for sensor_id in router._sensor_to_fsms:
         mappings = router.get_mapping_for_sensor(sensor_id)
         for fsm_id, event_name in mappings:
             print(f"      • {sensor_id} -> {fsm_id} ({event_name})")
@@ -155,7 +155,7 @@ async def emulate_sensor_events(adapter: HAAdapter, engine: FSMEngine) -> None:
         adapter: HAAdapter instance.
         engine: FSMEngine instance.
     """
-    log = logger.bind(component="demo")
+    logger.bind(component="demo")
 
     print("\n" + "=" * 70)
     print("🎬 Эмуляция событий от датчиков")
@@ -178,7 +178,7 @@ async def emulate_sensor_events(adapter: HAAdapter, engine: FSMEngine) -> None:
 
     # Show FSM states after motion
     print("\n   📊 Состояния FSM после события движения:")
-    for fsm_id in engine._definitions.keys():
+    for fsm_id in engine._definitions:
         if "kitchen" in fsm_id:
             state = engine.get_state(fsm_id)
             print(f"      • {fsm_id}: {state.current_state}")
@@ -200,7 +200,7 @@ async def emulate_sensor_events(adapter: HAAdapter, engine: FSMEngine) -> None:
 
     # Show FSM states after temperature change
     print("\n   📊 Состояния FSM после изменения температуры:")
-    for fsm_id in engine._definitions.keys():
+    for fsm_id in engine._definitions:
         if "climate.kitchen" in fsm_id:
             state = engine.get_state(fsm_id)
             print(f"      • {fsm_id}: {state.current_state}")
@@ -222,7 +222,7 @@ async def emulate_sensor_events(adapter: HAAdapter, engine: FSMEngine) -> None:
 
     # Show FSM states after manual override
     print("\n   📊 Состояния FSM после ручного включения:")
-    for fsm_id in engine._definitions.keys():
+    for fsm_id in engine._definitions:
         if "light.kitchen" in fsm_id:
             state = engine.get_state(fsm_id)
             print(f"      • {fsm_id}: {state.current_state}")
@@ -246,7 +246,7 @@ async def emulate_sensor_events(adapter: HAAdapter, engine: FSMEngine) -> None:
 
     # Show FSM states after living room motion
     print("\n   📊 Состояния FSM после события движения в гостиной:")
-    for fsm_id in engine._definitions.keys():
+    for fsm_id in engine._definitions:
         if "living_room" in fsm_id:
             state = engine.get_state(fsm_id)
             print(f"      • {fsm_id}: {state.current_state}")

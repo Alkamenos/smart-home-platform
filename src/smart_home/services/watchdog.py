@@ -14,6 +14,7 @@ Usage:
 """
 
 import asyncio
+import contextlib
 import json
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -68,10 +69,8 @@ class WatchdogService:
         self._running = False
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         logger.info("Watchdog stopped")
 
     async def _watchdog_loop(self):

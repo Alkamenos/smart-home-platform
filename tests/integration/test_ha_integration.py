@@ -414,7 +414,6 @@ async def test_ha_integration_full_cycle(ha_container, ha_token, mock_engine):
 
     # Track received events and commands
     events_received = []
-    commands_sent = []
 
     async def handle_state_change(entity_id: str, new_state: str, old_state: str, context: dict):
         events_received.append(
@@ -457,8 +456,6 @@ async def test_ha_integration_full_cycle(ha_container, ha_token, mock_engine):
             }
 
             # Try to create input_boolean for motion sensor
-            motion_entity = "input_boolean.test_motion"
-            light_entity = "light.test_light"
 
             # First, check what entities exist
             async with session.get(f"{http_url}/api/states", headers=headers) as resp:

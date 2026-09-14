@@ -151,9 +151,9 @@ class ActionBridge:
                 import asyncio
 
                 try:
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     # Создаём задачу чтобы не блокировать event loop
-                    task = asyncio.create_task(
+                    asyncio.create_task(
                         self._adapter.set_entity_state(entity_id, command, attributes)
                     )
                     self._logger.info(
@@ -240,7 +240,7 @@ class StateSync:
         """
         entity_id = data.get("entity_id")
         new_state = data.get("new_state")
-        old_state = data.get("old_state")
+        data.get("old_state")
 
         if not entity_id or not new_state:
             return

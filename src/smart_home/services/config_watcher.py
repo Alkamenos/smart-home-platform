@@ -53,24 +53,33 @@ class YAMLFileHandler(FileSystemEventHandler):
 
     def on_modified(self, event):
         """Handle file modification events."""
-        if isinstance(event, FileModifiedEvent) and event.src_path.endswith((".yaml", ".yml")):
-            if self._should_process(event.src_path):
-                logger.info(f"YAML file modified: {event.src_path}")
-                self._callback(event.src_path)
+        if (
+            isinstance(event, FileModifiedEvent)
+            and event.src_path.endswith((".yaml", ".yml"))
+            and self._should_process(event.src_path)
+        ):
+            logger.info(f"YAML file modified: {event.src_path}")
+            self._callback(event.src_path)
 
     def on_created(self, event):
         """Handle file creation events."""
-        if isinstance(event, FileCreatedEvent) and event.src_path.endswith((".yaml", ".yml")):
-            if self._should_process(event.src_path):
-                logger.info(f"YAML file created: {event.src_path}")
-                self._callback(event.src_path)
+        if (
+            isinstance(event, FileCreatedEvent)
+            and event.src_path.endswith((".yaml", ".yml"))
+            and self._should_process(event.src_path)
+        ):
+            logger.info(f"YAML file created: {event.src_path}")
+            self._callback(event.src_path)
 
     def on_deleted(self, event):
         """Handle file deletion events."""
-        if isinstance(event, FileDeletedEvent) and event.src_path.endswith((".yaml", ".yml")):
-            if self._should_process(event.src_path):
-                logger.info(f"YAML file deleted: {event.src_path}")
-                self._callback(event.src_path)
+        if (
+            isinstance(event, FileDeletedEvent)
+            and event.src_path.endswith((".yaml", ".yml"))
+            and self._should_process(event.src_path)
+        ):
+            logger.info(f"YAML file deleted: {event.src_path}")
+            self._callback(event.src_path)
 
 
 class ConfigWatcher:

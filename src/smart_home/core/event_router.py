@@ -120,7 +120,7 @@ class EventRouter:
             List of FSM entity IDs that belong to this device.
         """
         fsm_ids = []
-        for registered_id in self._engine._definitions.keys():
+        for registered_id in self._engine._definitions:
             if registered_id.startswith(f"{device_id}_"):
                 fsm_ids.append(registered_id)
         return fsm_ids

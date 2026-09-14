@@ -165,7 +165,9 @@ class FSMFactory:
 
                 guard_fn = combined_guard
             else:
-                guard_fn = lambda state, context: schedule_guard_fn(context)
+
+                def guard_fn(state, context):
+                    return schedule_guard_fn(context)
 
         return Transition(
             from_state=yaml_transition.from_state,

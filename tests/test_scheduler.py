@@ -111,7 +111,7 @@ async def test_cancel_does_not_affect_other_entities():
     cb_a = await callback_maker("a")
     cb_b = await callback_maker("b")
 
-    task_a = scheduler.schedule(
+    scheduler.schedule(
         entity_id=entity_a,
         trigger="trigger_a",
         delay=0.1,  # Short delay so it fires

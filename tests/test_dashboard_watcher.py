@@ -140,7 +140,7 @@ class TestWatchLoop:
         # Запускаем watch в отдельном потоке на короткое время
         import threading
 
-        stop_event = threading.Event()
+        threading.Event()
 
         def run_watch():
             # Эмулируем короткий цикл watch

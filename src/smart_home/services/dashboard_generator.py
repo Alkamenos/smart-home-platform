@@ -244,7 +244,7 @@ class DashboardGenerator:
 
             # Получаем состояние FSM если доступно
             fsm_state = self._fsm_states.get(entity_id, {})
-            current_state = fsm_state.get("state", "unknown")
+            fsm_state.get("state", "unknown")
 
             entities.append(
                 {

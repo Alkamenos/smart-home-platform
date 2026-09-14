@@ -9,6 +9,7 @@ and debounce protection.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from .command_dispatcher import CommandDispatcher, CommandIntent
+    from .state_persistence import StatePersistence
 
 
 # @dataclass (frozen=True)
@@ -120,7 +122,7 @@ class FSMEngine:
         self._definitions[definition.entity_id] = definition
 
         # Check if we have a persisted state to restore
-        restored_state: Tuple[str, dict] | None = None
+        restored_state: tuple[str, dict] | None = None
         if restore_state and self._persistence is not None:
             restored_state = self._persistence.load_state(definition.entity_id)
 
@@ -204,10 +206,8 @@ class FSMEngine:
             timer_task = self._timers[entity_id]
             if not timer_task.done():
                 timer_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await timer_task
-                except asyncio.CancelledError:
-                    pass
             del self._timers[entity_id]
             log.debug(f"Cancelled timers for entity {entity_id}")
 
@@ -481,10 +481,8 @@ class FSMEngine:
             timer_task = self._timers[entity_id]
             if not timer_task.done():
                 timer_task.cancel()
-                try:
-                    # In synchronous context, we can't await, so just cancel
-                    pass
-                except asyncio.CancelledError:
+                # In synchronous context, we can't await, so just cancel
+                with contextlib.suppress(asyncio.CancelledError):
                     pass
             del self._timers[entity_id]
             logger.debug(f"Cancelled timers for entity {entity_id} during unregister")

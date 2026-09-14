@@ -8,7 +8,6 @@ Tests cover:
 4. add_middleware method allows adding middleware after creation.
 """
 
-
 import pytest
 
 from smart_home.adapters.mock_adapter import MockAdapter

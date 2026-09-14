@@ -14,23 +14,18 @@ CLI для платформы V3
 """
 
 import argparse
-import sys
 import json
+import sys
 import time
-import signal
-import os
 from pathlib import Path
 
-from smart_home.core.fsm import FSMEngine
-from smart_home.core.event_bus import EventBus
-from smart_home.core.logger import Logger
-from smart_home.core.registry import Registry
-from smart_home.adapters.mock_adapter import MockAdapter
 from smart_home.adapters.ha_adapter import HomeAssistantAdapter
-from smart_home.features.lighting import create_lighting_automations
+from smart_home.adapters.mock_adapter import MockAdapter
 
 # Импорт bootstrap для инициализации платформы
-from smart_home.bootstrap import bootstrap_platform, PlatformContext
+from smart_home.bootstrap import bootstrap_platform
+from smart_home.core.event_bus import EventBus
+from smart_home.core.registry import Registry
 
 # Алиас для совместимости
 HAAdapter = HomeAssistantAdapter
@@ -60,6 +55,7 @@ def cmd_validate(args):
     print("📋 Валидация структуры манифеста через Pydantic...")
     try:
         from smart_home.core.models.manifest import Manifest
+
         manifest = Manifest.model_validate(manifest_data)
         print("✅ Структура манифеста валидна")
     except Exception as e:
@@ -82,22 +78,21 @@ def cmd_validate(args):
     for device in manifest.devices:
         for behavior in device.behaviors:
             if behavior.template not in available_templates:
-                missing_templates.append({
-                    "device": device.id,
-                    "template": behavior.template
-                })
+                missing_templates.append({"device": device.id, "template": behavior.template})
 
     if missing_templates:
         print(f"❌ Найдено {len(missing_templates)} отсутствующих template:")
         for item in missing_templates:
-            print(f"   • Устройство {item['device']}: template '{item['template']}' не найден в features/")
+            print(
+                f"   • Устройство {item['device']}: template '{item['template']}' не найден в features/"
+            )
         errors.extend(missing_templates)
     else:
         print(f"✅ Все template файлы найдены (найдено шаблонов: {len(available_templates)})")
 
     # 4. Проверка что все room существуют в zones
     print("\n🔍 Проверка ссылочной целостности room -> zones...")
-    zone_ids = {zone.id for zone in manifest.zones}
+    {zone.id for zone in manifest.zones}
     room_zone_refs = {}
     for zone in manifest.zones:
         if zone.rooms:
@@ -107,10 +102,7 @@ def cmd_validate(args):
     missing_rooms = []
     for device in manifest.devices:
         if device.room and device.room not in room_zone_refs:
-            missing_rooms.append({
-                "device": device.id,
-                "room": device.room
-            })
+            missing_rooms.append({"device": device.id, "room": device.room})
 
     if missing_rooms:
         print(f"❌ Найдено {len(missing_rooms)} устройств с несуществующими room:")
@@ -160,6 +152,7 @@ def cmd_list_devices(args):
         manifest_data = yaml.safe_load(f)
 
     from smart_home.core.models.manifest import Manifest
+
     manifest = Manifest.model_validate(manifest_data)
 
     print(f"Instance: {manifest.instance.name}")
@@ -199,6 +192,7 @@ def cmd_dry_run(args):
         manifest_data = yaml.safe_load(f)
 
     from smart_home.core.models.manifest import Manifest
+
     manifest = Manifest.model_validate(manifest_data)
 
     print(f"📦 Instance: {manifest.instance.name}")
@@ -209,12 +203,11 @@ def cmd_dry_run(args):
     # Создаём mock-платформу
     print("🚀 Инициализация платформы...")
     ctx = bootstrap_platform(str(manifest_path))
-    print(f"✅ Платформа инициализирована")
+    print("✅ Платформа инициализирована")
 
     # Создаём автоматы
     print("\n🤖 Создание автоматов...")
     from smart_home.core.fsm_factory import FSMFactory
-    from smart_home.core.registry import Registry
     from smart_home.core.guards.schedule_guard import is_within_schedule
 
     registry = Registry()
@@ -246,6 +239,7 @@ def cmd_dry_run(args):
 def cmd_manifest_validate(args):
     """Валидация манифеста"""
     import yaml
+
     from smart_home.core.manifest_validator import ManifestValidator
 
     manifest_path = Path(args.manifest_path)
@@ -272,7 +266,6 @@ def cmd_manifest_validate(args):
 
 def cmd_manifest_show(args):
     """Показать содержимое манифеста"""
-    import yaml
 
     manifest_path = Path(args.manifest_path)
 
@@ -296,6 +289,7 @@ def cmd_manifest_generate(args):
     manifest = generator.generate_minimal()
 
     import yaml
+
     with open(output_path, "w", encoding="utf-8") as f:
         yaml.dump(manifest.model_dump(), f, default_flow_style=False, allow_unicode=True)
 
@@ -305,6 +299,7 @@ def cmd_manifest_generate(args):
 def cmd_manifest_migrate(args):
     """Миграция манифеста v2 → v3"""
     import yaml
+
     from smart_home.core.manifest_generator import ManifestGenerator
 
     input_path = Path(args.input_path)
@@ -375,7 +370,6 @@ def cmd_debug(args):
     ctx = bootstrap_platform(manifest_path)
 
     from smart_home.core.fsm_factory import FSMFactory
-    from smart_home.core.registry import Registry
     from smart_home.core.guards.schedule_guard import is_within_schedule
 
     registry = Registry()
@@ -404,8 +398,9 @@ def cmd_debug(args):
     if args.visualize:
         print("\n📊 Визуализация автомата...")
         from smart_home.core.fsm import FSMEngine
+
         engine = FSMEngine()
-        instance = engine.create_fsm(target_def)
+        engine.create_fsm(target_def)
 
         # Граф состояний
         print("\nГраф состояний:")
@@ -423,7 +418,9 @@ def cmd_deploy(args):
     """Деплой в Home Assistant"""
     # PyscriptLoader has been removed. Use bootstrap_platform instead.
     print("❌ cmd_deploy is deprecated. Use bootstrap_platform() directly.")
-    print("   Example: python -c \"from smart_home.bootstrap import bootstrap_platform; ctx = bootstrap_platform('instances/leonids_house/manifest.yaml')\"")
+    print(
+        "   Example: python -c \"from smart_home.bootstrap import bootstrap_platform; ctx = bootstrap_platform('instances/leonids_house/manifest.yaml')\""
+    )
     sys.exit(1)
 
 
@@ -434,7 +431,6 @@ def cmd_status(args):
     ctx = bootstrap_platform(manifest_path)
 
     from smart_home.core.fsm_factory import FSMFactory
-    from smart_home.core.registry import Registry
     from smart_home.core.guards.schedule_guard import is_within_schedule
 
     registry = Registry()
@@ -456,13 +452,12 @@ def cmd_status(args):
 
 def cmd_health(args):
     """Проверка здоровья платформы"""
-    import psutil
 
     print("💚 Проверка здоровья платформы\n")
 
     # 1. Проверка манифеста
     manifest_path = args.manifest_path or "instances/leonids_house/manifest.yaml"
-    print(f"1. Манифест: ", end="")
+    print("1. Манифест: ", end="")
     if Path(manifest_path).exists():
         print("✅")
     else:
@@ -471,12 +466,18 @@ def cmd_health(args):
 
     # 2. Проверка ядра
     core_dir = Path("/workspace/core")
-    required_files = ["fsm.py", "event_bus.py", "registry.py", "manifest_validator.py", "manifest_generator.py"]
+    required_files = [
+        "fsm.py",
+        "event_bus.py",
+        "registry.py",
+        "manifest_validator.py",
+        "manifest_generator.py",
+    ]
     missing = [f for f in required_files if not (core_dir / f).exists()]
     if missing:
         print(f"📦 Ядро: ❌ Отсутствуют файлы: {', '.join(missing)}")
     else:
-        print(f"📦 Ядро: ✅ Все файлы на месте")
+        print("📦 Ядро: ✅ Все файлы на месте")
 
     # 3. Проверка тестов
     tests_dir = Path("/workspace/tests")
@@ -501,7 +502,7 @@ def cmd_doctor(args):
     checks_passed = 0
     checks_total = 0
 
-    manifest_path = getattr(args, 'manifest_path', None) or "instances/leonids_house/manifest.yaml"
+    manifest_path = getattr(args, "manifest_path", None) or "instances/leonids_house/manifest.yaml"
 
     # 1. Проверка манифеста через bootstrap
     print("Проверяю манифест...", end=" ")
@@ -512,19 +513,21 @@ def cmd_doctor(args):
         checks_passed += 1
     except Exception as e:
         print(f"❌ {e}")
-        issues.append({
-            'type': 'manifest_error',
-            'message': f"Ошибка инициализации платформы: {e}",
-            'fix': "Проверьте путь к манифесту и формат YAML"
-        })
+        issues.append(
+            {
+                "type": "manifest_error",
+                "message": f"Ошибка инициализации платформы: {e}",
+                "fix": "Проверьте путь к манифесту и формат YAML",
+            }
+        )
 
     # 2. Проверка автоматов через FSMFactory
     print("Проверяю автоматы...", end=" ")
     checks_total += 1
     try:
         from smart_home.core.fsm_factory import FSMFactory
-        from smart_home.core.registry import Registry
         from smart_home.core.guards.schedule_guard import is_within_schedule
+        from smart_home.core.registry import Registry
 
         registry = Registry()
         # Регистрируем guard для проверки расписания
@@ -537,17 +540,18 @@ def cmd_doctor(args):
         checks_passed += 1
     except Exception as e:
         print(f"❌ {e}")
-        issues.append({
-            'type': 'automation_error',
-            'message': f"Ошибка генерации автоматов: {e}",
-            'fix': "Проверьте корректность манифеста"
-        })
+        issues.append(
+            {
+                "type": "automation_error",
+                "message": f"Ошибка генерации автоматов: {e}",
+                "fix": "Проверьте корректность манифеста",
+            }
+        )
 
     # 3. Проверка подключений (адаптеры)
     print("Проверяю подключения...", end=" ")
     checks_total += 1
     try:
-        from smart_home.adapters.ha_adapter import HomeAssistantAdapter
         from smart_home.adapters.mock_adapter import MockAdapter
 
         # Mock адаптер всегда доступен
@@ -564,6 +568,7 @@ def cmd_doctor(args):
     print("Проверяю производительность...", end=" ")
     checks_total += 1
     import time
+
     start = time.time()
     try:
         event_bus = EventBus()
@@ -575,11 +580,13 @@ def cmd_doctor(args):
             checks_passed += 1
         else:
             print(f"⚠️ {elapsed:.1f}мс (медленно)")
-            issues.append({
-                'type': 'performance_slow',
-                'message': f"Обработка событий медленная: {elapsed:.1f}мс",
-                'fix': "Проверьте нагрузку на систему"
-            })
+            issues.append(
+                {
+                    "type": "performance_slow",
+                    "message": f"Обработка событий медленная: {elapsed:.1f}мс",
+                    "fix": "Проверьте нагрузку на систему",
+                }
+            )
     except Exception as e:
         print(f"❌ {e}")
 
@@ -592,16 +599,18 @@ def cmd_doctor(args):
         for i, issue in enumerate(issues, 1):
             print(f"\n{i}. {issue['message']}")
             print(f"   Решение: {issue['fix']}")
-        print(f"\nОбщий статус: ⚠️ Требует внимания")
+        print("\nОбщий статус: ⚠️ Требует внимания")
     else:
-        print(f"\nОбщий статус: ✅ Всё в порядке")
+        print("\nОбщий статус: ✅ Всё в порядке")
 
     if args.json:
-        print("\n" + json.dumps({
-            'checks_passed': checks_passed,
-            'checks_total': checks_total,
-            'issues': issues
-        }, indent=2))
+        print(
+            "\n"
+            + json.dumps(
+                {"checks_passed": checks_passed, "checks_total": checks_total, "issues": issues},
+                indent=2,
+            )
+        )
 
 
 def cmd_watch(args):
@@ -612,18 +621,19 @@ def cmd_watch(args):
 
 def setup_parser() -> argparse.ArgumentParser:
     """Настройка парсера аргументов"""
-    parser = argparse.ArgumentParser(
-        prog="smart-home",
-        description="Smart Home FSM Platform CLI"
-    )
+    parser = argparse.ArgumentParser(prog="smart-home", description="Smart Home FSM Platform CLI")
 
     subparsers = parser.add_subparsers(dest="command", help="Команды")
 
     # run
     parser_run = subparsers.add_parser("run", help="Запуск платформы")
-    parser_run.add_argument("--manifest", "-m", dest="manifest_path",
-                           default="instances/leonids_house/manifest.yaml",
-                           help="Путь к манифесту")
+    parser_run.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
     parser_run.add_argument("--mock", action="store_true", help="Использовать mock-адаптер")
     parser_run.set_defaults(func=cmd_run)
 
@@ -633,32 +643,50 @@ def setup_parser() -> argparse.ArgumentParser:
 
     # debug
     parser_debug = subparsers.add_parser("debug", help="Отладка автомата")
-    parser_debug.add_argument("--manifest", "-m", dest="manifest_path",
-                             default="instances/leonids_house/manifest.yaml",
-                             help="Путь к манифесту")
-    parser_debug.add_argument("--device", "-d", dest="device_id", required=True,
-                             help="ID устройства для отладки")
-    parser_debug.add_argument("--visualize", "-v", action="store_true",
-                             help="Визуализировать автомат")
+    parser_debug.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
+    parser_debug.add_argument(
+        "--device", "-d", dest="device_id", required=True, help="ID устройства для отладки"
+    )
+    parser_debug.add_argument(
+        "--visualize", "-v", action="store_true", help="Визуализировать автомат"
+    )
     parser_debug.set_defaults(func=cmd_debug)
 
     # deploy
     parser_deploy = subparsers.add_parser("deploy", help="Деплой в HA")
-    parser_deploy.add_argument("--manifest", "-m", dest="manifest_path",
-                              default="instances/leonids_house/manifest.yaml",
-                              help="Путь к манифесту")
-    parser_deploy.add_argument("--ha-config", dest="ha_config_dir",
-                              default="~/.homeassistant",
-                              help="Директория конфигурации HA")
-    parser_deploy.add_argument("--reload", action="store_true",
-                              help="Перезапустить PyScript после деплоя")
+    parser_deploy.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
+    parser_deploy.add_argument(
+        "--ha-config",
+        dest="ha_config_dir",
+        default="~/.homeassistant",
+        help="Директория конфигурации HA",
+    )
+    parser_deploy.add_argument(
+        "--reload", action="store_true", help="Перезапустить PyScript после деплоя"
+    )
     parser_deploy.set_defaults(func=cmd_deploy)
 
     # status
     parser_status = subparsers.add_parser("status", help="Статус автоматов")
-    parser_status.add_argument("--manifest", "-m", dest="manifest_path",
-                              default="instances/leonids_house/manifest.yaml",
-                              help="Путь к манифесту")
+    parser_status.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
     parser_status.set_defaults(func=cmd_status)
 
     # manifest
@@ -666,53 +694,69 @@ def setup_parser() -> argparse.ArgumentParser:
     manifest_subparsers = parser_manifest.add_subparsers(dest="manifest_command")
 
     # manifest validate
-    parser_manifest_validate = manifest_subparsers.add_parser("validate",
-                                                              help="Валидация манифеста")
-    parser_manifest_validate.add_argument("--manifest", "-m", dest="manifest_path",
-                                         default="instances/leonids_house/manifest.yaml",
-                                         help="Путь к манифесту")
+    parser_manifest_validate = manifest_subparsers.add_parser(
+        "validate", help="Валидация манифеста"
+    )
+    parser_manifest_validate.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
     parser_manifest_validate.set_defaults(func=cmd_manifest_validate)
 
     # manifest show
-    parser_manifest_show = manifest_subparsers.add_parser("show",
-                                                          help="Показать манифест")
-    parser_manifest_show.add_argument("--manifest", "-m", dest="manifest_path",
-                                     default="instances/leonids_house/manifest.yaml",
-                                     help="Путь к манифесту")
+    parser_manifest_show = manifest_subparsers.add_parser("show", help="Показать манифест")
+    parser_manifest_show.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
     parser_manifest_show.set_defaults(func=cmd_manifest_show)
 
     # manifest generate
-    parser_manifest_generate = manifest_subparsers.add_parser("generate",
-                                                              help="Генерация манифеста")
-    parser_manifest_generate.add_argument("--output", "-o", dest="output_path",
-                                         default="manifest.yaml",
-                                         help="Путь для сохранения")
+    parser_manifest_generate = manifest_subparsers.add_parser(
+        "generate", help="Генерация манифеста"
+    )
+    parser_manifest_generate.add_argument(
+        "--output", "-o", dest="output_path", default="manifest.yaml", help="Путь для сохранения"
+    )
     parser_manifest_generate.set_defaults(func=cmd_manifest_generate)
 
     # manifest migrate
-    parser_manifest_migrate = manifest_subparsers.add_parser("migrate",
-                                                             help="Миграция v2→v3")
-    parser_manifest_migrate.add_argument("--input", "-i", dest="input_path",
-                                        required=True, help="Старый манифест")
-    parser_manifest_migrate.add_argument("--output", "-o", dest="output_path",
-                                        default="manifest_v3.yaml",
-                                        help="Новый манифест")
+    parser_manifest_migrate = manifest_subparsers.add_parser("migrate", help="Миграция v2→v3")
+    parser_manifest_migrate.add_argument(
+        "--input", "-i", dest="input_path", required=True, help="Старый манифест"
+    )
+    parser_manifest_migrate.add_argument(
+        "--output", "-o", dest="output_path", default="manifest_v3.yaml", help="Новый манифест"
+    )
     parser_manifest_migrate.set_defaults(func=cmd_manifest_migrate)
 
     # health
     parser_health = subparsers.add_parser("health", help="Проверка здоровья")
-    parser_health.add_argument("--manifest", "-m", dest="manifest_path",
-                              default="instances/leonids_house/manifest.yaml",
-                              help="Путь к манифесту")
+    parser_health.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
     parser_health.set_defaults(func=cmd_health)
 
     # doctor
     parser_doctor = subparsers.add_parser("doctor", help="Диагностика проблем")
-    parser_doctor.add_argument("--manifest", "-m", dest="manifest_path",
-                              default="instances/leonids_house/manifest.yaml",
-                              help="Путь к манифесту")
-    parser_doctor.add_argument("--json", action="store_true",
-                              help="Вывод в JSON формате")
+    parser_doctor.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
+    parser_doctor.add_argument("--json", action="store_true", help="Вывод в JSON формате")
     parser_doctor.set_defaults(func=cmd_doctor)
 
     # watch
@@ -721,23 +765,35 @@ def setup_parser() -> argparse.ArgumentParser:
 
     # validate
     parser_validate = subparsers.add_parser("validate", help="Расширенная валидация")
-    parser_validate.add_argument("--manifest", "-m", dest="manifest_path",
-                                default="instances/leonids_house/manifest.yaml",
-                                help="Путь к манифесту")
+    parser_validate.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
     parser_validate.set_defaults(func=cmd_validate)
 
     # list-devices
     parser_list = subparsers.add_parser("list-devices", help="Список устройств")
-    parser_list.add_argument("--manifest", "-m", dest="manifest_path",
-                            default="instances/leonids_house/manifest.yaml",
-                            help="Путь к манифесту")
+    parser_list.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
     parser_list.set_defaults(func=cmd_list_devices)
 
     # dry-run
     parser_dryrun = subparsers.add_parser("dry-run", help="Симуляция работы")
-    parser_dryrun.add_argument("--manifest", "-m", dest="manifest_path",
-                              default="instances/leonids_house/manifest.yaml",
-                              help="Путь к манифесту")
+    parser_dryrun.add_argument(
+        "--manifest",
+        "-m",
+        dest="manifest_path",
+        default="instances/leonids_house/manifest.yaml",
+        help="Путь к манифесту",
+    )
     parser_dryrun.set_defaults(func=cmd_dry_run)
 
     return parser
@@ -801,7 +857,7 @@ def main():
         "test": cmd_test,
         "debug": cmd_debug,
         "deploy": cmd_deploy,
-        "status": cmd_status
+        "status": cmd_status,
     }
 
     commands[args.command](args)

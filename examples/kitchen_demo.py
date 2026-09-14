@@ -143,7 +143,7 @@ def setup_kitchen_automations(engine: FSMEngine, adapter: MockAdapter) -> None:
 
 async def run_demo() -> None:
     """Run the kitchen demo simulation with realistic async pacing."""
-    log = logger.bind(component="demo")
+    logger.bind(component="demo")
 
     print("=" * 70)
     print("🏠 Smart Home FSM - Kitchen Demo (Async & Context)")

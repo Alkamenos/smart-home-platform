@@ -132,7 +132,7 @@ class DashboardIntegration:
 
     async def _recreate_all_entities(self):
         """Пересоздать все entities после переподключения к HA"""
-        for fsm_id, entity_id in self._created_entities.items():
+        for _fsm_id, entity_id in self._created_entities.items():
             logger.debug(f"Recreating entity {entity_id}")
             # Здесь должна быть логика восстановления
             # Пока просто логируем

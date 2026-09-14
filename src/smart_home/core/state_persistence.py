@@ -5,6 +5,7 @@ This module provides state persistence for FSMs, allowing states to be
 saved to a JSON file and restored on platform restart.
 """
 
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -132,10 +133,8 @@ class StatePersistence:
 
             # Clean up temp file if it still exists (in case of error)
             if temp_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     temp_path.unlink()
-                except OSError:
-                    pass
 
     def save_state(self, entity_id: str, state: str, context: dict) -> None:
         """
@@ -198,10 +197,8 @@ class StatePersistence:
 
             # Clean up temp file if it still exists (in case of error)
             if temp_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     temp_path.unlink()
-                except OSError:
-                    pass
 
     def load_state(self, entity_id: str) -> tuple[str, dict] | None:
         """
