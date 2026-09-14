@@ -145,9 +145,15 @@ class FSMEngine:
                     context={}
                 )
         elif definition.entity_id not in self._states:
+            try:
+                loop = asyncio.get_event_loop()
+                entered_at = loop.time()
+            except RuntimeError:
+                # No event loop in current thread (e.g., during sync test setup)
+                entered_at = 0.0
             self._states[definition.entity_id] = State(
                 current_state=definition.initial_state,
-                entered_at=asyncio.get_event_loop().time(),
+                entered_at=entered_at,
                 context={}
             )
             logger.debug(
