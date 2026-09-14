@@ -106,6 +106,9 @@ ignore = [
     "B008",  # do not perform function calls in argument defaults
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["smart_home"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]  # allow assert in tests
 
@@ -116,7 +119,7 @@ target-version = ["py310"]
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["smart_home"]
+known_first_party = ["smart_home", "tools"]
 
 [tool.interrogate]
 ignore-init-method = true

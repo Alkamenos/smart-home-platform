@@ -1,1 +1,1 @@
-Nothing should be ignored based on the provided file changes. The only modified file is a Python test file (`tests/test_dashboard_watcher.py`), which is source code and should not be ignored. There are no build artifacts, dependencies, or temporary files in the changes that would warrant adding ignore rules.
+(pyproject.toml and test files are source/config files, no build artifacts, dependencies, or temp files in the changes)
