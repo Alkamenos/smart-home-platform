@@ -591,7 +591,7 @@ def cmd_doctor(args):
         print(f"❌ {e}")
 
     # Итоги
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"Найдено проблем: {len(issues)}")
 
     if issues:

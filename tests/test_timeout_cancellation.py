@@ -99,9 +99,9 @@ async def test_timer_cancellation_on_rapid_transitions():
         assert len(engine._timers) == 1, "Должен быть 1 таймер"
         timer_task_3 = engine._timers[entity_id]
 
-        assert (
-            timer_task_2.cancelled() or timer_task_2.done()
-        ), "Предыдущий таймер должен быть отменен"
+        assert timer_task_2.cancelled() or timer_task_2.done(), (
+            "Предыдущий таймер должен быть отменен"
+        )
         assert timer_task_3 is not timer_task_2, "Должен быть новый таймер"
 
 

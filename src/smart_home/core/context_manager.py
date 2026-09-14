@@ -191,8 +191,11 @@ class ContextManager:
         import asyncio
 
         # Проверяем доступность task.unique() (PyScript-specific)
+        pyscript_task_available = False
         with contextlib.suppress(ImportError):
             from pyscript import task
+
+            pyscript_task_available = True
 
         async def check_schedules():
             """Фоновая задача проверки расписаний"""
@@ -207,7 +210,7 @@ class ContextManager:
                 except Exception as e:
                     self._logger.error(f"Schedule checker error: {e}")
 
-        if PYSRIPT_TASK_AVAILABLE:
+        if pyscript_task_available:
             # Безопасный способ для PyScript - task.unique() сам отменяет старую задачу
             task.unique("platform_v3_schedule_checker")(check_schedules())
             self._logger.info("Schedule checker started with task.unique()")
