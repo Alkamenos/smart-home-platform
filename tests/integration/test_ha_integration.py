@@ -19,6 +19,11 @@ import aiohttp
 import pytest
 from loguru import logger
 
+# Import platform components
+from smart_home.adapters.ha_adapter import HAAdapter
+from smart_home.core.event_bus import EventBus
+from smart_home.core.registry import Registry as FSMRegistry
+
 
 # Simple WebSocket client for HA integration tests (fallback if homeassistant_websocket not available)
 class SimpleHAWebSocketClient:
@@ -113,11 +118,6 @@ try:
     from homeassistant_websocket import HomeAssistantWS  # type: ignore
 except ImportError:
     HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
-
-# Import platform components
-from smart_home.adapters.ha_adapter import HAAdapter
-from smart_home.core.event_bus import EventBus
-from smart_home.core.registry import Registry as FSMRegistry
 
 # Test constants
 HA_IMAGE = "homeassistant/home-assistant:stable"
@@ -405,7 +405,7 @@ async def test_ha_integration_full_cycle(ha_container, ha_token, mock_engine):
     5. Verifies FSM sends light.turn_on command to HA
     """
     try:
-        from homeassistant_websocket import HomeAssistantWS
+        from homeassistant_websocket import HomeAssistantWS  # noqa: F401
     except ImportError:
         pytest.skip("homeassistant-websocket not installed")
 
@@ -505,12 +505,12 @@ async def test_ha_integration_full_cycle(ha_container, ha_token, mock_engine):
             assert len(mock_engine.commands_sent) > 0, "FSM did not send any commands"
 
             command = mock_engine.commands_sent[0]
-            assert (
-                command["domain"] == "light"
-            ), f"Expected 'light' domain, got '{command['domain']}'"
-            assert (
-                command["service"] == "turn_on"
-            ), f"Expected 'turn_on' service, got '{command['service']}'"
+            assert command["domain"] == "light", (
+                f"Expected 'light' domain, got '{command['domain']}'"
+            )
+            assert command["service"] == "turn_on", (
+                f"Expected 'turn_on' service, got '{command['service']}'"
+            )
 
             # Send the command to HA
             result = await adapter.call_service(
@@ -656,7 +656,7 @@ async def test_full_e2e_scenario(ha_container, ha_token, mock_engine):
     4. HA receives and executes command
     """
     try:
-        from homeassistant_websocket import HomeAssistantWS
+        from homeassistant_websocket import HomeAssistantWS  # noqa: F401
     except ImportError:
         pytest.skip("homeassistant-websocket not installed")
 

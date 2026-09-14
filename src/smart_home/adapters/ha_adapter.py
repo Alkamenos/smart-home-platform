@@ -197,7 +197,7 @@ class HAAdapter:
         log = self._get_logger(trace_id)
 
         log.info(
-            f"HAAdapter: state_change received for {entity_id}: " f"'{old_state}' -> '{new_state}'"
+            f"HAAdapter: state_change received for {entity_id}: '{old_state}' -> '{new_state}'"
         )
 
         # Prepare payload
@@ -296,7 +296,7 @@ class HAAdapter:
             else:  # websocket mode
                 return await self._call_service_websocket(domain, service, entity_id, data, log)
         except Exception as e:
-            log.error(f"HAAdapter: service call failed {domain}.{service} " f"for {entity_id}: {e}")
+            log.error(f"HAAdapter: service call failed {domain}.{service} for {entity_id}: {e}")
             return False
 
     async def _call_service_pyscript(
@@ -451,8 +451,7 @@ class HAAdapter:
 
                 if not self._shutdown_event.is_set():
                     log.info(
-                        f"HAAdapter: reconnecting in {reconnect_delay:.1f}s "
-                        f"(exponential backoff)"
+                        f"HAAdapter: reconnecting in {reconnect_delay:.1f}s (exponential backoff)"
                     )
                     await asyncio.sleep(reconnect_delay)
                     reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
@@ -486,8 +485,7 @@ class HAAdapter:
             new_state = new_state_obj.get("state", "unknown") if new_state_obj else "unknown"
 
             log.info(
-                f"HAAdapter: WebSocket state_change for {entity_id}: "
-                f"'{old_state}' -> '{new_state}'"
+                f"HAAdapter: WebSocket state_change for {entity_id}: '{old_state}' -> '{new_state}'"
             )
 
             # Forward to on_state_change for unified processing

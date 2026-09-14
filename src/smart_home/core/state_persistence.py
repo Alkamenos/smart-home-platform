@@ -155,7 +155,7 @@ class StatePersistence:
         # Use a unique temp file name based on PID and timestamp to avoid conflicts
         temp_path = self.storage_path.with_suffix(
             self.storage_path.suffix
-            + f'.tmp.{os.getpid()}.{int(__import__("time").time() * 1000000)}'
+            + f".tmp.{os.getpid()}.{int(__import__('time').time() * 1000000)}"
         )
 
         # Open the main file for locking - this lock covers both read and write
