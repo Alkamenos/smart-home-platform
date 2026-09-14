@@ -178,7 +178,6 @@ class LovelaceGenerator:
         """
         # Создаем имя для сенсора активности поведения
         behavior_name = behavior.template.replace(".yaml", "").replace(".yml", "")
-        sensor_name = f"{device.name} - {behavior_name}"
         sensor_slug = f"{device.name.lower().replace(' ', '_').replace('-', '_')}_{behavior_name}"
         sensor_entity_id = f"binary_sensor.{sensor_slug}_active"
 

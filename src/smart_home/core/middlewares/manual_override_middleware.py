@@ -56,11 +56,14 @@ class ManualOverrideMiddleware:
         last_manual = self._manual_overrides.get(entity_id)
 
         # Check if there's a recent manual override
-        if last_manual and (time.time() - last_manual) < self.lockout_seconds:
+        if (
+            last_manual
+            and (time.time() - last_manual) < self.lockout_seconds
+            and intent.source.lower() not in ("manual", "user")
+        ):
             # Block automated commands during lockout
-            if intent.source.lower() not in ("manual", "user"):
-                logger.info(f"Blocked {intent.source} for {entity_id}: manual override active")
-                return None  # Block the command
+            logger.info(f"Blocked {intent.source} for {entity_id}: manual override active")
+            return None  # Block the command
 
         return intent  # Allow the command
 

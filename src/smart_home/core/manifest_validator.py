@@ -135,14 +135,13 @@ class ManifestValidator:
                 )
 
             # Проверка расписания
-            if "schedule" in device:
-                if not self._is_valid_schedule(device["schedule"]):
-                    errors.append(
-                        ValidationError(
-                            f"devices.lighting[{device_id}].schedule",
-                            f"Невалидный формат расписания: {device['schedule']}",
-                        )
+            if "schedule" in device and not self._is_valid_schedule(device["schedule"]):
+                errors.append(
+                    ValidationError(
+                        f"devices.lighting[{device_id}].schedule",
+                        f"Невалидный формат расписания: {device['schedule']}",
                     )
+                )
 
             # Проверка motion_sensor
             if "motion_sensor" in device:
@@ -242,36 +241,33 @@ class ManifestValidator:
         # Проверка диапазонов температур
         for device in manifest.get("devices", {}).get("climate", []):
             target = device.get("target")
-            if target is not None:
-                if not (10.0 <= target <= 35.0):
-                    errors.append(
-                        ValidationError(
-                            f"devices.climate[{device.get('id')}].target",
-                            f"Целевая температура {target} вне диапазона 10-35",
-                        )
+            if target is not None and not (10.0 <= target <= 35.0):
+                errors.append(
+                    ValidationError(
+                        f"devices.climate[{device.get('id')}].target",
+                        f"Целевая температура {target} вне диапазона 10-35",
                     )
+                )
 
             hysteresis = device.get("hysteresis")
-            if hysteresis is not None:
-                if not (0.1 <= hysteresis <= 5.0):
-                    errors.append(
-                        ValidationError(
-                            f"devices.climate[{device.get('id')}].hysteresis",
-                            f"Гистерезис {hysteresis} вне диапазона 0.1-5.0",
-                        )
+            if hysteresis is not None and not (0.1 <= hysteresis <= 5.0):
+                errors.append(
+                    ValidationError(
+                        f"devices.climate[{device.get('id')}].hysteresis",
+                        f"Гистерезис {hysteresis} вне диапазона 0.1-5.0",
                     )
+                )
 
         # Проверка порогов влажности для вентиляции
         for device in manifest.get("devices", {}).get("ventilation", []):
             threshold = device.get("humidity_threshold")
-            if threshold is not None:
-                if not (0 <= threshold <= 100):
-                    errors.append(
-                        ValidationError(
-                            f"devices.ventilation[{device.get('id')}].humidity_threshold",
-                            f"Порог влажности {threshold} вне диапазона 0-100",
-                        )
+            if threshold is not None and not (0 <= threshold <= 100):
+                errors.append(
+                    ValidationError(
+                        f"devices.ventilation[{device.get('id')}].humidity_threshold",
+                        f"Порог влажности {threshold} вне диапазона 0-100",
                     )
+                )
 
         return errors
 

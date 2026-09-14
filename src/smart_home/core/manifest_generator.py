@@ -191,7 +191,7 @@ class ManifestAutomationGenerator:
             room = device.get("room", entity_id.split(".")[-1])
             target = device.get("target", 22.0)
             hysteresis = device.get("hysteresis", 0.5)
-            modes = device.get("modes", ["heat", "cool", "auto"])
+            device.get("modes", ["heat", "cool", "auto"])
             manual_lockout = self._get_manual_lockout("climate")
 
             definition = FSMDefinition(
@@ -399,7 +399,7 @@ class ManifestAutomationGenerator:
                 sensor = device["humidity_sensor"]
                 entity_id = device["id"]
                 room = device.get("room", entity_id.split(".")[-1])
-                threshold = device.get("humidity_threshold", 65)
+                device.get("humidity_threshold", 65)
 
                 # Маппинг влажности
                 mappings.append(

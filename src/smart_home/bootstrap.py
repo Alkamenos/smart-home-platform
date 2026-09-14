@@ -111,10 +111,7 @@ if __name__ == "__main__":
     # Example usage
     import sys
 
-    if len(sys.argv) > 1:
-        manifest_path = sys.argv[1]
-    else:
-        manifest_path = "instances/leonids_house/manifest.yaml"
+    manifest_path = sys.argv[1] if len(sys.argv) > 1 else "instances/leonids_house/manifest.yaml"
 
     ctx = bootstrap_platform(manifest_path)
     print("Platform bootstrapped successfully!")

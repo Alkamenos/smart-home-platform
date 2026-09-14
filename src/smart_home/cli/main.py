@@ -14,23 +14,18 @@ CLI для платформы V3
 """
 
 import argparse
-import sys
 import json
+import sys
 import time
-import signal
-import os
 from pathlib import Path
 
-from smart_home.core.fsm import FSMEngine
-from smart_home.core.event_bus import EventBus
-from smart_home.core.logger import Logger
-from smart_home.core.registry import Registry
-from smart_home.adapters.mock_adapter import MockAdapter
 from smart_home.adapters.ha_adapter import HomeAssistantAdapter
-from smart_home.features.lighting import create_lighting_automations
+from smart_home.adapters.mock_adapter import MockAdapter
 
 # Импорт bootstrap для инициализации платформы
-from smart_home.bootstrap import bootstrap_platform, PlatformContext
+from smart_home.bootstrap import bootstrap_platform
+from smart_home.core.event_bus import EventBus
+from smart_home.core.registry import Registry
 
 # Алиас для совместимости
 HAAdapter = HomeAssistantAdapter
@@ -97,7 +92,7 @@ def cmd_validate(args):
 
     # 4. Проверка что все room существуют в zones
     print("\n🔍 Проверка ссылочной целостности room -> zones...")
-    zone_ids = {zone.id for zone in manifest.zones}
+    {zone.id for zone in manifest.zones}
     room_zone_refs = {}
     for zone in manifest.zones:
         if zone.rooms:
@@ -209,12 +204,11 @@ def cmd_dry_run(args):
     # Создаём mock-платформу
     print("🚀 Инициализация платформы...")
     ctx = bootstrap_platform(str(manifest_path))
-    print(f"✅ Платформа инициализирована")
+    print("✅ Платформа инициализирована")
 
     # Создаём автоматы
     print("\n🤖 Создание автоматов...")
     from smart_home.core.fsm_factory import FSMFactory
-    from smart_home.core.registry import Registry
     from smart_home.core.guards.schedule_guard import is_within_schedule
 
     registry = Registry()
@@ -246,6 +240,7 @@ def cmd_dry_run(args):
 def cmd_manifest_validate(args):
     """Валидация манифеста"""
     import yaml
+
     from smart_home.core.manifest_validator import ManifestValidator
 
     manifest_path = Path(args.manifest_path)
@@ -272,7 +267,6 @@ def cmd_manifest_validate(args):
 
 def cmd_manifest_show(args):
     """Показать содержимое манифеста"""
-    import yaml
 
     manifest_path = Path(args.manifest_path)
 
@@ -305,6 +299,7 @@ def cmd_manifest_generate(args):
 def cmd_manifest_migrate(args):
     """Миграция манифеста v2 → v3"""
     import yaml
+
     from smart_home.core.manifest_generator import ManifestGenerator
 
     input_path = Path(args.input_path)
@@ -375,7 +370,6 @@ def cmd_debug(args):
     ctx = bootstrap_platform(manifest_path)
 
     from smart_home.core.fsm_factory import FSMFactory
-    from smart_home.core.registry import Registry
     from smart_home.core.guards.schedule_guard import is_within_schedule
 
     registry = Registry()
@@ -405,7 +399,7 @@ def cmd_debug(args):
         print("\n📊 Визуализация автомата...")
         from smart_home.core.fsm import FSMEngine
         engine = FSMEngine()
-        instance = engine.create_fsm(target_def)
+        engine.create_fsm(target_def)
 
         # Граф состояний
         print("\nГраф состояний:")
@@ -434,7 +428,6 @@ def cmd_status(args):
     ctx = bootstrap_platform(manifest_path)
 
     from smart_home.core.fsm_factory import FSMFactory
-    from smart_home.core.registry import Registry
     from smart_home.core.guards.schedule_guard import is_within_schedule
 
     registry = Registry()
@@ -456,13 +449,12 @@ def cmd_status(args):
 
 def cmd_health(args):
     """Проверка здоровья платформы"""
-    import psutil
 
     print("💚 Проверка здоровья платформы\n")
 
     # 1. Проверка манифеста
     manifest_path = args.manifest_path or "instances/leonids_house/manifest.yaml"
-    print(f"1. Манифест: ", end="")
+    print("1. Манифест: ", end="")
     if Path(manifest_path).exists():
         print("✅")
     else:
@@ -476,7 +468,7 @@ def cmd_health(args):
     if missing:
         print(f"📦 Ядро: ❌ Отсутствуют файлы: {', '.join(missing)}")
     else:
-        print(f"📦 Ядро: ✅ Все файлы на месте")
+        print("📦 Ядро: ✅ Все файлы на месте")
 
     # 3. Проверка тестов
     tests_dir = Path("/workspace/tests")
@@ -523,8 +515,8 @@ def cmd_doctor(args):
     checks_total += 1
     try:
         from smart_home.core.fsm_factory import FSMFactory
-        from smart_home.core.registry import Registry
         from smart_home.core.guards.schedule_guard import is_within_schedule
+        from smart_home.core.registry import Registry
 
         registry = Registry()
         # Регистрируем guard для проверки расписания
@@ -547,7 +539,6 @@ def cmd_doctor(args):
     print("Проверяю подключения...", end=" ")
     checks_total += 1
     try:
-        from smart_home.adapters.ha_adapter import HomeAssistantAdapter
         from smart_home.adapters.mock_adapter import MockAdapter
 
         # Mock адаптер всегда доступен
@@ -592,9 +583,9 @@ def cmd_doctor(args):
         for i, issue in enumerate(issues, 1):
             print(f"\n{i}. {issue['message']}")
             print(f"   Решение: {issue['fix']}")
-        print(f"\nОбщий статус: ⚠️ Требует внимания")
+        print("\nОбщий статус: ⚠️ Требует внимания")
     else:
-        print(f"\nОбщий статус: ✅ Всё в порядке")
+        print("\nОбщий статус: ✅ Всё в порядке")
 
     if args.json:
         print("\n" + json.dumps({

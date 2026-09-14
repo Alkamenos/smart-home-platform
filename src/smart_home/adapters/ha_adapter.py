@@ -16,6 +16,7 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
@@ -503,17 +504,13 @@ class HAAdapter:
     async def _cleanup_websocket(self) -> None:
         """Clean up WebSocket resources."""
         if self._ws_client is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await self._ws_client.close()
-            except Exception:
-                pass
             self._ws_client = None
 
         if self._session is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await self._session.close()
-            except Exception:
-                pass
             self._session = None
 
         logger.debug("HAAdapter: WebSocket resources cleaned up")
@@ -538,10 +535,8 @@ class HAAdapter:
         # Cancel reconnect task
         if self._reconnect_task is not None and not self._reconnect_task.done():
             self._reconnect_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
             self._reconnect_task = None
 
         # Clean up WebSocket resources

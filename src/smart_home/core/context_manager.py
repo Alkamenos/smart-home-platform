@@ -193,9 +193,9 @@ class ContextManager:
         try:
             from pyscript import task
 
-            PYSRIPT_TASK_AVAILABLE = True
+            pyscript_task_available = True
         except ImportError:
-            PYSRIPT_TASK_AVAILABLE = False
+            pyscript_task_available = False
 
         async def check_schedules():
             """Фоновая задача проверки расписаний"""

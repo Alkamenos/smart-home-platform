@@ -171,8 +171,8 @@ class FSMPersistence:
                 import asyncio
 
                 try:
-                    loop = asyncio.get_running_loop()
-                    task = asyncio.create_task(
+                    asyncio.get_running_loop()
+                    asyncio.create_task(
                         self._adapter.set_entity_state(
                             input_entity_id, "set_value", {"value": state}
                         )
@@ -225,13 +225,12 @@ class FSMPersistence:
         if self._input_text_available:
             try:
                 # Пробуем загрузить через input_text
-                input_entity_id = f"input_text.{storage_key}"
 
                 # Для async контекста
                 import asyncio
 
                 try:
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     # Создаём задачу для получения состояния
                     # Это упрощённая эмуляция - в реальности нужен async вызов
                 except RuntimeError:

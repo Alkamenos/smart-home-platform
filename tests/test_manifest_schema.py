@@ -94,10 +94,10 @@ class TestManifestSchema:
 
     def test_schema_has_required_fields(self):
         """Схема определяет обязательные поля"""
-        assert MANIFEST_SCHEMA["version"]["required"] == True
-        assert MANIFEST_SCHEMA["instance"]["required"] == True
-        assert MANIFEST_SCHEMA["devices"]["required"] == True
-        assert MANIFEST_SCHEMA["zones"]["required"] == True
+        assert MANIFEST_SCHEMA["version"]["required"]
+        assert MANIFEST_SCHEMA["instance"]["required"]
+        assert MANIFEST_SCHEMA["devices"]["required"]
+        assert MANIFEST_SCHEMA["zones"]["required"]
 
 
 # Тесты валидатора

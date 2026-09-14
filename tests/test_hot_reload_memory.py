@@ -177,7 +177,7 @@ async def test_hot_reload_no_memory_leak():
         assert len(engine._last_transition_time) == 0
 
         # Check memory growth
-        snapshot_final = tracemalloc.take_snapshot()
+        tracemalloc.take_snapshot()
 
         # The memory should not have grown significantly
         # Allow for some overhead but not linear growth
@@ -263,7 +263,6 @@ class TestHotReloadMemory:
         # Capture state before unregister
         has_state = entity_id in engine._states
         has_def = entity_id in engine._definitions
-        has_timer = entity_id in engine._timers
 
         assert has_state
         assert has_def
@@ -284,7 +283,7 @@ class TestHotReloadMemory:
 
         entity_ids = [f"light.room{i}__night_light" for i in range(3)]
 
-        for i in range(10):
+        for _i in range(10):
             # Register
             for eid in entity_ids:
                 defn = create_test_fsm_definition(eid)

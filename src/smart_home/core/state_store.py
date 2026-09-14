@@ -393,7 +393,7 @@ class InputTextStateStore(StateStore):
                 self._logger.warning(f"Invalid serialized data: {data}")
                 return None
 
-            entity_id = parts[0]
+            parts[0]
             current = parts[1]
             entered_at = float(parts[2]) if parts[2] else 0.0
             entered_by = parts[3]
@@ -482,7 +482,6 @@ class InputTextStateStore(StateStore):
                 pass
             elif self._hass:
                 # Home Assistant - получаем все input_text с нашим префиксом
-                pattern = f"{self.PREFIX}_*"
                 # Это требует дополнительного API для сканирования
                 pass
         except Exception as e:

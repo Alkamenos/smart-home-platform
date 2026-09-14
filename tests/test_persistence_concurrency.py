@@ -38,7 +38,6 @@ async def save_state_async(
     import threading
 
     # Use a thread and wait for completion - this ensures true concurrent execution
-    result = []
     exception = []
 
     def run_save():
