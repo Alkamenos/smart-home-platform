@@ -115,10 +115,6 @@ except ImportError:
     HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
 
 # Import platform components
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
 from smart_home.adapters.ha_adapter import HAAdapter
 from smart_home.core.event_bus import EventBus
 from smart_home.core.registry import Registry as FSMRegistry

@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
     "loguru>=0.7.0",
+    "aiohttp>=3.9",
 
 ]
 
@@ -44,7 +45,7 @@ dev = [
 
 integration = [
     "testcontainers>=4.0",
-    "homeassistant-websocket>=0.6",
+    "websockets>=12.0",
     "aiohttp>=3.9",
 ]
 
