@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from tools.dashboard_watcher import DashboardWatcher
 
 
