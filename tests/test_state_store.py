@@ -8,7 +8,7 @@ import tempfile
 import json
 from pathlib import Path
 
-from core.state_store import (
+from smart_home.core.state_store import (
     StateStore,
     MemoryStateStore,
     FileStateStore,

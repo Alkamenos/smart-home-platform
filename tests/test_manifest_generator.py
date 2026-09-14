@@ -12,8 +12,8 @@ import sys
 sys.path.insert(0, '.')
 
 import yaml
-from core.manifest_generator import ManifestAutomationGenerator, TriggerMapping
-from core.fsm import FSMDefinition
+from smart_home.core.manifest_generator import ManifestAutomationGenerator, TriggerMapping
+from smart_home.core.fsm import FSMDefinition
 
 
 def create_test_manifest():

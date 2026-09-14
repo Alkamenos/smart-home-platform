@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.smart_home.core.fsm import FSMEngine
 from src.smart_home.core.registry import Registry
-from features.lighting import create_lighting_automations
+from smart_home.features.lighting import create_lighting_automations
 
 
 @pytest.fixture

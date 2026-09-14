@@ -17,12 +17,12 @@ import json
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-from core.logger import get_logger
+from smart_home.core.logger import get_logger
 
 if TYPE_CHECKING:
-    from core.fsm import FSMEngine
-    from core.registry import Registry
-    from adapters.ha_adapter import HomeAssistantAdapter
+    from smart_home.core.fsm import FSMEngine
+    from smart_home.core.registry import Registry
+    from smart_home.adapters.ha_adapter import HomeAssistantAdapter
 
 logger = get_logger(__name__)
 

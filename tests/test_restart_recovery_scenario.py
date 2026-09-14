@@ -10,10 +10,10 @@
 """
 import pytest
 import time
-from core.fsm import FSMEngine, FSMDefinition, Transition
-from core.event_bus import EventBus
-from core.logger import Logger
-from core.state_store import MemoryStateStore, StateStore
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.event_bus import EventBus
+from smart_home.core.logger import Logger
+from smart_home.core.state_store import MemoryStateStore, StateStore
 
 
 @pytest.fixture

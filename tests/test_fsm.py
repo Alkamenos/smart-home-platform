@@ -16,9 +16,9 @@ import os
 # Добавляем parent directory в path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.fsm import FSMEngine, FSMDefinition, Transition, State
-from core.event_bus import EventBus
-from core.logger import Logger
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition, State
+from smart_home.core.event_bus import EventBus
+from smart_home.core.logger import Logger
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from core.fsm import FSMDefinition, Transition
+from smart_home.core.fsm import FSMDefinition, Transition
 
 
 @dataclass

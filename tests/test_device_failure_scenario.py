@@ -8,10 +8,10 @@
 4. Платформа снова реагирует на события
 """
 import pytest
-from core.fsm import FSMEngine
-from core.event_bus import EventBus
-from core.logger import Logger
-from features.lighting import create_lighting_automations
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.event_bus import EventBus
+from smart_home.core.logger import Logger
+from smart_home.features.lighting import create_lighting_automations
 
 
 @pytest.fixture

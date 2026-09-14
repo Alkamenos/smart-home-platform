@@ -18,10 +18,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.event_bus import EventBus
-    from core.fsm import FSMEngine
-    from adapters.ha_adapter import HomeAssistantAdapter
-    from core.logger import Logger
+    from smart_home.core.event_bus import EventBus
+    from smart_home.core.fsm import FSMEngine
+    from smart_home.adapters.ha_adapter import HomeAssistantAdapter
+    from smart_home.core.logger import Logger
 
 
 class ActionBridge:
