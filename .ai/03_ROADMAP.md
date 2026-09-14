@@ -32,6 +32,10 @@
 - [x] Docker integration tests
 
 ## Phase 4: Production Readiness [IN PROGRESS]
+- [ ] **CRITICAL** Consolidate project structure (remove code duplication)
+  - Issue: Code exists in both `core/` and `src/smart_home/core/`
+  - Action: Migrate fully to `src` layout, remove flat structure
+  - Impact: All imports, pyproject.toml, cli.py
 - [ ] **CRITICAL** Fix manifest bug: add `motion_sensor` to night_light params
   - File: `instances/leonids_house/manifest.yaml`
   - Issue: `01_PROJECT_STATE.md` → Known Issues #1
