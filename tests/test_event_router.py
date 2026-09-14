@@ -18,9 +18,9 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.smart_home.core.event_router import EventRouter
-from src.smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
-from src.smart_home.core.models.manifest import (
+from smart_home.core.event_router import EventRouter
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.models.manifest import (
     Manifest,
     LightMotionDevice,
     BehaviorConfig,

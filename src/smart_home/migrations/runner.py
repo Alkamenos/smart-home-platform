@@ -4,7 +4,7 @@ import importlib
 import pkgutil
 from pathlib import Path
 
-from src.smart_home.migrations import Migration
+from smart_home.migrations import Migration
 
 
 class MigrationRunner:
@@ -21,7 +21,7 @@ class MigrationRunner:
     
     def _discover_migrations(self) -> None:
         """Найти и загрузить все классы миграций из пакета migrations."""
-        import src.smart_home.migrations as migrations_pkg
+        import smart_home.migrations as migrations_pkg
         
         # Получаем список всех модулей в пакете migrations
         package_path = Path(migrations_pkg.__file__).parent
@@ -31,7 +31,7 @@ class MigrationRunner:
                 continue
             
             # Импортируем модуль миграции
-            full_name = f"src.smart_home.migrations.{module_info.name}"
+            full_name = f"smart_home.migrations.{module_info.name}"
             try:
                 module = importlib.import_module(full_name)
             except Exception:

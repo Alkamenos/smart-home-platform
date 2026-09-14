@@ -4,43 +4,43 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py~
+*.pyc~
+*.pyo~
 .Python
-env/
-venv/
-.venv/
-.env
-.env.local
-.env.*
-.envrc
-.pytest_cache/
-.mypy_cache/
-.coverage
-coverage/
-htmlcov/
-
-# Build artifacts
+*.so
+*.egg-info/
+.eggs/
 build/
 dist/
-*.egg-info/
-.sconsign.dblite
-._build/
-.parts/
+*.dist-info/
+
+# Coverage
+.coverage
+htmlcov/
+.coverage.*
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.ENV/
+.envrc
 
 # Logs
 *.log
 
-# OS
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Testing
-.tests/
-test-output/
 ```

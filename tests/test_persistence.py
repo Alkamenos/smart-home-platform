@@ -1,7 +1,7 @@
 # tests/test_persistence.py
 import pytest
 from pathlib import Path
-from src.smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
 
 
 @pytest.mark.asyncio

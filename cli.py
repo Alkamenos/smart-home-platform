@@ -30,7 +30,7 @@ from smart_home.adapters.ha_adapter import HomeAssistantAdapter
 from smart_home.features.lighting import create_lighting_automations
 
 # Импорт bootstrap для инициализации платформы
-from src.smart_home.bootstrap import bootstrap_platform, PlatformContext
+from smart_home.bootstrap import bootstrap_platform, PlatformContext
 
 # Алиас для совместимости
 HAAdapter = HomeAssistantAdapter
@@ -59,7 +59,7 @@ def cmd_validate(args):
     # 2. Валидация через Pydantic
     print("📋 Валидация структуры манифеста через Pydantic...")
     try:
-        from src.smart_home.core.models.manifest import Manifest
+        from smart_home.core.models.manifest import Manifest
         manifest = Manifest.model_validate(manifest_data)
         print("✅ Структура манифеста валидна")
     except Exception as e:
@@ -147,7 +147,7 @@ def cmd_list_devices(args):
     
     # Загружаем через Pydantic для удобства
     try:
-        from src.smart_home.core.models.manifest import Manifest
+        from smart_home.core.models.manifest import Manifest
         manifest = Manifest.model_validate(manifest_data)
     except Exception as e:
         print(f"⚠️ Предупреждение: полная валидация не пройдена, используем raw данные: {e}")
@@ -243,7 +243,7 @@ def cmd_dry_run(args):
         sys.exit(1)
     
     try:
-        from src.smart_home.core.models.manifest import Manifest
+        from smart_home.core.models.manifest import Manifest
         manifest = Manifest.model_validate(manifest_data)
     except Exception as e:
         print(f"❌ Ошибка валидации манифеста: {e}")
@@ -472,9 +472,9 @@ def cmd_run(args):
         sys.exit(1)
     
     # Загружаем FSM из манифеста через FSMFactory
-    from src.smart_home.core.fsm_factory import FSMFactory
-    from src.smart_home.core.registry import Registry
-    from src.smart_home.core.guards.schedule_guard import is_within_schedule
+    from smart_home.core.fsm_factory import FSMFactory
+    from smart_home.core.registry import Registry
+    from smart_home.core.guards.schedule_guard import is_within_schedule
     
     registry = Registry()
     # Регистрируем guard для проверки расписания
@@ -504,7 +504,7 @@ async def _run_platform_async(ctx, args):
         ctx: PlatformContext с компонентами платформы
         args: Аргументы командной строки
     """
-    from src.smart_home.adapters.ha_adapter import HomeAssistantAdapter
+    from smart_home.adapters.ha_adapter import HomeAssistantAdapter
     
     logger = Logger(component="cli")
     shutdown_event = asyncio.Event()
@@ -606,7 +606,7 @@ async def _run_platform_async(ctx, args):
     logger.info("Все timers отменены")
     
     # Сохраняем состояния через StatePersistence
-    from src.smart_home.core.state_persistence import StatePersistence
+    from smart_home.core.state_persistence import StatePersistence
     persistence = StatePersistence()
     states = ctx.fsm.get_all_states()
     states_dict = {
@@ -726,9 +726,9 @@ def cmd_debug(args):
         sys.exit(1)
     
     # Загружаем FSM из манифеста через FSMFactory
-    from src.smart_home.core.fsm_factory import FSMFactory
-    from src.smart_home.core.registry import Registry
-    from src.smart_home.core.guards.schedule_guard import is_within_schedule
+    from smart_home.core.fsm_factory import FSMFactory
+    from smart_home.core.registry import Registry
+    from smart_home.core.guards.schedule_guard import is_within_schedule
     
     registry = Registry()
     # Регистрируем guard для проверки расписания
@@ -842,9 +842,9 @@ def cmd_status(args):
         sys.exit(1)
     
     # Загружаем FSM из манифеста через FSMFactory
-    from src.smart_home.core.fsm_factory import FSMFactory
-    from src.smart_home.core.registry import Registry
-    from src.smart_home.core.guards.schedule_guard import is_within_schedule
+    from smart_home.core.fsm_factory import FSMFactory
+    from smart_home.core.registry import Registry
+    from smart_home.core.guards.schedule_guard import is_within_schedule
     
     registry = Registry()
     # Регистрируем guard для проверки расписания
@@ -1394,9 +1394,9 @@ def cmd_doctor(args):
     print("Проверяю автоматы...", end=" ")
     checks_total += 1
     try:
-        from src.smart_home.core.fsm_factory import FSMFactory
-        from src.smart_home.core.registry import Registry
-        from src.smart_home.core.guards.schedule_guard import is_within_schedule
+        from smart_home.core.fsm_factory import FSMFactory
+        from smart_home.core.registry import Registry
+        from smart_home.core.guards.schedule_guard import is_within_schedule
         
         registry = Registry()
         # Регистрируем guard для проверки расписания

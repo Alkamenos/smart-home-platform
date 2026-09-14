@@ -29,8 +29,8 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from freezegun import freeze_time
-from src.smart_home.bootstrap import bootstrap_platform
-from src.smart_home.core.command_dispatcher import CommandIntent
+from smart_home.bootstrap import bootstrap_platform
+from smart_home.core.command_dispatcher import CommandIntent
 
 
 class TestManualLockoutE2E:

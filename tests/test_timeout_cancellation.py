@@ -12,7 +12,7 @@ from freezegun import freeze_time
 from unittest.mock import patch
 import time
 
-from src.smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
+from smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
 
 
 @pytest.fixture(autouse=True)

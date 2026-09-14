@@ -46,11 +46,11 @@ Note: This is an example file showing the integration pattern.
 # -----------------------------------------------------------------------------
 
 # In a real HA pyscript environment, you would import like this:
-# from src.smart_home.adapters.ha_adapter import HAAdapter
-# from src.smart_home.core.fsm import FSMEngine
-# from src.smart_home.core.event_bus import EventBus
-# from src.smart_home.core.loader import DefinitionLoader
-# from src.smart_home.core.registry import StateRegistry
+# from smart_home.adapters.ha_adapter import HAAdapter
+# from smart_home.core.fsm import FSMEngine
+# from smart_home.core.event_bus import EventBus
+# from smart_home.core.loader import DefinitionLoader
+# from smart_home.core.registry import StateRegistry
 
 # For demonstration purposes, we show the structure:
 
@@ -58,13 +58,13 @@ from typing import Any
 
 # Mock imports for standalone testing (remove in actual HA deployment)
 try:
-    from src.smart_home.adapters.ha_adapter import HAAdapter
-    from src.smart_home.core.fsm import FSMEngine
-    from src.smart_home.core.event_bus import EventBus
-    from src.smart_home.core.loader import DefinitionLoader
-    from src.smart_home.core.registry import StateRegistry
-    from src.smart_home.core.event_router import EventRouter
-    from src.smart_home.core.models.manifest import load_manifest
+    from smart_home.adapters.ha_adapter import HAAdapter
+    from smart_home.core.fsm import FSMEngine
+    from smart_home.core.event_bus import EventBus
+    from smart_home.core.loader import DefinitionLoader
+    from smart_home.core.registry import StateRegistry
+    from smart_home.core.event_router import EventRouter
+    from smart_home.core.models.manifest import load_manifest
 except ImportError:
     # Fallback for environments where modules aren't available
     HAAdapter = None  # type: ignore

@@ -15,12 +15,12 @@ from typing import Any
 
 import pytest
 
-from src.smart_home.core.fsm import FSMEngine
-from src.smart_home.core.registry import Registry
-from src.smart_home.core.command_dispatcher import CommandDispatcher, CommandIntent
-from src.smart_home.core.fsm_factory import FSMFactory
-from src.smart_home.adapters.mock_adapter import MockAdapter
-from src.smart_home.core.models.manifest import load_manifest
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.registry import Registry
+from smart_home.core.command_dispatcher import CommandDispatcher, CommandIntent
+from smart_home.core.fsm_factory import FSMFactory
+from smart_home.adapters.mock_adapter import MockAdapter
+from smart_home.core.models.manifest import load_manifest
 
 
 @pytest.fixture

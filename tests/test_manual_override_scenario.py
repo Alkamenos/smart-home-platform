@@ -14,7 +14,7 @@ from datetime import datetime
 from freezegun import freeze_time
 from unittest.mock import patch
 
-from src.smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
+from smart_home.core.fsm import FSMEngine, State, FSMDefinition, Transition
 
 
 # ============================================================================
