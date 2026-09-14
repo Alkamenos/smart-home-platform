@@ -23,7 +23,7 @@ from typing import Optional, TYPE_CHECKING
 from datetime import datetime
 
 if TYPE_CHECKING:
-    from adapters.ha_adapter import HomeAssistantAdapter
+    from smart_home.adapters.ha_adapter import HomeAssistantAdapter
 
 
 class DashboardGenerator:

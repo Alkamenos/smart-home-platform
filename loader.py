@@ -54,7 +54,7 @@ class PyscriptLoader:
             self._manifest = yaml.safe_load(f)
         
         # Валидируем манифест при инициализации
-        from core.manifest_validator import ManifestValidator
+        from smart_home.core.manifest_validator import ManifestValidator
         validator = ManifestValidator()
         errors = validator.validate(self._manifest)
         if errors:

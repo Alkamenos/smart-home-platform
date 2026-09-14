@@ -14,12 +14,12 @@ from pathlib import Path
 # Добавляем parent директорию в path для импортов
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Импортируем из core напрямую (для запуска из platform_v3/tests/)
+# Импортируем из smart_home.core (для запуска из tests/)
 try:
-    from core.fsm_persistence import FSMPersistence
-    from core.event_bus import EventBus
-    from core.logger import Logger
-    from core.fsm import FSMEngine, FSMDefinition
+    from smart_home.core.fsm_persistence import FSMPersistence
+    from smart_home.core.event_bus import EventBus
+    from smart_home.core.logger import Logger
+    from smart_home.core.fsm import FSMEngine, FSMDefinition
 except ImportError:
     from platform_v3.core.fsm_persistence import FSMPersistence
     from platform_v3.core.event_bus import EventBus

@@ -55,11 +55,8 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v --cov=."
-
-[tool.coverage.run]
-source = ["."]
-omit = ["tests/*", "*/__pycache__/*"]
+addopts = "-v --cov=src"
+timeout = 30
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/smart_home"]
@@ -129,12 +126,6 @@ ignore-module = true
 fail-under = 80
 exclude = ["tests", "build", "dist"]
 verbose = 2
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-addopts = "-v --cov=src"
-timeout = 30
 
 [tool.coverage.run]
 source = ["src"]
