@@ -31,31 +31,53 @@ class TestCLIValidateCommand:
             "instance": {
                 "id": "test_house",
                 "name": "Test House",
-                "owner": "Test Owner"
-            },
-            "devices": {
-                "lighting": [
-                    {
-                        "id": "light.kitchen",
-                        "name": "Kitchen Light",
-                        "room": "kitchen",
-                        "motion_sensor": "binary_sensor.kitchen_motion",
-                        "schedule": "07:00-23:00",
-                        "motion_timeout_sec": 300
-                    }
-                ],
-                "climate": [],
-                "ventilation": []
+                "owner": "Test Owner",
+                "created_at": "2024-01-01"
             },
             "zones": [
                 {"id": "kitchen", "name": "Kitchen", "floor": 1}
             ],
+            "devices": [
+                {
+                    "type": "light_motion",
+                    "id": "light.kitchen",
+                    "name": "Kitchen Light",
+                    "room": "kitchen",
+                    "behaviors": [
+                        {
+                            "template": "lighting",
+                            "priority": 10,
+                            "params": {
+                                "motion_sensor": "binary_sensor.kitchen_motion",
+                                "schedule": "07:00-23:00",
+                                "motion_timeout_sec": 300
+                            }
+                        }
+                    ]
+                }
+            ],
             "automation_rules": {
-                "lighting": {"manual_lockout_min": 60},
-                "climate": {"manual_lockout_min": 30}
+                "lighting": {
+                    "motion_enabled": True,
+                    "schedule_enabled": True,
+                    "manual_lockout_min": 60
+                },
+                "climate": {
+                    "safety_lockout_enabled": True,
+                    "away_mode_enabled": True,
+                    "manual_lockout_min": 30
+                },
+                "ventilation": {
+                    "humidity_based": True,
+                    "manual_lockout_min": 15
+                }
             },
             "dashboard": {
-                "title": "Test House"
+                "title": "Test House",
+                "show_history": True,
+                "show_climate": True,
+                "show_motion_sensors": True,
+                "history_days": 7
             }
         }
         
@@ -72,10 +94,35 @@ class TestCLIValidateCommand:
         manifest = {
             "instance": {
                 "id": "test_house",
-                "name": "Test House"
+                "name": "Test House",
+                "owner": "Test Owner",
+                "created_at": "2024-01-01"
             },
-            # Missing devices - this is an error
-            "zones": []
+            "zones": [],
+            "devices": [],
+            "automation_rules": {
+                "lighting": {
+                    "motion_enabled": True,
+                    "schedule_enabled": True,
+                    "manual_lockout_min": 60
+                },
+                "climate": {
+                    "safety_lockout_enabled": True,
+                    "away_mode_enabled": True,
+                    "manual_lockout_min": 30
+                },
+                "ventilation": {
+                    "humidity_based": True,
+                    "manual_lockout_min": 15
+                }
+            },
+            "dashboard": {
+                "title": "Test House",
+                "show_history": True,
+                "show_climate": True,
+                "show_motion_sensors": True,
+                "history_days": 7
+            }
         }
         
         manifest_file = tmp_path / "invalid_manifest.yaml"
@@ -135,9 +182,12 @@ class TestCLIDoctorCommand:
         import argparse
         
         args = argparse.Namespace()
+        args.manifest_path = None
+        args.json = False
         
         # Run doctor command (it should handle missing manifest gracefully)
-        with patch('cli.Path.exists', return_value=False):
+        with patch('cli.bootstrap_platform') as mock_bootstrap:
+            mock_bootstrap.side_effect = Exception("Manifest not found")
             cmd_doctor(args)
         
         captured = capsys.readouterr()
@@ -150,10 +200,22 @@ class TestCLIDoctorCommand:
         import argparse
         
         args = argparse.Namespace()
+        args.manifest_path = None
+        args.json = False
         
         # Mock manifest existence to allow full check
-        with patch('cli.Path.exists', return_value=True):
-            with patch('cli.yaml.safe_load', return_value={"version": 1, "instance": {"id": "test", "name": "test"}, "devices": {"lighting": []}, "zones": []}):
+        class MockManifest:
+            class instance:
+                name = "Test House"
+        
+        class MockCtx:
+            manifest = MockManifest()
+            fsm = None
+            dispatcher = type('obj', (object,), {'_middlewares': []})()
+        
+        with patch('cli.bootstrap_platform') as mock_bootstrap:
+            mock_bootstrap.return_value = MockCtx()
+            with patch('smart_home.core.fsm_factory.FSMFactory'):
                 cmd_doctor(args)
         
         captured = capsys.readouterr()
@@ -170,6 +232,8 @@ class TestCLIHealthCommand:
         import argparse
         
         args = argparse.Namespace()
+        args.manifest_path = None
+        args.health_command = None
         
         # Run health command
         cmd_health(args)
@@ -184,10 +248,21 @@ class TestCLIHealthCommand:
         import argparse
         
         args = argparse.Namespace()
+        args.manifest_path = None
+        args.health_command = None
         
-        with patch('cli.Path.exists', return_value=True):
-            with patch('cli.yaml.safe_load', return_value={"version": 1, "instance": {"id": "test", "name": "test"}, "devices": {"lighting": []}, "zones": []}):
-                cmd_health(args)
+        class MockManifest:
+            class instance:
+                name = "Test House"
+        
+        class MockCtx:
+            manifest = MockManifest()
+            fsm = None
+            dispatcher = type('obj', (object,), {'_middlewares': []})()
+        
+        with patch('cli.bootstrap_platform') as mock_bootstrap:
+            mock_bootstrap.return_value = MockCtx()
+            cmd_health(args)
         
         captured = capsys.readouterr()
         # Should output component status
