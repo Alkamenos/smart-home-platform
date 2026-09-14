@@ -124,7 +124,7 @@ class TestControlTrackerIntegration:
         def mock_time():
             return base_time[0]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('smart_home.core.control_tracker.time.time', mock_time):
             # First, manual turn-on
             manual_intent = CommandIntent(
                 device_id="light.bedroom",
@@ -172,7 +172,7 @@ class TestControlTrackerIntegration:
         def mock_time():
             return base_time[0]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('smart_home.core.control_tracker.time.time', mock_time):
             # Manual control first
             manual_intent = CommandIntent(
                 device_id="fan.bathroom",
@@ -317,7 +317,7 @@ class TestControlTrackerIntegration:
         def mock_time():
             return base_time[0]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('smart_home.core.control_tracker.time.time', mock_time):
             # Manual command - should go through
             manual_intent = CommandIntent(
                 device_id="light.living_room",

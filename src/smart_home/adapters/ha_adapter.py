@@ -592,3 +592,4 @@ class HAAdapter:
         if self._mode == "pyscript":
             return True
         return self._ws_client is not None
+HomeAssistantAdapter = HAAdapter

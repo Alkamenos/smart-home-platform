@@ -125,12 +125,13 @@ class TestManualLockoutMiddleware:
         Test that automated commands are allowed after lockout period expires.
         """
         # Since we use ControlTracker which uses time.time(), we need to mock time
-        base_time = time.time()
+        # Use a mutable container to allow modification inside nested function
+        time_container = {"base": time.time()}
         
         def mock_time():
-            return base_time
+            return time_container["base"]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('smart_home.core.control_tracker.time.time', mock_time):
             # First, send a manual command
             manual_intent = CommandIntent(
                 device_id="light.living_room",
@@ -143,8 +144,7 @@ class TestManualLockoutMiddleware:
             await middleware.process(manual_intent)
             
             # Move time forward past the lockout period (60 minutes + 1 minute)
-            nonlocal base_time
-            base_time = base_time + 61 * 60  # 61 minutes in seconds
+            time_container["base"] = time_container["base"] + 61 * 60  # 61 minutes in seconds
             
             # Now try an automated command
             auto_intent = CommandIntent(
@@ -169,12 +169,13 @@ class TestManualLockoutMiddleware:
         control_tracker = ControlTracker(history_size=100)
         middleware = ManualLockoutMiddleware(automation_rules=automation_rules, control_tracker=control_tracker)
         
-        base_time = time.time()
+        # Use a mutable container to allow modification inside nested function
+        time_container = {"base": time.time()}
         
         def mock_time():
-            return base_time
+            return time_container["base"]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('smart_home.core.control_tracker.time.time', mock_time):
             # Test climate domain (30 min lockout)
             climate_manual = CommandIntent(
                 device_id="climate.thermostat",
@@ -187,8 +188,7 @@ class TestManualLockoutMiddleware:
             await middleware.process(climate_manual)
             
             # Move time forward 15 minutes (still within climate lockout of 30 min)
-            nonlocal base_time
-            base_time = base_time + 15 * 60  # 15 minutes in seconds
+            time_container["base"] = time_container["base"] + 15 * 60  # 15 minutes in seconds
             
             climate_auto = CommandIntent(
                 device_id="climate.thermostat",
@@ -204,7 +204,7 @@ class TestManualLockoutMiddleware:
             assert result is None
             
             # Move time forward past climate lockout (30 + 1 = 31 min total)
-            base_time = base_time + 16 * 60  # 16 more minutes
+            time_container["base"] = time_container["base"] + 16 * 60  # 16 more minutes
             
             result = await middleware.process(climate_auto)
             
@@ -219,12 +219,13 @@ class TestManualLockoutMiddleware:
         control_tracker = ControlTracker(history_size=100)
         middleware = ManualLockoutMiddleware(automation_rules=automation_rules, control_tracker=control_tracker)
         
-        base_time = time.time()
+        # Use a mutable container to allow modification inside nested function
+        time_container = {"base": time.time()}
         
         def mock_time():
-            return base_time
+            return time_container["base"]
         
-        with patch('core.control_tracker.time.time', mock_time):
+        with patch('smart_home.core.control_tracker.time.time', mock_time):
             # Manual control of ventilation
             vent_manual = CommandIntent(
                 device_id="fan.bathroom",
@@ -237,8 +238,7 @@ class TestManualLockoutMiddleware:
             await middleware.process(vent_manual)
             
             # Move time forward 10 minutes (within 15 min lockout)
-            nonlocal base_time
-            base_time = base_time + 10 * 60  # 10 minutes in seconds
+            time_container["base"] = time_container["base"] + 10 * 60  # 10 minutes in seconds
             
             vent_auto = CommandIntent(
                 device_id="fan.bathroom",
@@ -254,7 +254,7 @@ class TestManualLockoutMiddleware:
             assert result is None
             
             # Move time forward past 15 min lockout
-            base_time = base_time + 6 * 60  # 6 more minutes
+            time_container["base"] = time_container["base"] + 6 * 60  # 6 more minutes
             
             result = await middleware.process(vent_auto)
             
