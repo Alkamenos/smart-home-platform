@@ -165,6 +165,7 @@ class FSMFactory:
 
                 guard_fn = combined_guard
             else:
+
                 def guard_fn(state, context):
                     return schedule_guard_fn(context)
 

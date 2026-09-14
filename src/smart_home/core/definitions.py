@@ -58,9 +58,7 @@ class YAMLFSMDefinition(BaseModel):
     params: dict[str, Any] = Field(
         default_factory=dict, description="Параметры поведения из BehaviorConfig"
     )
-    target_device_id: str | None = Field(
-        None, description="ID целевого устройства для управления"
-    )
+    target_device_id: str | None = Field(None, description="ID целевого устройства для управления")
 
     class Config:
         extra = "forbid"

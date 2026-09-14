@@ -16,6 +16,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass
 
@@ -190,12 +191,8 @@ class ContextManager:
         import asyncio
 
         # Проверяем доступность task.unique() (PyScript-specific)
-        try:
+        with contextlib.suppress(ImportError):
             from pyscript import task
-
-            pyscript_task_available = True
-        except ImportError:
-            pyscript_task_available = False
 
         async def check_schedules():
             """Фоновая задача проверки расписаний"""

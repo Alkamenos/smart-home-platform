@@ -76,9 +76,7 @@ class ControlTracker:
         # Статистика по источникам
         self._stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
-    def record(
-        self, entity_id: str, source: str, trigger: str, value: str | None = None
-    ) -> None:
+    def record(self, entity_id: str, source: str, trigger: str, value: str | None = None) -> None:
         """
         Записать событие управления.
 
