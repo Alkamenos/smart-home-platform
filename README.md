@@ -1,5 +1,10 @@
 # Smart Home FSM Platform
 
+[![CI](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml/badge.svg?branch=v3)](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Alkamenos/smart-home-platform/branch/v3/graph/badge.svg)](https://codecov.io/gh/Alkamenos/smart-home-platform)
+![Python Versions](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 A modern, state-machine based automation platform for smart home systems. This platform provides a robust framework for defining, managing, and executing complex home automation scenarios using finite state machines (FSM). Built with Python 3.10+, it features strict schema validation via Pydantic, declarative configuration support through YAML, structured logging with Loguru, and comprehensive testing capabilities.
 
 ## 🏗 Architecture Overview
