@@ -9,11 +9,11 @@
 23:00 - Ночь, свет выключается
 """
 import pytest
-from core.fsm import FSMEngine, FSMDefinition, Transition
-from core.event_bus import EventBus
-from core.logger import Logger
-from core.registry import Registry
-from features.lighting import create_lighting_automations
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.event_bus import EventBus
+from smart_home.core.logger import Logger
+from smart_home.core.registry import Registry
+from smart_home.features.lighting import create_lighting_automations
 
 
 @pytest.fixture

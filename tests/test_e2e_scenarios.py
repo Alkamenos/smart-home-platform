@@ -8,11 +8,11 @@ End-to-End Tests - Сценарные тесты платформы с MockAdapt
 """
 
 import pytest
-from core.event_bus import EventBus
-from core.fsm import FSMEngine, FSMDefinition, Transition
-from core.logger import Logger
-from adapters.mock_adapter import MockAdapter
-from adapters.bridge import ActionBridge
+from smart_home.core.event_bus import EventBus
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.logger import Logger
+from smart_home.adapters.mock_adapter import MockAdapter
+from smart_home.adapters.bridge import ActionBridge
 
 
 logger = Logger(component="test_e2e", output=None)

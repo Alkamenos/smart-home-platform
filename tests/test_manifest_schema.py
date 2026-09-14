@@ -12,8 +12,8 @@ import pytest
 import yaml
 from pathlib import Path
 
-from core.manifest_schema import MANIFEST_SCHEMA, get_schema
-from core.manifest_validator import ManifestValidator, ValidationError, validate_manifest
+from smart_home.core.manifest_schema import MANIFEST_SCHEMA, get_schema
+from smart_home.core.manifest_validator import ManifestValidator, ValidationError, validate_manifest
 
 
 # Фикстуры

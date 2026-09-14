@@ -10,10 +10,10 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
-from core.fsm import FSMEngine, FSMDefinition, Transition
-from core.event_bus import EventBus
-from core.logger import Logger
-from core.state_store import MemoryStateStore
+from smart_home.core.fsm import FSMEngine, FSMDefinition, Transition
+from smart_home.core.event_bus import EventBus
+from smart_home.core.logger import Logger
+from smart_home.core.state_store import MemoryStateStore
 
 
 def create_test_lighting_definition(entity_id: str = "light.kitchen") -> FSMDefinition:

@@ -21,9 +21,6 @@ import signal
 import os
 from pathlib import Path
 
-# Добавляем platform_v3 в path
-sys.path.insert(0, str(Path(__file__).parent))
-
 from smart_home.core.fsm import FSMEngine
 from smart_home.core.event_bus import EventBus
 from smart_home.core.logger import Logger

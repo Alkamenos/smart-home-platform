@@ -6,7 +6,7 @@ import pytest
 import time
 from unittest.mock import MagicMock
 
-from core.control_tracker import (
+from smart_home.core.control_tracker import (
     ControlTracker,
     ControlEvent,
     TriggerSource

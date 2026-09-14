@@ -230,12 +230,12 @@ platform_dir = Path(__file__).parent / "platform_v3"
 sys.path.insert(0, str(platform_dir))
 
 # Импортируем компоненты
-from core.fsm import FSMEngine
-from core.event_bus import EventBus
-from core.logger import Logger
-from core.registry import Registry
-from core.fsm_persistence import FSMPersistence
-from adapters.ha_adapter import HAAdapter
+from smart_home.core.fsm import FSMEngine
+from smart_home.core.event_bus import EventBus
+from smart_home.core.logger import Logger
+from smart_home.core.registry import Registry
+from smart_home.core.fsm_persistence import FSMPersistence
+from smart_home.adapters.ha_adapter import HAAdapter
 
 # Создаём глобальные экземпляры
 event_bus = EventBus()
@@ -251,8 +251,8 @@ fsm_engine.set_adapter(ha_adapter)
 persistence = FSMPersistence(event_bus, fsm_engine, ha_adapter, logger)
 
 # Импортируем и регистрируем автоматы
-from features.lighting import create_lighting_automations
-from features.climate import create_climate_automations
+from smart_home.features.lighting import create_lighting_automations
+from smart_home.features.climate import create_climate_automations
 
 # Конфигурация комнат и зон (можно вынести в variables.yaml)
 ROOMS = ["living_room", "bedroom", "kitchen", "bathroom"]

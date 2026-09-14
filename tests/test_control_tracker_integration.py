@@ -22,7 +22,7 @@ from src.smart_home.core.command_dispatcher import CommandIntent, CommandDispatc
 from src.smart_home.core.models.manifest import (
     AutomationRules, LightingAutomation, ClimateAutomation, VentilationAutomation
 )
-from core.control_tracker import ControlTracker, TriggerSource
+from smart_home.core.control_tracker import ControlTracker, TriggerSource
 
 
 @pytest.fixture

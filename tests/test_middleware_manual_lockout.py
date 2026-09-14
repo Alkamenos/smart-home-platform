@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 from src.smart_home.core.middleware import Middleware, ManualLockoutMiddleware
 from src.smart_home.core.command_dispatcher import CommandIntent
 from src.smart_home.core.models.manifest import AutomationRules, LightingAutomation, ClimateAutomation, VentilationAutomation
-from core.control_tracker import ControlTracker, TriggerSource
+from smart_home.core.control_tracker import ControlTracker, TriggerSource
 
 
 @pytest.fixture

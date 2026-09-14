@@ -20,8 +20,8 @@ from unittest.mock import patch, MagicMock
 # Добавляем workspace в path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.manifest_validator import ManifestValidator
-from core.manifest_generator import ManifestAutomationGenerator
+from smart_home.core.manifest_validator import ManifestValidator
+from smart_home.core.manifest_generator import ManifestAutomationGenerator
 
 
 class TestManifestCLICommands:
