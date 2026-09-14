@@ -107,7 +107,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["smart_home"]
+known-first-party = ["smart_home", "tools"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]  # allow assert in tests
