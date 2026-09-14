@@ -61,6 +61,8 @@ timeout = 30
 [tool.hatch.build.targets.wheel]
 packages = ["src/smart_home"]
 
+[project.scripts]
+smart-home = "smart_home.cli.main:main"
 
 # ===== Tool Configuration =====
 
