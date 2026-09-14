@@ -253,7 +253,7 @@ class TestEventBusResilience:
     
     def test_multiple_handlers_one_fails(self):
         """Тест: Множество хендлеров, один падает - остальные работают"""
-        from core.event_bus import EventBus
+        from smart_home.core.event_bus import EventBus
         
         bus = EventBus()
         successful_calls = []
@@ -283,7 +283,7 @@ class TestEventBusResilience:
     
     def test_async_handler_in_sync_context(self):
         """Тест: Async хендлер в синхронном контексте не ломает выполнение"""
-        from core.event_bus import EventBus
+        from smart_home.core.event_bus import EventBus
         import asyncio
         
         bus = EventBus()
