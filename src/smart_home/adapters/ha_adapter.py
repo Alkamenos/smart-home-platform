@@ -54,13 +54,12 @@ class SimpleHAWebSocketClient:
             self.ws = await websockets.connect(self.url)
             self.connected = True
 
-            # Step 1: Receive auth_required
             raw = await asyncio.wait_for(self.ws.recv(), timeout=15)
             msg = json.loads(raw)
             if msg.get("type") != "auth_required":
+                self.connected = False
                 raise ConnectionError(f"Expected auth_required, got: {msg}")
 
-            # Step 2: Send auth token
             await self.ws.send(
                 json.dumps(
                     {
@@ -70,7 +69,6 @@ class SimpleHAWebSocketClient:
                 )
             )
 
-            # Step 3: Wait for auth_ok
             raw = await asyncio.wait_for(self.ws.recv(), timeout=15)
             msg = json.loads(raw)
             if msg.get("type") == "auth_ok":
@@ -79,7 +77,6 @@ class SimpleHAWebSocketClient:
                 self.connected = False
                 raise ConnectionError(f"Auth failed: {msg}")
 
-            # Start background listener for incoming messages
             self._listen_task = asyncio.create_task(self._listen_loop())
 
         except Exception as e:
@@ -87,7 +84,6 @@ class SimpleHAWebSocketClient:
             self.connected = False
 
     async def _listen_loop(self):
-        """Background loop that dispatches incoming WS messages."""
         try:
             async for raw in self.ws:
                 try:
@@ -96,7 +92,6 @@ class SimpleHAWebSocketClient:
 
                     if msg_type == "event" and self._event_handler:
                         event_data = msg.get("event", {})
-                        # HA wraps state_changed data inside event.data
                         payload = event_data.get("data", event_data)
                         await self._event_handler(payload)
 
@@ -137,7 +132,8 @@ class SimpleHAWebSocketClient:
 
         self._msg_id += 1
         msg_id = self._msg_id
-        result_future: asyncio.Future = asyncio.get_event_loop().create_future()
+        loop = asyncio.get_event_loop()
+        result_future: asyncio.Future = loop.create_future()
 
         def on_result(msg):
             if not result_future.done():
@@ -176,7 +172,8 @@ class SimpleHAWebSocketClient:
         }
 
         if return_response:
-            result_future: asyncio.Future = asyncio.get_event_loop().create_future()
+            loop = asyncio.get_event_loop()
+            result_future: asyncio.Future = loop.create_future()
 
             def on_result(msg):
                 if not result_future.done():
@@ -248,7 +245,6 @@ class HAAdapter:
             Callable[[str, str, str, dict[str, Any]], Coroutine[Any, Any, None]]
         ] = []
 
-        # Validate required parameters based on mode
         if mode == "pyscript" and hass is None:
             raise ValueError("hass instance is required for pyscript mode")
         if mode == "websocket":
@@ -402,14 +398,22 @@ class HAAdapter:
             return False
 
     async def start(self) -> None:
+        """Start the adapter (WebSocket mode only).
+
+        KEEPS: starts WebSocket connection as a BACKGROUND TASK so it does not
+        block the caller. The caller can then poll ``is_connected`` to check
+        progress.
+        """
         if self._mode == "pyscript":
             logger.info("HAAdapter: start() is a no-op in pyscript mode")
             return
 
         if self._mode == "websocket":
-            await self._connect_websocket()
+            # Launch connection loop as a background task (non-blocking)
+            self._reconnect_task = asyncio.create_task(self._connect_websocket())
 
     async def _connect_websocket(self) -> None:
+        """Establish WebSocket connection with exponential backoff."""
         if not HAS_WS_LIBRARY or HomeAssistantWS is None:
             logger.error("HAAdapter: homeassistant-websocket library not available")
             return
@@ -439,6 +443,8 @@ class HAAdapter:
                 log.info("HAAdapter: subscribed to state_changed events")
 
                 reconnect_delay = 1.0
+
+                # Wait for shutdown signal
                 await self._shutdown_event.wait()
 
             except asyncio.CancelledError:
@@ -450,9 +456,7 @@ class HAAdapter:
                 log.error(f"HAAdapter: WebSocket error: {e}")
 
                 if not self._shutdown_event.is_set():
-                    log.info(
-                        f"HAAdapter: reconnecting in {reconnect_delay:.1f}s (exponential backoff)"
-                    )
+                    log.info(f"HAAdapter: reconnecting in {reconnect_delay:.1f}s")
                     await asyncio.sleep(reconnect_delay)
                     reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
@@ -529,7 +533,7 @@ class HAAdapter:
     def is_connected(self) -> bool:
         if self._mode == "pyscript":
             return True
-        return self._ws_client is not None
+        return self._ws_client is not None and self._ws_client.connected
 
 
 HomeAssistantAdapter = HAAdapter
