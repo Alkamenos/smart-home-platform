@@ -2,11 +2,6 @@
 
 *Автоматически сгенерировано из `.ai/03_ROADMAP.md`. Не редактировать вручную.*
 
-## Release History
-
-- **v3.0.0** (2024-09-14) - FSM Engine v3, EventRouter, Behavior Composition, Middleware System
-- **v2.x** - Previous stable release
-
 ```mermaid
 gantt
     title Development Timeline
@@ -22,13 +17,16 @@ gantt
     Phase 3- Core Platform :done, p3, 2026-09-19, 2026-09-24
 
     section Phase 4- Production Readiness
-    Phase 4- Production Readiness :active, p4, 2026-09-26, 2026-10-01
+    Phase 4- Production Readiness :done, p4, 2026-09-26, 2026-10-01
 
-    section Phase 5- Advanced Features
-    Phase 5- Advanced Features :p5, 2026-10-03, 2026-10-08
+    section Phase 5- Room-Based Architecture
+    Phase 5- Room-Based Architecture :done, p5, 2026-10-03, 2026-10-08
 
-    section Phase 6- Platform Maturity
-    Phase 6- Platform Maturity :p6, 2026-10-10, 2026-10-15
+    section Phase 6- Advanced Features
+    Phase 6- Advanced Features :active, p6, 2026-10-10, 2026-10-15
+
+    section Phase 7- Platform Maturity
+    Phase 7- Platform Maturity :p7, 2026-10-17, 2026-10-22
 
 ```
 
@@ -37,7 +35,7 @@ gantt
 - ✅ Completed
 - [ ] In Progress
 - [ ] Planned
-- ~~Cancelled~~
+- ✅ Cancelled
 
 ## ✅ Phase 1: Foundation
 
@@ -73,25 +71,41 @@ gantt
 - ✅ State persistence with graceful shutdown
 - ✅ Docker integration tests
 
-## 🔄 Phase 4: Production Readiness
+## ✅ Phase 4: Production Readiness
 
-**Status:** IN PROGRESS
+**Status:** COMPLETED: 2026-09-15
 
-- [ ] **CRITICAL** Fix manifest bug: add `motion_sensor` to night_light params
+- ✅ **CRITICAL** Consolidate project structure (remove code duplication)
+- Issue: Code exists in both `core/` and `src/smart_home/core/`
+- Action: Migrate fully to `src` layout, remove flat structure
+- Impact: All imports, pyproject.toml, cli.py
+- ✅ **CRITICAL** Fix manifest bug: add `motion_sensor` to night_light params
 - File: `instances/leonids_house/manifest.yaml`
 - Issue: `01_PROJECT_STATE.md` → Known Issues #1
-- [ ] Clean up legacy tests
+- ✅ Clean up legacy tests
 - Remove: `tests/test_legacy_*.py`
 - Add: middleware tests, CLI tests, WebSocket reconnect tests
-- [ ] Add pre-commit hooks
+- ✅ Add pre-commit hooks
 - pytest, mypy, ruff, black
-- [ ] Write MIGRATION_V2_TO_V3.md
-- [ ] Update README.md with new architecture diagrams
-- [ ] Add code coverage badge
+- ✅ Update README.md with new architecture diagrams
+- ✅ Add code coverage badge
 
-## 📋 Phase 5: Advanced Features
+## ✅ Phase 5: Room-Based Architecture
 
-**Status:** PLANNED - Target: v3.1.0
+**Status:** COMPLETED: 2026-09-15
+
+- ✅ Refactor Manifest: devices nested inside rooms
+- ✅ Sensors describe room state, devices are actuators
+- ✅ Same sensor can be referenced from multiple rooms
+- ✅ Update EventRouter for room-based routing
+- ✅ Update LovelaceGenerator for new structure
+- ✅ Update FSMFactory.create_from_manifest()
+- ✅ Update all tests
+- ✅ Remove migration tests (no external users)
+
+## 🔄 Phase 6: Advanced Features
+
+**Status:** IN PROGRESS
 
 - [ ] Device-level sensors (avoid duplication in behavior params)
 - Add `sensors:` field to device in manifest
@@ -106,9 +120,9 @@ gantt
 - File watcher for manifest changes
 - Graceful FSM migration (unregister old, register new)
 
-## 🔮 Phase 6: Platform Maturity
+## 🔮 Phase 7: Platform Maturity
 
-**Status:** FUTURE - Target: v3.2.0+
+**Status:** FUTURE
 
 - [ ] Plugin system for custom behaviors
 - [ ] Multi-instance support (multiple houses)
@@ -119,10 +133,6 @@ gantt
 
 
 ### High Priority
-- File: `core/event_router.py:67`
-- Fix: Add public method `engine.get_entities_by_device()`
-- File: `core/action_handlers.py`
-- Fix: Extract to helper function `extract_device_id(context)`
 
 ### Medium Priority
 - File: `adapters/ha_adapter.py`
@@ -148,30 +158,3 @@ gantt
 ### Visual FSM editor
 - **Reason:** YAML with composition pattern is more maintainable than visual editing.
 - **Date cancelled:** 2026-09-13
-
-## 📅 Upcoming Releases
-
-### v3.1.0 - Advanced Features (Q4 2024)
-
-Focus on usability and observability:
-
-- Device-level sensor configuration
-- Web-based manifest editor
-- Prometheus metrics integration
-- Hot-reload capability
-
-### v3.2.0 - Platform Maturity (Q1 2025)
-
-Focus on extensibility and intelligence:
-
-- Plugin architecture for custom behaviors
-- Multi-instance support
-- ML-based behavior optimization
-- Enhanced debugging tools
-
-### Future Considerations
-
-- Voice assistant integrations
-- Mobile application
-- Cloud sync capabilities
-- Advanced scheduling features
