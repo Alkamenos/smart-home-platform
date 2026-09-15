@@ -19,11 +19,14 @@ gantt
     section Phase 4- Production Readiness
     Phase 4- Production Readiness :done, p4, 2026-09-26, 2026-10-01
 
-    section Phase 5- Advanced Features
-    Phase 5- Advanced Features :active, p5, 2026-10-03, 2026-10-08
+    section Phase 5- Room-Based Architecture
+    Phase 5- Room-Based Architecture :done, p5, 2026-10-03, 2026-10-08
 
-    section Phase 6- Platform Maturity
-    Phase 6- Platform Maturity :p6, 2026-10-10, 2026-10-15
+    section Phase 6- Advanced Features
+    Phase 6- Advanced Features :active, p6, 2026-10-10, 2026-10-15
+
+    section Phase 7- Platform Maturity
+    Phase 7- Platform Maturity :p7, 2026-10-17, 2026-10-22
 
 ```
 
@@ -87,7 +90,20 @@ gantt
 - ✅ Update README.md with new architecture diagrams
 - ✅ Add code coverage badge
 
-## 🔄 Phase 5: Advanced Features
+## ✅ Phase 5: Room-Based Architecture
+
+**Status:** COMPLETED: 2026-09-15
+
+- ✅ Refactor Manifest: devices nested inside rooms
+- ✅ Sensors describe room state, devices are actuators
+- ✅ Same sensor can be referenced from multiple rooms
+- ✅ Update EventRouter for room-based routing
+- ✅ Update LovelaceGenerator for new structure
+- ✅ Update FSMFactory.create_from_manifest()
+- ✅ Update all tests
+- ✅ Remove migration tests (no external users)
+
+## 🔄 Phase 6: Advanced Features
 
 **Status:** IN PROGRESS
 
@@ -104,7 +120,7 @@ gantt
 - File watcher for manifest changes
 - Graceful FSM migration (unregister old, register new)
 
-## 🔮 Phase 6: Platform Maturity
+## 🔮 Phase 7: Platform Maturity
 
 **Status:** FUTURE
 

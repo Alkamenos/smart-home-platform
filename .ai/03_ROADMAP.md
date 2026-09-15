@@ -47,7 +47,17 @@
 - [x] Update README.md with new architecture diagrams
 - [x] Add code coverage badge
 
-## Phase 5: Advanced Features [IN PROGRESS]
+## Phase 5: Room-Based Architecture [COMPLETED: 2026-09-15]
+- [x] Refactor Manifest: devices nested inside rooms
+- [x] Sensors describe room state, devices are actuators
+- [x] Same sensor can be referenced from multiple rooms
+- [x] Update EventRouter for room-based routing
+- [x] Update LovelaceGenerator for new structure
+- [x] Update FSMFactory.create_from_manifest()
+- [x] Update all tests
+- [x] Remove migration tests (no external users)
+
+## Phase 6: Advanced Features [IN PROGRESS]
 - [ ] Device-level sensors (avoid duplication in behavior params)
   - Add `sensors:` field to device in manifest
   - EventRouter reads from device level first, then behavior level
@@ -61,7 +71,7 @@
   - File watcher for manifest changes
   - Graceful FSM migration (unregister old, register new)
 
-## Phase 6: Platform Maturity [FUTURE]
+## Phase 7: Platform Maturity [FUTURE]
 - [ ] Plugin system for custom behaviors
 - [ ] Multi-instance support (multiple houses)
 - [ ] Voice assistant integration (Alexa, Google)
