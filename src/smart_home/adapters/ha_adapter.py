@@ -203,7 +203,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from ..core.event_router import EventRouter
-    from ..core.middlewares.manual_override_middleware import ManualOverrideMiddleware
+    from ..core.middleware import ManualLockoutMiddleware
 
 
 class HAAdapter:
@@ -223,7 +223,7 @@ class HAAdapter:
         hass: Any | None = None,
         ws_url: str | None = None,
         token: str | None = None,
-        manual_override_middleware: ManualOverrideMiddleware | None = None,
+        manual_lockout_middleware: ManualLockoutMiddleware | None = None,
         event_router: EventRouter | None = None,
     ) -> None:
         if mode not in ("pyscript", "websocket"):
@@ -235,7 +235,7 @@ class HAAdapter:
         self._ws_url = ws_url
         self._token = token
 
-        self._manual_override_middleware = manual_override_middleware
+        self._manual_lockout_middleware = manual_lockout_middleware
         self._event_router = event_router
         self._ws_client: HomeAssistantWS | None = None
         self._session: aiohttp.ClientSession | None = None
@@ -271,8 +271,8 @@ class HAAdapter:
         context = context or {}
 
         user_id = context.get("user_id")
-        if user_id and self._manual_override_middleware:
-            self._manual_override_middleware.register_manual_override(entity_id)
+        if user_id and self._manual_lockout_middleware:
+            self._manual_lockout_middleware.record_manual_control(entity_id)
 
         trace_id = context.get("trace_id") or self._generate_trace_id()
         log = self._get_logger(trace_id)

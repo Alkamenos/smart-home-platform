@@ -37,10 +37,10 @@ install-dev:
 
 # Testing
 test:
-	pytest --cov=. --cov-report=term-missing
+	pytest --cov=. --cov-report=term-missing --ignore=tests/integration/
 
 test-verbose:
-	pytest -v --cov=. --cov-report=term-missing --cov-report=html
+	pytest -v --cov=. --cov-report=term-missing --cov-report=html --ignore=tests/integration/
 
 test-fast:
 	pytest --no-cov

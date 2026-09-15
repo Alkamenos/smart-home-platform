@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   lint:
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.11', '3.12']
+        python-version: [ '3.11', '3.12' ]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,16 +41,64 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    timeout-minutes: 15  # Защита от зависания
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - run: pip install -e ".[dev,integration]"
-      - run: make test-integration
+
+      - name: Cache Docker images
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-images
+          key: docker-ha-${{ runner.os }}-${{ hashFiles('**/test_ha_integration.py') }}
+          restore-keys: |
+            docker-ha-${{ runner.os }}-
+
+      - name: Pre-pull HA image (or load from cache)
+        run: |
+          set -e
+          IMAGE="ghcr.io/home-assistant/home-assistant:stable"
+          CACHE_FILE="/tmp/docker-images/ha-stable.tar"
+
+          # Если есть в кеше — загружаем
+          if [ -f "$CACHE_FILE" ]; then
+            echo "📦 Загружаю образ из кеша..."
+            docker load -i "$CACHE_FILE"
+          else
+            echo "📥 Скачиваю образ (~1GB)..."
+            docker pull "$IMAGE"
+
+            # Сохраняем в кеш для следующих запусков
+            mkdir -p /tmp/docker-images
+            docker save "$IMAGE" -o "$CACHE_FILE"
+            echo "💾 Образ сохранён в кеш"
+          fi
+
+          # Создаём симлинк для совместимости
+          docker tag "$IMAGE" homeassistant/home-assistant:stable 2>/dev/null || true
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,integration]"
+
+      - name: Run integration tests
+        run: make test-integration
         env:
           TESTCONTAINERS_RYUK_DISABLED: "true"
+          PYTEST_TIMEOUT: "300"
+          # Ускоряем testcontainers: образ уже есть
+          TESTCONTAINERS_CHECKS_DISABLE: "true"
+
+      - name: Upload test artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-logs
+          path: |
+            .pytest_cache/
+            htmlcov/
+          retention-days: 7

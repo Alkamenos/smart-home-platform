@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from smart_home.adapters.ha_adapter import HAAdapter
+from smart_home.adapters.mock_adapter import MockAdapter
 from smart_home.core.command_dispatcher import CommandDispatcher
 from smart_home.core.control_tracker import ControlTracker
 from smart_home.core.event_bus import EventBus
@@ -55,7 +56,7 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
     3. Creates FSMEngine
     4. Creates ControlTracker (if not already created)
     5. Creates EventRouter
-    6. Creates HAAdapter with EventRouter
+    6. Creates adapter (HAAdapter if HA_TOKEN set, MockAdapter otherwise)
     7. Creates CommandDispatcher with empty middleware list
     8. Creates ManualLockoutMiddleware with automation_rules and ControlTracker
     9. Adds middleware to dispatcher via add_middleware()
@@ -87,17 +88,23 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
     # 5. Create EventRouter
     event_router = EventRouter(manifest=manifest, engine=fsm)
 
-    # 6. Create HAAdapter with EventRouter
+    # 6. Create adapter (HAAdapter for production, MockAdapter for tests)
     ws_url = os.environ.get("HA_WEBSOCKET_URL", "ws://localhost:8123/api/websocket")
     ha_token = os.environ.get("HA_TOKEN")
 
-    adapter = HAAdapter(
-        mode="websocket",
-        engine=fsm,
-        event_router=event_router,
-        ws_url=ws_url,
-        token=ha_token,
-    )
+    if ha_token:
+        # Production mode: use real HAAdapter
+        adapter = HAAdapter(
+            mode="websocket",
+            engine=fsm,
+            event_router=event_router,
+            ws_url=ws_url,
+            token=ha_token,
+        )
+    else:
+        # Test mode: use MockAdapter
+        adapter = MockAdapter()
+        adapter.set_event_router(event_router)
 
     # 7. Create CommandDispatcher with empty middleware list
     dispatcher = CommandDispatcher(ha_adapter=adapter, middlewares=[])

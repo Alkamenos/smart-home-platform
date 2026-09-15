@@ -151,6 +151,16 @@ class MockAdapter:
             self.log.error(f"Failed to process event '{trigger}' for {entity_id}: {e}")
             return False
 
+    def set_event_router(self, event_router) -> None:
+        """Set the event router for routing sensor events.
+
+        Args:
+            event_router: EventRouter instance for routing state changes.
+        """
+        self._event_router = event_router
+        logger.info("MockAdapter: EventRouter set")
+
+
     def clear(self) -> None:
         """Reset adapter state between tests.
 
