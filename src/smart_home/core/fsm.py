@@ -172,6 +172,27 @@ class FSMEngine:
         self._actions[name] = action_fn
         logger.debug(f"Registered action '{name}'")
 
+    def get_entities_by_device(self, device_id: str) -> list[str]:
+        """
+        Get all FSM entity IDs that belong to a specific device.
+
+        FSM entity IDs follow the pattern: {device_id}_{template}_{priority}
+
+        Args:
+            device_id: The device ID to filter by.
+
+        Returns:
+            List of FSM entity IDs belonging to the device.
+
+        Example:
+             engine.get_entities_by_device("light.kitchen")
+            ["light.kitchen_lighting_10", "light.kitchen_night_light_20"]
+        """
+        return [
+            entity_id
+            for entity_id in self._definitions.keys()
+            if entity_id.startswith(f"{device_id}_")
+        ]
     def get_state(self, entity_id: str) -> State | None:
         """Get the current state of an entity."""
         return self._states.get(entity_id)

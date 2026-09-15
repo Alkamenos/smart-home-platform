@@ -110,20 +110,8 @@ class EventRouter:
         logger.info(f"EventRouter built mapping for {len(self._sensor_to_fsms)} sensors")
 
     def _get_fsm_entity_ids_for_device(self, device_id: str) -> list[str]:
-        """
-        Get all FSM entity IDs registered for a given device.
-
-        Args:
-            device_id: The device ID to look up.
-
-        Returns:
-            List of FSM entity IDs that belong to this device.
-        """
-        fsm_ids = []
-        for registered_id in self._engine._definitions:
-            if registered_id.startswith(f"{device_id}_"):
-                fsm_ids.append(registered_id)
-        return fsm_ids
+        """Get all FSM entity IDs registered for a given device."""
+        return self._engine.get_entities_by_device(device_id)
 
     def _add_mapping(self, sensor_id: str, fsm_entity_id: str, event_name: str) -> None:
         """
