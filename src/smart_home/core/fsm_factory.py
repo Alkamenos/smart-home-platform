@@ -112,10 +112,10 @@ class FSMFactory:
             dict: Модифицированные данные шаблона с params и target_device_id.
         """
         # Переопределяем entity_id для уникальности FSM
-        # Формат: {device_id}__{template_name}_{priority}
+        # Формат: {device_id}_{template_name}_{priority}
         # Используем имя поведенческого шаблона (behavior.template), а не entity_id из YAML
         template_name = behavior_template_name if behavior_template_name else "fsm"
-        new_entity_id = f"{device_id}__{template_name}_{behavior_priority}"
+        new_entity_id = f"{device_id}_{template_name}_{behavior_priority}"
         template_data["entity_id"] = new_entity_id
 
         # Внедряем params из BehaviorConfig

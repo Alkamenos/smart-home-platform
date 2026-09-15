@@ -63,6 +63,7 @@ devices:
       params:
         brightness: 10  # Тусклый свет для ночи
         schedule: "23:00-07:00"  # Активен только ночью
+        motion_sensor: binary_sensor.kitchen_motion
     - template: lighting
       priority: 10  # Стандартный приоритет для дневного освещения
       params:

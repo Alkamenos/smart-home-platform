@@ -7,12 +7,15 @@ all platform components and wires them together correctly.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from typing import Any
 
-from smart_home.adapters.mock_adapter import MockAdapter
+from smart_home.adapters.ha_adapter import HAAdapter
 from smart_home.core.command_dispatcher import CommandDispatcher
 from smart_home.core.control_tracker import ControlTracker
 from smart_home.core.event_bus import EventBus
+from smart_home.core.event_router import EventRouter
 from smart_home.core.fsm import FSMEngine
 from smart_home.core.middleware import ManualLockoutMiddleware
 from smart_home.core.models.manifest import Manifest, load_manifest
@@ -28,16 +31,18 @@ class PlatformContext:
         event_bus: EventBus for publishing/subscribing to events.
         fsm: FSMEngine for state machine management.
         control_tracker: ControlTracker for tracking manual interventions.
-        adapter: HAAdapter (MockAdapter for tests) for calling services.
+        adapter: HAAdapter or MockAdapter for calling services.
         dispatcher: CommandDispatcher with middleware chain.
+        event_router: EventRouter for routing sensor events to FSMs.
     """
 
     manifest: Manifest
     event_bus: EventBus
     fsm: FSMEngine
     control_tracker: ControlTracker
-    adapter: MockAdapter
+    adapter: Any  # HAAdapter or MockAdapter
     dispatcher: CommandDispatcher
+    event_router: EventRouter
 
 
 def bootstrap_platform(manifest_path: str) -> PlatformContext:
@@ -49,11 +54,12 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
     2. Creates EventBus
     3. Creates FSMEngine
     4. Creates ControlTracker (if not already created)
-    5. Creates HAAdapter (MockAdapter for tests)
-    6. Creates CommandDispatcher with empty middleware list
-    7. Creates ManualLockoutMiddleware with automation_rules and ControlTracker
-    8. Adds middleware to dispatcher via add_middleware()
-    9. Returns PlatformContext with all components
+    5. Creates EventRouter
+    6. Creates HAAdapter with EventRouter
+    7. Creates CommandDispatcher with empty middleware list
+    8. Creates ManualLockoutMiddleware with automation_rules and ControlTracker
+    9. Adds middleware to dispatcher via add_middleware()
+    10. Returns PlatformContext with all components
 
     Args:
         manifest_path: Path to the manifest YAML file.
@@ -78,25 +84,37 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
     # 4. Create ControlTracker
     control_tracker = ControlTracker(history_size=100)
 
-    # 5. Create HAAdapter (MockAdapter for tests)
-    adapter = MockAdapter()
+    # 5. Create EventRouter
+    event_router = EventRouter(manifest=manifest, engine=fsm)
 
-    # 6. Create CommandDispatcher with empty middleware list
+    # 6. Create HAAdapter with EventRouter
+    ws_url = os.environ.get("HA_WEBSOCKET_URL", "ws://localhost:8123/api/websocket")
+    ha_token = os.environ.get("HA_TOKEN")
+
+    adapter = HAAdapter(
+        mode="websocket",
+        engine=fsm,
+        event_router=event_router,
+        ws_url=ws_url,
+        token=ha_token,
+    )
+
+    # 7. Create CommandDispatcher with empty middleware list
     dispatcher = CommandDispatcher(ha_adapter=adapter, middlewares=[])
 
-    # 7. Create ManualLockoutMiddleware with automation_rules and ControlTracker
+    # 8. Create ManualLockoutMiddleware with automation_rules and ControlTracker
     middleware = ManualLockoutMiddleware(
         automation_rules=manifest.automation_rules,
         control_tracker=control_tracker,
     )
 
-    # 8. Add middleware to dispatcher
+    # 9. Add middleware to dispatcher
     dispatcher.add_middleware(middleware)
 
     # Link adapter to FSM engine for event forwarding
     adapter.set_fsm_engine(fsm)
 
-    # 9. Return PlatformContext with all components
+    # 10. Return PlatformContext with all components
     return PlatformContext(
         manifest=manifest,
         event_bus=event_bus,
@@ -104,6 +122,7 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
         control_tracker=control_tracker,
         adapter=adapter,
         dispatcher=dispatcher,
+        event_router=event_router,
     )
 
 
