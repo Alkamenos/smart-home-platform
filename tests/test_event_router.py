@@ -59,7 +59,7 @@ class MockFSMEngine:
         """Get all FSM entity IDs belonging to a specific device."""
         return [
             entity_id
-            for entity_id in self._definitions.keys()
+            for entity_id in self._definitions
             if entity_id.startswith(f"{device_id}_")
         ]
 
