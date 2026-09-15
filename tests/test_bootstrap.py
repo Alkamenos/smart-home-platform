@@ -21,7 +21,7 @@ from smart_home.bootstrap import PlatformContext, bootstrap_platform
 from smart_home.core.middleware import ManualLockoutMiddleware
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-MANIFEST_PATH = PROJECT_ROOT / "examples" / "instances" / "leonids_house" / "manifest.yaml"
+MANIFEST_PATH = PROJECT_ROOT / "instances" / "leonids_house" / "manifest.yaml"
 
 
 class TestBootstrapPlatform:

@@ -72,10 +72,10 @@ test-integration-verbose:
 
 # Code Quality
 lint:
-	ruff check src/ tests/ examples/
+	ruff check src/ tests/
 
 format:
-	black src/ tests/ examples/
+	black src/ tests/
 
 type-check:
 	mypy src/ --ignore-missing-imports
@@ -93,7 +93,8 @@ run-mock:
 	@echo "Starting Mock HA Simulator..."
 	@echo "This simulates Home Assistant events for local testing."
 	@echo ""
-	python examples/kitchen_demo.py
+	python fsm_demo/kitchen_demo.py
+	python fsm_demo/full_house_demo.py
 
 # Alias for run-mock
 run-simulator: run-mock
