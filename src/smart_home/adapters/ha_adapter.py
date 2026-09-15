@@ -29,6 +29,7 @@ from loguru import logger
 # Fallback WebSocket client for Home Assistant (websockets>=12.0)
 # ---------------------------------------------------------------------------
 
+
 class SimpleHAWebSocketClient:
     """Minimal WebSocket client implementing HA WebSocket API protocol.
 
@@ -64,10 +65,14 @@ class SimpleHAWebSocketClient:
                 raise ConnectionError(f"Expected auth_required, got: {msg}")
 
             # Step 2: Send auth token
-            await self.ws.send(json.dumps({
-                "type": "auth",
-                "access_token": self.token,
-            }))
+            await self.ws.send(
+                json.dumps(
+                    {
+                        "type": "auth",
+                        "access_token": self.token,
+                    }
+                )
+            )
 
             # Step 3: Wait for auth_ok
             raw = await asyncio.wait_for(self.ws.recv(), timeout=15)
@@ -144,10 +149,14 @@ class SimpleHAWebSocketClient:
 
         self._handlers[msg_id] = on_result
 
-        await self.ws.send(json.dumps({
-            "id": msg_id,
-            "type": "get_states",
-        }))
+        await self.ws.send(
+            json.dumps(
+                {
+                    "id": msg_id,
+                    "type": "get_states",
+                }
+            )
+        )
 
         try:
             response = await asyncio.wait_for(result_future, timeout=15)
@@ -201,105 +210,6 @@ except ImportError:
     HAS_WS_LIBRARY = True
     HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
 
-
-# Try to import homeassistant_websocket for WebSocket mode
-
-class SimpleHAWebSocketClient:
-    """Fallback WebSocket client for Home Assistant (supports websockets>=12.0)."""
-
-    def __init__(self, url: str, token: str, session=None):
-        self.url = url
-        self.token = token
-        self.session = session
-        self.ws = None
-        self.connected = False
-        self._msg_id = 0
-
-    async def connect(self):
-        try:
-            import websockets
-            headers = {"Authorization": f"Bearer {self.token}"}
-            try:
-                self.ws = await websockets.connect(self.url, additional_headers=headers)
-            except TypeError:
-                self.ws = await websockets.connect(self.url, extra_headers=headers)
-            self.connected = True
-
-            msg = await asyncio.wait_for(self.ws.recv(), timeout=10)
-            data = json.loads(msg)
-            if data.get("type") != "auth_ok":
-                raise Exception(f"Auth failed: {data}")
-        except Exception as e:
-            logger.warning(f"WebSocket connection failed: {e}")
-            self.connected = False
-
-    async def close(self):
-        if self.ws:
-            await self.ws.close()
-        self.connected = False
-
-    async def subscribe(self, handler, filter_dict):
-        if self.ws:
-            self._msg_id += 1
-            sub_msg = {
-                "id": self._msg_id,
-                "type": "subscribe_events",
-                "event_type": filter_dict.get("type", ""),
-            }
-            await self.ws.send(json.dumps(sub_msg))
-
-            async def listen():
-                try:
-                    async for msg in self.ws:
-                        try:
-                            data = json.loads(msg)
-                            if data.get("type") == "event":
-                                event = data.get("event", {})
-                                await handler(event.get("data", event))
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-            asyncio.create_task(listen())
-
-    async def get_states(self):
-        if self.ws:
-            self._msg_id += 1
-            msg = {"id": self._msg_id, "type": "get_states"}
-            await self.ws.send(json.dumps(msg))
-            response = await asyncio.wait_for(self.ws.recv(), timeout=10)
-            data = json.loads(response)
-            return data.get("result", [])
-        return []
-
-    async def call_service(self, domain, service, service_data=None, return_response=True):
-        if self.ws:
-            self._msg_id += 1
-            msg = {
-                "id": self._msg_id,
-                "type": "call_service",
-                "domain": domain,
-                "service": service,
-                "service_data": service_data or {},
-            }
-            await self.ws.send(json.dumps(msg))
-            if return_response:
-                try:
-                    response = await asyncio.wait_for(self.ws.recv(), timeout=10)
-                    data = json.loads(response)
-                    return data.get("result")
-                except asyncio.TimeoutError:
-                    return None
-        return None
-
-
-try:
-    from homeassistant_websocket import HomeAssistantWS  # type: ignore
-    HAS_WS_LIBRARY = True
-except ImportError:
-    HAS_WS_LIBRARY = True
-    HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore  # type: ignore
 
 # Forward reference for ManualOverrideMiddleware and EventRouter
 if TYPE_CHECKING:
