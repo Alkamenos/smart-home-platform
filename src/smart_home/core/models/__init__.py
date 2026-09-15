@@ -1,31 +1,44 @@
-"""Models package for smart home core."""
+"""Models package for Smart Home Platform."""
 
 from .manifest import (
     AnyDevice,
+    AutomationDomainRules,
     AutomationRules,
     BehaviorConfig,
-    ClimateHysteresisDevice,
+    # Backward compatibility aliases
+    ClimateAutomation,
     Dashboard,
-    DeviceBase,
+    DeviceConfig,
+    # Core models
+    InstanceConfig,
     InstanceInfo,
+    LightingAutomation,
     LightMotionDevice,
     Manifest,
-    VentilationHumidityDevice,
+    RoomConfig,
+    VentilationAutomation,
     Zone,
+    # Loader
     load_manifest,
 )
 
 __all__ = [
+    "InstanceConfig",
+    "BehaviorConfig",
+    "DeviceConfig",
+    "RoomConfig",
+    "AutomationDomainRules",
+    "AutomationRules",
     "Manifest",
-    "DeviceBase",
-    "LightMotionDevice",
-    "ClimateHysteresisDevice",
-    "VentilationHumidityDevice",
+    "Dashboard",
+    "load_manifest",
+    # Aliases
+    "ClimateAutomation",
+    "LightingAutomation",
+    "VentilationAutomation",
     "AnyDevice",
+    "LightMotionDevice",
     "Zone",
     "InstanceInfo",
-    "AutomationRules",
-    "Dashboard",
-    "BehaviorConfig",
-    "load_manifest",
+
 ]

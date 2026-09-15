@@ -1,125 +1,107 @@
-automation_rules:
-  climate:
-    away_mode_enabled: true
-    manual_lockout_min: 30
-    safety_lockout_enabled: true
-  global_manual_lockout_min: 60
-  lighting:
-    manual_lockout_min: 60
-    motion_enabled: true
-    schedule_enabled: true
-  ventilation:
-    humidity_based: true
-    manual_lockout_min: 15
-dashboard:
-  history_days: 7
-  show_climate: true
-  show_history: true
-  show_motion_sensors: true
-  title: Leonid's House
-devices:
-- type: climate_hysteresis
-  id: climate.kitchen
-  name: Климат Kitchen
-  room: kitchen
-  behaviors:
-    - template: climate_hysteresis
-      priority: 10  # Стандартный приоритет для климат-контроля
-      params:
-        sensor: sensor.kitchen_temperature
-        target: 22.0
-        hysteresis: 0.5
-        modes:
-          - heat
-          - cool
-          - auto
-- type: climate_hysteresis
-  id: climate.living_room
-  name: Климат Living Room
-  room: living_room
-  behaviors:
-    - template: climate_hysteresis
-      priority: 10  # Стандартный приоритет для климат-контроля
-      params:
-        sensor: sensor.living_room_temperature
-        target: 22.0
-        hysteresis: 0.5
-        modes:
-          - heat
-          - cool
-          - auto
-- type: light_motion
-  id: light.kitchen
-  name: Свет в Kitchen
-  room: kitchen
-  # Композиция двух поведений для лампы кухни:
-  # 1. night_light (приоритет 20) - ночное освещение с тусклым светом
-  #    Высокий приоритет обеспечивает, что ночью лампа всегда будет в режиме ночника
-  # 2. motion_lighting (приоритет 10) - освещение по движению днем
-  #    Более низкий приоритет позволяет ночнику блокировать яркий свет ночью
-  behaviors:
-    - template: night_light
-      priority: 20  # Высокий приоритет: ночник должен доминировать ночью
-      params:
-        brightness: 10  # Тусклый свет для ночи
-        schedule: "23:00-07:00"  # Активен только ночью
-        motion_sensor: binary_sensor.kitchen_motion
-    - template: lighting
-      priority: 10  # Стандартный приоритет для дневного освещения
-      params:
-        motion_sensor: binary_sensor.kitchen_motion
-        motion_timeout_sec: 300
-        schedule: "07:00-23:00"  # Активен днем
-        brightness: 255  # Яркий свет для дня
-- type: light_motion
-  id: light.living_room
-  name: Свет в Living Room
-  room: living_room
-  behaviors:
-    - template: lighting
-      priority: 10  # Стандартный приоритет для освещения по движению
-      params:
-        motion_sensor: binary_sensor.living_room_motion
-        motion_timeout_sec: 300
-        schedule: "07:00-23:00"
-- type: light_motion
-  id: light.bedroom
-  name: Свет в Bedroom
-  room: bedroom
-  behaviors:
-    - template: lighting
-      priority: 10  # Стандартный приоритет для освещения по движению
-      params:
-        motion_sensor: binary_sensor.bedroom_motion
-        motion_timeout_sec: 300
-        schedule: "07:00-23:00"
-- type: ventilation_humidity
-  id: fan.bathroom
-  name: Вентиляция ванной
-  room: bathroom
-  behaviors:
-    - template: ventilation_humidity
-      priority: 10  # Стандартный приоритет для вентиляции по влажности
-      params:
-        humidity_sensor: sensor.bathroom_humidity
-        humidity_threshold: 65
-        timeout_sec: 1800
 instance:
-  created_at: '2026-09-08'
   id: leonids_house
   name: Leonid's House
   owner: Leo
-version: 2
-zones:
-- floor: 1
-  id: kitchen
-  name: Kitchen
-- floor: 1
-  id: living_room
-  name: Living Room
-- floor: 1
-  id: bedroom
-  name: Bedroom
-- floor: 1
-  id: bathroom
-  name: Bathroom
+  created_at: "2024-01-15"
+
+version: 1
+
+rooms:
+  - id: kitchen
+    name: Kitchen
+    sensors:
+      motion: binary_sensor.kitchen_motion
+      temperature: sensor.kitchen_temperature
+      humidity: sensor.kitchen_humidity
+    devices:
+      - id: light.kitchen
+        type: light
+        behaviors:
+          - template: lighting
+            priority: 10
+            params:
+              brightness: 255
+              motion_timeout_sec: 180
+          - template: night_light
+            priority: 20
+            params:
+              brightness: 15
+              schedule: "23:00-07:00"
+      - id: climate.kitchen
+        type: climate
+        behaviors:
+          - template: climate_control
+            priority: 15
+            params:
+              target_temp: 22.0
+              hysteresis: 0.5
+
+  - id: living_room
+    name: Living Room
+    sensors:
+      temperature: sensor.living_room_temperature
+      humidity: sensor.living_room_humidity
+    devices:
+      - id: light.living_room
+        type: light
+        behaviors:
+          - template: lighting
+            priority: 10
+            params:
+              brightness: 200
+              motion_timeout_sec: 300
+      - id: climate.living_room
+        type: climate
+        behaviors:
+          - template: climate_control
+            priority: 15
+            params:
+              target_temp: 21.0
+              hysteresis: 0.5
+
+  - id: bedroom
+    name: Bedroom
+    sensors:
+      motion: binary_sensor.hallway_motion
+      temperature: sensor.bedroom_temperature
+    devices:
+      - id: light.bedroom
+        type: light
+        behaviors:
+          - template: lighting
+            priority: 10
+            params:
+              brightness: 200
+              motion_timeout_sec: 300
+          - template: night_light
+            priority: 20
+            params:
+              brightness: 10
+              schedule: "23:00-07:00"
+
+  - id: bathroom
+    name: Bathroom
+    sensors:
+      humidity: sensor.bathroom_humidity
+    devices:
+      - id: fan.bathroom
+        type: ventilation
+        behaviors:
+          - template: humidity_ventilation
+            priority: 5
+            params:
+              humidity_threshold: 65
+
+automation_rules:
+  global_manual_lockout_min: 60
+  lighting:
+    motion_enabled: true
+    schedule_enabled: true
+    manual_lockout_min: 60
+  climate:
+    safety_lockout_enabled: true
+    away_mode_enabled: true
+    manual_lockout_min: 30
+  ventilation:
+    humidity_based: true
+    manual_lockout_min: 15

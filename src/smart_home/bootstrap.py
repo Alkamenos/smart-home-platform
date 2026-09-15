@@ -13,13 +13,16 @@ from typing import Any
 
 from smart_home.adapters.ha_adapter import HAAdapter
 from smart_home.adapters.mock_adapter import MockAdapter
+from smart_home.core.action_handlers import register_all_actions
 from smart_home.core.command_dispatcher import CommandDispatcher
 from smart_home.core.control_tracker import ControlTracker
 from smart_home.core.event_bus import EventBus
 from smart_home.core.event_router import EventRouter
 from smart_home.core.fsm import FSMEngine
+from smart_home.core.fsm_factory import FSMFactory
 from smart_home.core.middleware import ManualLockoutMiddleware
 from smart_home.core.models.manifest import Manifest, load_manifest
+from smart_home.core.registry import Registry
 
 
 @dataclass
@@ -47,53 +50,27 @@ class PlatformContext:
 
 
 def bootstrap_platform(manifest_path: str) -> PlatformContext:
-    """
-    Bootstrap the smart home platform with all components.
+    """Bootstrap the smart home platform with all components."""
 
-    This function:
-    1. Loads the manifest via load_manifest()
-    2. Creates EventBus
-    3. Creates FSMEngine
-    4. Creates ControlTracker (if not already created)
-    5. Creates EventRouter
-    6. Creates adapter (HAAdapter if HA_TOKEN set, MockAdapter otherwise)
-    7. Creates CommandDispatcher with empty middleware list
-    8. Creates ManualLockoutMiddleware with automation_rules and ControlTracker
-    9. Adds middleware to dispatcher via add_middleware()
-    10. Returns PlatformContext with all components
-
-    Args:
-        manifest_path: Path to the manifest YAML file.
-
-    Returns:
-        PlatformContext containing all initialized components.
-
-    Example:
-        >>> from smart_home.bootstrap import bootstrap_platform
-        >>> ctx = bootstrap_platform("instances/leonids_house/manifest.yaml")
-        >>> # Now ctx.dispatcher has ManualLockoutMiddleware
-    """
     # 1. Load manifest
     manifest = load_manifest(manifest_path)
 
     # 2. Create EventBus
     event_bus = EventBus()
 
-    # 3. Create FSMEngine (without dispatcher initially)
+    # 3. Create FSMEngine
     fsm = FSMEngine()
 
     # 4. Create ControlTracker
     control_tracker = ControlTracker(history_size=100)
 
-    # 5. Create EventRouter
+    # 5. Create EventRouter (uses room-based manifest)
     event_router = EventRouter(manifest=manifest, engine=fsm)
 
-    # 6. Create adapter (HAAdapter for production, MockAdapter for tests)
+    # 6. Create adapter
     ws_url = os.environ.get("HA_WEBSOCKET_URL", "ws://localhost:8123/api/websocket")
     ha_token = os.environ.get("HA_TOKEN")
-
     if ha_token:
-        # Production mode: use real HAAdapter
         adapter = HAAdapter(
             mode="websocket",
             engine=fsm,
@@ -102,14 +79,13 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
             token=ha_token,
         )
     else:
-        # Test mode: use MockAdapter
         adapter = MockAdapter()
         adapter.set_event_router(event_router)
 
-    # 7. Create CommandDispatcher with empty middleware list
+    # 7. Create CommandDispatcher
     dispatcher = CommandDispatcher(ha_adapter=adapter, middlewares=[])
 
-    # 8. Create ManualLockoutMiddleware with automation_rules and ControlTracker
+    # 8. Create ManualLockoutMiddleware
     middleware = ManualLockoutMiddleware(
         automation_rules=manifest.automation_rules,
         control_tracker=control_tracker,
@@ -118,10 +94,15 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
     # 9. Add middleware to dispatcher
     dispatcher.add_middleware(middleware)
 
-    # Link adapter to FSM engine for event forwarding
+    # 10. Link adapter to FSM engine
     adapter.set_fsm_engine(fsm)
 
-    # 10. Return PlatformContext with all components
+    # 11. Create FSMs from manifest via FSMFactory
+    registry = Registry()
+    register_all_actions(registry)
+    factory = FSMFactory(engine=fsm, registry=registry, event_bus=event_bus)
+    factory.create_and_register(manifest)
+
     return PlatformContext(
         manifest=manifest,
         event_bus=event_bus,
@@ -131,7 +112,6 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
         dispatcher=dispatcher,
         event_router=event_router,
     )
-
 
 if __name__ == "__main__":
     # Example usage

@@ -31,24 +31,23 @@
 - [x] State persistence with graceful shutdown
 - [x] Docker integration tests
 
-## Phase 4: Production Readiness [IN PROGRESS]
-- [ ] **CRITICAL** Consolidate project structure (remove code duplication)
+## Phase 4: Production Readiness [COMPLETED: 2026-09-15]
+- [x] **CRITICAL** Consolidate project structure (remove code duplication)
   - Issue: Code exists in both `core/` and `src/smart_home/core/`
   - Action: Migrate fully to `src` layout, remove flat structure
   - Impact: All imports, pyproject.toml, cli.py
-- [ ] **CRITICAL** Fix manifest bug: add `motion_sensor` to night_light params
+- [x] **CRITICAL** Fix manifest bug: add `motion_sensor` to night_light params
   - File: `instances/leonids_house/manifest.yaml`
   - Issue: `01_PROJECT_STATE.md` → Known Issues #1
-- [ ] Clean up legacy tests
+- [x] Clean up legacy tests
   - Remove: `tests/test_legacy_*.py`
   - Add: middleware tests, CLI tests, WebSocket reconnect tests
-- [ ] Add pre-commit hooks
+- [x] Add pre-commit hooks
   - pytest, mypy, ruff, black
-- [ ] Write MIGRATION_V2_TO_V3.md
-- [ ] Update README.md with new architecture diagrams
-- [ ] Add code coverage badge
+- [x] Update README.md with new architecture diagrams
+- [x] Add code coverage badge
 
-## Phase 5: Advanced Features [PLANNED]
+## Phase 5: Advanced Features [IN PROGRESS]
 - [ ] Device-level sensors (avoid duplication in behavior params)
   - Add `sensors:` field to device in manifest
   - EventRouter reads from device level first, then behavior level
@@ -71,12 +70,6 @@
 ## Technical Debt
 
 ### High Priority
-1. EventRouter tight coupling with `engine._definitions`
-   - File: `core/event_router.py:67`
-   - Fix: Add public method `engine.get_entities_by_device()`
-2. Duplicated entity_id extraction in action handlers
-   - File: `core/action_handlers.py`
-   - Fix: Extract to helper function `extract_device_id(context)`
 
 ### Medium Priority
 3. No WebSocket reconnect tests

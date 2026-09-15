@@ -1,186 +1,193 @@
-"""Pydantic v2 models for smart home manifest."""
+"""Manifest models for Smart Home Platform v3.1.
 
+Room-based architecture:
+- Rooms contain sensors (inputs) and devices (actuators)
+- Sensors describe room state
+- Devices react to processed sensor events
+- Same sensor entity can be referenced from multiple rooms
+"""
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class InstanceConfig(BaseModel):
+    """Platform instance metadata."""
+
+    id: str
+    name: str
+    owner: str = ""
+    created_at: str = ""
 
 
 class BehaviorConfig(BaseModel):
-    """Конфигурация поведения устройства.
+    """Behavior template with priority and params."""
 
-    Attributes:
-        template: Имя YAML-файла шаблона из features/.
-        priority: Приоритет поведения (чем меньше число, тем выше приоритет).
-        params: Опциональные параметры для настройки поведения.
+    template: str
+    priority: int = 10
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class DeviceConfig(BaseModel):
+    """Device as an actuator inside a room."""
+
+    id: str
+    type: str
+    name: str = ""
+    behaviors: list[BehaviorConfig] = Field(default_factory=list)
+
+
+class RoomConfig(BaseModel):
+    """Room: container for sensors and devices.
+
+    Sensors describe room state (inputs).
+    Devices are actuators that react to processed events (outputs).
+    Same sensor entity_id can appear in multiple rooms.
     """
 
-    template: str = Field(..., description="Имя YAML-файла шаблона из features/")
-    priority: int = Field(..., ge=0, description="Приоритет поведения (меньше = выше приоритет)")
-    params: dict[str, Any] = Field(
-        default_factory=dict, description="Опциональные параметры поведения"
-    )
-
-
-class DeviceBase(BaseModel):
-    """Базовый класс для всех устройств."""
-
     id: str
     name: str
-    room: str
-    behaviors: list[BehaviorConfig] = Field(
-        default_factory=list, description="Список поведений устройства"
-    )
+    sensors: dict[str, str] = Field(default_factory=dict)
+    devices: list[DeviceConfig] = Field(default_factory=list)
+
+    @field_validator("sensors")
+    @classmethod
+    def validate_sensor_ids(cls, v: dict[str, str]) -> dict[str, str]:
+        """Ensure sensor entity IDs are non-empty."""
+        for sensor_type, entity_id in v.items():
+            if not entity_id.strip():
+                raise ValueError(f"Sensor '{sensor_type}' has empty entity_id")
+        return v
 
 
-class LightMotionDevice(DeviceBase):
-    """Устройство освещения с датчиком движения."""
+class AutomationDomainRules(BaseModel):
+    """Domain-specific automation rules."""
 
-    type: Literal["light_motion"]
-
-
-class ClimateHysteresisDevice(DeviceBase):
-    """Климатическое устройство с гистерезисом."""
-
-    type: Literal["climate_hysteresis"]
-
-
-class VentilationHumidityDevice(DeviceBase):
-    """Вентиляционное устройство с контролем влажности."""
-
-    type: Literal["ventilation_humidity"]
-
-
-AnyDevice = Annotated[
-    LightMotionDevice | ClimateHysteresisDevice | VentilationHumidityDevice,
-    Field(discriminator="type"),
-]
-
-
-class Zone(BaseModel):
-    """Зона в доме."""
-
-    id: str
-    name: str
-    floor: int
-
-
-class LightingAutomation(BaseModel):
-    """Настройки автоматизации освещения."""
-
-    motion_enabled: bool
-    schedule_enabled: bool
-    manual_lockout_min: int
-
-
-class ClimateAutomation(BaseModel):
-    """Настройки климатической автоматизации."""
-
-    safety_lockout_enabled: bool
-    away_mode_enabled: bool
-    manual_lockout_min: int
-
-
-class VentilationAutomation(BaseModel):
-    """Настройки автоматизации вентиляции."""
-
-    humidity_based: bool
-    manual_lockout_min: int
+    motion_enabled: bool = True
+    schedule_enabled: bool = True
+    manual_lockout_min: int | None = None
+    safety_lockout_enabled: bool = False
+    away_mode_enabled: bool = False
+    humidity_based: bool = False
 
 
 class AutomationRules(BaseModel):
-    """Правила автоматизации."""
+    """Global automation rules and domain-specific overrides."""
 
-    lighting: LightingAutomation
-    climate: ClimateAutomation
-    ventilation: VentilationAutomation
-    global_manual_lockout_min: int = Field(
-        default=0,
-        description="Глобальное время блокировки автоматизации после ручного управления (минуты). 0 = отключено",
-    )
+    global_manual_lockout_min: int = 60
+    lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
+    climate: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
+    ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
 
 
 class Dashboard(BaseModel):
-    """Настройки дашборда."""
+    """Dashboard configuration for Lovelace generation."""
 
-    title: str
-    show_history: bool
-    show_climate: bool
-    show_motion_sensors: bool
-    history_days: int
-
-
-class InstanceInfo(BaseModel):
-    """Информация об инстансе."""
-
-    id: str
-    name: str
-    owner: str
-    created_at: str
-
-
-class PersistenceConfig(BaseModel):
-    """Configuration for state persistence."""
-
-    enabled: bool = Field(default=True, description="Enable state persistence")
-    storage_path: str = Field(
-        default="/config/smart_home/state.json",
-        description="Path to the JSON file for storing states",
-    )
+    title: str = ""
+    rooms: list[str] = Field(default_factory=list)
+    show_sensors: bool = True
+    show_devices: bool = True
 
 
 class Manifest(BaseModel):
-    """Корневая модель манифеста умного дома."""
+    """Root manifest model for room-based architecture."""
 
-    version: int
-    instance: InstanceInfo
-    zones: list[Zone]
-    devices: list[AnyDevice]
-    automation_rules: AutomationRules
-    dashboard: Dashboard
-    persistence: PersistenceConfig = Field(
-        default_factory=PersistenceConfig, description="Configuration for state persistence"
-    )
+    instance: InstanceConfig
+    version: int = 1
+    rooms: list[RoomConfig] = Field(default_factory=list)
+    automation_rules: AutomationRules = Field(default_factory=AutomationRules)
+    dashboard: Dashboard = Field(default_factory=Dashboard)
+
+    @property
+    def devices(self) -> list[DeviceConfig]:
+        """Flat list of all devices across all rooms."""
+        return [device for room in self.rooms for device in room.devices]
+
+    @property
+    def zones(self) -> list[RoomConfig]:
+        """Alias for rooms (backward compat with old Zone model)."""
+        return self.rooms
+
+    @property
+    def all_devices(self) -> list[tuple[str, DeviceConfig]]:
+        """Flat list of (room_id, device) for iteration."""
+        return [
+            (room.id, device)
+            for room in self.rooms
+            for device in room.devices
+        ]
+
+    @property
+    def all_device_ids(self) -> list[str]:
+        """Flat list of all device IDs."""
+        return [device.id for _, device in self.all_devices]
+
+    def get_room_for_device(self, device_id: str) -> RoomConfig | None:
+        """Find the room containing a device."""
+        for room in self.rooms:
+            if any(d.id == device_id for d in room.devices):
+                return room
+        return None
+
+    def get_device(self, device_id: str) -> DeviceConfig | None:
+        """Find a device by ID across all rooms."""
+        for _, device in self.all_devices:
+            if device.id == device_id:
+                return device
+        return None
+
+    def get_sensors_for_device(self, device_id: str) -> dict[str, str]:
+        """Get sensors available for a device (from its room)."""
+        room = self.get_room_for_device(device_id)
+        return room.sensors if room else {}
 
 
-def load_manifest(path: str) -> Manifest:
-    """
-    Загрузить и валидировать YAML манифест.
+# ─── Backward compatibility aliases ───────────────────────────────────────────
+# Старые имена для совместимости с существующими тестами и модулями
+
+ClimateAutomation = AutomationDomainRules
+LightingAutomation = AutomationDomainRules
+VentilationAutomation = AutomationDomainRules
+AnyDevice = DeviceConfig
+LightMotionDevice = DeviceConfig
+
+
+# ─── Loader function (kept here for import compatibility) ─────────────────────
+
+def load_manifest(manifest_path: str | Path) -> Manifest:
+    """Load and validate manifest from YAML file.
 
     Args:
-        path: Путь к YAML файлу манифеста.
+        manifest_path: Path to manifest YAML file.
 
     Returns:
-        Manifest: Валидированная модель манифеста.
+        Validated Manifest instance.
 
     Raises:
-        FileNotFoundError: Если файл не найден.
-        yaml.YAMLError: При ошибке парсинга YAML.
-        pydantic.ValidationError: При ошибке валидации данных.
+        FileNotFoundError: If manifest file doesn't exist.
+        pydantic.ValidationError: If manifest is invalid.
     """
-    from pydantic import ValidationError
+    path = Path(manifest_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Manifest not found: {path}")
 
-    yaml_path = Path(path)
-    if not yaml_path.exists():
-        raise FileNotFoundError(f"Manifest file not found: {path}")
-
-    with open(yaml_path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
-    try:
-        return Manifest.model_validate(data)
-    except ValidationError as e:
-        print("\n=== Ошибка валидации манифеста ===", file=sys.stderr)
-        for error in e.errors():
-            loc = " -> ".join(str(x) for x in error.get("loc", []))
-            msg = error.get("msg", "")
-            error_type = error.get("type", "")
-            print(f"  Поле: {loc}", file=sys.stderr)
-            print(f"  Тип ошибки: {error_type}", file=sys.stderr)
-            print(f"  Сообщение: {msg}", file=sys.stderr)
-            print("-" * 40, file=sys.stderr)
-        raise
+    return Manifest.model_validate(data)
+
+
+# Zone в новой архитектуре = Room
+class Zone(BaseModel):
+    """Zone is now an alias for RoomConfig with optional floor."""
+    id: str
+    name: str
+    floor: int = 1
+    sensors: dict[str, str] = Field(default_factory=dict)
+    devices: list[DeviceConfig] = Field(default_factory=list)
+
+InstanceInfo = InstanceConfig

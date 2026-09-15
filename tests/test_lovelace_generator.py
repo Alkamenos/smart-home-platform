@@ -3,7 +3,15 @@
 import pytest
 import yaml
 
-from smart_home.core.models.manifest import load_manifest
+from smart_home.core.models.manifest import (
+    BehaviorConfig,
+    Dashboard,
+    DeviceConfig,
+    InstanceConfig,
+    Manifest,
+    RoomConfig,
+    load_manifest,
+)
 from smart_home.dashboard.lovelace_generator import LovelaceGenerator
 
 
@@ -17,60 +25,50 @@ instance:
   name: "Test House"
   owner: Test User
   created_at: '2024-01-01'
-zones:
+rooms:
   - id: kitchen
     name: Kitchen
-    floor: 1
+    sensors:
+      motion: binary_sensor.kitchen_motion
+    devices:
+      - id: light.kitchen
+        name: Kitchen Light
+        type: light
+        behaviors:
+          - template: motion_detection
+            priority: 1
+            params:
+              timeout: 300
+          - template: night_mode
+            priority: 2
+            params:
+              brightness: 10
   - id: living_room
     name: Living Room
-    floor: 1
+    sensors:
+      temperature: sensor.living_room_temperature
+    devices:
+      - id: climate.living_room
+        type: climate
+        name: Living Room Climate
+        behaviors:
+          - template: eco_mode
+            priority: 1
+            params:
+              eco_temp: 18
   - id: bathroom
     name: Bathroom
-    floor: 1
-devices:
-  - type: light_motion
-    id: light.kitchen
-    name: Kitchen Light
-    room: kitchen
-    motion_sensor: binary_sensor.kitchen_motion
-    motion_timeout_sec: 300
-    schedule: "07:00-23:00"
-    behaviors:
-      - template: motion_detection.yaml
-        priority: 1
-        params:
-          timeout: 300
-      - template: night_mode.yaml
-        priority: 2
-        params:
-          brightness: 10
-  - type: climate_hysteresis
-    id: climate.living_room
-    name: Living Room Climate
-    room: living_room
-    sensor: sensor.living_room_temperature
-    target: 22.0
-    hysteresis: 0.5
-    modes:
-      - heat
-      - cool
-    behaviors:
-      - template: eco_mode.yaml
-        priority: 1
-        params:
-          eco_temp: 18
-  - type: ventilation_humidity
-    id: fan.bathroom
-    name: Bathroom Fan
-    room: bathroom
-    humidity_sensor: sensor.bathroom_humidity
-    humidity_threshold: 65
-    timeout_sec: 1800
-    behaviors:
-      - template: humidity_control.yaml
-        priority: 1
-        params:
-          threshold: 65
+    sensors:
+      humidity: sensor.bathroom_humidity
+    devices:
+      - id: fan.bathroom
+        type: ventilation
+        name: Bathroom Fan
+        behaviors:
+          - template: humidity_control
+            priority: 1
+            params:
+              threshold: 65
 automation_rules:
   lighting:
     motion_enabled: true
@@ -78,21 +76,40 @@ automation_rules:
     manual_lockout_min: 60
   climate:
     safety_lockout_enabled: true
-    away_mode_enabled: true
-    manual_lockout_min: 30
+    manual_lockout_min: 90
   ventilation:
     humidity_based: true
     manual_lockout_min: 15
 dashboard:
-  title: "Test House Dashboard"
-  show_history: true
-  show_climate: true
-  show_motion_sensors: true
-  history_days: 7
+  title: Test Dashboard
 """
-    manifest_path = tmp_path / "test_manifest.yaml"
+    manifest_path = tmp_path / "manifest.yaml"
     manifest_path.write_text(manifest_content)
     return load_manifest(str(manifest_path))
+
+
+@pytest.fixture
+def sample_manifest():
+    return Manifest(
+        instance=InstanceConfig(id="test", name="Test House"),
+        rooms=[
+            RoomConfig(
+                id="kitchen",
+                name="Kitchen",
+                sensors={"motion": "binary_sensor.kitchen_motion"},
+                devices=[
+                    DeviceConfig(
+                        id="light.kitchen",
+                        type="light_motion",
+                        behaviors=[
+                            BehaviorConfig(template="lighting", priority=10),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+        dashboard=Dashboard(title="Test Dashboard", rooms=["kitchen"]),
+    )
 
 
 @pytest.fixture
@@ -112,7 +129,7 @@ class TestLovelaceGenerator:
     def test_generate_has_title(self, generator, test_manifest_with_behaviors):
         """Проверка, что дашборд имеет заголовок из манифеста."""
         result = generator.generate(test_manifest_with_behaviors)
-        assert result["title"] == "Test House Dashboard"
+        assert result["title"] == "Test Dashboard"
 
     def test_generate_has_views(self, generator, test_manifest_with_behaviors):
         """Проверка, что дашборд имеет вкладки."""
@@ -137,6 +154,11 @@ class TestLovelaceGenerator:
         assert "kitchen" in view_paths
         assert "living_room" in view_paths
         assert "bathroom" in view_paths
+
+        view_titles = [v["title"] for v in result["views"]]
+        assert "Kitchen" in view_titles
+        assert "Living Room" in view_titles
+        assert "Bathroom" in view_titles  # комната называется "Bathroom"
 
     def test_kitchen_view_has_device_cards(self, generator, test_manifest_with_behaviors):
         """Проверка, что вкладка кухни имеет карточку устройства."""
@@ -218,36 +240,32 @@ class TestLovelaceGenerator:
     def test_empty_zone_handling(self, tmp_path, generator):
         """Проверка обработки зоны без устройств."""
         manifest_content = """
-version: 1
-instance:
-  id: test_house
-  name: "Test House"
-  owner: Test User
-  created_at: '2024-01-01'
-zones:
-  - id: empty_room
-    name: Empty Room
-    floor: 1
-devices: []
-automation_rules:
-  lighting:
-    motion_enabled: true
-    schedule_enabled: true
-    manual_lockout_min: 60
-  climate:
-    safety_lockout_enabled: true
-    away_mode_enabled: true
-    manual_lockout_min: 30
-  ventilation:
-    humidity_based: true
-    manual_lockout_min: 15
-dashboard:
-  title: "Test House Dashboard"
-  show_history: true
-  show_climate: true
-  show_motion_sensors: true
-  history_days: 7
-"""
+    version: 1
+    instance:
+      id: test_house
+      name: "Test House"
+      owner: Test User
+      created_at: '2024-01-01'
+    rooms:
+      - id: empty_room
+        name: Empty Room
+        sensors: {}
+        devices: []
+    automation_rules:
+      lighting:
+        motion_enabled: true
+        schedule_enabled: true
+        manual_lockout_min: 60
+      climate:
+        safety_lockout_enabled: true
+        away_mode_enabled: true
+        manual_lockout_min: 30
+      ventilation:
+        humidity_based: true
+        manual_lockout_min: 15
+    dashboard:
+      title: "Test House Dashboard"
+    """
         manifest_path = tmp_path / "empty_manifest.yaml"
         manifest_path.write_text(manifest_content)
         manifest = load_manifest(str(manifest_path))
