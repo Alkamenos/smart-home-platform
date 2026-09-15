@@ -20,11 +20,20 @@ import pytest
 from loguru import logger
 
 # Import platform components
-from smart_home.adapters.ha_adapter import HAAdapter
+from smart_home.adapters.ha_adapter import HAAdapter, HomeAssistantWS
 from smart_home.core.event_bus import EventBus
 from smart_home.core.registry import Registry as FSMRegistry
 
-
+# ---------------------------------------------------------------------------
+# Test constants
+# ---------------------------------------------------------------------------
+HA_IMAGE = "homeassistant/home-assistant:stable"
+HA_PORT = 8123
+HA_WS_URL = f"ws://localhost:{HA_PORT}/api/websocket"
+HA_HTTP_URL = f"http://localhost:{HA_PORT}"
+TEST_TOKEN = "test_token_for_integration"
+CONNECTION_TIMEOUT = 120  # seconds to wait for HA to start
+WS_RECONNECT_DELAY = 5
 
 
 @pytest.fixture(scope="module")
