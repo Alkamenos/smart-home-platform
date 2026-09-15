@@ -55,6 +55,14 @@ class MockFSMEngine:
         self.trigger_calls.append((entity_id, event, external_ctx or {}))
         return True
 
+    def get_entities_by_device(self, device_id: str) -> list[str]:
+        """Get all FSM entity IDs belonging to a specific device."""
+        return [
+            entity_id
+            for entity_id in self._definitions.keys()
+            if entity_id.startswith(f"{device_id}_")
+        ]
+
 
 def create_test_manifest() -> Manifest:
     """Create a minimal test manifest with a light_motion device."""
