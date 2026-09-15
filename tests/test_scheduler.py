@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from smart_home.core.scheduler import Scheduler
+from core import Scheduler
 
 
 @pytest.mark.asyncio

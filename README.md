@@ -139,7 +139,7 @@ devices:
 automation_rules:
   # Global lockout: block automation for 60 min after manual control
   global_manual_lockout_min: 60
-  
+
   # Domain-specific overrides
   lighting:
     motion_enabled: true
@@ -230,13 +230,14 @@ Create action handler functions that return `CommandIntent`:
 
 ```python
 # In your actions module or initialization code
-from src.smart_home.core.command_dispatcher import CommandIntent
+from core import CommandIntent
+
 
 async def my_action(state, context: dict) -> CommandIntent:
     """My custom action handler."""
     entity_id = context.get("entity_id", "default_entity")
     brightness = context.get("params", {}).get("brightness", 255)
-    
+
     return CommandIntent(
         device_id=entity_id,
         domain="light",
@@ -245,6 +246,7 @@ async def my_action(state, context: dict) -> CommandIntent:
         priority=context.get("priority", 10),
         source="my_new_behavior",
     )
+
 
 # Register with the engine
 engine.register_action("my_action", my_action)
@@ -383,12 +385,13 @@ transitions:
 In your initialization code (`smart_home_bridge.py`):
 
 ```python
-from src.smart_home.core.fsm import FSMEngine
-from src.smart_home.adapters.ha_adapter import HAAdapter
+from core import FSMEngine
+from adapters.ha_adapter import HAAdapter
 
 # Initialize engine and adapter
 engine = FSMEngine()
 adapter = HAAdapter(mode="pyscript", engine=engine, hass=hass)
+
 
 # Register action functions
 async def turn_on_kitchen_light(ctx: dict) -> bool:
@@ -401,6 +404,7 @@ async def turn_on_kitchen_light(ctx: dict) -> bool:
         trace_id=ctx.get("trace_id"),
     )
 
+
 async def turn_off_kitchen_light(ctx: dict) -> bool:
     """Turn off kitchen light when no motion."""
     return await adapter.call_service(
@@ -409,6 +413,7 @@ async def turn_off_kitchen_light(ctx: dict) -> bool:
         entity_id="light.kitchen",
         trace_id=ctx.get("trace_id"),
     )
+
 
 async def dim_kitchen_light(ctx: dict) -> bool:
     """Dim lights when entering timeout state."""
@@ -420,10 +425,12 @@ async def dim_kitchen_light(ctx: dict) -> bool:
         trace_id=ctx.get("trace_id"),
     )
 
+
 # Register actions with engine
 engine.register_action("turn_on_kitchen_light", turn_on_kitchen_light)
 engine.register_action("turn_off_kitchen_light", turn_off_kitchen_light)
 engine.register_action("dim_kitchen_light", dim_kitchen_light)
+
 
 # Optional: Register guard functions
 def is_night_time(ctx: dict) -> bool:
@@ -431,6 +438,7 @@ def is_night_time(ctx: dict) -> bool:
     from datetime import datetime
     hour = datetime.now().hour
     return hour < 7 or hour > 22
+
 
 engine.register_guard("is_night_time", is_night_time)
 ```
@@ -455,7 +463,7 @@ def kitchen_motion_changed(value=None, old_value=None):
 ### Step 4: Load FSM Definitions
 
 ```python
-from src.smart_home.core.loader import DefinitionLoader
+from core import DefinitionLoader
 
 loader = DefinitionLoader(registry=registry, engine=engine)
 loader.load_definitions("/config/smart_home/")
@@ -612,10 +620,10 @@ async def test_timeout_transition():
     """Test that timeout transitions occur at the right time."""
     engine = FSMEngine()
     # ... setup FSM ...
-    
+
     # Trigger initial state
     await engine.trigger("sensor_1", "motion_detected")
-    
+
     # Fast-forward time by 5 minutes
     with freeze_time("2024-01-15 10:35:00"):
         # Timeout should have fired
@@ -764,7 +772,7 @@ transitions:
     trigger: timeout
     timeout_sec: 300
     action: dim_lights
-  
+
   - from_state: dimmed
     to_state: off
     trigger: timeout

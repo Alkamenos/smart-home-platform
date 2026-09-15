@@ -2,7 +2,7 @@
 
 from freezegun import freeze_time
 
-from smart_home.core.guards.schedule_guard import is_within_schedule
+from core.guards.schedule_guard import is_within_schedule
 
 
 class TestScheduleGuard:

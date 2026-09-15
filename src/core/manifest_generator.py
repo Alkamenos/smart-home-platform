@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from smart_home.core.fsm import FSMDefinition, Transition
+from core.fsm import FSMDefinition, Transition
 
 
 @dataclass

@@ -171,7 +171,7 @@ class DeviceConfig(BaseModel):
     id: str
     name: str
     behaviors: list[dict[str, Any]]
-    
+
 async def process_event(event: dict[str, Any]) -> Optional[str]:
     ...
 ```
@@ -224,7 +224,8 @@ Tests use **pytest** with **pytest-asyncio** for async tests:
 
 ```python
 import pytest
-from src.smart_home.core.fsm import FSMEngine
+from core import FSMEngine
+
 
 @pytest.mark.asyncio
 async def test_state_transition():
@@ -232,10 +233,10 @@ async def test_state_transition():
     # Setup
     engine.register_state("idle")
     engine.register_state("active")
-    
+
     # Exercise
     await engine.trigger("device_1", "motion_detected")
-    
+
     # Verify
     state = engine.get_state("device_1")
     assert state.current_state == "active"

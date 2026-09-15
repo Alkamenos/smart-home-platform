@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from smart_home.core.control_tracker import ControlEvent, ControlTracker, TriggerSource
+from core.control_tracker import ControlEvent, ControlTracker, TriggerSource
 
 
 class TestControlTracker:

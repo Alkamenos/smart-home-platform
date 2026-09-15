@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from smart_home.core.state_persistence import StatePersistence
+from core import StatePersistence
 
 
 async def save_state_async(

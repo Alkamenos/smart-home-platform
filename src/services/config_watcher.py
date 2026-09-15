@@ -28,10 +28,10 @@ from watchdog.events import (
 from watchdog.observers import Observer
 
 if TYPE_CHECKING:
-    from smart_home.core.fsm import FSMEngine
-    from smart_home.core.fsm_factory import FSMFactory
-    from smart_home.core.loader import Loader
-    from smart_home.core.models.manifest import Manifest
+    from core import Loader
+    from core.fsm import FSMEngine
+    from core.fsm_factory import FSMFactory
+    from core.models.manifest import Manifest
 
 
 class YAMLFileHandler(FileSystemEventHandler):
@@ -222,7 +222,7 @@ class ConfigWatcher:
 
         try:
             # Load new manifest
-            from smart_home.core.models.manifest import load_manifest
+            from core.models.manifest import load_manifest
 
             new_manifest = load_manifest(str(path))
 

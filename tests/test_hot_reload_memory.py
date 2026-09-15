@@ -10,7 +10,7 @@ import tracemalloc
 
 import pytest
 
-from smart_home.core.fsm import FSMDefinition, FSMEngine, Transition
+from core import FSMDefinition, FSMEngine, Transition
 
 
 class MockPersistence:

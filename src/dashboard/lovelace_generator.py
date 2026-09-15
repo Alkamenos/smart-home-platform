@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from smart_home.core.models.manifest import (
+from core.models.manifest import (
     BehaviorConfig,
     DeviceConfig,
     Manifest,

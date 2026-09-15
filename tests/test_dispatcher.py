@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from smart_home.core.command_dispatcher import CommandDispatcher, CommandIntent
+from core import CommandDispatcher, CommandIntent
 
 
 class MockHAAdapter:

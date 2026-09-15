@@ -10,8 +10,8 @@ Tests cover:
 
 import pytest
 
-from smart_home.adapters.mock_adapter import MockAdapter
-from smart_home.core.command_dispatcher import CommandDispatcher, CommandIntent
+from adapters.mock_adapter import MockAdapter
+from core import CommandDispatcher, CommandIntent
 
 
 class BlockingMiddleware:

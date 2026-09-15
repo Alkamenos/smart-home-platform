@@ -11,18 +11,18 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from smart_home.adapters.ha_adapter import HAAdapter
-from smart_home.adapters.mock_adapter import MockAdapter
-from smart_home.core.action_handlers import register_all_actions
-from smart_home.core.command_dispatcher import CommandDispatcher
-from smart_home.core.control_tracker import ControlTracker
-from smart_home.core.event_bus import EventBus
-from smart_home.core.event_router import EventRouter
-from smart_home.core.fsm import FSMEngine
-from smart_home.core.fsm_factory import FSMFactory
-from smart_home.core.middleware import ManualLockoutMiddleware
-from smart_home.core.models.manifest import Manifest, load_manifest
-from smart_home.core.registry import Registry
+from adapters.ha_adapter import HAAdapter
+from adapters.mock_adapter import MockAdapter
+from core.action_handlers import register_all_actions
+from core.command_dispatcher import CommandDispatcher
+from core.control_tracker import ControlTracker
+from core.event_bus import EventBus
+from core.event_router import EventRouter
+from core.fsm import FSMEngine
+from core.fsm_factory import FSMFactory
+from core.middleware import ManualLockoutMiddleware
+from core.models.manifest import Manifest, load_manifest
+from core.registry import Registry
 
 
 @dataclass

@@ -74,6 +74,9 @@ test-integration-verbose:
 lint:
 	ruff check src/ tests/
 
+lint-fix:
+	ruff check src/ tests/ --fix
+
 format:
 	black src/ tests/
 

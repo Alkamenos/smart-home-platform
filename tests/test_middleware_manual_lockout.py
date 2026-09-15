@@ -21,15 +21,15 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core")
 )
 
-from smart_home.core.command_dispatcher import CommandIntent
-from smart_home.core.control_tracker import ControlTracker, TriggerSource
-from smart_home.core.middleware import ManualLockoutMiddleware
-from smart_home.core.models.manifest import (
+from core import (
     AutomationRules,
     ClimateAutomation,
+    CommandIntent,
     LightingAutomation,
+    ManualLockoutMiddleware,
     VentilationAutomation,
 )
+from core.control_tracker import ControlTracker, TriggerSource
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ class TestManualLockoutMiddleware:
         def mock_time():
             return time_container["base"]
 
-        with patch("smart_home.core.control_tracker.time.time", mock_time):
+        with patch("core.control_tracker.time.time", mock_time):
             # First, send a manual command
             manual_intent = CommandIntent(
                 device_id="light.living_room",
@@ -187,7 +187,7 @@ class TestManualLockoutMiddleware:
         def mock_time():
             return time_container["base"]
 
-        with patch("smart_home.core.control_tracker.time.time", mock_time):
+        with patch("core.control_tracker.time.time", mock_time):
             # Test climate domain (30 min lockout)
             climate_manual = CommandIntent(
                 device_id="climate.thermostat",
@@ -239,7 +239,7 @@ class TestManualLockoutMiddleware:
         def mock_time():
             return time_container["base"]
 
-        with patch("smart_home.core.control_tracker.time.time", mock_time):
+        with patch("src.core.control_tracker.time.time", mock_time):
             # Manual control of ventilation
             vent_manual = CommandIntent(
                 device_id="fan.bathroom",

@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from smart_home.core.fsm import FSMDefinition, FSMEngine, State, Transition
+from core import FSMDefinition, FSMEngine, State, Transition
 
 
 @pytest.fixture

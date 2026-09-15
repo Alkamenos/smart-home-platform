@@ -76,7 +76,7 @@ gantt
 **Status:** COMPLETED: 2026-09-15
 
 - ✅ **CRITICAL** Consolidate project structure (remove code duplication)
-- Issue: Code exists in both `core/` and `src/smart_home/core/`
+- Issue: Code exists in both `core/` and `src/core/`
 - Action: Migrate fully to `src` layout, remove flat structure
 - Impact: All imports, pyproject.toml, cli.py
 - ✅ **CRITICAL** Fix manifest bug: add `motion_sensor` to night_light params

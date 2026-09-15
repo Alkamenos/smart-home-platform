@@ -24,8 +24,8 @@ from datetime import datetime
 
 from loguru import logger
 
-from smart_home.adapters.mock_adapter import MockAdapter
-from smart_home.core.fsm import FSMDefinition, FSMEngine, State, Transition
+from adapters.mock_adapter import MockAdapter
+from core import FSMDefinition, FSMEngine, State, Transition
 
 
 def setup_kitchen_automations(engine: FSMEngine, adapter: MockAdapter) -> None:

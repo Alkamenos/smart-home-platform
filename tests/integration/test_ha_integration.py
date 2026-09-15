@@ -16,9 +16,9 @@ import aiohttp
 import pytest
 from loguru import logger
 
-from smart_home.adapters.ha_adapter import HAAdapter, HomeAssistantWS
-from smart_home.core.event_bus import EventBus
-from smart_home.core.registry import Registry as FSMRegistry
+from adapters.ha_adapter import HAAdapter, HomeAssistantWS
+from core import Registry as FSMRegistry
+from core.event_bus import EventBus
 
 # ---------------------------------------------------------------------------
 # Test constants

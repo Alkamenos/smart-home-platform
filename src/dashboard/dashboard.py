@@ -11,8 +11,8 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from smart_home.adapters.ha_adapter import HomeAssistantAdapter
-from smart_home.core.event_bus import EventBus
+from adapters.ha_adapter import HomeAssistantAdapter
+from core.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
 

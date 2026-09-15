@@ -18,10 +18,16 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from smart_home.core.action_handlers import release_device, turn_on_night_light
-from smart_home.core.command_dispatcher import CommandDispatcher, CommandIntent
-from smart_home.core.fsm import FSMDefinition, FSMEngine, Transition
-from smart_home.core.registry import Registry
+from core import (
+    CommandDispatcher,
+    CommandIntent,
+    FSMDefinition,
+    FSMEngine,
+    Registry,
+    Transition,
+    release_device,
+    turn_on_night_light,
+)
 
 
 class MockHAAdapter:
@@ -214,7 +220,7 @@ class TestReleaseMechanism:
         assert "light.test" in dispatcher.active_intents
 
         # Create mock state and context for release_device action
-        from smart_home.core.fsm import State
+        from core import State
 
         state = State(current_state="ON", entered_at=asyncio.get_event_loop().time(), context={})
         context = {

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from smart_home.core.state_store import (
+from core import (
     DebouncedStateStore,
     FileStateStore,
     InputTextStateStore,

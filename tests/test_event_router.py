@@ -16,18 +16,18 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from smart_home.core.event_router import EventRouter
-from smart_home.core.fsm import FSMDefinition
-from smart_home.core.models.manifest import (
+from core import (
     AutomationDomainRules,
     AutomationRules,
     BehaviorConfig,
     Dashboard,
     DeviceConfig,
+    FSMDefinition,
     InstanceConfig,
     Manifest,
     RoomConfig,
 )
+from core.event_router import EventRouter
 
 
 class MockFSMEngine:

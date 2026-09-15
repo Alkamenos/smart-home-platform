@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from smart_home.core.models.manifest import (
+from core import (
     BehaviorConfig,
     Dashboard,
     DeviceConfig,
@@ -12,7 +12,7 @@ from smart_home.core.models.manifest import (
     RoomConfig,
     load_manifest,
 )
-from smart_home.dashboard.lovelace_generator import LovelaceGenerator
+from dashboard import LovelaceGenerator
 
 
 @pytest.fixture

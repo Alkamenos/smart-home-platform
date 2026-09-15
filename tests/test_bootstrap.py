@@ -17,8 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pathlib import Path
 
-from smart_home.bootstrap import PlatformContext, bootstrap_platform
-from smart_home.core.middleware import ManualLockoutMiddleware
+from bootstrap import PlatformContext, bootstrap_platform
+from core import ManualLockoutMiddleware
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = PROJECT_ROOT / "instances" / "leonids_house" / "manifest.yaml"
@@ -46,7 +46,7 @@ class TestBootstrapPlatform:
         ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.event_bus is not None
-        from smart_home.core.event_bus import EventBus
+        from core.event_bus import EventBus
 
         assert isinstance(ctx.event_bus, EventBus)
 
@@ -55,7 +55,7 @@ class TestBootstrapPlatform:
         ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.fsm is not None
-        from smart_home.core.fsm import FSMEngine
+        from core import FSMEngine
 
         assert isinstance(ctx.fsm, FSMEngine)
 
@@ -64,7 +64,7 @@ class TestBootstrapPlatform:
         ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.control_tracker is not None
-        from smart_home.core.control_tracker import ControlTracker
+        from core.control_tracker import ControlTracker
 
         assert isinstance(ctx.control_tracker, ControlTracker)
 
@@ -73,7 +73,7 @@ class TestBootstrapPlatform:
         ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.adapter is not None
-        from smart_home.adapters.mock_adapter import MockAdapter
+        from adapters.mock_adapter import MockAdapter
 
         assert isinstance(ctx.adapter, MockAdapter)
 
@@ -82,7 +82,7 @@ class TestBootstrapPlatform:
         ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.dispatcher is not None
-        from smart_home.core.command_dispatcher import CommandDispatcher
+        from core import CommandDispatcher
 
         assert isinstance(ctx.dispatcher, CommandDispatcher)
 
@@ -162,7 +162,7 @@ class TestBootstrapPlatform:
         """Test that dispatcher with middleware blocks automated commands during lockout."""
         ctx = bootstrap_platform(str(MANIFEST_PATH))
 
-        from smart_home.core.command_dispatcher import CommandIntent
+        from core import CommandIntent
 
         # First, send a manual command to start lockout
         manual_intent = CommandIntent(
