@@ -25,10 +25,6 @@ from typing import TYPE_CHECKING, Any
 import aiohttp
 from loguru import logger
 
-# ---------------------------------------------------------------------------
-# Fallback WebSocket client for Home Assistant (websockets>=12.0)
-# ---------------------------------------------------------------------------
-
 
 class SimpleHAWebSocketClient:
     """Minimal WebSocket client implementing HA WebSocket API protocol.
@@ -199,9 +195,6 @@ class SimpleHAWebSocketClient:
             return None
 
 
-# ---------------------------------------------------------------------------
-# WebSocket library detection
-# ---------------------------------------------------------------------------
 try:
     from homeassistant_websocket import HomeAssistantWS  # type: ignore
 
@@ -211,7 +204,6 @@ except ImportError:
     HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
 
 
-# Forward reference for ManualOverrideMiddleware and EventRouter
 if TYPE_CHECKING:
     from ..core.event_router import EventRouter
     from ..core.middlewares.manual_override_middleware import ManualOverrideMiddleware
