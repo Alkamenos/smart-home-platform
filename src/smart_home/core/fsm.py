@@ -190,7 +190,7 @@ class FSMEngine:
         """
         return [
             entity_id
-            for entity_id in self._definitions.keys()
+            for entity_id in self._definitions
             if entity_id.startswith(f"{device_id}_")
         ]
     def get_state(self, entity_id: str) -> State | None:
