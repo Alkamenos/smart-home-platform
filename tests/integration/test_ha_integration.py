@@ -113,9 +113,9 @@ class SimpleHAWebSocketClient:
         return None
 
 
-# Try to import homeassistant_websocket, use fallback if not available
+# Try to import HomeAssistantWS from adapter which has the fallback
 try:
-    from homeassistant_websocket import HomeAssistantWS  # type: ignore
+    from smart_home.adapters.ha_adapter import HomeAssistantWS
 except ImportError:
     HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
 
@@ -227,6 +227,7 @@ class MockFSMEngine:
         self.events_received = []
         self.commands_sent = []
         self._event_handlers = {}
+        self.event_bus.subscribe("state_change", self.process_event)
 
     async def process_event(self, event_type: str, payload: dict[str, Any], trace_id: str) -> None:
         """Process an event through the FSM."""
@@ -345,11 +346,6 @@ async def test_ha_http_api_available(ha_container, ha_session):
 @pytest.mark.asyncio
 async def test_ha_websocket_connection(ha_container, ha_token):
     """Test that we can connect to HA WebSocket API."""
-    try:
-        from homeassistant_websocket import HomeAssistantWS
-    except ImportError:
-        pytest.skip("homeassistant-websocket not installed")
-
     ws_url = ha_container["ws_url"]
 
     async with aiohttp.ClientSession() as session:
@@ -404,11 +400,6 @@ async def test_ha_integration_full_cycle(ha_container, ha_token, mock_engine):
     4. Verifies platform receives event and triggers FSM
     5. Verifies FSM sends light.turn_on command to HA
     """
-    try:
-        from homeassistant_websocket import HomeAssistantWS  # noqa: F401
-    except ImportError:
-        pytest.skip("homeassistant-websocket not installed")
-
     ws_url = ha_container["ws_url"]
     http_url = ha_container["http_url"]
 
@@ -571,11 +562,6 @@ async def test_platform_receives_ha_events(ha_container, ha_token, mock_engine):
 
     This test verifies the WebSocket subscription and event handling.
     """
-    try:
-        from homeassistant_websocket import HomeAssistantWS
-    except ImportError:
-        pytest.skip("homeassistant-websocket not installed")
-
     ws_url = ha_container["ws_url"]
 
     received_messages = []
@@ -655,11 +641,6 @@ async def test_full_e2e_scenario(ha_container, ha_token, mock_engine):
     3. Platform sends light.turn_on command
     4. HA receives and executes command
     """
-    try:
-        from homeassistant_websocket import HomeAssistantWS  # noqa: F401
-    except ImportError:
-        pytest.skip("homeassistant-websocket not installed")
-
     ws_url = ha_container["ws_url"]
     http_url = ha_container["http_url"]
 

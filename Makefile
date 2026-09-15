@@ -62,9 +62,9 @@ test-integration:
 	@echo "Prerequisites:"
 	@echo "  - Docker must be running"
 	@echo "  - testcontainers-python must be installed: pip install testcontainers"
-	@echo "  - homeassistant-websocket must be installed: pip install homeassistant-websocket"
+	@echo "  - websockets must be installed: pip install websockets"
 	@echo ""
-	pytest tests/integration/ -v --tb=short
+	pytest tests/integration/ -v --tb=short --timeout=0
 
 test-integration-verbose:
 	@echo "Running integration tests with verbose output..."
