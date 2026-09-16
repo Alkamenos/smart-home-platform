@@ -1,6 +1,6 @@
 # Smart Home FSM Platform
 
-[![CI](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml/badge.svg?branch= main)](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml)
+[![CI](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/Alkamenos/smart-home-platform/branch/main/graph/badge.svg?token=LZKK1NU0WC)](https://codecov.io/github/Alkamenos/smart-home-platform)
 ![Python Versions](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue)
 [![License](https://img.shields.io/github/license/Alkamenos/smart-home-platform)](https://www.apache.org/licenses/LICENSE-2.0)
