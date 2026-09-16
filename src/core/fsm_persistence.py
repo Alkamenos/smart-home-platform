@@ -275,7 +275,7 @@ class FSMPersistence:
         # Получаем текущее состояние FSM (обычно initial)
         current_state = self._fsm_engine.get_state(entity_id)
 
-        if current_state and current_state.current != saved_state:
+        if current_state and current_state.current_state != saved_state:
             # Находим определение автомата для проверки валидности состояния
             definition = self._fsm_engine._definitions.get(entity_id)
 
@@ -286,26 +286,13 @@ class FSMPersistence:
 
                 now = time.time()
 
-                # Создаём новую запись в истории
-                history_entry = {
-                    "from": current_state.current,
-                    "to": saved_state,
-                    "trigger": "restore",
-                    "why": "State restoration after restart",
-                    "at": now,
-                }
-                new_history = (history_entry,) + current_state.history[:19]
-
                 # Создаём новое состояние (используем State из того же модуля)
                 from .fsm import State
 
                 restored_state = State(
-                    entity_id=entity_id,
-                    current=saved_state,
+                    current_state=saved_state,
                     entered_at=now,
-                    entered_by="restore",
-                    entered_why="State restoration after restart",
-                    history=new_history,
+                    context={"restored": True, "previous_state": current_state.current_state}
                 )
 
                 # Обновляем состояние в движке
@@ -317,7 +304,7 @@ class FSMPersistence:
                     {
                         "entity_id": entity_id,
                         "restored_state": saved_state,
-                        "previous_state": current_state.current,
+                        "previous_state": current_state.current_state,
                     },
                 )
 
@@ -325,7 +312,7 @@ class FSMPersistence:
                     f"State directly restored for {entity_id}: {saved_state}",
                     entity_id=entity_id,
                     saved_state=saved_state,
-                    previous_state=current_state.current,
+                    previous_state=current_state.current_state,
                 )
 
                 # Обновляем кэш

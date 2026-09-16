@@ -27,7 +27,11 @@ class EventBus:
     ) -> None:
         """Unsubscribe a handler from an event type."""
         if event_type in self._subscribers:
-            self._subscribers[event_type].remove(handler)
+            try:
+                self._subscribers[event_type].remove(handler)
+            except ValueError:
+                # Handler was not in the list, ignore
+                pass
 
     def subscribe_with_filter(
         self,
