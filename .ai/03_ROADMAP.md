@@ -58,9 +58,6 @@
 - [x] Remove migration tests (no external users)
 
 ## Phase 6: Advanced Features [IN PROGRESS]
-- [ ] Device-level sensors (avoid duplication in behavior params)
-  - Add `sensors:` field to device in manifest
-  - EventRouter reads from device level first, then behavior level
 - [ ] Web UI for manifest editing
   - FastAPI + HTMX
   - Form validation using Pydantic models

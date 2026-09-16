@@ -25,8 +25,23 @@ gantt
     section Phase 6- Advanced Features
     Phase 6- Advanced Features :active, p6, 2026-10-10, 2026-10-15
 
-    section Phase 7- Platform Maturity
-    Phase 7- Platform Maturity :p7, 2026-10-17, 2026-10-22
+    section Phase 7- Platform Extensions - Quick Wins
+    Phase 7- Platform Extensions - Quick Wins :p7, 2026-10-17, 2026-10-22
+
+    section Phase 8- Platform Extensions - Core Features
+    Phase 8- Platform Extensions - Core Features :p8, 2026-10-24, 2026-10-29
+
+    section Phase 9- Observability & Reliability
+    Phase 9- Observability & Reliability :p9, 2026-10-31, 2026-11-05
+
+    section Phase 10- Architecture Improvements
+    Phase 10- Architecture Improvements :p10, 2026-11-07, 2026-11-12
+
+    section Phase 11- Advanced Features
+    Phase 11- Advanced Features :p11, 2026-11-14, 2026-11-19
+
+    section Phase 12- Platform Maturity
+    Phase 12- Platform Maturity :p12, 2026-11-21, 2026-11-26
 
 ```
 
@@ -76,7 +91,7 @@ gantt
 **Status:** COMPLETED: 2026-09-15
 
 - ✅ **CRITICAL** Consolidate project structure (remove code duplication)
-- Issue: Code exists in both `core/` and `src/core/`
+- Issue: Code exists in both `core/` and `../src/core/`
 - Action: Migrate fully to `src` layout, remove flat structure
 - Impact: All imports, pyproject.toml, cli.py
 - ✅ **CRITICAL** Fix manifest bug: add `motion_sensor` to night_light params
@@ -107,9 +122,6 @@ gantt
 
 **Status:** IN PROGRESS
 
-- [ ] Device-level sensors (avoid duplication in behavior params)
-- Add `sensors:` field to device in manifest
-- EventRouter reads from device level first, then behavior level
 - [ ] Web UI for manifest editing
 - FastAPI + HTMX
 - Form validation using Pydantic models
@@ -120,7 +132,102 @@ gantt
 - File watcher for manifest changes
 - Graceful FSM migration (unregister old, register new)
 
-## 🔮 Phase 7: Platform Maturity
+## 📌 Phase 7: Platform Extensions - Quick Wins
+
+**Status:** PLANNING
+
+- [ ] Declarative Guards DSL
+- Files: `core/guards/`, `core/fsm.py`
+- Detail: `.ai/enhancements/01-declarative-guards-dsl.md`
+- Priority: HIGH
+- Effort: 1-2 days
+- [ ] FSM Visualization (Mermaid/Graphviz)
+- Files: `core/fsm_visualizer.py`, `cli/commands/export_fsm.py`
+- Detail: `.ai/enhancements/02-fsm-visualization.md`
+- Priority: MEDIUM
+- Effort: 1 day
+- [ ] Interactive REPL
+- File: `cli/commands/shell.py`
+- Detail: `.ai/enhancements/03-interactive-repl.md`
+- Priority: LOW
+- Effort: 0.5 days
+
+## 📌 Phase 8: Platform Extensions - Core Features
+
+**Status:** PLANNING
+
+- [ ] Scene Manager / Flow Engine
+- Files: `core/scene_manager.py`, `core/models/scene.py`
+- Detail: `.ai/enhancements/04-scene-manager.md`
+- Priority: HIGH
+- Effort: 2-3 days
+- [ ] Room Aggregation & Policies
+- Files: `core/room_manager.py`, `core/models/room.py`
+- Detail: `.ai/enhancements/05-room-aggregation.md`
+- Priority: MEDIUM
+- Effort: 2 days
+- [ ] Digital Twin / Simulator
+- Files: `core/simulator.py`, `cli/commands/simulate.py`
+- Detail: `.ai/enhancements/06-digital-twin.md`
+- Priority: MEDIUM
+- Effort: 2-3 days
+
+## 📌 Phase 9: Observability & Reliability
+
+**Status:** PLANNING
+
+- [ ] Prometheus / OpenTelemetry Metrics
+- Files: `core/metrics.py`, `services/metrics_server.py`
+- Detail: `.ai/enhancements/07-prometheus-metrics.md`
+- Priority: HIGH
+- Effort: 1-2 days
+- [ ] Circuit Breaker Pattern
+- File: `adapters/ha_adapter.py`
+- Detail: `.ai/enhancements/08-circuit-breaker.md`
+- Priority: HIGH
+- Effort: 1 day
+- [ ] Secrets Management
+- File: `core/secrets.py`
+- Detail: `.ai/enhancements/09-secrets-management.md`
+- Priority: MEDIUM
+- Effort: 1 day
+
+## 🔮 Phase 10: Architecture Improvements
+
+**Status:** FUTURE
+
+- [ ] Domain-Driven Design Refactoring
+- File: `core/`
+- Detail: `.ai/enhancements/11-ddd-refactoring.md`
+- Priority: MEDIUM
+- Effort: 1-2 days
+- [ ] Plugin System
+- File: `core/plugin_loader.py`
+- Detail: `.ai/enhancements/12-plugin-system.md`
+- Priority: LOW
+- Effort: 2-3 days
+- [ ] Dependency Injection
+- File: `bootstrap.py`
+- Detail: `.ai/enhancements/13-dependency-injection.md`
+- Priority: LOW
+- Effort: 2-3 days
+
+## 🔮 Phase 11: Advanced Features
+
+**Status:** FUTURE
+
+- [ ] LLM / NLP Adapter
+- Files: `adapters/nlp_adapter.py`, `core/nlp_parser.py`
+- Detail: `.ai/enhancements/10-llm-nlp-adapter.md`
+- Priority: LOW
+- Effort: 3-5 days
+- [ ] Hot-Reloading для Guard/Action функций
+- Files: `services/config_watcher.py`, `core/registry.py`
+- Detail: `.ai/enhancements/14-hot-reloading.md`
+- Priority: LOW
+- Effort: 1-2 days
+
+## 🔮 Phase 12: Platform Maturity
 
 **Status:** FUTURE
 
