@@ -1,4 +1,4 @@
-```gitignore
+
 # Python cache files
 __pycache__/
 *.pyc
@@ -28,4 +28,3 @@ coverage/
 # OS generated files
 .DS_Store
 Thumbs.db
-```
