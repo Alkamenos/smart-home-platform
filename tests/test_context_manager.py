@@ -6,12 +6,12 @@ Specification:
 2. Должна быть поддержка подписки на сенсоры (движение, освещенность, температура)
 3. Должна быть поддержка расписаний времени (ночь/день, активные часы)
 4. Контекст должен автоматически обновляться при изменении состояний сенсоров
-5. При изменении контекста должен триггериться FSM для пересчёта состояния
+5. При изменении контекста должен публиковаться событие context.changed
 6. Поддержка пользовательских условий (отпуск, гости и т.д.)
 7. TimeRange должен корректно обрабатывать переход через полночь
-8. ContextManager должен подписываться на события state_changed и platform.started
-9. Для каждого entity_id должен быть уникальный контекст
-10. При старте платформы должны восстанавливаться контексты из сенсоров
+8. ContextManager должен подписываться на события ha.state_changed и platform.started
+9. Подписка на сенсоры использует entity_id -> context_key маппинг
+10. При старте платформы запускается периодическая проверка расписаний
 """
 
 import time
@@ -81,10 +81,12 @@ class TestTimeRange:
     """Тесты класса TimeRange."""
 
     def test_creates_from_string(self):
-        """Создание TimeRange из строки 'HH:MM'."""
+        """Создание TimeRange из строки 'HH:MM' - возвращает диапазон от HH:MM до 00:00."""
         tr = TimeRange.from_string("07:30")
         assert tr.start_hour == 7
         assert tr.start_minute == 30
+        assert tr.end_hour == 0
+        assert tr.end_minute == 0
 
     def test_is_within_normal_range(self):
         """Проверка попадания в обычный диапазон (без перехода через полночь)."""
@@ -121,12 +123,12 @@ class TestContextManagerInitialization:
     def test_initializes_with_empty_subscriptions(self, context_manager):
         """При инициализации список подписок пуст."""
         assert context_manager._sensor_subscriptions == {}
-        assert context_manager._time_checks == {}
+        assert context_manager._schedules == {}
 
-    def test_subscribes_to_state_changed_event(self, mock_event_bus, context_manager):
-        """ContextManager подписывается на state.changed."""
+    def test_subscribes_to_ha_state_changed_event(self, mock_event_bus, context_manager):
+        """ContextManager подписывается на ha.state_changed."""
         calls = [call[0][0] for call in mock_event_bus.subscribe.call_args_list]
-        assert "state.changed" in calls
+        assert "ha.state_changed" in calls
 
     def test_subscribes_to_platform_started_event(self, mock_event_bus, context_manager):
         """ContextManager подписывается на platform.started."""
