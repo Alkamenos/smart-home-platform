@@ -52,6 +52,10 @@ class Transition:
         action: Optional callable action function to execute on transition.
             Actions now return CommandIntent (or None) instead of calling HA directly.
         timeout_sec: Optional timeout in seconds to auto-trigger 'timeout' event.
+        priority: Optional priority for transition selection (higher = more important).
+        reason: Optional human-readable reason for the transition.
+        attributes: Optional dict of attributes to attach to the transition.
+        manual_lockout_min: Optional lockout time in minutes for manual transitions.
     """
 
     from_state: str
@@ -60,6 +64,10 @@ class Transition:
     guard: Callable[..., bool] | None = None
     action: Callable[..., CommandIntent | None] | None = None
     timeout_sec: float | None = None
+    priority: int = 0
+    reason: str | None = None
+    attributes: dict[str, Any] | None = None
+    manual_lockout_min: float | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +83,7 @@ class FSMDefinition:
         debounce_sec: Minimum time between state changes to prevent bouncing.
         params: Optional parameters from BehaviorConfig for template injection.
         target_device_id: Original device ID for routing events to the correct device.
+        initial: Alias for initial_state for backward compatibility.
     """
 
     entity_id: str
@@ -84,6 +93,11 @@ class FSMDefinition:
     debounce_sec: float = 0.0
     params: dict[str, Any] = field(default_factory=dict)
     target_device_id: str | None = None
+
+    @property
+    def initial(self) -> str:
+        """Alias for initial_state for backward compatibility."""
+        return self.initial_state
 
 
 class FSMEngine:

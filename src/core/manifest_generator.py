@@ -79,8 +79,8 @@ class ManifestAutomationGenerator:
 
             definition = FSMDefinition(
                 entity_id=entity_id,
+                initial_state="OFF",
                 states=("OFF", "ON_SCHEDULE", "ON_MOTION", "MANUAL"),
-                initial="OFF",
                 transitions=(
                     # Включение по расписанию
                     Transition(
@@ -88,9 +88,6 @@ class ManifestAutomationGenerator:
                         to_state="ON_SCHEDULE",
                         trigger="schedule_on",
                         guard=lambda ctx, r=room, d=device: self._is_schedule_time(ctx, d),
-                        priority=10,
-                        reason="Включение по расписанию",
-                        attributes={"entity_id": entity_id},
                     ),
                     # Выключение по расписанию
                     Transition(
@@ -98,9 +95,6 @@ class ManifestAutomationGenerator:
                         to_state="OFF",
                         trigger="schedule_off",
                         guard=lambda ctx, r=room, d=device: not self._is_schedule_time(ctx, d),
-                        priority=10,
-                        reason="Выключение по расписанию",
-                        attributes={"entity_id": entity_id},
                     ),
                     # Включение по движению
                     Transition(
@@ -108,9 +102,6 @@ class ManifestAutomationGenerator:
                         to_state="ON_MOTION",
                         trigger="motion_detected",
                         guard=lambda ctx, r=room: ctx.get(f"{r}_motion_sensor", False),
-                        priority=20,
-                        reason="Обнаружено движение",
-                        attributes={"entity_id": entity_id},
                         timeout_sec=motion_timeout,
                     ),
                     # Таймаут без движения
@@ -118,21 +109,15 @@ class ManifestAutomationGenerator:
                         from_state="ON_MOTION",
                         to_state="OFF",
                         trigger="timeout",
-                        priority=10,
-                        reason="Таймаут без движения",
-                        attributes={"entity_id": entity_id},
                     ),
                     # Ручное вмешательство
                     Transition(
                         from_state="*",
                         to_state="MANUAL",
                         trigger="manual_change",
-                        priority=100,
-                        reason="Ручное вмешательство",
                         action=lambda ctx, r=room: ctx.update(
                             {f"{r}_manual_entered_at": time.time()}
                         ),
-                        manual_lockout_min=manual_lockout,
                     ),
                     # Возврат из MANUAL после таймаута
                     Transition(
@@ -140,8 +125,6 @@ class ManifestAutomationGenerator:
                         to_state="OFF",
                         trigger="timeout",
                         guard=lambda ctx, r=room: self._check_manual_timeout(ctx, r),
-                        priority=50,
-                        reason="Автоматическое восстановление после ручного управления",
                     ),
                 ),
             )
@@ -192,12 +175,11 @@ class ManifestAutomationGenerator:
             target = device.get("target", 22.0)
             hysteresis = device.get("hysteresis", 0.5)
             device.get("modes", ["heat", "cool", "auto"])
-            manual_lockout = self._get_manual_lockout("climate")
 
             definition = FSMDefinition(
                 entity_id=entity_id,
+                initial_state="IDLE",
                 states=("IDLE", "HEATING", "COOLING", "SAFETY_LOCKOUT", "AWAY"),
-                initial="IDLE",
                 transitions=(
                     # Включение нагрева
                     Transition(
@@ -208,9 +190,6 @@ class ManifestAutomationGenerator:
                             ctx.get(f"{r}_temp_current", 0) < t - h
                             and ctx.get(f"{r}_mode", "auto") in ("heat", "auto")
                         ),
-                        priority=30,
-                        reason="Температура ниже целевой",
-                        attributes={"entity_id": entity_id, "hvac_mode": "heat"},
                     ),
                     # Выключение нагрева
                     Transition(
@@ -218,9 +197,6 @@ class ManifestAutomationGenerator:
                         to_state="IDLE",
                         trigger="temp_reached",
                         guard=lambda ctx, r=room, t=target: ctx.get(f"{r}_temp_current", 0) >= t,
-                        priority=30,
-                        reason="Температура достигнута",
-                        attributes={"entity_id": entity_id},
                     ),
                     # Включение охлаждения
                     Transition(
@@ -231,9 +207,6 @@ class ManifestAutomationGenerator:
                             ctx.get(f"{r}_temp_current", 0) > t + h
                             and ctx.get(f"{r}_mode", "auto") in ("cool", "auto")
                         ),
-                        priority=30,
-                        reason="Температура выше целевой",
-                        attributes={"entity_id": entity_id, "hvac_mode": "cool"},
                     ),
                     # Выключение охлаждения
                     Transition(
@@ -241,26 +214,17 @@ class ManifestAutomationGenerator:
                         to_state="IDLE",
                         trigger="temp_reached",
                         guard=lambda ctx, r=room, t=target: ctx.get(f"{r}_temp_current", 0) <= t,
-                        priority=30,
-                        reason="Температура достигнута",
-                        attributes={"entity_id": entity_id},
                     ),
                     # Режим отсутствия
                     Transition(
                         from_state="*",
                         to_state="AWAY",
                         trigger="away_mode_on",
-                        priority=40,
-                        reason="Режим отсутствия включён",
-                        attributes={"entity_id": entity_id},
                     ),
                     Transition(
                         from_state="AWAY",
                         to_state="IDLE",
                         trigger="away_mode_off",
-                        priority=40,
-                        reason="Режим отсутствия выключен",
-                        attributes={"entity_id": entity_id},
                     ),
                     # Блокировка безопасности
                     Transition(
@@ -268,28 +232,21 @@ class ManifestAutomationGenerator:
                         to_state="SAFETY_LOCKOUT",
                         trigger="safety_alarm",
                         priority=200,
-                        reason="Сработала система безопасности",
-                        attributes={"entity_id": entity_id},
                     ),
                     Transition(
                         from_state="SAFETY_LOCKOUT",
                         to_state="IDLE",
                         trigger="safety_reset",
                         priority=200,
-                        reason="Блокировка сброшена",
-                        attributes={"entity_id": entity_id},
                     ),
                     # Ручное вмешательство
                     Transition(
                         from_state="*",
                         to_state="MANUAL",
                         trigger="manual_change",
-                        priority=100,
-                        reason="Ручное вмешательство",
                         action=lambda ctx, r=room: ctx.update(
                             {f"{r}_manual_entered_at": time.time()}
                         ),
-                        manual_lockout_min=manual_lockout,
                     ),
                 ),
             )
@@ -335,8 +292,8 @@ class ManifestAutomationGenerator:
 
             definition = FSMDefinition(
                 entity_id=entity_id,
+                initial_state="OFF",
                 states=("OFF", "ON_HUMIDITY", "MANUAL"),
-                initial="OFF",
                 transitions=(
                     # Включение по влажности
                     Transition(
