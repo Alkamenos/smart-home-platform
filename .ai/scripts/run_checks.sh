@@ -24,6 +24,12 @@
 
 set -e  # Exit on first error
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+cd "$PROJECT_ROOT" || exit 1
+
 echo "=================================="
 echo "🏠 Smart Home Platform Quality Checks"
 echo "=================================="
@@ -65,7 +71,6 @@ echo ""
 
 # 1. Tests
 echo "1️⃣  Running tests..."
-cd ../..
 if pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=80 2>&1; then
     echo -e "${GREEN}✅ Tests passed${NC}"
 else
