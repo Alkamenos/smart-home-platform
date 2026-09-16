@@ -152,7 +152,11 @@ class TestSubscribeWithFilter:
         """Should support complex filter parameters with multiple keys."""
         bus = EventBus()
         handler = AsyncMock()
-        filter_params = {"device_id": "sensor.motion_1", "room": "hallway", "zone": "ground_floor"}
+        filter_params = {
+            "device_id": "sensor.motion_1",
+            "room": "hallway",
+            "zone": "ground_floor",
+        }
 
         bus.subscribe_with_filter("state_changed", filter_params, handler)
 

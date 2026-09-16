@@ -78,7 +78,7 @@ lint-fix:
 	ruff check src/ tests/ --fix
 
 format:
-	black src/ tests/
+	ruff format src/ tests/
 
 type-check:
 	mypy src/ --ignore-missing-imports

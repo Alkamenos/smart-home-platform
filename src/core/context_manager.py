@@ -268,7 +268,8 @@ class ContextManager:
         нужно обновить.
         """
         self._event_bus.publish(
-            "context.changed", {"key": context_key, "value": value, "timestamp": time.time()}
+            "context.changed",
+            {"key": context_key, "value": value, "timestamp": time.time()},
         )
 
         # В реальной реализации здесь был бы маппинг context_key -> entity_ids

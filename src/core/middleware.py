@@ -99,7 +99,14 @@ class ManualLockoutMiddleware(Middleware):
         Returns:
             True if the source represents manual control, False otherwise.
         """
-        manual_sources = {"manual", "user", "home_assistant", "voice", "alexa", "google"}
+        manual_sources = {
+            "manual",
+            "user",
+            "home_assistant",
+            "voice",
+            "alexa",
+            "google",
+        }
         return source.lower() in manual_sources
 
     def record_manual_control(self, device_id: str) -> None:

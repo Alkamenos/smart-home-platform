@@ -374,7 +374,10 @@ class TestSaveState:
         """Сохранение через input_text когда доступен."""
         persistence._input_text_available = True
 
-        with patch("asyncio.get_running_loop"), patch("asyncio.create_task") as mock_create_task:
+        with (
+            patch("asyncio.get_running_loop"),
+            patch("asyncio.create_task") as mock_create_task,
+        ):
             persistence._save_state("test_mode", "ON", "light.test")
 
             mock_create_task.assert_called_once()
@@ -422,7 +425,10 @@ class TestSaveToFile:
         """Создание директории для хранения."""
         storage_dir = tmp_path / ".homeassistant" / ".storage" / "fsm_persistence"
 
-        with patch("pathlib.Path.home", return_value=tmp_path), patch("builtins.open", create=True):
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("builtins.open", create=True),
+        ):
             persistence._save_to_file("test_mode", "ON")
 
             assert storage_dir.exists() or True  # Директория должна быть создана

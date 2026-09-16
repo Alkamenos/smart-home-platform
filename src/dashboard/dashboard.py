@@ -182,7 +182,12 @@ class DashboardIntegration:
         # Формируем конфигурацию dashboard
         dashboard_config = {
             "title": title,
-            "views": [{"title": "Automation Status", "cards": self._generate_dashboard_cards()}],
+            "views": [
+                {
+                    "title": "Automation Status",
+                    "cards": self._generate_dashboard_cards(),
+                }
+            ],
         }
 
         # Сохраняем через API (требует дополнительной настройки HA)

@@ -183,7 +183,10 @@ async def test_mixed_concurrent_operations():
             entity_id = f"light.unique_{i}"
             tasks.append(
                 save_state_async(
-                    persistence, entity_id, f"unique_state_{i}", {"type": "unique", "index": i}
+                    persistence,
+                    entity_id,
+                    f"unique_state_{i}",
+                    {"type": "unique", "index": i},
                 )
             )
 
@@ -191,7 +194,10 @@ async def test_mixed_concurrent_operations():
         for i in range(num_unique):
             tasks.append(
                 save_state_async(
-                    persistence, shared_entity, f"shared_state_{i}", {"type": "shared", "index": i}
+                    persistence,
+                    shared_entity,
+                    f"shared_state_{i}",
+                    {"type": "shared", "index": i},
                 )
             )
 

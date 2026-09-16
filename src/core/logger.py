@@ -43,7 +43,8 @@ def get_logger(component: str = "platform") -> logging.Logger:
 
         # Формат с компонентом
         formatter = logging.Formatter(
-            "%(asctime)s [%(name)s] %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)

@@ -91,7 +91,11 @@ class ControlTracker:
         """
         now = time.time()
         event = ControlEvent(
-            entity_id=entity_id, source=source, trigger=trigger, timestamp=now, value=value
+            entity_id=entity_id,
+            source=source,
+            trigger=trigger,
+            timestamp=now,
+            value=value,
         )
 
         # Добавляем в историю

@@ -13,7 +13,11 @@ Tests for Manifest Validator - Тесты валидатора манифест�
 #  SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from src.core.manifest_validator import ManifestValidator, ValidationError, validate_manifest
+from src.core.manifest_validator import (
+    ManifestValidator,
+    ValidationError,
+    validate_manifest,
+)
 
 
 class TestManifestValidatorStructure:

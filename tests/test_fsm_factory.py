@@ -129,7 +129,11 @@ transitions:
 
     def test_apply_params_sets_entity_id(self, factory_with_templates):
         """Applying params sets unique entity_id."""
-        template_data = {"initial_state": "OFF", "states": ["OFF", "ON"], "transitions": []}
+        template_data = {
+            "initial_state": "OFF",
+            "states": ["OFF", "ON"],
+            "transitions": [],
+        }
 
         result = factory_with_templates._apply_params_to_template(
             template_data=template_data,
@@ -203,7 +207,11 @@ transitions:
 
         registry.register_action("turn_on_light", turn_on_light)
 
-        return FSMFactory(engine, registry, features_dir=str(tmp_path)), registry, engine
+        return (
+            FSMFactory(engine, registry, features_dir=str(tmp_path)),
+            registry,
+            engine,
+        )
 
     def test_create_from_behavior_success(self, factory_with_registry):
         """Creating FSM from valid behavior succeeds."""
@@ -241,7 +249,10 @@ transitions:
         behavior = BehaviorConfig(
             template="lighting",
             priority=10,
-            params={"motion_sensor": "binary_sensor.kitchen_motion", "schedule": "07:00-23:00"},
+            params={
+                "motion_sensor": "binary_sensor.kitchen_motion",
+                "schedule": "07:00-23:00",
+            },
         )
 
         definitions = factory.create_from_behavior("light.kitchen", behavior)
@@ -283,7 +294,12 @@ transitions:
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
 
         # Create manifest
-        from core.models.manifest import AutomationRules, BehaviorConfig, InstanceConfig, RoomConfig
+        from core.models.manifest import (
+            AutomationRules,
+            BehaviorConfig,
+            InstanceConfig,
+            RoomConfig,
+        )
 
         manifest = Manifest(
             instance=InstanceConfig(id="test_house", name="Test House", owner="Test"),
@@ -479,7 +495,12 @@ transitions:
 
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
 
-        from core.models.manifest import AutomationRules, BehaviorConfig, InstanceConfig, RoomConfig
+        from core.models.manifest import (
+            AutomationRules,
+            BehaviorConfig,
+            InstanceConfig,
+            RoomConfig,
+        )
 
         manifest = Manifest(
             instance=InstanceConfig(id="test", name="Test", owner="Test"),

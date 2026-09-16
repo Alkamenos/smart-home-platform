@@ -150,7 +150,8 @@ class FSMPersistence:
                         )
                 else:
                     self._logger.warning(
-                        f"FSM not found for {entity_id}, skipping restore", entity_id=entity_id
+                        f"FSM not found for {entity_id}, skipping restore",
+                        entity_id=entity_id,
                     )
             else:
                 self._logger.debug(f"No saved state for {entity_id}", entity_id=entity_id)
@@ -295,7 +296,10 @@ class FSMPersistence:
                 restored_state = State(
                     current_state=saved_state,
                     entered_at=now,
-                    context={"restored": True, "previous_state": current_state.current_state},
+                    context={
+                        "restored": True,
+                        "previous_state": current_state.current_state,
+                    },
                 )
 
                 # Обновляем состояние в движке

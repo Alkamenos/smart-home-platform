@@ -159,7 +159,10 @@ def create_watchdog(
     """Создать и вернуть экземпляр WatchdogService"""
     global _watchdog_instance
     _watchdog_instance = WatchdogService(
-        fsm_engine=fsm_engine, registry=registry, ha_adapter=ha_adapter, interval_sec=interval_sec
+        fsm_engine=fsm_engine,
+        registry=registry,
+        ha_adapter=ha_adapter,
+        interval_sec=interval_sec,
     )
     return _watchdog_instance
 

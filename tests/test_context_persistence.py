@@ -70,13 +70,22 @@ async def test_context_persists_across_transitions():
         debounce_sec=0.0,
         transitions=(
             Transition(
-                from_state="state_a", trigger="next", to_state="state_b", action="add_counter"
+                from_state="state_a",
+                trigger="next",
+                to_state="state_b",
+                action="add_counter",
             ),
             Transition(
-                from_state="state_b", trigger="next", to_state="state_c", action="add_timestamp"
+                from_state="state_b",
+                trigger="next",
+                to_state="state_c",
+                action="add_timestamp",
             ),
             Transition(
-                from_state="state_c", trigger="next", to_state="state_a", action="preserve_context"
+                from_state="state_c",
+                trigger="next",
+                to_state="state_a",
+                action="preserve_context",
             ),
         ),
     )

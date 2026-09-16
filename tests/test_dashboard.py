@@ -64,7 +64,9 @@ class TestCreateFsmSensor:
         integration = DashboardIntegration(ha_adapter, event_bus)
 
         result = await integration.create_fsm_sensor(
-            fsm_id="light.kitchen_motion", name="Kitchen Motion Light", feature_type="lighting"
+            fsm_id="light.kitchen_motion",
+            name="Kitchen Motion Light",
+            feature_type="lighting",
         )
 
         assert result is True
@@ -88,7 +90,9 @@ class TestCreateFsmSensor:
         integration = DashboardIntegration(ha_adapter, event_bus)
 
         await integration.create_fsm_sensor(
-            fsm_id="climate.living_room", name="Living Room Climate", feature_type="climate"
+            fsm_id="climate.living_room",
+            name="Living Room Climate",
+            feature_type="climate",
         )
 
         assert "climate.living_room" in integration._created_entities

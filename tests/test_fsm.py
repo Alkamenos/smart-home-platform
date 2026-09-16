@@ -114,7 +114,10 @@ class TestFSMGuards:
             states=("OFF", "ON"),
             transitions=(
                 Transition(
-                    from_state="OFF", to_state="ON", trigger="turn_on", guard="allowed_guard"
+                    from_state="OFF",
+                    to_state="ON",
+                    trigger="turn_on",
+                    guard="allowed_guard",
                 ),
             ),
         )
@@ -141,7 +144,10 @@ class TestFSMGuards:
             states=("OFF", "ON"),
             transitions=(
                 Transition(
-                    from_state="OFF", to_state="ON", trigger="turn_on", guard="allowed_guard"
+                    from_state="OFF",
+                    to_state="ON",
+                    trigger="turn_on",
+                    guard="allowed_guard",
                 ),
             ),
         )
@@ -168,7 +174,10 @@ class TestFSMGuards:
             states=("OFF", "ON"),
             transitions=(
                 Transition(
-                    from_state="OFF", to_state="ON", trigger="turn_on", guard="failing_guard"
+                    from_state="OFF",
+                    to_state="ON",
+                    trigger="turn_on",
+                    guard="failing_guard",
                 ),
             ),
         )

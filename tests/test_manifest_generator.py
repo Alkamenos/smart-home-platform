@@ -172,7 +172,13 @@ class TestLightingFSMGeneration:
         """Should use motion_timeout_sec from device config"""
         manifest = {
             "devices": {
-                "lighting": [{"id": "light.kitchen", "room": "kitchen", "motion_timeout_sec": 600}]
+                "lighting": [
+                    {
+                        "id": "light.kitchen",
+                        "room": "kitchen",
+                        "motion_timeout_sec": 600,
+                    }
+                ]
             }
         }
         generator = ManifestAutomationGenerator(manifest)
@@ -365,7 +371,13 @@ class TestClimateFSMGeneration:
         """Should use hysteresis from device config"""
         manifest = {
             "devices": {
-                "climate": [{"id": "climate.living_room", "room": "living_room", "hysteresis": 1.0}]
+                "climate": [
+                    {
+                        "id": "climate.living_room",
+                        "room": "living_room",
+                        "hysteresis": 1.0,
+                    }
+                ]
             }
         }
         generator = ManifestAutomationGenerator(manifest)
@@ -708,7 +720,8 @@ class TestEdgeCases:
 
         # Find motion_detected mapping
         motion_mapping = next(
-            (m for m in result.lighting_mappings if m.trigger == "motion_detected"), None
+            (m for m in result.lighting_mappings if m.trigger == "motion_detected"),
+            None,
         )
         assert motion_mapping is not None
 

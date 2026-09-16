@@ -436,6 +436,7 @@ engine.register_action("dim_kitchen_light", dim_kitchen_light)
 def is_night_time(ctx: dict) -> bool:
     """Only allow automation at night."""
     from datetime import datetime
+
     hour = datetime.now().hour
     return hour < 7 or hour > 22
 
@@ -614,6 +615,7 @@ pytest tests/test_scheduler.py -v  # freezegun is auto-loaded in tests
 from freezegun import freeze_time
 import pytest
 
+
 @pytest.mark.asyncio
 @freeze_time("2024-01-15 10:30:00")
 async def test_timeout_transition():
@@ -744,10 +746,12 @@ Store context in State to detect manual overrides:
 def manual_override_guard(ctx: dict) -> bool:
     """Prevent auto-off if user manually turned on light."""
     import time
+
     manual_at = ctx.get("context", {}).get("manual_override_at", 0)
     if manual_at and (time.time() - manual_at) < 3600:
         return False  # Block transition for 1 hour
     return True
+
 
 engine.register_guard("no_manual_override", manual_override_guard)
 ```

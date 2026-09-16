@@ -167,13 +167,14 @@ isort --profile black src/ tests/
 from typing import Optional, Any
 from pydantic import BaseModel
 
+
 class DeviceConfig(BaseModel):
     id: str
     name: str
     behaviors: list[dict[str, Any]]
 
-async def process_event(event: dict[str, Any]) -> Optional[str]:
-    ...
+
+async def process_event(event: dict[str, Any]) -> Optional[str]: ...
 ```
 
 ### Linting

@@ -112,7 +112,12 @@ class TestDebounceSpam:
             initial_state="OFF",
             states=("OFF", "ON"),
             transitions=(
-                Transition(from_state="OFF", to_state="ON", trigger="turn_on", guard="flaky_guard"),
+                Transition(
+                    from_state="OFF",
+                    to_state="ON",
+                    trigger="turn_on",
+                    guard="flaky_guard",
+                ),
             ),
         )
 

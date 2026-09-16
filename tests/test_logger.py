@@ -90,7 +90,10 @@ class TestLogFormatting:
         log_entry = logger._format_log(
             "INFO", "test", entity_id="light.kitchen", extra_data="value"
         )
-        assert log_entry["context"] == {"entity_id": "light.kitchen", "extra_data": "value"}
+        assert log_entry["context"] == {
+            "entity_id": "light.kitchen",
+            "extra_data": "value",
+        }
 
     def test_log_without_context_has_empty_dict(self):
         """Лог без контекста имеет пустой dict."""

@@ -24,9 +24,9 @@
 
 ```python
 CIRCUIT_BREAKER_CONFIG = {
-    "failure_threshold": 5,       # 5 ошибок -> открыть
-    "recovery_timeout_sec": 30,   # 30 секунд в OPEN
-    "half_open_max_calls": 2,     # 2 пробных запроса в HALF-OPEN
+    "failure_threshold": 5,  # 5 ошибок -> открыть
+    "recovery_timeout_sec": 30,  # 30 секунд в OPEN
+    "half_open_max_calls": 2,  # 2 пробных запроса в HALF-OPEN
 }
 ```
 

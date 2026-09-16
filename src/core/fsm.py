@@ -174,7 +174,9 @@ class FSMEngine:
                 # No event loop in current thread (e.g., during sync test setup)
                 entered_at = 0.0
             self._states[definition.entity_id] = State(
-                current_state=definition.initial_state, entered_at=entered_at, context={}
+                current_state=definition.initial_state,
+                entered_at=entered_at,
+                context={},
             )
             logger.debug(
                 f"Registered FSM for entity {definition.entity_id} with initial state '{definition.initial_state}'"
@@ -227,7 +229,9 @@ class FSMEngine:
         """
         if entity_id in self._states:
             self._states[entity_id] = State(
-                current_state=state, entered_at=asyncio.get_event_loop().time(), context={}
+                current_state=state,
+                entered_at=asyncio.get_event_loop().time(),
+                context={},
             )
             logger.debug(f"Reset state for entity {entity_id} to '{state}'")
 

@@ -226,7 +226,10 @@ class TestOnHaStateChanged:
         )
 
         # Событие: движение обнаружено
-        event_data = {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
+        event_data = {
+            "entity_id": "binary_sensor.living_room_motion",
+            "new_state": "on",
+        }
 
         context_manager._on_ha_state_change(event_data)
 
@@ -314,7 +317,11 @@ class TestSetContext:
 
         mock_event_bus.publish.assert_called_with(
             "context.changed",
-            {"key": "vacation_mode", "value": True, "timestamp": pytest.approx(time.time(), rel=1)},
+            {
+                "key": "vacation_mode",
+                "value": True,
+                "timestamp": pytest.approx(time.time(), rel=1),
+            },
         )
 
 

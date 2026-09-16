@@ -176,20 +176,18 @@ except:
 
 **Хорошо:**
 ```python
-def test_dispatcher_should_reject_low_priority_when_high_priority_active():
-    ...
+def test_dispatcher_should_reject_low_priority_when_high_priority_active(): ...
 
-def test_event_router_should_route_motion_detected_when_state_is_on():
-    ...
+
+def test_event_router_should_route_motion_detected_when_state_is_on(): ...
 ```
 
 **Плохо:**
 ```python
-def test_dispatcher():
-    ...
+def test_dispatcher(): ...
 
-def test_router_1():
-    ...
+
+def test_router_1(): ...
 ```
 
 ## Коммиты

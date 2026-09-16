@@ -102,7 +102,8 @@ class ManifestValidator:
         if version is not None and not isinstance(version, int):
             errors.append(
                 ValidationError(
-                    "version", f"Версия должна быть целым числом, получено {type(version).__name__}"
+                    "version",
+                    f"Версия должна быть целым числом, получено {type(version).__name__}",
                 )
             )
 
@@ -138,7 +139,8 @@ class ManifestValidator:
             if not self._is_valid_entity_id(device_id):
                 errors.append(
                     ValidationError(
-                        f"devices.lighting[{device_id}].id", f"Невалидный entity_id: {device_id}"
+                        f"devices.lighting[{device_id}].id",
+                        f"Невалидный entity_id: {device_id}",
                     )
                 )
 
@@ -168,7 +170,8 @@ class ManifestValidator:
             if not self._is_valid_entity_id(device_id):
                 errors.append(
                     ValidationError(
-                        f"devices.climate[{device_id}].id", f"Невалидный entity_id: {device_id}"
+                        f"devices.climate[{device_id}].id",
+                        f"Невалидный entity_id: {device_id}",
                     )
                 )
 
@@ -189,7 +192,8 @@ class ManifestValidator:
             if not self._is_valid_entity_id(device_id):
                 errors.append(
                     ValidationError(
-                        f"devices.ventilation[{device_id}].id", f"Невалидный entity_id: {device_id}"
+                        f"devices.ventilation[{device_id}].id",
+                        f"Невалидный entity_id: {device_id}",
                     )
                 )
 

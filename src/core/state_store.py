@@ -380,7 +380,8 @@ class InputTextStateStore(StateStore):
 
         if len(result) > self.MAX_LENGTH:
             self._logger.warning(
-                f"Serialized state exceeds 255 chars: {len(result)}", entity_id=entity_id
+                f"Serialized state exceeds 255 chars: {len(result)}",
+                entity_id=entity_id,
             )
 
         return result
@@ -427,7 +428,9 @@ class InputTextStateStore(StateStore):
             elif self._hass:
                 # Home Assistant service call
                 await self._hass.services.async_call(
-                    "input_text", "set_value", {"entity_id": helper_name, "value": serialized}
+                    "input_text",
+                    "set_value",
+                    {"entity_id": helper_name, "value": serialized},
                 )
                 if self._logger:
                     self._logger.debug(f"InputTextStore saved {entity_id} -> {helper_name}")

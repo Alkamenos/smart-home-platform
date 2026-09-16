@@ -315,7 +315,14 @@ class TestManualLockoutMiddleware:
         """
         Test that various manual source names are recognized.
         """
-        manual_sources = ["manual", "user", "home_assistant", "voice", "alexa", "google"]
+        manual_sources = [
+            "manual",
+            "user",
+            "home_assistant",
+            "voice",
+            "alexa",
+            "google",
+        ]
 
         for i, source in enumerate(manual_sources):
             device_id = f"light.device_{i}"
@@ -353,7 +360,13 @@ class TestManualLockoutMiddleware:
         await middleware.process(manual_intent)
 
         # Various automated sources
-        auto_sources = ["motion_lighting", "night_light", "eco_mode", "schedule", "automation"]
+        auto_sources = [
+            "motion_lighting",
+            "night_light",
+            "eco_mode",
+            "schedule",
+            "automation",
+        ]
 
         for source in auto_sources:
             auto_intent = CommandIntent(

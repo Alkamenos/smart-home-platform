@@ -23,7 +23,7 @@ def reload_module(module_path: str) -> None:
     spec.loader.exec_module(module)
     # Перерегистрировать функции в registry
     for name, func in inspect.getmembers(module, inspect.isfunction):
-        if hasattr(func, '__action__'):
+        if hasattr(func, "__action__"):
             registry.register_action(name, func)
 ```
 
