@@ -71,31 +71,23 @@ class ManualLockoutMiddleware(Middleware):
     def _get_lockout_minutes(self, domain: str) -> int:
         """
         Get the lockout duration in minutes for a given domain.
-
-        First checks for a global lockout setting, then falls back to
-        domain-specific settings.
-
-        Args:
-            domain: The device domain (e.g., "light", "climate", "ventilation").
-
-        Returns:
-            The lockout duration in minutes, or 0 if not configured.
+        ...
         """
-        # First check global lockout setting
-        global_lockout = getattr(self._automation_rules, "global_manual_lockout_min", 0)
-        if global_lockout > 0:
+        # Global lockout — getattr с default всё равно возвращает Any,
+        # поэтому явно приводим к int.
+        global_lockout = getattr(self._automation_rules, "global_manual_lockout_min", None)
+        if isinstance(global_lockout, int) and global_lockout > 0:
             return global_lockout
 
-        # Fall back to domain-specific settings
+        # Domain-specific: "or 0" превращает None в 0 и satisfies mypy
         if domain == "light":
-            return self._automation_rules.lighting.manual_lockout_min
-        elif domain == "climate" or domain == "thermostat":
-            return self._automation_rules.climate.manual_lockout_min
-        elif domain == "fan" or domain == "ventilation":
-            return self._automation_rules.ventilation.manual_lockout_min
+            return self._automation_rules.lighting.manual_lockout_min or 0
+        elif domain in ("climate", "thermostat"):
+            return self._automation_rules.climate.manual_lockout_min or 0
+        elif domain in ("fan", "ventilation"):
+            return self._automation_rules.ventilation.manual_lockout_min or 0
         else:
-            # Default to lighting rules for unknown domains
-            return self._automation_rules.lighting.manual_lockout_min
+            return self._automation_rules.lighting.manual_lockout_min or 0
 
     def _is_manual_source(self, source: str) -> bool:
         """

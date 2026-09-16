@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,7 @@ from watchdog.events import (
     FileCreatedEvent,
     FileDeletedEvent,
     FileModifiedEvent,
+    FileSystemEvent,
     FileSystemEventHandler,
 )
 from watchdog.observers import Observer
@@ -41,10 +43,17 @@ if TYPE_CHECKING:
 class YAMLFileHandler(FileSystemEventHandler):
     """Handler for YAML file system events."""
 
-    def __init__(self, callback: callable):
+    def __init__(self, callback: Callable):
         self._callback = callback
         self._debounce_sec: float = 0.5
         self._last_modified: dict[str, float] = {}
+
+    @staticmethod
+    def _as_str(path: str | bytes) -> str:
+        """Normalize watchdog path to str (watchdog can return bytes)."""
+        if isinstance(path, bytes):
+            return path.decode("utf-8", errors="replace")
+        return path
 
     def _should_process(self, path: str) -> bool:
         """Check if the event should be processed (debounce)."""
@@ -55,35 +64,32 @@ class YAMLFileHandler(FileSystemEventHandler):
         self._last_modified[path] = now
         return True
 
-    def on_modified(self, event):
+    def on_modified(self, event: FileSystemEvent) -> None:
         """Handle file modification events."""
-        if (
-            isinstance(event, FileModifiedEvent)
-            and event.src_path.endswith((".yaml", ".yml"))
-            and self._should_process(event.src_path)
-        ):
-            logger.info(f"YAML file modified: {event.src_path}")
-            self._callback(event.src_path)
+        if not isinstance(event, FileModifiedEvent):
+            return
+        src_path = self._as_str(event.src_path)
+        if src_path.endswith((".yaml", ".yml")) and self._should_process(src_path):
+            logger.info(f"YAML file modified: {src_path}")
+            self._callback(src_path)
 
-    def on_created(self, event):
+    def on_created(self, event: FileSystemEvent) -> None:
         """Handle file creation events."""
-        if (
-            isinstance(event, FileCreatedEvent)
-            and event.src_path.endswith((".yaml", ".yml"))
-            and self._should_process(event.src_path)
-        ):
-            logger.info(f"YAML file created: {event.src_path}")
-            self._callback(event.src_path)
+        if not isinstance(event, FileCreatedEvent):
+            return
+        src_path = self._as_str(event.src_path)
+        if src_path.endswith((".yaml", ".yml")) and self._should_process(src_path):
+            logger.info(f"YAML file created: {src_path}")
+            self._callback(src_path)
 
-    def on_deleted(self, event):
+    def on_deleted(self, event: FileSystemEvent) -> None:
         """Handle file deletion events."""
-        if (
-            isinstance(event, FileDeletedEvent)
-            and event.src_path.endswith((".yaml", ".yml"))
-            and self._should_process(event.src_path)
-        ):
-            logger.info(f"YAML file deleted: {event.src_path}")
-            self._callback(event.src_path)
+        if not isinstance(event, FileDeletedEvent):
+            return
+        src_path = self._as_str(event.src_path)
+        if src_path.endswith((".yaml", ".yml")) and self._should_process(src_path):
+            logger.info(f"YAML file deleted: {src_path}")
+            self._callback(src_path)
 
 
 class ConfigWatcher:
