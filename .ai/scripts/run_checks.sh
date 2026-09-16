@@ -26,9 +26,9 @@ set -e  # Exit on first error
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-cd "$PROJECT_ROOT" || exit 1
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
 
 echo "=================================="
 echo "🏠 Smart Home Platform Quality Checks"
@@ -43,6 +43,11 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 FAILED=0
+
+info()  { echo -e "${GREEN}[pre-commit]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[pre-commit]${NC} $*"; }
+fail()  { echo -e "${RED}[pre-commit]${NC} $*"; exit 1; }
+
 
 # Check all required tools first
 echo "0️⃣  Проверка наличия инструментов..."
@@ -68,6 +73,22 @@ fi
 
 echo -e "${GREEN}✅ Все инструменты установлены${NC}"
 echo ""
+
+# ──────────────────────────────────────────────
+# 0. Восстановление .gitignore из эталона
+# ──────────────────────────────────────────────
+GITIGNORE_FIX="$ROOT/.ai/templates/qwen.gitignore.fix"
+
+if [[ -f "$GITIGNORE_FIX" ]]; then
+    if ! diff -q "$GITIGNORE_FIX" "$ROOT/.gitignore" >/dev/null 2>&1; then
+        warn ".gitignore повреждён — восстанавливаю из qwen.gitignore.fix"
+        cp "$GITIGNORE_FIX" "$ROOT/.gitignore"
+        git add .gitignore
+        info ".gitignore восстановлен и добавлен в индекс"
+    fi
+else
+    warn "qwen.gitignore.fix не найден — пропускаю восстановление"
+fi
 
 # 1. Tests
 echo "1️⃣  Running tests..."
@@ -119,6 +140,20 @@ else
     echo -e "${YELLOW}⚠️  Missing docstrings${NC}"
     echo -e "${BLUE}   Добавь docstrings к публичным функциям и классам${NC}"
 fi
+echo ""
+
+# ──────────────────────────────────────────────
+# 6. Финальная проверка: .gitignore не в мусоре
+# ──────────────────────────────────────────────
+if git diff --cached --name-only | grep -q '^\.gitignore$'; then
+    # если .gitignore в коммите — сверяем с эталоном
+    if [[ -f "$GITIGNORE_FIX" ]]; then
+        if ! diff -q "$GITIGNORE_FIX" "$ROOT/.gitignore" >/dev/null 2>&1; then
+            fail ".gitignore в индексе не совпадает с эталоном"
+        fi
+    fi
+fi
+
 echo ""
 
 echo "=================================="

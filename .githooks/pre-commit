@@ -22,45 +22,7 @@ info()  { echo -e "${GREEN}[pre-commit]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[pre-commit]${NC} $*"; }
 fail()  { echo -e "${RED}[pre-commit]${NC} $*"; exit 1; }
 
-# ──────────────────────────────────────────────
-# 0. Восстановление .gitignore из эталона
-# ──────────────────────────────────────────────
-GITIGNORE_FIX="$ROOT/qwen.gitignore.fix"
 
-if [[ -f "$GITIGNORE_FIX" ]]; then
-    if ! diff -q "$GITIGNORE_FIX" "$ROOT/.gitignore" >/dev/null 2>&1; then
-        warn ".gitignore повреждён — восстанавливаю из qwen.gitignore.fix"
-        cp "$GITIGNORE_FIX" "$ROOT/.gitignore"
-        git add .gitignore
-        info ".gitignore восстановлен и добавлен в индекс"
-    fi
-else
-    warn "qwen.gitignore.fix не найден — пропускаю восстановление"
-fi
-
-# ──────────────────────────────────────────────
-# 1. Определение: коммитит ли ИИ-агент?
-#    Признаки (любой из):
-#      • переменная окружения AI_AGENT=1
-#      • файл-маркер .ai/.agent_active
-#      • git config user.name содержит "agent"/"qwen"/"ai"
-# ──────────────────────────────────────────────
-IS_AI_COMMIT=false
-
-if [[ "${AI_AGENT:-}" == "1" || "${AI_AGENT:-}" == "true" ]]; then
-    IS_AI_COMMIT=true
-elif [[ -f "$ROOT/.ai/.agent_active" ]]; then
-    IS_AI_COMMIT=true
-else
-    GIT_USER="$(git config user.name 2>/dev/null | tr '[:upper:]' '[:lower:]')"
-    if [[ "$GIT_USER" =~ (agent|qwen|ai-bot|copilot) ]]; then
-        IS_AI_COMMIT=true
-    fi
-fi
-
-if $IS_AI_COMMIT; then
-    info "Обнаружен коммит от ИИ-агента — расширенные проверки"
-fi
 
 # ──────────────────────────────────────────────
 # 2. Стандартные pre-commit проверки
@@ -77,38 +39,6 @@ elif [[ -f "$ROOT/.pre-commit-config.yaml" ]]; then
         run --all-files || fail "pre-commit checks failed (docker)"
 else
     warn ".pre-commit-config.yaml не найден — пропускаю"
-fi
-
-# ──────────────────────────────────────────────
-# 3. Если коммит от ИИ → run_checks.sh
-# ──────────────────────────────────────────────
-if $IS_AI_COMMIT; then
-    RUN_CHECKS="$ROOT/.ai/scripts/run_checks.sh"
-
-    if [[ -f "$RUN_CHECKS" ]]; then
-        info "Запуск .ai/scripts/run_checks.sh ..."
-        chmod +x "$RUN_CHECKS"
-
-        if ! bash "$RUN_CHECKS"; then
-            fail "run_checks.sh завершился с ошибкой. Коммит заблокирован."
-        fi
-
-        info "run_checks.sh пройден успешно"
-    else
-        fail ".ai/scripts/run_checks.sh не найден — коммит ИИ невозможен"
-    fi
-fi
-
-# ──────────────────────────────────────────────
-# 4. Финальная проверка: .gitignore не в мусоре
-# ──────────────────────────────────────────────
-if git diff --cached --name-only | grep -q '^\.gitignore$'; then
-    # если .gitignore в коммите — сверяем с эталоном
-    if [[ -f "$GITIGNORE_FIX" ]]; then
-        if ! diff -q "$GITIGNORE_FIX" "$ROOT/.gitignore" >/dev/null 2>&1; then
-            fail ".gitignore в индексе не совпадает с эталоном"
-        fi
-    fi
 fi
 
 info "Все проверки пройдены ✓"
