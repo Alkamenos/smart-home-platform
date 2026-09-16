@@ -11,10 +11,9 @@ These tests verify the adapter's behavior according to specification:
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from loguru import logger
 
 from adapters.ha_adapter import HAAdapter, SimpleHAWebSocketClient
 
@@ -210,20 +209,20 @@ class TestHAAdapterStateChangeHandling:
     async def test_on_state_change_fallback_to_direct_trigger(self):
         """If no event_bus, should trigger FSM directly."""
         import builtins
-        
+
         hass_mock = MagicMock()
         engine_mock = MagicMock()
-        
+
         # Mock hasattr to return False for event_bus attribute
         original_hasattr = builtins.hasattr
-        
+
         def mock_hasattr(obj, name):
             if obj is engine_mock and name == "event_bus":
                 return False
             return original_hasattr(obj, name)
-        
+
         engine_mock.trigger = AsyncMock()
-        
+
         with patch("builtins.hasattr", side_effect=mock_hasattr):
             adapter = HAAdapter(mode="pyscript", engine=engine_mock, hass=hass_mock)
 
@@ -409,7 +408,7 @@ class TestHAAdapterWebSocketLifecycle:
         # Create a mock reconnect task that behaves like a real asyncio.Task
         async def dummy_coro():
             pass
-        
+
         mock_task = asyncio.create_task(dummy_coro())
         mock_task.cancel = MagicMock()  # Override cancel to track calls
         adapter._reconnect_task = mock_task
@@ -585,7 +584,7 @@ class TestSimpleHAWebSocketClient:
         # Create a proper mock task that can be awaited
         async def dummy_coro():
             pass
-        
+
         mock_task = asyncio.create_task(dummy_coro())
         mock_task.cancel = MagicMock()  # Override cancel to track calls
         client._listen_task = mock_task

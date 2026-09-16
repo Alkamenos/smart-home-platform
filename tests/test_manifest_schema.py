@@ -7,7 +7,6 @@ Tests for Manifest Schema - Тесты схемы манифеста платф�
 3. Проверка всех обязательных полей схемы
 """
 
-import pytest
 from src.core.manifest_schema import MANIFEST_SCHEMA, get_schema
 
 
@@ -36,7 +35,7 @@ class TestManifestSchemaStructure:
         assert "id" in instance_schema
         assert instance_schema["id"]["required"] is True
         assert instance_schema["id"]["type"] == "string"
-        
+
         assert "name" in instance_schema
         assert instance_schema["name"]["required"] is True
         assert instance_schema["name"]["type"] == "string"
@@ -48,7 +47,7 @@ class TestManifestSchemaStructure:
         # required может отсутствовать для опциональных полей
         assert instance_schema["owner"].get("required") is not True
         assert instance_schema["owner"]["type"] == "string"
-        
+
         assert "created_at" in instance_schema
         assert instance_schema["created_at"].get("required") is not True
         assert instance_schema["created_at"]["type"] == "string"
@@ -72,28 +71,28 @@ class TestManifestSchemaStructure:
         lighting_schema = MANIFEST_SCHEMA["devices"]["schema"]["lighting"]["schema"]
         assert isinstance(lighting_schema, dict)
         assert lighting_schema["type"] == "dict"
-        
+
         device_fields = lighting_schema["schema"]
         # Обязательные поля
         assert "id" in device_fields
         assert device_fields["id"]["required"] is True
         assert device_fields["id"]["type"] == "string"
-        
+
         assert "name" in device_fields
         assert device_fields["name"]["required"] is True
         assert device_fields["name"]["type"] == "string"
-        
+
         assert "room" in device_fields
         assert device_fields["room"]["required"] is True
         assert device_fields["room"]["type"] == "string"
-        
+
         # Опциональные поля
         assert "motion_sensor" in device_fields
         assert device_fields["motion_sensor"]["type"] == "string"
-        
+
         assert "schedule" in device_fields
         assert device_fields["schedule"]["type"] == "string"
-        
+
         assert "motion_timeout_sec" in device_fields
         assert device_fields["motion_timeout_sec"]["type"] == "integer"
 
@@ -110,32 +109,32 @@ class TestManifestSchemaStructure:
         climate_schema = MANIFEST_SCHEMA["devices"]["schema"]["climate"]["schema"]
         assert isinstance(climate_schema, dict)
         assert climate_schema["type"] == "dict"
-        
+
         device_fields = climate_schema["schema"]
         # Обязательные поля
         assert "id" in device_fields
         assert device_fields["id"]["required"] is True
         assert device_fields["id"]["type"] == "string"
-        
+
         assert "name" in device_fields
         assert device_fields["name"]["required"] is True
         assert device_fields["name"]["type"] == "string"
-        
+
         assert "room" in device_fields
         assert device_fields["room"]["required"] is True
         assert device_fields["room"]["type"] == "string"
-        
+
         assert "sensor" in device_fields
         assert device_fields["sensor"]["required"] is True
         assert device_fields["sensor"]["type"] == "string"
-        
+
         # Опциональные поля
         assert "target" in device_fields
         assert device_fields["target"]["type"] == "float"
-        
+
         assert "hysteresis" in device_fields
         assert device_fields["hysteresis"]["type"] == "float"
-        
+
         assert "modes" in device_fields
         assert device_fields["modes"]["type"] == "list"
 
@@ -152,28 +151,28 @@ class TestManifestSchemaStructure:
         vent_schema = MANIFEST_SCHEMA["devices"]["schema"]["ventilation"]["schema"]
         assert isinstance(vent_schema, dict)
         assert vent_schema["type"] == "dict"
-        
+
         device_fields = vent_schema["schema"]
         # Обязательные поля
         assert "id" in device_fields
         assert device_fields["id"]["required"] is True
         assert device_fields["id"]["type"] == "string"
-        
+
         assert "name" in device_fields
         assert device_fields["name"]["required"] is True
         assert device_fields["name"]["type"] == "string"
-        
+
         assert "room" in device_fields
         assert device_fields["room"]["required"] is True
         assert device_fields["room"]["type"] == "string"
-        
+
         # Опциональные поля
         assert "humidity_sensor" in device_fields
         assert device_fields["humidity_sensor"]["type"] == "string"
-        
+
         assert "humidity_threshold" in device_fields
         assert device_fields["humidity_threshold"]["type"] == "float"
-        
+
         assert "timeout_sec" in device_fields
         assert device_fields["timeout_sec"]["type"] == "integer"
 
@@ -183,7 +182,7 @@ class TestManifestSchemaStructure:
         rules = MANIFEST_SCHEMA["automation_rules"]
         assert rules["type"] == "dict"
         # automation_rules не обязателен (не указан required=True)
-        
+
         rules_schema = rules["schema"]
         assert "lighting" in rules_schema
         assert "climate" in rules_schema
@@ -200,17 +199,17 @@ class TestManifestSchemaStructure:
         zone_schema = MANIFEST_SCHEMA["zones"]["schema"]
         assert isinstance(zone_schema, dict)
         assert zone_schema["type"] == "dict"
-        
+
         zone_fields = zone_schema["schema"]
         # Обязательные поля
         assert "id" in zone_fields
         assert zone_fields["id"]["required"] is True
         assert zone_fields["id"]["type"] == "string"
-        
+
         assert "name" in zone_fields
         assert zone_fields["name"]["required"] is True
         assert zone_fields["name"]["type"] == "string"
-        
+
         # Опциональные поля
         assert "floor" in zone_fields
         assert zone_fields["floor"]["type"] == "integer"
@@ -226,20 +225,20 @@ class TestManifestSchemaStructure:
         """Спецификация: dashboard должен иметь правильные поля"""
         dashboard_schema = MANIFEST_SCHEMA["dashboard"]["schema"]
         assert isinstance(dashboard_schema, dict)
-        
+
         # Все поля dashboard опциональны
         assert "title" in dashboard_schema
         assert dashboard_schema["title"]["type"] == "string"
-        
+
         assert "show_motion_sensors" in dashboard_schema
         assert dashboard_schema["show_motion_sensors"]["type"] == "boolean"
-        
+
         assert "show_climate" in dashboard_schema
         assert dashboard_schema["show_climate"]["type"] == "boolean"
-        
+
         assert "show_history" in dashboard_schema
         assert dashboard_schema["show_history"]["type"] == "boolean"
-        
+
         assert "history_days" in dashboard_schema
         assert dashboard_schema["history_days"]["type"] == "integer"
 
@@ -286,7 +285,7 @@ class TestManifestSchemaCompleteness:
     def test_schema_type_definitions_valid(self):
         """Спецификация: Все типы данных в схеме корректны"""
         valid_types = {"integer", "string", "float", "boolean", "dict", "list"}
-        
+
         def check_types(schema_part, path=""):
             if isinstance(schema_part, dict):
                 if "type" in schema_part:
@@ -300,5 +299,5 @@ class TestManifestSchemaCompleteness:
             elif isinstance(schema_part, list):
                 for item in schema_part:
                     check_types(item, path)
-        
+
         check_types(MANIFEST_SCHEMA)

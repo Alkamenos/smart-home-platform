@@ -1,14 +1,15 @@
 """Tests for FSM Factory - behavior composition and template loading."""
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import pytest
+
+from core.fsm import FSMEngine
 from core.fsm_factory import FSMFactory
-from core.fsm import FSMEngine, FSMDefinition
+from core.models.manifest import BehaviorConfig, DeviceConfig, Manifest
 from core.registry import Registry
-from core.models.manifest import Manifest, DeviceConfig, BehaviorConfig
 
 
 class TestFSMFactoryInitialization:
@@ -18,10 +19,10 @@ class TestFSMFactoryInitialization:
         """Factory can be created with engine and registry."""
         engine = FSMEngine()
         registry = Registry()
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             factory = FSMFactory(engine, registry, features_dir=tmpdir)
-            
+
             assert factory._engine is engine
             assert factory._registry is registry
             assert factory._features_dir == Path(tmpdir)
@@ -32,10 +33,10 @@ class TestFSMFactoryInitialization:
         engine = FSMEngine()
         registry = Registry()
         event_bus = MagicMock()
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             factory = FSMFactory(engine, registry, features_dir=tmpdir, event_bus=event_bus)
-            
+
             assert factory._event_bus is event_bus
 
 
@@ -66,9 +67,9 @@ transitions:
         engine = FSMEngine()
         registry = Registry()
         factory = FSMFactory(engine, registry, features_dir=sample_template_file)
-        
+
         template_data = factory._load_template("test_template")
-        
+
         assert template_data["initial_state"] == "OFF"
         assert template_data["debounce_sec"] == 0.5
         assert "OFF" in template_data["states"]
@@ -79,13 +80,13 @@ transitions:
         engine = FSMEngine()
         registry = Registry()
         factory = FSMFactory(engine, registry, features_dir=sample_template_file)
-        
+
         template1 = factory._load_template("test_template")
         template2 = factory._load_template("test_template")
-        
+
         # Modify first template
         template1["modified"] = True
-        
+
         # Second template should not be modified
         assert "modified" not in template2
 
@@ -94,7 +95,7 @@ transitions:
         engine = FSMEngine()
         registry = Registry()
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
-        
+
         with pytest.raises(FileNotFoundError):
             factory._load_template("nonexistent_template")
 
@@ -118,7 +119,7 @@ transitions:
     trigger: "motion_detected"
     action: "turn_on_light"
 """)
-        
+
         engine = FSMEngine()
         registry = Registry()
         return FSMFactory(engine, registry, features_dir=str(tmp_path))
@@ -130,7 +131,7 @@ transitions:
             "states": ["OFF", "ON"],
             "transitions": []
         }
-        
+
         result = factory_with_templates._apply_params_to_template(
             template_data=template_data,
             params={"brightness": 255},
@@ -139,7 +140,7 @@ transitions:
             device_id="light.kitchen",
             behavior_template_name="lighting"
         )
-        
+
         assert result["entity_id"] == "light.kitchen_lighting_10"
 
     def test_apply_params_includes_params(self, factory_with_templates):
@@ -149,7 +150,7 @@ transitions:
             "states": ["OFF"],
             "transitions": []
         }
-        
+
         params = {"motion_sensor": "binary_sensor.kitchen_motion", "brightness": 255}
         result = factory_with_templates._apply_params_to_template(
             template_data=template_data,
@@ -159,7 +160,7 @@ transitions:
             device_id="light.kitchen",
             behavior_template_name="lighting"
         )
-        
+
         assert result["params"] == params
 
     def test_apply_params_sets_target_device_id(self, factory_with_templates):
@@ -169,7 +170,7 @@ transitions:
             "states": ["OFF"],
             "transitions": []
         }
-        
+
         result = factory_with_templates._apply_params_to_template(
             template_data=template_data,
             params={},
@@ -178,7 +179,7 @@ transitions:
             device_id="light.kitchen",
             behavior_template_name="lighting"
         )
-        
+
         assert result["target_device_id"] == "light.kitchen"
 
 
@@ -201,30 +202,30 @@ transitions:
     trigger: "motion_detected"
     action: "turn_on_light"
 """)
-        
+
         engine = FSMEngine()
         registry = Registry()
-        
+
         # Register required action
         async def turn_on_light(state, context):
             return True
-        
+
         registry.register_action("turn_on_light", turn_on_light)
-        
+
         return FSMFactory(engine, registry, features_dir=str(tmp_path)), registry, engine
 
     def test_create_from_behavior_success(self, factory_with_registry):
         """Creating FSM from valid behavior succeeds."""
         factory, registry, engine = factory_with_registry
-        
+
         behavior = BehaviorConfig(
             template="lighting",
             priority=10,
             params={"motion_sensor": "binary_sensor.kitchen_motion"}
         )
-        
+
         definitions = factory.create_from_behavior("light.kitchen", behavior)
-        
+
         assert len(definitions) == 1
         assert definitions[0].entity_id == "light.kitchen_lighting_10"
         assert definitions[0].initial_state == "OFF"
@@ -234,22 +235,22 @@ transitions:
         engine = FSMEngine()
         registry = Registry()
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
-        
+
         behavior = BehaviorConfig(
             template="nonexistent",
             priority=10,
             params={}
         )
-        
+
         definitions = factory.create_from_behavior("light.kitchen", behavior)
-        
+
         # Should return empty list on error
         assert len(definitions) == 0
 
     def test_create_from_behavior_with_schedule(self, factory_with_registry):
         """Creating FSM with schedule param adds schedule guard."""
         factory, registry, engine = factory_with_registry
-        
+
         behavior = BehaviorConfig(
             template="lighting",
             priority=10,
@@ -258,9 +259,9 @@ transitions:
                 "schedule": "07:00-23:00"
             }
         )
-        
+
         definitions = factory.create_from_behavior("light.kitchen", behavior)
-        
+
         assert len(definitions) == 1
         # Transitions should have schedule guard applied
         # This is verified by checking the transition has a guard function
@@ -285,21 +286,21 @@ transitions:
     trigger: "motion_detected"
     action: "turn_on_light"
 """)
-        
+
         engine = FSMEngine()
         registry = Registry()
-        
+
         # Register required action
         async def turn_on_light(state, context):
             return True
-        
+
         registry.register_action("turn_on_light", turn_on_light)
-        
+
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
-        
+
         # Create manifest
-        from core.models.manifest import Manifest, InstanceConfig, RoomConfig, DeviceConfig, BehaviorConfig, AutomationRules
-        
+        from core.models.manifest import AutomationRules, BehaviorConfig, InstanceConfig, RoomConfig
+
         manifest = Manifest(
             instance=InstanceConfig(id="test_house", name="Test House", owner="Test"),
             version=1,
@@ -325,25 +326,25 @@ transitions:
             ],
             automation_rules=AutomationRules()
         )
-        
+
         return factory, manifest, engine
 
     def test_create_from_manifest_success(self, factory_with_manifest):
         """Creating FSM from manifest succeeds."""
         factory, manifest, engine = factory_with_manifest
-        
+
         definitions = factory.create_from_manifest(manifest)
-        
+
         assert len(definitions) > 0
         assert any(d.entity_id == "light.kitchen_lighting_10" for d in definitions)
 
     def test_register_in_engine(self, factory_with_manifest):
         """Registering definitions in engine works."""
         factory, manifest, engine = factory_with_manifest
-        
+
         definitions = factory.create_from_manifest(manifest)
         factory.register_in_engine(definitions)
-        
+
         # Verify FSMs are registered
         for definition in definitions:
             assert definition.entity_id in engine._definitions
@@ -351,9 +352,9 @@ transitions:
     def test_create_and_register_combined(self, factory_with_manifest):
         """Combined create and register works."""
         factory, manifest, engine = factory_with_manifest
-        
+
         definitions = factory.create_and_register(manifest, restore_states=False)
-        
+
         assert len(definitions) > 0
         # All definitions should be registered
         for definition in definitions:
@@ -376,22 +377,22 @@ transitions:
     trigger: "motion_detected"
     action: "test_action"
 """)
-        
+
         engine = FSMEngine()
         registry = Registry()
         event_bus = MagicMock()
-        
+
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path), event_bus=event_bus)
-        
+
         params = {"motion_sensor": "binary_sensor.kitchen_motion"}
-        
+
         factory._subscribe_to_sensor_events(
             device_id="light.kitchen",
             fsm_entity_id="light.kitchen_lighting_10",
             params=params,
             template_name="lighting"
         )
-        
+
         # Verify subscription was made
         assert event_bus.subscribe_with_filter.called
         call_args = event_bus.subscribe_with_filter.call_args
@@ -402,18 +403,18 @@ transitions:
         engine = FSMEngine()
         registry = Registry()
         event_bus = MagicMock()
-        
+
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path), event_bus=event_bus)
-        
+
         params = {"brightness": 255}  # No motion_sensor
-        
+
         factory._subscribe_to_sensor_events(
             device_id="light.kitchen",
             fsm_entity_id="light.kitchen_lighting_10",
             params=params,
             template_name="lighting"
         )
-        
+
         # Verify no subscription was made
         assert not event_bus.subscribe_with_filter.called
 
@@ -426,9 +427,9 @@ class TestEdgeCases:
         engine = FSMEngine()
         registry = Registry()
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
-        
-        from core.models.manifest import Manifest, InstanceConfig, RoomConfig, DeviceConfig, AutomationRules
-        
+
+        from core.models.manifest import AutomationRules, InstanceConfig, RoomConfig
+
         manifest = Manifest(
             instance=InstanceConfig(id="test", name="Test", owner="Test"),
             version=1,
@@ -448,9 +449,9 @@ class TestEdgeCases:
             ],
             automation_rules=AutomationRules()
         )
-        
+
         definitions = factory.create_from_manifest(manifest)
-        
+
         # Should return empty list for device without behaviors
         assert len(definitions) == 0
 
@@ -467,7 +468,7 @@ transitions:
     trigger: "motion"
     action: "turn_on"
 """)
-        
+
         night_light_template = tmp_path / "night_light.yaml"
         night_light_template.write_text("""
 initial_state: "OFF"
@@ -478,24 +479,24 @@ transitions:
     trigger: "motion"
     action: "turn_on_night"
 """)
-        
+
         engine = FSMEngine()
         registry = Registry()
-        
+
         # Register actions
         async def turn_on(state, context):
             return True
-        
+
         async def turn_on_night(state, context):
             return True
-        
+
         registry.register_action("turn_on", turn_on)
         registry.register_action("turn_on_night", turn_on_night)
-        
+
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
-        
-        from core.models.manifest import Manifest, InstanceConfig, RoomConfig, DeviceConfig, BehaviorConfig, AutomationRules
-        
+
+        from core.models.manifest import AutomationRules, BehaviorConfig, InstanceConfig, RoomConfig
+
         manifest = Manifest(
             instance=InstanceConfig(id="test", name="Test", owner="Test"),
             version=1,
@@ -518,9 +519,9 @@ transitions:
             ],
             automation_rules=AutomationRules()
         )
-        
+
         definitions = factory.create_from_manifest(manifest)
-        
+
         # Should create 2 FSM instances (one per behavior)
         assert len(definitions) == 2
         entity_ids = [d.entity_id for d in definitions]

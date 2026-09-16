@@ -8,15 +8,14 @@ These tests verify the manifest generator behavior based on specification:
 - Handling of missing fields and edge cases
 """
 
+
 import pytest
-from unittest.mock import MagicMock
 
 from core.manifest_generator import (
+    GeneratorResult,
     ManifestAutomationGenerator,
     TriggerMapping,
-    GeneratorResult,
 )
-from core.fsm import FSMDefinition, Transition
 
 
 class TestManifestAutomationGeneratorInitialization:
@@ -26,7 +25,7 @@ class TestManifestAutomationGeneratorInitialization:
         """Generator initializes with manifest and logger"""
         manifest = {"devices": {}}
         generator = ManifestAutomationGenerator(manifest, logger=mock_logger)
-        
+
         assert generator._manifest == manifest
         assert generator._logger == mock_logger
 
@@ -34,7 +33,7 @@ class TestManifestAutomationGeneratorInitialization:
         """Generator creates dummy logger when not provided"""
         manifest = {"devices": {}}
         generator = ManifestAutomationGenerator(manifest)
-        
+
         assert generator._manifest == manifest
         # Should have a _DummyLogger instance
         assert hasattr(generator._logger, 'debug')
@@ -58,7 +57,7 @@ class TestGenerateAll:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert isinstance(result, GeneratorResult)
         assert isinstance(result.lighting_definitions, list)
         assert isinstance(result.lighting_mappings, list)
@@ -84,7 +83,7 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.lighting_definitions) == 2
         assert result.lighting_definitions[0].entity_id == "light.kitchen"
         assert result.lighting_definitions[1].entity_id == "light.bedroom"
@@ -98,7 +97,7 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.lighting_definitions[0]
         assert fsm.states == ("OFF", "ON_SCHEDULE", "ON_MOTION", "MANUAL")
         assert fsm.initial_state == "OFF"
@@ -112,10 +111,10 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.lighting_definitions[0]
         schedule_on_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger == "schedule_on" and t.to_state == "ON_SCHEDULE"
         ]
         assert len(schedule_on_transitions) == 1
@@ -130,10 +129,10 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.lighting_definitions[0]
         schedule_off_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger == "schedule_off" and t.to_state == "OFF"
         ]
         assert len(schedule_off_transitions) == 1
@@ -148,10 +147,10 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.lighting_definitions[0]
         motion_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger == "motion_detected" and t.to_state == "ON_MOTION"
         ]
         assert len(motion_transitions) == 1
@@ -166,10 +165,10 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.lighting_definitions[0]
         timeout_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger == "timeout" and t.from_state == "ON_MOTION" and t.to_state == "OFF"
         ]
         assert len(timeout_transitions) == 1
@@ -183,10 +182,10 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.lighting_definitions[0]
         manual_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger == "manual_change" and t.to_state == "MANUAL"
         ]
         assert len(manual_transitions) == 1
@@ -197,7 +196,7 @@ class TestLightingFSMGeneration:
         manifest = {
             "devices": {
                 "lighting": [{
-                    "id": "light.kitchen", 
+                    "id": "light.kitchen",
                     "room": "kitchen",
                     "motion_timeout_sec": 600
                 }]
@@ -205,10 +204,10 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.lighting_definitions[0]
         motion_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger == "motion_detected"
         ]
         assert motion_transitions[0].timeout_sec == 600
@@ -222,10 +221,10 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.lighting_definitions[0]
         motion_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger == "motion_detected"
         ]
         assert motion_transitions[0].timeout_sec == 300
@@ -242,12 +241,12 @@ class TestLightingFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         # First device has explicit room
         fsm1 = result.lighting_definitions[0]
         # Second device should extract room from entity_id
         fsm2 = result.lighting_definitions[1]
-        
+
         assert fsm1 is not None
         assert fsm2 is not None
 
@@ -268,7 +267,7 @@ class TestLightingMappings:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.lighting_mappings) >= 1
         motion_on_mapping = next(
             (m for m in result.lighting_mappings if m.source_value == "on"),
@@ -292,7 +291,7 @@ class TestLightingMappings:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         motion_off_mapping = next(
             (m for m in result.lighting_mappings if m.source_value == "off"),
             None
@@ -309,7 +308,7 @@ class TestLightingMappings:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.lighting_mappings) == 0
 
 
@@ -328,7 +327,7 @@ class TestClimateFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.climate_definitions) == 2
 
     def test_fsm_has_correct_states(self):
@@ -340,7 +339,7 @@ class TestClimateFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.climate_definitions[0]
         assert fsm.states == ("IDLE", "HEATING", "COOLING", "SAFETY_LOCKOUT", "AWAY")
         assert fsm.initial == "IDLE"
@@ -354,7 +353,7 @@ class TestClimateFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.climate_definitions[0]
         heating_triggers = [t.trigger for t in fsm.transitions]
         assert "temp_low" in heating_triggers
@@ -369,7 +368,7 @@ class TestClimateFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.climate_definitions[0]
         cooling_triggers = [t.trigger for t in fsm.transitions]
         assert "temp_high" in cooling_triggers
@@ -383,7 +382,7 @@ class TestClimateFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.climate_definitions[0]
         away_triggers = [t.trigger for t in fsm.transitions]
         assert "away_mode_on" in away_triggers
@@ -398,10 +397,10 @@ class TestClimateFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.climate_definitions[0]
         safety_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger in ("safety_alarm", "safety_reset")
         ]
         assert len(safety_transitions) == 2
@@ -422,7 +421,7 @@ class TestClimateFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         # FSM should be created with target=25.0 embedded in guards
         assert len(result.climate_definitions) == 1
 
@@ -439,7 +438,7 @@ class TestClimateFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.climate_definitions) == 1
 
 
@@ -459,7 +458,7 @@ class TestClimateMappings:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.climate_mappings) == 1
         mapping = result.climate_mappings[0]
         assert mapping.source_entity == "sensor.living_room_temp"
@@ -475,7 +474,7 @@ class TestClimateMappings:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.climate_mappings) == 0
 
 
@@ -494,7 +493,7 @@ class TestVentilationFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.ventilation_definitions) == 2
 
     def test_fsm_has_correct_states(self):
@@ -506,7 +505,7 @@ class TestVentilationFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.ventilation_definitions[0]
         assert fsm.states == ("OFF", "ON_HUMIDITY", "MANUAL")
         assert fsm.initial == "OFF"
@@ -520,7 +519,7 @@ class TestVentilationFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.ventilation_definitions[0]
         humidity_triggers = [t.trigger for t in fsm.transitions]
         assert "humidity_high" in humidity_triggers
@@ -534,7 +533,7 @@ class TestVentilationFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.ventilation_definitions[0]
         humidity_triggers = [t.trigger for t in fsm.transitions]
         assert "humidity_low" in humidity_triggers
@@ -552,7 +551,7 @@ class TestVentilationFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.ventilation_definitions) == 1
 
     def test_uses_timeout_from_config(self):
@@ -568,10 +567,10 @@ class TestVentilationFSMGeneration:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         fsm = result.ventilation_definitions[0]
         humidity_transitions = [
-            t for t in fsm.transitions 
+            t for t in fsm.transitions
             if t.trigger == "humidity_high"
         ]
         assert humidity_transitions[0].timeout_sec == 3600
@@ -593,7 +592,7 @@ class TestVentilationMappings:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.ventilation_mappings) == 1
         mapping = result.ventilation_mappings[0]
         assert mapping.source_entity == "sensor.bathroom_humidity"
@@ -608,7 +607,7 @@ class TestVentilationMappings:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.ventilation_mappings) == 0
 
 
@@ -626,7 +625,7 @@ class TestAutomationRulesExtraction:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert result.automation_rules == manifest["automation_rules"]
 
     def test_returns_empty_dict_when_no_automation_rules(self):
@@ -634,7 +633,7 @@ class TestAutomationRulesExtraction:
         manifest = {"devices": {}}
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert result.automation_rules == {}
 
 
@@ -651,10 +650,10 @@ class TestManualLockout:
             }
         }
         generator = ManifestAutomationGenerator(manifest)
-        
+
         # The lockout is used in FSM generation
         result = generator.generate_all()
-        
+
         # Just verify generation works - actual lockout value is embedded in transitions
         assert result is not None
 
@@ -666,7 +665,7 @@ class TestManualLockout:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert result is not None
 
 
@@ -681,7 +680,7 @@ class TestTriggerMappingDataClass:
             target_entity="light.kitchen",
             trigger="motion_detected",
         )
-        
+
         assert mapping.source_entity == "binary_sensor.motion"
         assert mapping.source_value == "on"
         assert mapping.target_entity == "light.kitchen"
@@ -695,13 +694,14 @@ class TestTriggerMappingDataClass:
             target_entity="light.kitchen",
             trigger="motion_detected",
         )
-        
+
         result = mapping.context_builder({})
         assert result == {}
 
     def test_context_builder_can_be_customized(self):
         """context_builder can be set to custom function"""
-        custom_builder = lambda e: {"custom": "value"}
+        def custom_builder(e):
+            return {"custom": "value"}
         mapping = TriggerMapping(
             source_entity="binary_sensor.motion",
             source_value="on",
@@ -709,7 +709,7 @@ class TestTriggerMappingDataClass:
             trigger="motion_detected",
             context_builder=custom_builder,
         )
-        
+
         result = mapping.context_builder({})
         assert result == {"custom": "value"}
 
@@ -728,7 +728,7 @@ class TestGeneratorResultDataClass:
             ventilation_mappings=[],
             automation_rules={},
         )
-        
+
         assert isinstance(result.lighting_definitions, list)
         assert isinstance(result.lighting_mappings, list)
         assert isinstance(result.climate_definitions, list)
@@ -746,7 +746,7 @@ class TestEdgeCases:
         manifest = {}
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.lighting_definitions) == 0
         assert len(result.climate_definitions) == 0
         assert len(result.ventilation_definitions) == 0
@@ -756,7 +756,7 @@ class TestEdgeCases:
         manifest = {"version": 1}
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.lighting_definitions) == 0
 
     def test_handles_missing_device_type(self):
@@ -769,7 +769,7 @@ class TestEdgeCases:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         assert len(result.lighting_definitions) == 1
         assert len(result.climate_definitions) == 0
         assert len(result.ventilation_definitions) == 0
@@ -782,7 +782,7 @@ class TestEdgeCases:
             }
         }
         generator = ManifestAutomationGenerator(manifest)
-        
+
         # This should raise KeyError or handle gracefully
         # Based on current implementation, it will raise KeyError
         with pytest.raises(KeyError):
@@ -801,14 +801,14 @@ class TestEdgeCases:
         }
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
-        
+
         # Find motion_detected mapping
         motion_mapping = next(
             (m for m in result.lighting_mappings if m.trigger == "motion_detected"),
             None
         )
         assert motion_mapping is not None
-        
+
         # Test context builder
         context = motion_mapping.context_builder({"new_state": {"state": "on"}})
         assert "kitchen_motion_sensor" in context

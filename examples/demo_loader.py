@@ -12,9 +12,7 @@ from typing import Any
 
 from loguru import logger
 
-from core import FSMEngine
-from core import Loader
-from core import Registry
+from core import FSMEngine, Loader, Registry
 
 
 # Пример guard функции - проверка ночного времени

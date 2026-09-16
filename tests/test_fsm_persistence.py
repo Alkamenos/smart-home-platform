@@ -11,18 +11,14 @@ Specification:
 7. Для каждого entity_id должен быть уникальный ключ хранения
 """
 
-import asyncio
 import json
 import time
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from core.fsm_persistence import FSMPersistence
-
-
 from core.fsm import State as FSMState
+from core.fsm_persistence import FSMPersistence
 
 
 class MockFSMEngine:
@@ -44,7 +40,6 @@ class MockFSMEngine:
 
 def create_mock_state(current_state="OFF", history=None):
     """Создаёт объект State согласно спецификации fsm.py."""
-    import time
     return FSMState(
         current_state=current_state,
         entered_at=time.time(),

@@ -8,8 +8,9 @@ Tests for Dashboard Integration - проверка создания и обно�
 - Поддерживаются разные типы фич (lighting, climate, ventilation)
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from dashboard.dashboard import DashboardIntegration
 
@@ -21,9 +22,9 @@ class TestDashboardIntegrationInitialization:
         """Инициализация с адаптером HA и шиной событий"""
         ha_adapter = MagicMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         assert integration.ha is ha_adapter
         assert integration.event_bus is event_bus
         assert integration._created_entities == {}
@@ -32,18 +33,18 @@ class TestDashboardIntegrationInitialization:
         """Подписка на событие изменения состояния FSM"""
         ha_adapter = MagicMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         event_bus.subscribe.assert_any_call("fsm.state.changed", integration._on_state_changed)
 
     def test_subscribes_to_ha_connected_event(self):
         """Подписка на событие подключения к HA"""
         ha_adapter = MagicMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         event_bus.subscribe.assert_any_call("ha.connected", integration._on_ha_connected)
 
 
@@ -56,15 +57,15 @@ class TestCreateFsmSensor:
         ha_adapter = AsyncMock()
         ha_adapter.call_service = AsyncMock(return_value=True)
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         result = await integration.create_fsm_sensor(
             fsm_id="light.kitchen_motion",
             name="Kitchen Motion Light",
             feature_type="lighting"
         )
-        
+
         assert result is True
         ha_adapter.call_service.assert_called_once()
         call_args = ha_adapter.call_service.call_args
@@ -82,15 +83,15 @@ class TestCreateFsmSensor:
         ha_adapter = AsyncMock()
         ha_adapter.call_service = AsyncMock(return_value=True)
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         await integration.create_fsm_sensor(
             fsm_id="climate.living_room",
             name="Living Room Climate",
             feature_type="climate"
         )
-        
+
         assert "climate.living_room" in integration._created_entities
         assert integration._created_entities["climate.living_room"] == "sensor.fsm_climate.living_room"
 
@@ -100,15 +101,15 @@ class TestCreateFsmSensor:
         ha_adapter = AsyncMock()
         ha_adapter.call_service = AsyncMock(return_value=False)
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         result = await integration.create_fsm_sensor(
             fsm_id="light.bedroom",
             name="Bedroom Light",
             feature_type="lighting"
         )
-        
+
         assert result is False
         assert "light.bedroom" not in integration._created_entities
 
@@ -118,9 +119,9 @@ class TestCreateFsmSensor:
         ha_adapter = AsyncMock()
         ha_adapter.call_service = AsyncMock(return_value=True)
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         # Проверяем разные типы фич
         feature_icons = {
             "lighting": "mdi:lightbulb",
@@ -129,7 +130,7 @@ class TestCreateFsmSensor:
             "security": "mdi:shield",
             "unknown": "mdi:cog"
         }
-        
+
         for feature_type, expected_icon in feature_icons.items():
             ha_adapter.call_service.reset_mock()
             await integration.create_fsm_sensor(
@@ -137,7 +138,7 @@ class TestCreateFsmSensor:
                 name=f"Test {feature_type}",
                 feature_type=feature_type
             )
-            
+
             data = ha_adapter.call_service.call_args[1]["data"]
             assert data["icon"] == expected_icon
 
@@ -152,10 +153,10 @@ class TestUpdateFsmSensor:
         ha_adapter.is_connected = True
         ha_adapter.set_entity_state = AsyncMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
         integration._created_entities["light.kitchen"] = "sensor.fsm_light.kitchen"
-        
+
         await integration._update_fsm_sensor(
             fsm_id="light.kitchen",
             state="ON_MOTION",
@@ -166,7 +167,7 @@ class TestUpdateFsmSensor:
                 "feature_type": "lighting"
             }
         )
-        
+
         ha_adapter.set_entity_state.assert_called_once()
         call_args = ha_adapter.set_entity_state.call_args
         assert call_args[1]["entity_id"] == "sensor.fsm_light.kitchen"
@@ -182,15 +183,15 @@ class TestUpdateFsmSensor:
         """Пропуск обновления если сущность не создана"""
         ha_adapter = AsyncMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         await integration._update_fsm_sensor(
             fsm_id="nonexistent",
             state="ON",
             event_data={}
         )
-        
+
         ha_adapter.set_entity_state.assert_not_called()
 
     @pytest.mark.asyncio
@@ -199,16 +200,16 @@ class TestUpdateFsmSensor:
         ha_adapter = AsyncMock()
         ha_adapter.is_connected = False
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
         integration._created_entities["light.kitchen"] = "sensor.fsm_light.kitchen"
-        
+
         await integration._update_fsm_sensor(
             fsm_id="light.kitchen",
             state="ON",
             event_data={}
         )
-        
+
         ha_adapter.set_entity_state.assert_not_called()
 
 
@@ -221,14 +222,14 @@ class TestCreateStatusBinarySensor:
         ha_adapter = AsyncMock()
         ha_adapter.set_entity_state = AsyncMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         result = await integration.create_status_binary_sensor(
             fsm_id="light.kitchen",
             name="Kitchen Light"
         )
-        
+
         assert result is True
         ha_adapter.set_entity_state.assert_called_once()
         call_args = ha_adapter.set_entity_state.call_args
@@ -243,14 +244,14 @@ class TestCreateStatusBinarySensor:
         """Сохранение ID статусной сущности"""
         ha_adapter = AsyncMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         await integration.create_status_binary_sensor(
             fsm_id="climate.bedroom",
             name="Bedroom Climate"
         )
-        
+
         assert "climate.bedroom_status" in integration._created_entities
         assert integration._created_entities["climate.bedroom_status"] == "binary_sensor.fsm_climate.bedroom_status"
 
@@ -263,17 +264,17 @@ class TestOnHaConnected:
         """Воссоздание сущностей при подключении"""
         ha_adapter = AsyncMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
         integration._created_entities = {
             "light.kitchen": "sensor.fsm_light.kitchen",
             "climate.bedroom": "sensor.fsm_climate.bedroom"
         }
-        
+
         # Мокаем метод _recreate_all_entities
         with patch.object(integration, '_recreate_all_entities', new_callable=AsyncMock) as mock_recreate:
             await integration._on_ha_connected({})
-            
+
             mock_recreate.assert_called_once()
 
 
@@ -285,7 +286,7 @@ class TestGetIconForFeature:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         assert integration._get_icon_for_feature("lighting") == "mdi:lightbulb"
 
     def test_returns_icon_for_climate(self):
@@ -293,7 +294,7 @@ class TestGetIconForFeature:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         assert integration._get_icon_for_feature("climate") == "mdi:thermometer"
 
     def test_returns_icon_for_ventilation(self):
@@ -301,7 +302,7 @@ class TestGetIconForFeature:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         assert integration._get_icon_for_feature("ventilation") == "mdi:fan"
 
     def test_returns_icon_for_security(self):
@@ -309,7 +310,7 @@ class TestGetIconForFeature:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         assert integration._get_icon_for_feature("security") == "mdi:shield"
 
     def test_returns_default_icon_for_unknown(self):
@@ -317,7 +318,7 @@ class TestGetIconForFeature:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         assert integration._get_icon_for_feature("unknown") == "mdi:cog"
         assert integration._get_icon_for_feature("nonexistent") == "mdi:cog"
 
@@ -330,7 +331,7 @@ class TestGetStateOptions:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         options = integration._get_state_options("lighting")
         assert "off" in options
         assert "on" in options
@@ -341,7 +342,7 @@ class TestGetStateOptions:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         options = integration._get_state_options("climate")
         assert "off" in options
         assert "heat" in options
@@ -352,7 +353,7 @@ class TestGetStateOptions:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         options = integration._get_state_options("ventilation")
         assert "off" in options
         assert "low" in options
@@ -363,7 +364,7 @@ class TestGetStateOptions:
         ha_adapter = MagicMock()
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
-        
+
         options = integration._get_state_options("unknown")
         assert options == ["unknown"]
 
@@ -377,9 +378,9 @@ class TestGetCreatedEntities:
         event_bus = MagicMock()
         integration = DashboardIntegration(ha_adapter, event_bus)
         integration._created_entities = {"test": "sensor.test"}
-        
+
         entities = integration.get_created_entities()
-        
+
         assert entities == {"test": "sensor.test"}
         assert entities is not integration._created_entities  # Это копия
 
@@ -392,12 +393,12 @@ class TestRecreateAllEntities:
         """Логирование воссоздания для каждой сущности"""
         ha_adapter = AsyncMock()
         event_bus = MagicMock()
-        
+
         integration = DashboardIntegration(ha_adapter, event_bus)
         integration._created_entities = {
             "light.kitchen": "sensor.fsm_light.kitchen",
             "climate.bedroom": "sensor.fsm_climate.bedroom"
         }
-        
+
         # Просто проверяем что метод выполняется без ошибок
         await integration._recreate_all_entities()
