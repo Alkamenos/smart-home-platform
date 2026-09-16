@@ -1,22 +1,16 @@
 ```
-# Compiled Python files
-*.pyc
-__pycache__/
-
 # Coverage reports
 .coverage
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Logs
-*.log
-
-# Environment files
-.env
-.env.local
-*.env.*
+# Testing
+.coverage*
+coverage/
+htmlcov/
+.pytest_cache/
 ```
