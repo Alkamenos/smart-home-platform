@@ -34,8 +34,7 @@ dev = [
 
     # Linting & Formatting
     "ruff>=0.4.0",
-    "black>=24.0",
-    "isort>=5.13",
+
 
     # Documentation
     "interrogate>=1.7",
@@ -84,7 +83,7 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
 
@@ -107,19 +106,29 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["smart_home", "tools"]
 
+known-first-party = ["smart_home"]
+known-third-party = ["fastapi", "sqlalchemy", "pydantic"]
+force-single-line = false
+lines-after-imports = 2
+combine-as-imports = true
+
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.format]
+quote-style = "double"
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]  # allow assert in tests
 
 [tool.black]
 line-length = 100
 target-version = ["py310"]
-
-[tool.isort]
-profile = "black"
-line_length = 100
-known_first_party = ["smart_home", "tools"]
 
 [tool.interrogate]
 ignore-init-method = true

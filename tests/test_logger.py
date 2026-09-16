@@ -15,7 +15,7 @@ Specification:
 #  SPDX-License-Identifier: Apache-2.0
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from core.logger import Logger, get_logger
@@ -62,12 +62,11 @@ class TestLogFormatting:
 
     def test_log_contains_timestamp(self):
         """Лог содержит временную метку в ISO формате."""
-        from datetime import timezone
 
         logger = Logger()
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         log_entry = logger._format_log("INFO", "test")
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
 
         timestamp = datetime.fromisoformat(log_entry["timestamp"])
         assert before <= timestamp <= after

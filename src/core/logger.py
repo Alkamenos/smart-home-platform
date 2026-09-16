@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 
 # Глобальный кэш логгеров
 _loggers_cache = {}
@@ -70,7 +71,7 @@ class Logger:
     def _format_log(self, level: str, message: str, **context) -> dict:
         """Сформировать структурированный лог"""
         return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": level,
             "component": self._component,
             "message": message,

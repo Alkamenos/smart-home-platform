@@ -16,12 +16,14 @@ import sys
 
 import pytest
 
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pathlib import Path
 
 from bootstrap import PlatformContext, bootstrap_platform
 from core import ManualLockoutMiddleware
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = PROJECT_ROOT / "instances" / "leonids_house" / "manifest.yaml"

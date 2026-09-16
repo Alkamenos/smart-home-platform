@@ -30,6 +30,7 @@ from watchdog.events import (
 )
 from watchdog.observers import Observer
 
+
 if TYPE_CHECKING:
     from core import Loader
     from core.fsm import FSMEngine

@@ -3,16 +3,14 @@
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
 
-from .manifest import (
+from .manifest import (  # Backward compatibility aliases; Core models; Loader
     AnyDevice,
     AutomationDomainRules,
     AutomationRules,
     BehaviorConfig,
-    # Backward compatibility aliases
     ClimateAutomation,
     Dashboard,
     DeviceConfig,
-    # Core models
     InstanceConfig,
     InstanceInfo,
     LightingAutomation,
@@ -21,9 +19,9 @@ from .manifest import (
     RoomConfig,
     VentilationAutomation,
     Zone,
-    # Loader
     load_manifest,
 )
+
 
 __all__ = [
     "InstanceConfig",

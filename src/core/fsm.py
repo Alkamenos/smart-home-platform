@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+
 if TYPE_CHECKING:
     from .command_dispatcher import CommandDispatcher, CommandIntent
     from .state_persistence import StatePersistence

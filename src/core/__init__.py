@@ -32,6 +32,7 @@ from core.state_store import (
     MemoryStateStore,
 )
 
+
 __all__ = [
     "FSMDefinition",
     "FSMEngine",

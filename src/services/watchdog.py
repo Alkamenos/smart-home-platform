@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from core.logger import get_logger
 
+
 if TYPE_CHECKING:
     from adapters.ha_adapter import HomeAssistantAdapter
     from core.fsm import FSMEngine

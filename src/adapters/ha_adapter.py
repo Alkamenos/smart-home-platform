@@ -156,7 +156,7 @@ class SimpleHAWebSocketClient:
         try:
             response = await asyncio.wait_for(result_future, timeout=15)
             return response.get("result", [])
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return []
 
     async def call_service(self, domain, service, service_data=None, return_response=True):
@@ -188,7 +188,7 @@ class SimpleHAWebSocketClient:
             try:
                 response = await asyncio.wait_for(result_future, timeout=15)
                 return response.get("result")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return None
         else:
             await self.ws.send(json.dumps(payload))

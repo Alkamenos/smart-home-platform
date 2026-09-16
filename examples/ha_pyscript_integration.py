@@ -59,6 +59,7 @@ Note: This is an example file showing the integration pattern.
 
 from typing import Any
 
+
 # Mock imports for standalone testing (remove in actual HA deployment)
 try:
     from adapters.ha_adapter import HAAdapter

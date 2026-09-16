@@ -17,6 +17,7 @@ from typing import Any
 from adapters.ha_adapter import HomeAssistantAdapter
 from core.event_bus import EventBus
 
+
 logger = logging.getLogger(__name__)
 
 

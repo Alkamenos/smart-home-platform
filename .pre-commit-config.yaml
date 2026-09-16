@@ -12,18 +12,14 @@ repos:
     rev: v0.6.0
     hooks:
       - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+        args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff-format
 
-  - repo: https://github.com/psf/black
-    rev: 26.5.1
-    hooks:
-      - id: black
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.11.0
     hooks:
       - id: mypy
-        additional_dependencies: [pydantic>=2.0, loguru>=0.7, types-PyYAML]
+        additional_dependencies: [ pydantic>=2.0, loguru>=0.7, types-PyYAML ]
         files: ^src/
-        args: [--ignore-missing-imports, --disable-error-code=misc, --disable-error-code=no-untyped-def, --disable-error-code=no-any-return, --disable-error-code=type-arg, --disable-error-code=assignment, --disable-error-code=attr-defined, --disable-error-code=union-attr, --disable-error-code=arg-type, --disable-error-code=call-arg, --disable-error-code=has-type, --disable-error-code=var-annotated, --disable-error-code=valid-type, --disable-error-code=unused-ignore, --disable-error-code=no-untyped-call, --disable-error-code=index, --disable-error-code=import-untyped, --disable-error-code=return-value]
+        args: [ --ignore-missing-imports, --disable-error-code=misc, --disable-error-code=no-untyped-def, --disable-error-code=no-any-return, --disable-error-code=type-arg, --disable-error-code=assignment, --disable-error-code=attr-defined, --disable-error-code=union-attr, --disable-error-code=arg-type, --disable-error-code=call-arg, --disable-error-code=has-type, --disable-error-code=var-annotated, --disable-error-code=valid-type, --disable-error-code=unused-ignore, --disable-error-code=no-untyped-call, --disable-error-code=index, --disable-error-code=import-untyped, --disable-error-code=return-value ]

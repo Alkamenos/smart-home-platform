@@ -9,6 +9,7 @@ Manifest Schema - Схема валидации манифеста платфо�
 
 from typing import Any
 
+
 MANIFEST_SCHEMA = {
     "version": {"type": "integer", "required": True},
     "instance": {
