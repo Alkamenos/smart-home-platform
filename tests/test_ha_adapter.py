@@ -209,13 +209,12 @@ class TestHAAdapterStateChangeHandling:
     @pytest.mark.asyncio
     async def test_on_state_change_fallback_to_direct_trigger(self):
         """If no event_bus, should trigger FSM directly."""
+        import builtins
+        
         hass_mock = MagicMock()
         engine_mock = MagicMock()
-        # Properly mock hasattr check and event_bus absence
-        type(engine_mock).event_bus = PropertyMock(side_effect=AttributeError("No event_bus"))
-        engine_mock.trigger = AsyncMock()
         
-        # Mock hasattr to return False for event_bus
+        # Mock hasattr to return False for event_bus attribute
         original_hasattr = builtins.hasattr
         
         def mock_hasattr(obj, name):
@@ -223,7 +222,8 @@ class TestHAAdapterStateChangeHandling:
                 return False
             return original_hasattr(obj, name)
         
-        import builtins
+        engine_mock.trigger = AsyncMock()
+        
         with patch("builtins.hasattr", side_effect=mock_hasattr):
             adapter = HAAdapter(mode="pyscript", engine=engine_mock, hass=hass_mock)
 
@@ -407,15 +407,11 @@ class TestHAAdapterWebSocketLifecycle:
         )
 
         # Create a mock reconnect task that behaves like a real asyncio.Task
-        mock_task = MagicMock()
-        mock_task.done = MagicMock(return_value=False)
-        mock_task.cancel = MagicMock()
-        
-        async def mock_await():
+        async def dummy_coro():
             pass
         
-        # Make the mock awaitable
-        mock_task.__await__ = lambda: iter([])
+        mock_task = asyncio.create_task(dummy_coro())
+        mock_task.cancel = MagicMock()  # Override cancel to track calls
         adapter._reconnect_task = mock_task
 
         await adapter.stop()
@@ -587,15 +583,13 @@ class TestSimpleHAWebSocketClient:
         )
 
         # Create a proper mock task that can be awaited
-        mock_task = MagicMock()
-        mock_task.cancel = MagicMock()
-        
-        async def mock_await():
+        async def dummy_coro():
             pass
         
-        mock_task.__await__ = lambda: iter([])
+        mock_task = asyncio.create_task(dummy_coro())
+        mock_task.cancel = MagicMock()  # Override cancel to track calls
         client._listen_task = mock_task
-        
+
         # Create a proper mock WebSocket
         mock_ws = AsyncMock()
         mock_ws.close = AsyncMock()
