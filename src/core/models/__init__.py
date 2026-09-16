@@ -3,6 +3,14 @@
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
 
+from .guards import (
+    CompositeGuardConfig,
+    GuardFactoryModel,
+    NumericGuardConfig,
+    ScheduleGuardConfig,
+    StateGuardConfig,
+    TimeGuardConfig,
+)
 from .manifest import (  # Backward compatibility aliases; Core models; Loader
     AnyDevice,
     AutomationDomainRules,
@@ -20,14 +28,6 @@ from .manifest import (  # Backward compatibility aliases; Core models; Loader
     VentilationAutomation,
     Zone,
     load_manifest,
-)
-from .guards import (
-    TimeGuardConfig,
-    StateGuardConfig,
-    NumericGuardConfig,
-    ScheduleGuardConfig,
-    CompositeGuardConfig,
-    GuardFactoryModel,
 )
 
 

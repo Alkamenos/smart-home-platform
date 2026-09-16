@@ -92,9 +92,7 @@ class GuardFactory:
         operator_str = config.get("operator")
         value = config.get("value")
         if not entity or not operator_str or value is None:
-            raise ValueError(
-                "Numeric guard requires 'entity', 'operator', and 'value' parameters"
-            )
+            raise ValueError("Numeric guard requires 'entity', 'operator', and 'value' parameters")
         return NumericGuard(entity, operator_str, value)
 
     def _create_composite_guard(self, config: dict[str, Any]) -> CompositeGuard:
