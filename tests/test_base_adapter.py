@@ -8,7 +8,6 @@ Tests for Base Adapter - abstract base class tests
 from __future__ import annotations
 
 import pytest
-
 from src.adapters.base import BaseAdapter
 
 
@@ -24,16 +23,12 @@ class ConcreteTestAdapter(BaseAdapter):
         """Get state of a device."""
         return self._states.get(entity_id)
 
-    def send_command(
-        self, entity_id: str, command: str, attributes: dict = None
-    ) -> bool:
+    def send_command(self, entity_id: str, command: str, attributes: dict = None) -> bool:
         """Send command to a device."""
         self._states[entity_id] = command
         return True
 
-    def subscribe_to_changes(
-        self, entity_id: str, callback: callable
-    ) -> None:
+    def subscribe_to_changes(self, entity_id: str, callback: callable) -> None:
         """Subscribe to device state changes."""
         if entity_id not in self._callbacks:
             self._callbacks[entity_id] = []
@@ -60,22 +55,22 @@ class TestBaseAdapterInterface:
     def test_get_state_abstract_method_exists(self) -> None:
         """Test that get_state method is defined in base class."""
         assert hasattr(BaseAdapter, "get_state")
-        assert getattr(BaseAdapter, "get_state").__isabstractmethod__
+        assert BaseAdapter.get_state.__isabstractmethod__
 
     def test_send_command_abstract_method_exists(self) -> None:
         """Test that send_command method is defined in base class."""
         assert hasattr(BaseAdapter, "send_command")
-        assert getattr(BaseAdapter, "send_command").__isabstractmethod__
+        assert BaseAdapter.send_command.__isabstractmethod__
 
     def test_subscribe_to_changes_abstract_method_exists(self) -> None:
         """Test that subscribe_to_changes method is defined in base class."""
         assert hasattr(BaseAdapter, "subscribe_to_changes")
-        assert getattr(BaseAdapter, "subscribe_to_changes").__isabstractmethod__
+        assert BaseAdapter.subscribe_to_changes.__isabstractmethod__
 
     def test_is_available_abstract_method_exists(self) -> None:
         """Test that is_available method is defined in base class."""
         assert hasattr(BaseAdapter, "is_available")
-        assert getattr(BaseAdapter, "is_available").__isabstractmethod__
+        assert BaseAdapter.is_available.__isabstractmethod__
 
 
 class TestConcreteAdapterImplementation:
@@ -102,25 +97,31 @@ class TestConcreteAdapterImplementation:
     def test_send_command_with_attributes(self) -> None:
         """Test send_command accepts optional attributes."""
         adapter = ConcreteTestAdapter()
-        result = adapter.send_command(
-            "light.bedroom", "set_brightness", {"brightness": 50}
-        )
+        result = adapter.send_command("light.bedroom", "set_brightness", {"brightness": 50})
         assert result is True
         assert adapter.get_state("light.bedroom") == "set_brightness"
 
     def test_subscribe_to_changes_adds_callback(self) -> None:
         """Test subscribe_to_changes adds callback to list."""
+
+        def dummy_callback(x: str, y: dict[str, object]) -> None:
+            pass
+
         adapter = ConcreteTestAdapter()
-        callback = lambda x, y: None
-        adapter.subscribe_to_changes("light.living_room", callback)
+        adapter.subscribe_to_changes("light.living_room", dummy_callback)
         assert "light.living_room" in adapter._callbacks
-        assert callback in adapter._callbacks["light.living_room"]
+        assert dummy_callback in adapter._callbacks["light.living_room"]
 
     def test_subscribe_to_changes_multiple_callbacks(self) -> None:
         """Test subscribe_to_changes handles multiple callbacks."""
+
+        def callback1(x: str, y: dict[str, object]) -> None:
+            pass
+
+        def callback2(x: str, y: dict[str, object]) -> None:
+            pass
+
         adapter = ConcreteTestAdapter()
-        callback1 = lambda x, y: None
-        callback2 = lambda x, y: None
         adapter.subscribe_to_changes("light.living_room", callback1)
         adapter.subscribe_to_changes("light.living_room", callback2)
         assert len(adapter._callbacks["light.living_room"]) == 2

@@ -98,20 +98,20 @@ async def test_concurrent_save_state():
         # Verify all states were saved correctly
         saved_data = persistence._load_data()
 
-        assert (
-            len(saved_data) == num_tasks
-        ), f"Expected {num_tasks} entities, but found {len(saved_data)}"
+        assert len(saved_data) == num_tasks, (
+            f"Expected {num_tasks} entities, but found {len(saved_data)}"
+        )
 
         for entity_id, expected in expected_data.items():
             assert entity_id in saved_data, f"Entity '{entity_id}' is missing from saved data"
 
             actual = saved_data[entity_id]
-            assert (
-                actual["state"] == expected["state"]
-            ), f"State mismatch for {entity_id}: expected '{expected['state']}', got '{actual['state']}'"
-            assert (
-                actual["context"] == expected["context"]
-            ), f"Context mismatch for {entity_id}: expected {expected['context']}, got {actual['context']}"
+            assert actual["state"] == expected["state"], (
+                f"State mismatch for {entity_id}: expected '{expected['state']}', got '{actual['state']}'"
+            )
+            assert actual["context"] == expected["context"], (
+                f"Context mismatch for {entity_id}: expected {expected['context']}, got {actual['context']}"
+            )
 
         print(f"✓ All {num_tasks} entities saved correctly - no data loss")
         return True
@@ -154,9 +154,9 @@ async def test_concurrent_same_entity():
 
         # The final state should be one of the written states (no corruption)
         valid_states = {f"state_{i}" for i in range(num_tasks)}
-        assert (
-            actual["state"] in valid_states
-        ), f"Final state '{actual['state']}' should be one of the valid states"
+        assert actual["state"] in valid_states, (
+            f"Final state '{actual['state']}' should be one of the valid states"
+        )
 
         print("✓ Concurrent writes to same entity handled correctly - no corruption")
         return True

@@ -101,9 +101,9 @@ async def test_context_persists_across_transitions():
         await engine.trigger(entity_id, "next", trace_id="ctx-003")
         state = engine.get_state(entity_id)
         assert state.context.get("counter") == 1, "Counter должен сохраниться"
-        assert (
-            state.context.get("last_action") == datetime(2026, 9, 9, 12, 0, 1).timestamp()
-        ), "last_action должен сохраниться"
+        assert state.context.get("last_action") == datetime(2026, 9, 9, 12, 0, 1).timestamp(), (
+            "last_action должен сохраниться"
+        )
 
 
 @pytest.mark.asyncio
