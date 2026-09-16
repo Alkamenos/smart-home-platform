@@ -9,22 +9,21 @@ env/
 venv/
 .venv/
 .ENV
-.python-version
-.pytest_cache/
-.mypy_cache/
+.env
+.env.*
+.env.local
 .coverage
 coverage/
+htmlcov/
 
-# Build artifacts
-build/
-dist/
-*.egg-info/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
 
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-.env.*
+# OS
+.DS_Store
+Thumbs.db
 ```

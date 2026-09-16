@@ -263,11 +263,11 @@ class TestOnPlatformStarted:
         mock_fsm_engine.add_definition("light.living_room", definition)
 
         # Мок загрузки сохранённого состояния
-        with patch.object(persistence, "_load_state", return_value="PARTY"):
-            with patch.object(persistence, "_restore_state") as mock_restore:
-                persistence._on_platform_started({})
+        with patch.object(persistence, "_load_state", return_value="PARTY"), \
+             patch.object(persistence, "_restore_state") as mock_restore:
+            persistence._on_platform_started({})
 
-                mock_restore.assert_called_once_with("light.living_room", "PARTY")
+            mock_restore.assert_called_once_with("light.living_room", "PARTY")
 
     def test_skips_restore_if_no_saved_state(self, mock_event_bus, mock_fsm_engine, mock_logger):
         """Пропуск восстановления если нет сохранённого состояния."""
@@ -280,11 +280,11 @@ class TestOnPlatformStarted:
 
         persistence.enable_for_entity("light.living_room")
 
-        with patch.object(persistence, "_load_state", return_value=None):
-            with patch.object(persistence, "_restore_state") as mock_restore:
-                persistence._on_platform_started({})
+        with patch.object(persistence, "_load_state", return_value=None), \
+             patch.object(persistence, "_restore_state") as mock_restore:
+            persistence._on_platform_started({})
 
-                mock_restore.assert_not_called()
+            mock_restore.assert_not_called()
 
     def test_skips_restore_if_fsm_not_found(self, mock_event_bus, mock_logger):
         """Пропуск восстановления если FSM не найден."""
@@ -298,11 +298,11 @@ class TestOnPlatformStarted:
 
         persistence.enable_for_entity("light.nonexistent")
 
-        with patch.object(persistence, "_load_state", return_value="ON"):
-            with patch.object(persistence, "_restore_state") as mock_restore:
-                persistence._on_platform_started({})
+        with patch.object(persistence, "_load_state", return_value="ON"), \
+             patch.object(persistence, "_restore_state") as mock_restore:
+            persistence._on_platform_started({})
 
-                mock_restore.assert_not_called()
+            mock_restore.assert_not_called()
 
     def test_skips_restore_if_state_invalid(self, mock_event_bus, mock_fsm_engine, mock_logger):
         """Пропуск восстановления если состояние невалидно."""
@@ -322,11 +322,11 @@ class TestOnPlatformStarted:
         definition = MockDefinition(states=("OFF", "ON", "PARTY"))
         mock_fsm_engine.add_definition("light.living_room", definition)
 
-        with patch.object(persistence, "_load_state", return_value="INVALID_STATE"):
-            with patch.object(persistence, "_restore_state") as mock_restore:
-                persistence._on_platform_started({})
+        with patch.object(persistence, "_load_state", return_value="INVALID_STATE"), \
+             patch.object(persistence, "_restore_state") as mock_restore:
+            persistence._on_platform_started({})
 
-                mock_restore.assert_not_called()
+            mock_restore.assert_not_called()
 
     def test_logs_restore_count(self, mock_event_bus, mock_fsm_engine, mock_logger):
         """Логирование количества восстановленных состояний."""
@@ -348,11 +348,11 @@ class TestOnPlatformStarted:
         mock_fsm_engine.add_definition("light.living_room", definition)
         mock_fsm_engine.add_definition("light.kitchen", definition)
 
-        with patch.object(persistence, "_load_state", return_value="ON"):
-            with patch.object(persistence, "_restore_state"):
-                persistence._on_platform_started({})
+        with patch.object(persistence, "_load_state", return_value="ON"), \
+             patch.object(persistence, "_restore_state"):
+            persistence._on_platform_started({})
 
-                mock_logger.info.assert_any_call("Restore complete. Restored 2 states")
+            mock_logger.info.assert_any_call("Restore complete. Restored 2 states")
 
 
 class TestSaveState:
@@ -363,33 +363,33 @@ class TestSaveState:
         """Сохранение через input_text когда доступен."""
         persistence._input_text_available = True
 
-        with patch("asyncio.get_running_loop"):
-            with patch("asyncio.create_task") as mock_create_task:
-                persistence._save_state("test_mode", "ON", "light.test")
+        with patch("asyncio.get_running_loop"), \
+             patch("asyncio.create_task") as mock_create_task:
+            persistence._save_state("test_mode", "ON", "light.test")
 
-                mock_create_task.assert_called_once()
+            mock_create_task.assert_called_once()
 
     def test_falls_back_to_file_on_error(self, persistence, mock_logger):
         """Fallback в файл при ошибке input_text."""
         persistence._input_text_available = True
 
-        with patch("asyncio.get_running_loop"):
-            with patch("asyncio.create_task", side_effect=Exception("Async error")):
-                with patch.object(persistence, "_save_to_file") as mock_save_file:
-                    persistence._save_state("test_mode", "ON", "light.test")
+        with patch("asyncio.get_running_loop"), \
+             patch("asyncio.create_task", side_effect=Exception("Async error")), \
+             patch.object(persistence, "_save_to_file") as mock_save_file:
+            persistence._save_state("test_mode", "ON", "light.test")
 
-                    mock_save_file.assert_called_once()
+            mock_save_file.assert_called_once()
 
     def test_sets_input_text_unavailable_on_error(self, persistence):
         """Флаг input_text_available сбрасывается при ошибке."""
         persistence._input_text_available = True
 
-        with patch("asyncio.get_running_loop"):
-            with patch("asyncio.create_task", side_effect=Exception("Error")):
-                with patch.object(persistence, "_save_to_file"):
-                    persistence._save_state("test_mode", "ON", "light.test")
+        with patch("asyncio.get_running_loop"), \
+             patch("asyncio.create_task", side_effect=Exception("Error")), \
+             patch.object(persistence, "_save_to_file"):
+            persistence._save_state("test_mode", "ON", "light.test")
 
-                    assert persistence._input_text_available is False
+            assert persistence._input_text_available is False
 
     def test_saves_directly_to_file_when_unavailable(self, persistence):
         """Прямое сохранение в файл когда input_text недоступен."""
@@ -408,11 +408,11 @@ class TestSaveToFile:
         """Создание директории для хранения."""
         storage_dir = tmp_path / ".homeassistant" / ".storage" / "fsm_persistence"
 
-        with patch("pathlib.Path.home", return_value=tmp_path):
-            with patch("builtins.open", create=True):
-                persistence._save_to_file("test_mode", "ON")
+        with patch("pathlib.Path.home", return_value=tmp_path), \
+             patch("builtins.open", create=True):
+            persistence._save_to_file("test_mode", "ON")
 
-                assert storage_dir.exists() or True  # Директория должна быть создана
+            assert storage_dir.exists() or True  # Директория должна быть создана
 
     def test_saves_json_with_state_and_timestamp(self, persistence, tmp_path):
         """Сохранение JSON с состоянием и timestamp."""
