@@ -124,8 +124,13 @@ class ManifestValidator:
         """Проверка форматов строк"""
         errors = []
 
+        devices = manifest.get("devices", {})
+        if not isinstance(devices, dict):
+            # Если devices не словарь, дальнейшая проверка форматов невозможна
+            return errors
+
         # Проверка entity_id и расписаний для lighting
-        for device in manifest.get("devices", {}).get("lighting", []):
+        for device in devices.get("lighting", []):
             device_id = device.get("id", "")
             if not self._is_valid_entity_id(device_id):
                 errors.append(
@@ -192,9 +197,19 @@ class ManifestValidator:
         errors = []
 
         # Собираем все комнаты из zones
-        zone_ids = {zone.get("id") for zone in manifest.get("zones", [])}
+        zones = manifest.get("zones", [])
+        if not isinstance(zones, list):
+            # Если zones не список, дальнейшая проверка невозможна
+            return errors
+            
+        zone_ids = {zone.get("id") for zone in zones}
 
         # Проверяем что все устройства ссылаются на существующие комнаты
+        devices = manifest.get("devices", {})
+        if not isinstance(devices, dict):
+            # Если devices не словарь, дальнейшая проверка невозможна
+            return errors
+            
         for device_type in ["lighting", "climate", "ventilation"]:
             for device in manifest.get("devices", {}).get(device_type, []):
                 room = device.get("room")
@@ -212,6 +227,11 @@ class ManifestValidator:
         """Логические проверки"""
         errors = []
 
+        devices = manifest.get("devices", {})
+        if not isinstance(devices, dict):
+            # Если devices не словарь, дальнейшая проверка невозможна
+            return errors
+
         # Проверка уникальности ID устройств
         seen_ids = set()
         for device_type in ["lighting", "climate", "ventilation"]:
@@ -228,8 +248,13 @@ class ManifestValidator:
                     seen_ids.add(device_id)
 
         # Проверка уникальности ID зон
+        zones = manifest.get("zones", [])
+        if not isinstance(zones, list):
+            # Если zones не список, проверка уникальности невозможна
+            return errors
+            
         zone_ids = set()
-        for zone in manifest.get("zones", []):
+        for zone in zones:
             zone_id = zone.get("id")
             if zone_id:
                 if zone_id in zone_ids:

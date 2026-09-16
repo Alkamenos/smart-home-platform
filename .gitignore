@@ -1,20 +1,42 @@
 ```
-# Test coverage
-coverage.xml
-.coverage
-coverage/
-
-# Python
+# Test and cache directories
+.tests/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
+
+# Coverage reports
+.coverage
+htmlcov/
+.coverage.*
+
+# Python virtual environments
 venv/
 .venv/
-.ENV
-.python-version
+.env
+.env.local
+*.env.*
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Testing
 .pytest_cache/
 .mypy_cache/
 ```
