@@ -23,6 +23,7 @@
 | HA Adapter (WebSocket) | `adapters/ha_adapter.py` | ✅ Stable | `test_ha_adapter.py` |
 | Mock Adapter | `adapters/mock_adapter.py` | ✅ Stable | `test_scenarios.py` |
 | Room-Based Architecture | `bootstrap.py`, `core/` | ✅ New | Updated all tests |
+| **Prometheus Metrics** | `core/metrics.py`, `services/metrics_server.py` | ✅ New | `test_metrics.py` |
 
 ## Known Issues
 
@@ -49,6 +50,7 @@
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-16 | Prometheus metrics collection implementation | `core/metrics.py`, `tests/test_metrics.py` | ✅ Complete |
 | 2026-09-15 | Room-based architecture implementation | `bootstrap.py`, `core/`, `tests/` | ✅ Complete |
 | 2026-09-15 | Extract `extract_device_id()` helper | `core/` | ✅ Complete |
 | 2026-09-15 | EventRouter public API refactor | `core/event_router.py` | ✅ Complete |
@@ -59,6 +61,13 @@
 | 2026-09-13 | E2E тест композиции | `tests/test_composition_scenario.py` | ✅ Complete |
 
 ## Архитектурные изменения
+
+### 2026-09-16: Prometheus Metrics Implementation
+- Добавлен модуль сбора метрик `core/metrics.py`
+- Реализован MetricsCollector для записи ключевых метрик платформы
+- Метрики: FSM transitions, event latency, HA errors, middleware conflicts, command rejections, active FSM instances
+- Graceful degradation при отсутствии prometheus_client
+- Покрытие тестами: 98%
 
 ### 2026-09-15: Room-Based Architecture
 - Добавлена поддержка комнат как логических группировок устройств
