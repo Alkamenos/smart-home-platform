@@ -61,7 +61,7 @@ pytest tests/test_lighting.py -v
 Файл `tests/test_integration.py` содержит end-to-end тесты:
 
 - `test_motion_turns_on_light_via_dispatcher` — HA событие → FSM → Action
-- `test_motion_timeout_turns_off_light` — таймаут → FSM → Action  
+- `test_motion_timeout_turns_off_light` — таймаут → FSM → Action
 - `test_manual_override_stops_automation` — MANUAL блокирует автоматы
 - `test_full_lifecycle` — полный цикл: OFF → ON_MOTION → OFF → MANUAL
 

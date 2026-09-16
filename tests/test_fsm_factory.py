@@ -108,7 +108,8 @@ class TestParamApplication:
         """Create factory with sample templates."""
         # Create lighting template
         lighting_template = tmp_path / "lighting.yaml"
-        lighting_template.write_text("""
+        lighting_template.write_text(
+            """
 initial_state: "OFF"
 states:
   - "OFF"
@@ -118,7 +119,8 @@ transitions:
     to_state: "ON_MOTION"
     trigger: "motion_detected"
     action: "turn_on_light"
-""")
+"""
+        )
 
         engine = FSMEngine()
         registry = Registry()
@@ -179,7 +181,8 @@ class TestBehaviorCreation:
         """Create factory with registered actions and guards."""
         # Create lighting template
         lighting_template = tmp_path / "lighting.yaml"
-        lighting_template.write_text("""
+        lighting_template.write_text(
+            """
 initial_state: "OFF"
 states:
   - "OFF"
@@ -189,7 +192,8 @@ transitions:
     to_state: "ON_MOTION"
     trigger: "motion_detected"
     action: "turn_on_light"
-""")
+"""
+        )
 
         engine = FSMEngine()
         registry = Registry()
@@ -256,7 +260,8 @@ class TestManifestIntegration:
         """Create factory with manifest and templates."""
         # Create lighting template
         lighting_template = tmp_path / "lighting.yaml"
-        lighting_template.write_text("""
+        lighting_template.write_text(
+            """
 initial_state: "OFF"
 states:
   - "OFF"
@@ -266,7 +271,8 @@ transitions:
     to_state: "ON_MOTION"
     trigger: "motion_detected"
     action: "turn_on_light"
-""")
+"""
+        )
 
         engine = FSMEngine()
         registry = Registry()
@@ -349,7 +355,8 @@ class TestSensorEventSubscription:
         """Subscribing to motion sensor events works."""
         # Create template
         lighting_template = tmp_path / "lighting.yaml"
-        lighting_template.write_text("""
+        lighting_template.write_text(
+            """
 initial_state: "OFF"
 states: ["OFF", "ON"]
 transitions:
@@ -357,7 +364,8 @@ transitions:
     to_state: "ON"
     trigger: "motion_detected"
     action: "test_action"
-""")
+"""
+        )
 
         engine = FSMEngine()
         registry = Registry()
@@ -440,7 +448,8 @@ class TestEdgeCases:
         """Multiple behaviors for same device create multiple FSMs."""
         # Create two templates
         lighting_template = tmp_path / "lighting.yaml"
-        lighting_template.write_text("""
+        lighting_template.write_text(
+            """
 initial_state: "OFF"
 states: ["OFF", "ON"]
 transitions:
@@ -448,10 +457,12 @@ transitions:
     to_state: "ON"
     trigger: "motion"
     action: "turn_on"
-""")
+"""
+        )
 
         night_light_template = tmp_path / "night_light.yaml"
-        night_light_template.write_text("""
+        night_light_template.write_text(
+            """
 initial_state: "OFF"
 states: ["OFF", "NIGHT"]
 transitions:
@@ -459,7 +470,8 @@ transitions:
     to_state: "NIGHT"
     trigger: "motion"
     action: "turn_on_night"
-""")
+"""
+        )
 
         engine = FSMEngine()
         registry = Registry()
