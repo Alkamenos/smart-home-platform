@@ -81,14 +81,14 @@ async def test_middleware_blocks_command():
     assert result is False, "Command should be blocked by middleware"
 
     # No active intents
-    assert (
-        "light.kitchen" not in dispatcher.active_intents
-    ), "No active intent should exist after blocking"
+    assert "light.kitchen" not in dispatcher.active_intents, (
+        "No active intent should exist after blocking"
+    )
 
     # HA adapter should not be called
-    assert (
-        len(mock_adapter.get_service_calls("light", "turn_on")) == 0
-    ), "HA adapter should not be called when middleware blocks command"
+    assert len(mock_adapter.get_service_calls("light", "turn_on")) == 0, (
+        "HA adapter should not be called when middleware blocks command"
+    )
 
 
 @pytest.mark.asyncio
@@ -163,9 +163,9 @@ async def test_middleware_modifies_intent():
     # Active intent should have modified priority
     assert "light.kitchen" in dispatcher.active_intents
     active_intent = dispatcher.active_intents["light.kitchen"]
-    assert (
-        active_intent.priority == 50
-    ), f"Expected priority=50 after middleware modification, got {active_intent.priority}"
+    assert active_intent.priority == 50, (
+        f"Expected priority=50 after middleware modification, got {active_intent.priority}"
+    )
 
 
 @pytest.mark.asyncio
