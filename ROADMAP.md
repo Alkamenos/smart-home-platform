@@ -136,7 +136,7 @@ gantt
 
 **Status:** PLANNING
 
-- [ ] Declarative Guards DSL
+- ✅ Declarative Guards DSL
 - Files: `core/guards/`, `core/fsm.py`
 - Detail: `.ai/enhancements/01-declarative-guards-dsl.md`
 - Priority: HIGH

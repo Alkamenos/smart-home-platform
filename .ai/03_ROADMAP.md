@@ -69,7 +69,7 @@
   - Graceful FSM migration (unregister old, register new)
 
 ## Phase 7: Platform Extensions - Quick Wins [PLANNING]
-- [ ] Declarative Guards DSL
+- [x] Declarative Guards DSL
   - Files: `core/guards/`, `core/fsm.py`
   - Detail: `.ai/enhancements/01-declarative-guards-dsl.md`
   - Priority: HIGH
