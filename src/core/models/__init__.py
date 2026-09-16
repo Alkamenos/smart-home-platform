@@ -21,6 +21,14 @@ from .manifest import (  # Backward compatibility aliases; Core models; Loader
     Zone,
     load_manifest,
 )
+from .guards import (
+    TimeGuardConfig,
+    StateGuardConfig,
+    NumericGuardConfig,
+    ScheduleGuardConfig,
+    CompositeGuardConfig,
+    GuardFactoryModel,
+)
 
 
 __all__ = [
@@ -41,4 +49,11 @@ __all__ = [
     "LightMotionDevice",
     "Zone",
     "InstanceInfo",
+    # Guard configs
+    "TimeGuardConfig",
+    "StateGuardConfig",
+    "NumericGuardConfig",
+    "ScheduleGuardConfig",
+    "CompositeGuardConfig",
+    "GuardFactoryModel",
 ]
