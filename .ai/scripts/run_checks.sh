@@ -4,13 +4,28 @@
 #  SPDX-License-Identifier: Apache-2.0
 #
 
+# =============================================================================
 # Quality checks script for Smart Home Platform
-# Run after every significant change
+# =============================================================================
+# 
+# 🤖 AI INSTRUCTIONS:
+# Запускай этот скрипт ПОСЛЕ каждого изменения кода ПЕРЕД коммитом:
+#
+#     ./.ai/scripts/run_checks.sh
+#
+# Если скрипт завершается с ошибкой (exit code 1) — НЕ КОММИТЬ!
+# Сначала исправь все проблемы, которые он показывает.
+#
+# Для авто-исправления форматирования и импортов:
+#     ruff check --fix src/ tests/
+#     ruff format src/ tests/
+#
+# =============================================================================
 
 set -e  # Exit on first error
 
 echo "=================================="
-echo "🏥 Smart Home Platform Quality Checks"
+echo "🏠 Smart Home Platform Quality Checks"
 echo "=================================="
 echo ""
 
@@ -23,23 +38,15 @@ NC='\033[0m' # No Color
 
 FAILED=0
 
-# Function to check if command exists
-check_command() {
-    if ! command -v $1 &> /dev/null; then
-        echo -e "${RED}❌ '$1' не установлен!${NC}"
-        echo -e "${BLUE}   Установи: pip install -e \".[dev]\"${NC}"
-        echo ""
-        exit 1
-    fi
-}
-
 # Check all required tools first
 echo "0️⃣  Проверка наличия инструментов..."
 MISSING_TOOLS=()
 
-for tool in pytest mypy ruff black isort interrogate; do
-    if ! command -v $tool &> /dev/null; then
-        MISSING_TOOLS+=($tool)
+REQUIRED_TOOLS=("pytest" "mypy" "ruff" "interrogate")
+
+for tool in "${REQUIRED_TOOLS[@]}"; do
+    if ! command -v "$tool" &> /dev/null; then
+        MISSING_TOOLS+=("$tool")
     fi
 done
 
@@ -50,16 +57,13 @@ if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
     echo ""
     echo "    pip install -e \".[dev]\""
     echo ""
-    echo -e "${YELLOW}Или установи только нужные инструменты:${NC}"
-    echo ""
-    echo "    pip install mypy ruff black isort interrogate"
-    echo ""
     exit 1
 fi
 
 echo -e "${GREEN}✅ Все инструменты установлены${NC}"
 echo ""
 
+# 1. Tests
 echo "1️⃣  Running tests..."
 if pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=80 2>&1; then
     echo -e "${GREEN}✅ Tests passed${NC}"
@@ -69,6 +73,7 @@ else
 fi
 echo ""
 
+# 2. Type checking
 echo "2️⃣  Type checking..."
 if mypy src/ --strict --ignore-missing-imports 2>&1; then
     echo -e "${GREEN}✅ Type checking passed${NC}"
@@ -78,48 +83,49 @@ else
 fi
 echo ""
 
-echo "3️⃣  Linting..."
+# 3. Linting & formatting with Ruff
+echo "3️⃣  Linting (ruff check)..."
 if ruff check src/ tests/ 2>&1; then
     echo -e "${GREEN}✅ Linting passed${NC}"
 else
-    echo -e "${YELLOW}⚠️  Linting warnings${NC}"
-    echo -e "${BLUE}   Исправь: ruff check --fix src/ tests/${NC}"
+    echo -e "${YELLOW}⚠️  Linting issues found${NC}"
+    echo -e "${BLUE}   Исправь автоматически: ruff check --fix src/ tests/${NC}"
+    FAILED=1
 fi
 echo ""
 
-echo "4️⃣  Formatting check..."
-if black --check src/ tests/ 2>&1; then
-    echo -e "${GREEN}✅ Formatting OK${NC}"
+# 4. Formatting with Ruff
+echo "4️⃣  Formatting (ruff format)..."
+if ruff format --check src/ tests/ 2>&1; then
+    echo -e "${GREEN}✅ Formatting passed${NC}"
 else
-    echo -e "${YELLOW}⚠️  Formatting issues${NC}"
-    echo -e "${BLUE}   Исправь: black src/ tests/${NC}"
+    echo -e "${YELLOW}⚠️  Formatting issues found${NC}"
+    echo -e "${BLUE}   Исправь автоматически: ruff format src/ tests/${NC}"
+    FAILED=1
 fi
 echo ""
 
-echo "5️⃣  Import sorting..."
-if isort --check-only src/ tests/ 2>&1; then
-    echo -e "${GREEN}✅ Import sorting OK${NC}"
-else
-    echo -e "${YELLOW}⚠️  Import sorting issues${NC}"
-    echo -e "${BLUE}   Исправь: isort src/ tests/${NC}"
-fi
-echo ""
-
-echo "6️⃣  Documentation coverage..."
+# 5. Documentation coverage
+echo "5️⃣  Documentation coverage..."
 if interrogate src/ -vv 2>&1; then
     echo -e "${GREEN}✅ Documentation coverage OK${NC}"
 else
     echo -e "${YELLOW}⚠️  Missing docstrings${NC}"
-    echo -e "${BLUE}   Добавь docstrings к публичным функциям${NC}"
+    echo -e "${BLUE}   Добавь docstrings к публичным функциям и классам${NC}"
 fi
 echo ""
 
 echo "=================================="
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}✅ All critical checks passed!${NC}"
-    echo "Можно коммитить изменения."
+    echo -e "${GREEN}✅ All checks passed!${NC}"
+    echo "✅ Можно коммитить изменения."
     exit 0
 else
     echo -e "${RED}❌ Some checks failed. Fix before committing.${NC}"
+    echo ""
+    echo -e "${YELLOW}💡 Quick fix commands:${NC}"
+    echo "   ruff check --fix src/ tests/     # Исправить линтинг"
+    echo "   ruff format src/ tests/          # Исправить форматирование"
+    echo ""
     exit 1
 fi
