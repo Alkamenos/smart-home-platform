@@ -67,7 +67,7 @@ jobs:
         with:
           body: |
             ## Changes
-            
+
             ${{ steps.changelog.outputs.CHANGELOG }}
           files: dist/*
           draft: false
