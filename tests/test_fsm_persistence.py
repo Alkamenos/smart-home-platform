@@ -22,6 +22,9 @@ import pytest
 from core.fsm_persistence import FSMPersistence
 
 
+from core.fsm import State as FSMState
+
+
 class MockFSMEngine:
     """Mock FSM Engine для тестов."""
 
@@ -39,12 +42,14 @@ class MockFSMEngine:
         self._definitions[entity_id] = definition
 
 
-class MockState:
-    """Mock State object."""
-
-    def __init__(self, current="OFF", history=None):
-        self.current = current  # fsm_persistence использует .current
-        self.history = history or ()  # tuple для конкатенации
+def create_mock_state(current_state="OFF", history=None):
+    """Создаёт объект State согласно спецификации fsm.py."""
+    import time
+    return FSMState(
+        current_state=current_state,
+        entered_at=time.time(),
+        context={}
+    )
 
 
 class MockDefinition:
@@ -255,7 +260,7 @@ class TestOnPlatformStarted:
         persistence.enable_for_entity("light.living_room")
 
         # Создаём mock FSM state
-        current_state = MockState(current="OFF")
+        current_state = create_mock_state(current_state="OFF")
         mock_fsm_engine.set_state("light.living_room", current_state)
 
         # Добавляем определение с состоянием PARTY
@@ -315,7 +320,7 @@ class TestOnPlatformStarted:
 
         persistence.enable_for_entity("light.living_room")
 
-        current_state = MockState(current="OFF")
+        current_state = create_mock_state(current_state="OFF")
         mock_fsm_engine.set_state("light.living_room", current_state)
 
         # Определение не содержит INVALID_STATE
@@ -340,7 +345,7 @@ class TestOnPlatformStarted:
         persistence.enable_for_entity("light.living_room")
         persistence.enable_for_entity("light.kitchen")
 
-        current_state = MockState(current="OFF")
+        current_state = create_mock_state(current_state="OFF")
         mock_fsm_engine.set_state("light.living_room", current_state)
         mock_fsm_engine.set_state("light.kitchen", current_state)
 
@@ -513,7 +518,7 @@ class TestRestoreState:
             logger=mock_logger,
         )
 
-        current_state = MockState(current="OFF")
+        current_state = create_mock_state(current_state="OFF")
         mock_fsm_engine.set_state("light.living_room", current_state)
 
         definition = MockDefinition(states=("OFF", "ON", "PARTY"))
@@ -523,7 +528,7 @@ class TestRestoreState:
 
         # Проверяем что состояние изменилось
         restored_state = mock_fsm_engine.get_state("light.living_room")
-        assert restored_state.current == "PARTY"
+        assert restored_state.current_state == "PARTY"
 
     def test_publishes_restore_event(self, mock_event_bus, mock_fsm_engine):
         """Публикация события fsm.restored."""
@@ -534,7 +539,7 @@ class TestRestoreState:
             logger=MagicMock(),
         )
 
-        current_state = MockState(current="OFF")
+        current_state = create_mock_state(current_state="OFF")
         mock_fsm_engine.set_state("light.living_room", current_state)
 
         definition = MockDefinition(states=("OFF", "PARTY"))
@@ -560,7 +565,7 @@ class TestRestoreState:
             logger=mock_logger,
         )
 
-        current_state = MockState(current="PARTY")
+        current_state = create_mock_state(current_state="PARTY")
         mock_fsm_engine.set_state("light.living_room", current_state)
 
         definition = MockDefinition(states=("OFF", "PARTY"))
@@ -583,7 +588,7 @@ class TestRestoreState:
             logger=mock_logger,
         )
 
-        current_state = MockState(current="OFF")
+        current_state = create_mock_state(current_state="OFF")
         mock_fsm_engine.set_state("light.living_room", current_state)
 
         definition = MockDefinition(states=("OFF", "ON"))
@@ -602,7 +607,7 @@ class TestRestoreState:
             logger=mock_logger,
         )
 
-        current_state = MockState(current="OFF")
+        current_state = create_mock_state(current_state="OFF")
         mock_fsm_engine.set_state("light.living_room", current_state)
 
         definition = MockDefinition(states=("OFF", "ON"))
