@@ -7,7 +7,7 @@
 # =============================================================================
 # Quality checks script for Smart Home Platform
 # =============================================================================
-# 
+#
 # 🤖 AI INSTRUCTIONS:
 # Запускай этот скрипт ПОСЛЕ каждого изменения кода ПЕРЕД коммитом:
 #
@@ -65,6 +65,7 @@ echo ""
 
 # 1. Tests
 echo "1️⃣  Running tests..."
+cd ../..
 if pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=80 2>&1; then
     echo -e "${GREEN}✅ Tests passed${NC}"
 else
