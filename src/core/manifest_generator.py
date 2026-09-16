@@ -75,7 +75,7 @@ class ManifestAutomationGenerator:
             entity_id = device["id"]
             room = device.get("room", entity_id.split(".")[-1])
             motion_timeout = device.get("motion_timeout_sec", 300)
-            manual_lockout = self._get_manual_lockout("lighting")
+            self._get_manual_lockout("lighting")
 
             definition = FSMDefinition(
                 entity_id=entity_id,

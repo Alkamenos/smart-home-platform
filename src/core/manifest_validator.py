@@ -201,7 +201,7 @@ class ManifestValidator:
         if not isinstance(zones, list):
             # Если zones не список, дальнейшая проверка невозможна
             return errors
-            
+
         zone_ids = {zone.get("id") for zone in zones}
 
         # Проверяем что все устройства ссылаются на существующие комнаты
@@ -209,7 +209,7 @@ class ManifestValidator:
         if not isinstance(devices, dict):
             # Если devices не словарь, дальнейшая проверка невозможна
             return errors
-            
+
         for device_type in ["lighting", "climate", "ventilation"]:
             for device in manifest.get("devices", {}).get(device_type, []):
                 room = device.get("room")
@@ -252,7 +252,7 @@ class ManifestValidator:
         if not isinstance(zones, list):
             # Если zones не список, проверка уникальности невозможна
             return errors
-            
+
         zone_ids = set()
         for zone in zones:
             zone_id = zone.get("id")

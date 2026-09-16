@@ -55,9 +55,7 @@ class MockFSMEngine:
     def get_entities_by_device(self, device_id: str) -> list[str]:
         """Get all FSM entity IDs belonging to a specific device."""
         return [
-            entity_id
-            for entity_id in self._definitions
-            if entity_id.startswith(f"{device_id}_")
+            entity_id for entity_id in self._definitions if entity_id.startswith(f"{device_id}_")
         ]
 
 
@@ -139,18 +137,22 @@ class TestEventRouterMapping:
         engine = MockFSMEngine()
 
         # Register BOTH FSMs (light + ventilation)
-        engine.register_definition(FSMDefinition(
-            entity_id="light.kitchen_lighting_10",
-            initial_state="OFF",
-            states=("OFF", "ON"),
-            transitions=(),
-        ))
-        engine.register_definition(FSMDefinition(
-            entity_id="fan.kitchen_ventilation_5",
-            initial_state="OFF",
-            states=("OFF", "ON"),
-            transitions=(),
-        ))
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="light.kitchen_lighting_10",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(),
+            )
+        )
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="fan.kitchen_ventilation_5",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(),
+            )
+        )
 
         # Add ventilation device to kitchen
         manifest.rooms[0].devices.append(
@@ -176,18 +178,22 @@ class TestEventRouterMapping:
         engine = MockFSMEngine()
 
         # Register BOTH FSMs (light + climate)
-        engine.register_definition(FSMDefinition(
-            entity_id="light.kitchen_lighting_10",
-            initial_state="OFF",
-            states=("OFF", "ON"),
-            transitions=(),
-        ))
-        engine.register_definition(FSMDefinition(
-            entity_id="climate.kitchen_climate_10",
-            initial_state="OFF",
-            states=("OFF", "ON"),
-            transitions=(),
-        ))
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="light.kitchen_lighting_10",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(),
+            )
+        )
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="climate.kitchen_climate_10",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(),
+            )
+        )
 
         # Add climate device to kitchen
         manifest.rooms[0].devices.append(
@@ -245,18 +251,22 @@ class TestEventRouterMapping:
         )
         engine = MockFSMEngine()
 
-        engine.register_definition(FSMDefinition(
-            entity_id="light.hallway_lighting_10",
-            initial_state="OFF",
-            states=("OFF", "ON"),
-            transitions=(),
-        ))
-        engine.register_definition(FSMDefinition(
-            entity_id="light.kitchen_lighting_10",
-            initial_state="OFF",
-            states=("OFF", "ON"),
-            transitions=(),
-        ))
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="light.hallway_lighting_10",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(),
+            )
+        )
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="light.kitchen_lighting_10",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(),
+            )
+        )
 
         router = EventRouter(manifest, engine)
         mappings = router.get_mapping_for_sensor("binary_sensor.hallway_motion")
@@ -437,18 +447,22 @@ class TestEventRouterRouting:
         )
         engine = MockFSMEngine()
 
-        engine.register_definition(FSMDefinition(
-            entity_id="light.hallway_lighting_10",
-            initial_state="OFF",
-            states=("OFF", "ON"),
-            transitions=(),
-        ))
-        engine.register_definition(FSMDefinition(
-            entity_id="light.kitchen_lighting_10",
-            initial_state="OFF",
-            states=("OFF", "ON"),
-            transitions=(),
-        ))
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="light.hallway_lighting_10",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(),
+            )
+        )
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="light.kitchen_lighting_10",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(),
+            )
+        )
 
         router = EventRouter(manifest, engine)
 

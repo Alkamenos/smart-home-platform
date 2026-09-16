@@ -113,6 +113,7 @@ def bootstrap_platform(manifest_path: str) -> PlatformContext:
         event_router=event_router,
     )
 
+
 if __name__ == "__main__":
     # Example usage
     import sys

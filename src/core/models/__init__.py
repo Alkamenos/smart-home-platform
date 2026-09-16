@@ -40,5 +40,4 @@ __all__ = [
     "LightMotionDevice",
     "Zone",
     "InstanceInfo",
-
 ]

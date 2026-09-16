@@ -15,8 +15,6 @@ import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from core.logger import Logger, get_logger
 
 
@@ -282,7 +280,7 @@ class TestGetLoggerFunction:
         mock_logger.handlers = []  # Нет handlers
         mock_get_logger.return_value = mock_logger
 
-        logger = get_logger("new_component")
+        get_logger("new_component")
 
         assert mock_logger.addHandler.called
 
@@ -293,7 +291,7 @@ class TestGetLoggerFunction:
         mock_logger.handlers = [MagicMock()]  # Есть handler
         mock_get_logger.return_value = mock_logger
 
-        logger = get_logger("existing_component")
+        get_logger("existing_component")
 
         assert not mock_logger.addHandler.called
 

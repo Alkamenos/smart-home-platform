@@ -69,10 +69,12 @@ class LovelaceGenerator:
 
         # Если нет устройств, добавим пустую карточку
         if not cards:
-            cards.append({
-                "type": "markdown",
-                "content": f"В комнате '{room.name}' нет устройств.",
-            })
+            cards.append(
+                {
+                    "type": "markdown",
+                    "content": f"В комнате '{room.name}' нет устройств.",
+                }
+            )
 
         return {
             "title": room.name,
@@ -101,12 +103,14 @@ class LovelaceGenerator:
 
         for sensor_type, entity_id in room.sensors.items():
             config = sensor_type_config.get(sensor_type, {})
-            cards.append({
-                "type": "entity",
-                "entity": entity_id,
-                "name": config.get("name", sensor_type),
-                "icon": config.get("icon", "mdi:help-circle"),
-            })
+            cards.append(
+                {
+                    "type": "entity",
+                    "entity": entity_id,
+                    "name": config.get("name", sensor_type),
+                    "icon": config.get("icon", "mdi:help-circle"),
+                }
+            )
 
         return cards
 
@@ -202,9 +206,7 @@ class LovelaceGenerator:
                 "entities": [{"entity": entity_id, "name": display_name}],
             }
 
-    def _create_behavior_indicator(
-        self, device: DeviceConfig, behavior: BehaviorConfig
-    ) -> dict:
+    def _create_behavior_indicator(self, device: DeviceConfig, behavior: BehaviorConfig) -> dict:
         """
         Создать карточку-индикатор активности поведения.
 
