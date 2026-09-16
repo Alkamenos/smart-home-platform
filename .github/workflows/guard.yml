@@ -1,0 +1,17 @@
+# .github/workflows/guard.yml
+name: Guard AI commits
+on: [push]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run AI checks
+        run: |
+          bash .ai/scripts/run_checks.sh
+      - name: Verify .gitignore integrity
+        run: |
+          diff qwen.gitignore.fix .gitignore || {
+            echo "::error::.gitignore не совпадает с эталоном"
+            exit 1
+          }

@@ -1,0 +1,7 @@
+# .githooks/prepare-commit-msg
+#!/usr/bin/env bash
+# Блокирует --no-verify для агентов
+if [[ "${AI_AGENT:-}" == "1" && "${GIT_PARAMS:-}" == *"--no-verify"* ]]; then
+    echo "AI agent must not skip hooks" >&2
+    exit 1
+fi
