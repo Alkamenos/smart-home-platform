@@ -1,5 +1,8 @@
 """Tests for EventBus module based on specification."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import uuid
 from unittest.mock import AsyncMock, patch
 

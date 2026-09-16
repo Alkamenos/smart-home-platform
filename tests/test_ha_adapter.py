@@ -10,6 +10,9 @@ These tests verify the adapter's behavior according to specification:
 - EventRouter integration for sensor routing
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 

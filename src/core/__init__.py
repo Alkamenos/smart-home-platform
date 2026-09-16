@@ -1,5 +1,8 @@
 """Smart home core module."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from core.action_handlers import release_device, turn_on_night_light
 from core.command_dispatcher import CommandDispatcher, CommandIntent
 from core.event_bus import EventBus

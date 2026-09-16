@@ -7,6 +7,9 @@ Dashboard Integration - создание entities в Home Assistant
 - Automations для интеграции с HA UI
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import logging
 from datetime import datetime
 from typing import Any

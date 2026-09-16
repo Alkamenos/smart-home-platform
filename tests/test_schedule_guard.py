@@ -1,5 +1,8 @@
 """Tests for schedule guard functionality."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from freezegun import freeze_time
 
 from core.guards.schedule_guard import is_within_schedule

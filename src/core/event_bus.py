@@ -1,5 +1,8 @@
 """Event bus module for smart home core."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import contextlib
 import uuid
 from collections.abc import Callable, Coroutine

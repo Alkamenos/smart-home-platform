@@ -13,6 +13,9 @@ Usage:
     await watchdog.log_snapshot_now()
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 import contextlib
 import json

@@ -5,6 +5,9 @@ This test verifies that FSMEngine.unregister() properly cleans up resources
 and that repeated hot reloads do not cause memory leaks.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import gc
 import tracemalloc
 

@@ -1,5 +1,8 @@
 """Генератор дашбордов для Home Assistant Lovelace."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from core.models.manifest import (

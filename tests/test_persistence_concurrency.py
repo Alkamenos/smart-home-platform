@@ -8,6 +8,9 @@ This test verifies that:
 3. File locking prevents race conditions during concurrent writes.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 import sys
 import tempfile

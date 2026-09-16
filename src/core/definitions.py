@@ -5,6 +5,9 @@ This module provides Pydantic V2 models for validating YAML schemas
 that define finite state machines for smart home automation.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from typing import Any

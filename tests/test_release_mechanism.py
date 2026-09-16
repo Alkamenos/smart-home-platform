@@ -8,6 +8,9 @@ This test verifies:
 4. dispatcher.release() is called and device is removed from active_intents.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 import os
 import sys

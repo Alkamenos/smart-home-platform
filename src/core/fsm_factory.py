@@ -5,6 +5,9 @@ FSM Factory - Фабрика для создания FSM на основе ко�
 загружая YAML-шаблоны из features/ и применяя параметры из BehaviorConfig.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import copy

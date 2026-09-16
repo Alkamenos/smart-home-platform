@@ -13,6 +13,9 @@ Note: This is an example file showing the integration pattern.
       In production, adjust paths and initialization as needed.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 # =============================================================================
 # Pyscript Integration Example for Home Assistant
 # =============================================================================

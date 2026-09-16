@@ -11,6 +11,9 @@ Specification:
 7. Функция get_logger() должна кэшировать созданные логгеры
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch

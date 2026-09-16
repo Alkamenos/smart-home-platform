@@ -4,6 +4,9 @@ Routes sensor events to FSMs via room context.
 Same sensor entity can trigger events in multiple rooms.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from typing import Any

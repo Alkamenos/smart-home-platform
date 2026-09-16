@@ -7,6 +7,9 @@ Tests cover:
 3. Echo detection - Commands from FSM should not trigger manual override
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import asyncio

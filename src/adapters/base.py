@@ -2,6 +2,9 @@
 Base Adapter - Абстрактный базовый класс для адаптеров
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

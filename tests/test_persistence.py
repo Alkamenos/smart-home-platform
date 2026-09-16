@@ -1,3 +1,6 @@
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 # tests/test_persistence.py
 
 import pytest

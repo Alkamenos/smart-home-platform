@@ -11,6 +11,9 @@ Specification:
 7. Для каждого entity_id должен быть уникальный ключ хранения
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch

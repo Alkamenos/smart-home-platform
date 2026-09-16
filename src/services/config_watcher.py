@@ -12,6 +12,9 @@ Usage:
     python cli.py watch
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import time

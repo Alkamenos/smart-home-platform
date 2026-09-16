@@ -7,6 +7,9 @@ This module sets up:
 - Mock configurations
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import sys
 from pathlib import Path
 

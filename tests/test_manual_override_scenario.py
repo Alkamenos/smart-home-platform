@@ -8,6 +8,9 @@
 4. После истечения времени блокировки автоматика снова работает.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import time
 from datetime import datetime
 from unittest.mock import patch

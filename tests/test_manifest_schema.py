@@ -7,6 +7,9 @@ Tests for Manifest Schema - Тесты схемы манифеста платф�
 3. Проверка всех обязательных полей схемы
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from src.core.manifest_schema import MANIFEST_SCHEMA, get_schema
 
 

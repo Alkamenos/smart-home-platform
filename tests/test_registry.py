@@ -10,6 +10,9 @@ Tests for Registry - Тесты реестра для регистрации gua
 6. Очистка реестра
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import pytest
 from src.core.registry import Registry
 

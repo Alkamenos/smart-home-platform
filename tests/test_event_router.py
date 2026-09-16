@@ -8,6 +8,9 @@ Tests verify that:
 4. Unknown sensor does not cause errors
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import os
 import sys
 from typing import Any

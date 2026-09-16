@@ -5,6 +5,9 @@ This module provides the bootstrap_platform() function that initializes
 all platform components and wires them together correctly.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import os

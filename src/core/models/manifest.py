@@ -7,6 +7,9 @@ Room-based architecture:
 - Same sensor entity can be referenced from multiple rooms
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from pathlib import Path

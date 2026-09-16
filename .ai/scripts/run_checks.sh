@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+#
+
 # Quality checks script for Smart Home Platform
 # Run after every significant change
 

@@ -8,6 +8,9 @@ Tests cover:
 4. All components are properly wired together
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import os
 import sys
 

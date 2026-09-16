@@ -4,6 +4,9 @@ This module provides a guard function to check if the current time
 is within a specified schedule range from behavior params.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from datetime import datetime
 
 

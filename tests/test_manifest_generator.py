@@ -8,6 +8,9 @@ These tests verify the manifest generator behavior based on specification:
 - Handling of missing fields and edge cases
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import pytest
 
 from core.manifest_generator import (

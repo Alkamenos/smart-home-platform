@@ -4,6 +4,9 @@ Manifest Schema - Схема валидации манифеста платфо�
 Определяет структуру и правила валидации для manifest.yaml
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from typing import Any
 
 MANIFEST_SCHEMA = {

@@ -5,6 +5,9 @@ This module provides state persistence for FSMs, allowing states to be
 saved to a JSON file and restored on platform restart.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import contextlib
 import json
 import sys

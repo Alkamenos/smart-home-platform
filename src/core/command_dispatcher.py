@@ -6,6 +6,9 @@ with priorities. It ensures that higher-priority commands take precedence over
 lower-priority ones for the same device.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from typing import Any, Protocol

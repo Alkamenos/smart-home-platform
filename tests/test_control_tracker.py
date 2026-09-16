@@ -2,6 +2,9 @@
 Tests for Control Tracker
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import time
 
 import pytest

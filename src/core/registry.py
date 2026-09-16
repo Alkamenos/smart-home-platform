@@ -5,6 +5,9 @@ Registry - Реестр для регистрации guard и action функц
 без использования eval(). Используется для YAML-конфигураций автоматов.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from collections.abc import Callable

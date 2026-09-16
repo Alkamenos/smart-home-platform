@@ -5,6 +5,9 @@
 и только один таймер активен в любой момент времени.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 import time
 from unittest.mock import patch

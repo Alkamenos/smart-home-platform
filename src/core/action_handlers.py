@@ -11,6 +11,9 @@ Usage:
     registry.register_action("turn_off_light", turn_off_light)
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from typing import Any

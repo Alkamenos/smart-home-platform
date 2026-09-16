@@ -9,6 +9,9 @@ Tests for Manifest Validator - Тесты валидатора манифест�
 5. Логические ограничения (диапазоны значений, уникальность)
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import pytest
 from src.core.manifest_validator import ManifestValidator, ValidationError, validate_manifest
 

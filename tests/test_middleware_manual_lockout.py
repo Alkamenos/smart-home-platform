@@ -9,6 +9,9 @@ Tests cover:
 5. Uses ControlTracker for tracking manual interventions.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import os
 import sys
 import time

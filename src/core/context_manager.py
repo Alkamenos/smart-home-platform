@@ -14,6 +14,9 @@ Usage:
     # Автоматически обновляет контекст и триггерит FSM при изменениях
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import contextlib

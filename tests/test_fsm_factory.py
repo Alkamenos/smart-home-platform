@@ -1,5 +1,8 @@
 """Tests for FSM Factory - behavior composition and template loading."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock

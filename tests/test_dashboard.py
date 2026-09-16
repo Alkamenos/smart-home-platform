@@ -8,6 +8,9 @@ Tests for Dashboard Integration - проверка создания и обно�
 - Поддерживаются разные типы фич (lighting, climate, ventilation)
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

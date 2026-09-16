@@ -1,5 +1,8 @@
 """Models package for Smart Home Platform."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from .manifest import (
     AnyDevice,
     AutomationDomainRules,

@@ -3,7 +3,7 @@
 [![CI](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml/badge.svg?branch=v3)](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/Alkamenos/smart-home-platform/branch/main/graph/badge.svg?token=LZKK1NU0WC)](https://codecov.io/github/Alkamenos/smart-home-platform)
 ![Python Versions](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![License](https://img.shields.io/badge/license-MIT-green)]([![License](https://img.shields.io/github/license/Alkamenos/smart-home-platform)](https://www.apache.org/licenses/LICENSE-2.0))
 [![Version](https://img.shields.io/badge/version-3.0.0-blue)](CHANGELOG.md)
 
 A modern, state-machine based automation platform for smart home systems. This platform provides a robust framework for defining, managing, and executing complex home automation scenarios using finite state machines (FSM). Built with Python 3.10+, it features strict schema validation via Pydantic, declarative configuration support through YAML, structured logging with Loguru, and comprehensive testing capabilities.
@@ -812,9 +812,9 @@ grep "kitchen_motion" /config/home-assistant.log | grep "trace_id"
 4. Ensure all tests pass: `make test`
 5. Submit a pull request
 
-## 📄 License
+## License
 
-MIT License - see LICENSE file for details.
+This project is licensed under the Apache License 2.0 — see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 

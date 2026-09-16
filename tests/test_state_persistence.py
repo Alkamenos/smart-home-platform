@@ -10,6 +10,9 @@ Tests for State Persistence module.
 6. Блокировка предотвращает race conditions при concurrent доступе
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import json
 import os
 import tempfile

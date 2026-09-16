@@ -8,6 +8,9 @@ Tests cover:
 4. add_middleware method allows adding middleware after creation.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import pytest
 
 from adapters.mock_adapter import MockAdapter

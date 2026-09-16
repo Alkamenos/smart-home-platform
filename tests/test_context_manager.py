@@ -14,6 +14,9 @@ Specification:
 10. При старте платформы запускается периодическая проверка расписаний
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import time
 from unittest.mock import MagicMock, patch
 

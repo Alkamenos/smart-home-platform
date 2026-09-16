@@ -9,6 +9,9 @@ Manifest Validator - Валидатор манифеста платформы у
 5. Логические ограничения (значения в диапазоне)
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import re

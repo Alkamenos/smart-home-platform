@@ -9,6 +9,9 @@ Tests cover:
 4. Priority comparison logic (equal priority should replace).
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import os
 import sys
 from typing import Any
