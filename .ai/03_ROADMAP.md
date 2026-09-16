@@ -61,9 +61,11 @@
 - [ ] Web UI for manifest editing
   - FastAPI + HTMX
   - Form validation using Pydantic models
-- [ ] Prometheus metrics export
+- [x] Prometheus metrics export
   - `/metrics` endpoint
   - FSM state changes, command latency, error rates
+  - Files: `core/metrics.py`, `tests/test_metrics.py`
+  - Implementation date: 2026-09-16
 - [ ] Hot-reload without restart
   - File watcher for manifest changes
   - Graceful FSM migration (unregister old, register new)
