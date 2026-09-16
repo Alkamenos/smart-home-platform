@@ -160,7 +160,6 @@ class MockAdapter:
         self._event_router = event_router
         logger.info("MockAdapter: EventRouter set")
 
-
     def clear(self) -> None:
         """Reset adapter state between tests.
 

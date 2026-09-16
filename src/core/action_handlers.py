@@ -35,11 +35,8 @@ def extract_device_id(context: dict[str, Any]) -> str | None:
     Returns:
         Device ID string or None if not found.
     """
-    return (
-        context.get("target_device_id")
-        or context.get("entity_id")
-        or context.get("device_id")
-    )
+    return context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
+
 
 def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     """

@@ -103,8 +103,8 @@ class TestSaveState:
 
         assert "light.test" in data
 
-    @patch('sys.platform', 'linux')
-    @patch('core.state_persistence.fcntl')
+    @patch("sys.platform", "linux")
+    @patch("core.state_persistence.fcntl")
     def test_uses_fcntl_locking_on_linux(self, mock_fcntl, persistence):
         """На Linux используется fcntl.flock"""
         mock_fcntl.LOCK_EX = 1
@@ -130,7 +130,7 @@ class TestSaveState:
             "nested": {"key": "value"},
             "list": [1, 2, 3],
             "unicode": "привет мир",
-            "special": "/\\\"quotes\\\""
+            "special": '/\\"quotes\\"',
         }
 
         persistence.save_state("light.test", "COMPLEX", context)
@@ -375,8 +375,8 @@ class TestAtomicWrite:
 class TestConcurrentAccess:
     """Тесты concurrent доступа (с моками)"""
 
-    @patch('core.state_persistence.StatePersistence._acquire_lock')
-    @patch('core.state_persistence.StatePersistence._release_lock')
+    @patch("core.state_persistence.StatePersistence._acquire_lock")
+    @patch("core.state_persistence.StatePersistence._release_lock")
     def test_acquire_lock_before_read(self, mock_release, mock_acquire):
         """Блокировка приобретается перед чтением"""
         fd, path = tempfile.mkstemp(suffix=".json")

@@ -126,11 +126,7 @@ transitions:
 
     def test_apply_params_sets_entity_id(self, factory_with_templates):
         """Applying params sets unique entity_id."""
-        template_data = {
-            "initial_state": "OFF",
-            "states": ["OFF", "ON"],
-            "transitions": []
-        }
+        template_data = {"initial_state": "OFF", "states": ["OFF", "ON"], "transitions": []}
 
         result = factory_with_templates._apply_params_to_template(
             template_data=template_data,
@@ -138,18 +134,14 @@ transitions:
             entity_id="light.kitchen",
             behavior_priority=10,
             device_id="light.kitchen",
-            behavior_template_name="lighting"
+            behavior_template_name="lighting",
         )
 
         assert result["entity_id"] == "light.kitchen_lighting_10"
 
     def test_apply_params_includes_params(self, factory_with_templates):
         """Applying params includes them in template data."""
-        template_data = {
-            "initial_state": "OFF",
-            "states": ["OFF"],
-            "transitions": []
-        }
+        template_data = {"initial_state": "OFF", "states": ["OFF"], "transitions": []}
 
         params = {"motion_sensor": "binary_sensor.kitchen_motion", "brightness": 255}
         result = factory_with_templates._apply_params_to_template(
@@ -158,18 +150,14 @@ transitions:
             entity_id="light.kitchen",
             behavior_priority=10,
             device_id="light.kitchen",
-            behavior_template_name="lighting"
+            behavior_template_name="lighting",
         )
 
         assert result["params"] == params
 
     def test_apply_params_sets_target_device_id(self, factory_with_templates):
         """Applying params sets target_device_id for routing."""
-        template_data = {
-            "initial_state": "OFF",
-            "states": ["OFF"],
-            "transitions": []
-        }
+        template_data = {"initial_state": "OFF", "states": ["OFF"], "transitions": []}
 
         result = factory_with_templates._apply_params_to_template(
             template_data=template_data,
@@ -177,7 +165,7 @@ transitions:
             entity_id="light.kitchen",
             behavior_priority=10,
             device_id="light.kitchen",
-            behavior_template_name="lighting"
+            behavior_template_name="lighting",
         )
 
         assert result["target_device_id"] == "light.kitchen"
@@ -221,7 +209,7 @@ transitions:
         behavior = BehaviorConfig(
             template="lighting",
             priority=10,
-            params={"motion_sensor": "binary_sensor.kitchen_motion"}
+            params={"motion_sensor": "binary_sensor.kitchen_motion"},
         )
 
         definitions = factory.create_from_behavior("light.kitchen", behavior)
@@ -236,11 +224,7 @@ transitions:
         registry = Registry()
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
 
-        behavior = BehaviorConfig(
-            template="nonexistent",
-            priority=10,
-            params={}
-        )
+        behavior = BehaviorConfig(template="nonexistent", priority=10, params={})
 
         definitions = factory.create_from_behavior("light.kitchen", behavior)
 
@@ -254,10 +238,7 @@ transitions:
         behavior = BehaviorConfig(
             template="lighting",
             priority=10,
-            params={
-                "motion_sensor": "binary_sensor.kitchen_motion",
-                "schedule": "07:00-23:00"
-            }
+            params={"motion_sensor": "binary_sensor.kitchen_motion", "schedule": "07:00-23:00"},
         )
 
         definitions = factory.create_from_behavior("light.kitchen", behavior)
@@ -317,14 +298,14 @@ transitions:
                                 BehaviorConfig(
                                     template="lighting",
                                     priority=10,
-                                    params={"motion_sensor": "binary_sensor.kitchen_motion"}
+                                    params={"motion_sensor": "binary_sensor.kitchen_motion"},
                                 )
-                            ]
+                            ],
                         )
-                    ]
+                    ],
                 )
             ],
-            automation_rules=AutomationRules()
+            automation_rules=AutomationRules(),
         )
 
         return factory, manifest, engine
@@ -390,7 +371,7 @@ transitions:
             device_id="light.kitchen",
             fsm_entity_id="light.kitchen_lighting_10",
             params=params,
-            template_name="lighting"
+            template_name="lighting",
         )
 
         # Verify subscription was made
@@ -412,7 +393,7 @@ transitions:
             device_id="light.kitchen",
             fsm_entity_id="light.kitchen_lighting_10",
             params=params,
-            template_name="lighting"
+            template_name="lighting",
         )
 
         # Verify no subscription was made
@@ -442,12 +423,12 @@ class TestEdgeCases:
                             id="light.test",
                             type="light",
                             name="Test Light",
-                            behaviors=[]  # No behaviors
+                            behaviors=[],  # No behaviors
                         )
-                    ]
+                    ],
                 )
             ],
-            automation_rules=AutomationRules()
+            automation_rules=AutomationRules(),
         )
 
         definitions = factory.create_from_manifest(manifest)
@@ -511,13 +492,13 @@ transitions:
                             name="Kitchen Light",
                             behaviors=[
                                 BehaviorConfig(template="lighting", priority=10, params={}),
-                                BehaviorConfig(template="night_light", priority=20, params={})
-                            ]
+                                BehaviorConfig(template="night_light", priority=20, params={}),
+                            ],
                         )
-                    ]
+                    ],
                 )
             ],
-            automation_rules=AutomationRules()
+            automation_rules=AutomationRules(),
         )
 
         definitions = factory.create_from_manifest(manifest)

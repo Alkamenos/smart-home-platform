@@ -23,6 +23,7 @@ class TestRegistryGuards:
 
     def test_register_guard(self, registry):
         """Спецификация: Можно зарегистрировать guard функцию по имени"""
+
         def mock_guard(context) -> bool:
             return True
 
@@ -31,6 +32,7 @@ class TestRegistryGuards:
 
     def test_register_guard_overwrite(self, registry):
         """Спецификация: Повторная регистрация guard перезаписывает предыдущую"""
+
         def guard_v1(context) -> bool:
             return False
 
@@ -49,6 +51,7 @@ class TestRegistryGuards:
 
     def test_get_guard_returns_function(self, registry):
         """Спецификация: get_guard возвращает зарегистрированную функцию"""
+
         def mock_guard(context) -> bool:
             return True
 
@@ -83,6 +86,7 @@ class TestRegistryGuards:
 
     def test_list_guards_multiple(self, registry):
         """Спецификация: list_guards возвращает все зарегистрированные guard имена"""
+
         def dummy_guard(context) -> bool:
             return True
 
@@ -104,6 +108,7 @@ class TestRegistryActions:
 
     def test_register_action(self, registry):
         """Спецификация: Можно зарегистрировать action функцию по имени"""
+
         async def mock_action(context):
             pass
 
@@ -112,6 +117,7 @@ class TestRegistryActions:
 
     def test_register_action_overwrite(self, registry):
         """Спецификация: Повторная регистрация action перезаписывает предыдущую"""
+
         async def action_v1(context):
             pass
 
@@ -130,6 +136,7 @@ class TestRegistryActions:
 
     def test_get_action_returns_function(self, registry):
         """Спецификация: get_action возвращает зарегистрированную функцию"""
+
         async def mock_action(context):
             return "result"
 
@@ -180,6 +187,7 @@ class TestRegistryActions:
 
     def test_list_actions_multiple(self, registry):
         """Спецификация: list_actions возвращает все зарегистрированные action имена"""
+
         async def dummy_action(context):
             pass
 
@@ -201,6 +209,7 @@ class TestRegistryClear:
 
     def test_clear_removes_all_guards(self, registry):
         """Спецификация: clear удаляет все зарегистрированные guard функции"""
+
         def dummy_guard(context) -> bool:
             return True
 
@@ -215,6 +224,7 @@ class TestRegistryClear:
 
     def test_clear_removes_all_actions(self, registry):
         """Спецификация: clear удаляет все зарегистрированные action функции"""
+
         async def dummy_action(context):
             pass
 
@@ -229,6 +239,7 @@ class TestRegistryClear:
 
     def test_clear_both_guards_and_actions(self, registry):
         """Спецификация: clear удаляет и guard и action функции"""
+
         def dummy_guard(context) -> bool:
             return True
 
@@ -262,6 +273,7 @@ class TestRegistryIndependence:
 
     def test_guards_and_actions_independent(self, registry):
         """Спецификация: Guard и action реестры независимы"""
+
         def dummy_guard(context) -> bool:
             return True
 
@@ -283,6 +295,7 @@ class TestRegistryIndependence:
 
     def test_clear_guards_does_not_affect_actions(self, registry):
         """Спецификация: Очистка guard реестра не влияет на action реестр"""
+
         def dummy_guard(context) -> bool:
             return True
 
@@ -300,8 +313,8 @@ class TestRegistryIndependence:
 
     def test_separate_internal_storage(self, registry):
         """Спецификация: Guards и actions используют разные внутренние хранилища"""
-        assert hasattr(registry, '_guards')
-        assert hasattr(registry, '_actions')
+        assert hasattr(registry, "_guards")
+        assert hasattr(registry, "_actions")
         assert registry._guards is not registry._actions
 
 
@@ -314,6 +327,7 @@ class TestRegistryEdgeCases:
 
     def test_register_guard_with_empty_name(self, registry):
         """Спецификация: Можно зарегистрировать guard с пустым именем"""
+
         def dummy_guard(context) -> bool:
             return True
 
@@ -322,6 +336,7 @@ class TestRegistryEdgeCases:
 
     def test_register_action_with_empty_name(self, registry):
         """Спецификация: Можно зарегистрировать action с пустым именем"""
+
         async def dummy_action(context):
             pass
 
@@ -330,6 +345,7 @@ class TestRegistryEdgeCases:
 
     def test_register_guard_with_special_characters(self, registry):
         """Спецификация: Имена могут содержать специальные символы"""
+
         def dummy_guard(context) -> bool:
             return True
 
@@ -353,6 +369,7 @@ class TestRegistryEdgeCases:
 
     def test_register_callable_object_as_guard(self, registry):
         """Спецификация: Можно зарегистрировать callable объект как guard"""
+
         class CallableGuard:
             def __call__(self, context):
                 return context.get("active", False)
@@ -363,6 +380,7 @@ class TestRegistryEdgeCases:
 
     def test_register_callable_object_as_action(self, registry):
         """Спецификация: Можно зарегистрировать callable объект как action"""
+
         class CallableAction:
             def __call__(self, context):
                 return context.get("data")
@@ -373,6 +391,7 @@ class TestRegistryEdgeCases:
 
     def test_get_guard_after_clear(self, registry):
         """Спецификация: get_guard после clear возвращает None"""
+
         def dummy_guard(context) -> bool:
             return True
 
@@ -383,6 +402,7 @@ class TestRegistryEdgeCases:
 
     def test_get_action_after_clear(self, registry):
         """Спецификация: get_action после clear возвращает None"""
+
         async def dummy_action(context):
             pass
 

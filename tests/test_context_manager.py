@@ -128,12 +128,14 @@ class TestSubscribeSensor:
     def test_subscribes_to_sensor(self, context_manager):
         """Подписка на сенсор движения."""
         context_manager.subscribe_sensor(
-            "binary_sensor.living_room_motion",
-            "living_room_motion_sensor"
+            "binary_sensor.living_room_motion", "living_room_motion_sensor"
         )
 
         assert "binary_sensor.living_room_motion" in context_manager._sensor_subscriptions
-        assert context_manager._sensor_subscriptions["binary_sensor.living_room_motion"] == "living_room_motion_sensor"
+        assert (
+            context_manager._sensor_subscriptions["binary_sensor.living_room_motion"]
+            == "living_room_motion_sensor"
+        )
 
     def test_subscribes_multiple_sensors(self, context_manager):
         """Можно подписаться на несколько сенсоров."""
@@ -150,7 +152,9 @@ class TestSubscribeSensor:
         """Логирование подписки на сенсор."""
         context_manager.subscribe_sensor("binary_sensor.test", "test_entity")
 
-        mock_logger.info.assert_any_call("Subscribed sensor binary_sensor.test to context key test_entity")
+        mock_logger.info.assert_any_call(
+            "Subscribed sensor binary_sensor.test to context key test_entity"
+        )
 
 
 class TestSubscribeSchedule:
@@ -158,11 +162,7 @@ class TestSubscribeSchedule:
 
     def test_subscribes_to_schedule(self, context_manager):
         """Подписка на временной диапазон."""
-        context_manager.subscribe_schedule(
-            "living_room_is_schedule_time",
-            "07:00",
-            "23:00"
-        )
+        context_manager.subscribe_schedule("living_room_is_schedule_time", "07:00", "23:00")
 
         assert "living_room_is_schedule_time" in context_manager._schedules
         schedule = context_manager._schedules["living_room_is_schedule_time"]
@@ -173,11 +173,7 @@ class TestSubscribeSchedule:
 
     def test_subscribes_to_midnight_crossing_schedule(self, context_manager):
         """Подписка на диапазон с переходом через полночь."""
-        context_manager.subscribe_schedule(
-            "bedroom_night_mode",
-            "22:00",
-            "07:00"
-        )
+        context_manager.subscribe_schedule("bedroom_night_mode", "22:00", "07:00")
 
         schedule = context_manager._schedules["bedroom_night_mode"]
         assert schedule.start_hour == 22
@@ -202,11 +198,7 @@ class TestSubscribeSchedule:
             mock_localtime.return_value.tm_hour = 10
             mock_localtime.return_value.tm_min = 30
 
-            context_manager.subscribe_schedule(
-                "living_room_is_schedule_time",
-                "07:00",
-                "23:00"
-            )
+            context_manager.subscribe_schedule("living_room_is_schedule_time", "07:00", "23:00")
 
         assert context_manager.get_context("living_room_is_schedule_time") is True
 
@@ -216,11 +208,7 @@ class TestSubscribeSchedule:
             mock_localtime.return_value.tm_hour = 3
             mock_localtime.return_value.tm_min = 0
 
-            context_manager.subscribe_schedule(
-                "living_room_is_schedule_time",
-                "07:00",
-                "23:00"
-            )
+            context_manager.subscribe_schedule("living_room_is_schedule_time", "07:00", "23:00")
 
         assert context_manager.get_context("living_room_is_schedule_time") is False
 
@@ -231,15 +219,11 @@ class TestOnHaStateChanged:
     def test_updates_context_on_sensor_change(self, context_manager, mock_event_bus):
         """Обновление контекста при изменении состояния сенсора."""
         context_manager.subscribe_sensor(
-            "binary_sensor.living_room_motion",
-            "living_room_motion_sensor"
+            "binary_sensor.living_room_motion", "living_room_motion_sensor"
         )
 
         # Событие: движение обнаружено
-        event_data = {
-            "entity_id": "binary_sensor.living_room_motion",
-            "new_state": "on"
-        }
+        event_data = {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
 
         context_manager._on_ha_state_change(event_data)
 
@@ -249,44 +233,38 @@ class TestOnHaStateChanged:
     def test_updates_context_on_sensor_off(self, context_manager):
         """Обновление контекста при пропадании движения."""
         context_manager.subscribe_sensor(
-            "binary_sensor.living_room_motion",
-            "living_room_motion_sensor"
+            "binary_sensor.living_room_motion", "living_room_motion_sensor"
         )
 
         # Сначала включаем
-        context_manager._on_ha_state_change({
-            "entity_id": "binary_sensor.living_room_motion",
-            "new_state": "on"
-        })
+        context_manager._on_ha_state_change(
+            {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
+        )
 
         # Затем выключаем
-        context_manager._on_ha_state_change({
-            "entity_id": "binary_sensor.living_room_motion",
-            "new_state": "off"
-        })
+        context_manager._on_ha_state_change(
+            {"entity_id": "binary_sensor.living_room_motion", "new_state": "off"}
+        )
 
         assert context_manager.get_context("living_room_motion_sensor") is False
 
     def test_ignores_unsubscribed_sensor(self, context_manager, mock_event_bus):
         """Игнорирование неподписанного сенсора."""
-        context_manager._on_ha_state_change({
-            "entity_id": "binary_sensor.unknown",
-            "new_state": "on"
-        })
+        context_manager._on_ha_state_change(
+            {"entity_id": "binary_sensor.unknown", "new_state": "on"}
+        )
 
         mock_event_bus.publish.assert_not_called()
 
     def test_publishes_context_changed_event(self, context_manager, mock_event_bus):
         """Публикация события context.changed при изменении контекста."""
         context_manager.subscribe_sensor(
-            "binary_sensor.living_room_motion",
-            "living_room_motion_sensor"
+            "binary_sensor.living_room_motion", "living_room_motion_sensor"
         )
 
-        context_manager._on_ha_state_change({
-            "entity_id": "binary_sensor.living_room_motion",
-            "new_state": "on"
-        })
+        context_manager._on_ha_state_change(
+            {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
+        )
 
         mock_event_bus.publish.assert_called()
         call_args = mock_event_bus.publish.call_args
@@ -296,25 +274,20 @@ class TestOnHaStateChanged:
 
     def test_handles_boolean_states(self, context_manager):
         """Обработка булевых состояний сенсоров."""
-        context_manager.subscribe_sensor(
-            "binary_sensor.door",
-            "door_sensor"
-        )
+        context_manager.subscribe_sensor("binary_sensor.door", "door_sensor")
 
         # Тестируем различные состояния которые должны конвертироваться в True
         for state in ["on", "open", "active", "home", "true", "yes"]:
-            context_manager._on_ha_state_change({
-                "entity_id": "binary_sensor.door",
-                "new_state": state
-            })
+            context_manager._on_ha_state_change(
+                {"entity_id": "binary_sensor.door", "new_state": state}
+            )
             assert context_manager.get_context("door_sensor") is True
 
         # Тестируем состояния которые должны конвертироваться в False
         for state in ["off", "closed", "inactive", "away", "false", "no", None]:
-            context_manager._on_ha_state_change({
-                "entity_id": "binary_sensor.door",
-                "new_state": state
-            })
+            context_manager._on_ha_state_change(
+                {"entity_id": "binary_sensor.door", "new_state": state}
+            )
             if state is None:
                 assert context_manager.get_context("door_sensor") is False
             else:
@@ -338,7 +311,7 @@ class TestSetContext:
 
         mock_event_bus.publish.assert_called_with(
             "context.changed",
-            {"key": "vacation_mode", "value": True, "timestamp": pytest.approx(time.time(), rel=1)}
+            {"key": "vacation_mode", "value": True, "timestamp": pytest.approx(time.time(), rel=1)},
         )
 
 
@@ -381,15 +354,13 @@ class TestIntegrationScenarios:
         """Сценарий: датчик движения включает свет."""
         # Подписка на датчик движения
         context_manager.subscribe_sensor(
-            "binary_sensor.living_room_motion",
-            "living_room_motion_sensor"
+            "binary_sensor.living_room_motion", "living_room_motion_sensor"
         )
 
         # Движение обнаружено
-        context_manager._on_ha_state_change({
-            "entity_id": "binary_sensor.living_room_motion",
-            "new_state": "on"
-        })
+        context_manager._on_ha_state_change(
+            {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
+        )
 
         # Контекст обновлён
         assert context_manager.get_context("living_room_motion_sensor") is True
@@ -404,42 +375,30 @@ class TestIntegrationScenarios:
             mock_localtime.return_value.tm_min = 0
 
             # Подписка на расписание
-            context_manager.subscribe_schedule(
-                "hallway_is_evening",
-                "18:00",
-                "23:00"
-            )
+            context_manager.subscribe_schedule("hallway_is_evening", "18:00", "23:00")
 
         assert context_manager.get_context("hallway_is_evening") is True
 
     def test_combined_motion_and_schedule(self, context_manager):
         """Сценарий: комбинация движения и расписания."""
         # Датчик движения
-        context_manager.subscribe_sensor(
-            "binary_sensor.bedroom_motion",
-            "bedroom_motion_sensor"
-        )
+        context_manager.subscribe_sensor("binary_sensor.bedroom_motion", "bedroom_motion_sensor")
 
         # Расписание (ночной режим)
         with patch("core.context_manager.time.localtime") as mock_localtime:
             mock_localtime.return_value.tm_hour = 23
             mock_localtime.return_value.tm_min = 0
 
-            context_manager.subscribe_schedule(
-                "bedroom_night_mode",
-                "22:00",
-                "06:00"
-            )
+            context_manager.subscribe_schedule("bedroom_night_mode", "22:00", "06:00")
 
         # Проверяем что контекст расписания установлен (контекст сенсора ещё не установлен пока нет события)
         assert context_manager.get_context("bedroom_motion_sensor") is None  # ещё нет движения
         assert context_manager.get_context("bedroom_night_mode") is True
 
         # Теперь симулируем движение
-        context_manager._on_ha_state_change({
-            "entity_id": "binary_sensor.bedroom_motion",
-            "new_state": "on"
-        })
+        context_manager._on_ha_state_change(
+            {"entity_id": "binary_sensor.bedroom_motion", "new_state": "on"}
+        )
 
         assert context_manager.get_context("bedroom_motion_sensor") is True
         assert context_manager.get_context("bedroom_night_mode") is True

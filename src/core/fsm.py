@@ -203,10 +203,9 @@ class FSMEngine:
             ["light.kitchen_lighting_10", "light.kitchen_night_light_20"]
         """
         return [
-            entity_id
-            for entity_id in self._definitions
-            if entity_id.startswith(f"{device_id}_")
+            entity_id for entity_id in self._definitions if entity_id.startswith(f"{device_id}_")
         ]
+
     def get_state(self, entity_id: str) -> State | None:
         """Get the current state of an entity."""
         return self._states.get(entity_id)

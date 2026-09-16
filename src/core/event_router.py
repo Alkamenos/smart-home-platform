@@ -43,9 +43,7 @@ class EventRouter:
             # Collect all FSM entity IDs for devices in this room
             room_fsm_ids: list[str] = []
             for device in room.devices:
-                room_fsm_ids.extend(
-                    self._engine.get_entities_by_device(device.id)
-                )
+                room_fsm_ids.extend(self._engine.get_entities_by_device(device.id))
 
             if not room_fsm_ids:
                 continue
@@ -54,18 +52,14 @@ class EventRouter:
             for sensor_type, sensor_id in room.sensors.items():
                 events = self.SENSOR_EVENT_MAP.get(sensor_type, [])
                 if not events:
-                    logger.warning(
-                        f"Unknown sensor type '{sensor_type}' in room '{room.id}'"
-                    )
+                    logger.warning(f"Unknown sensor type '{sensor_type}' in room '{room.id}'")
                     continue
 
                 for event_name in events:
                     for fsm_id in room_fsm_ids:
                         self._add_mapping(sensor_id, fsm_id, event_name)
 
-        logger.info(
-            f"EventRouter built mapping for {len(self._sensor_to_fsms)} sensors"
-        )
+        logger.info(f"EventRouter built mapping for {len(self._sensor_to_fsms)} sensors")
 
     def _add_mapping(self, sensor_id: str, fsm_entity_id: str, event_name: str) -> None:
         """Add a mapping entry."""
@@ -113,9 +107,7 @@ class EventRouter:
                 "old_state": old_state,
             }
 
-            logger.info(
-                f"Routing: sensor={entity_id} → fsm={fsm_entity_id}, event={event_name}"
-            )
+            logger.info(f"Routing: sensor={entity_id} → fsm={fsm_entity_id}, event={event_name}")
 
             await self._engine.trigger(
                 entity_id=fsm_entity_id,

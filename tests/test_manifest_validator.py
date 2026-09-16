@@ -566,7 +566,9 @@ class TestManifestValidatorLogic:
             "zones": [{"id": "room", "name": "Room"}],
         }
         errors = validator.validate(manifest)
-        assert any("Гистерезис" in e.message and "вне диапазона 0.1-5.0" in e.message for e in errors)
+        assert any(
+            "Гистерезис" in e.message and "вне диапазона 0.1-5.0" in e.message for e in errors
+        )
 
     def test_hysteresis_above_range(self, validator):
         """Спецификация: Гистерезис должен быть в диапазоне 0.1-5.0"""
@@ -587,7 +589,9 @@ class TestManifestValidatorLogic:
             "zones": [{"id": "room", "name": "Room"}],
         }
         errors = validator.validate(manifest)
-        assert any("Гистерезис" in e.message and "вне диапазона 0.1-5.0" in e.message for e in errors)
+        assert any(
+            "Гистерезис" in e.message and "вне диапазона 0.1-5.0" in e.message for e in errors
+        )
 
     def test_humidity_threshold_negative(self, validator):
         """Спецификация: Порог влажности должен быть в диапазоне 0-100"""
@@ -607,7 +611,9 @@ class TestManifestValidatorLogic:
             "zones": [{"id": "bathroom", "name": "Bathroom"}],
         }
         errors = validator.validate(manifest)
-        assert any("Порог влажности" in e.message and "вне диапазона 0-100" in e.message for e in errors)
+        assert any(
+            "Порог влажности" in e.message and "вне диапазона 0-100" in e.message for e in errors
+        )
 
     def test_humidity_threshold_above_100(self, validator):
         """Спецификация: Порог влажности должен быть в диапазоне 0-100"""
@@ -627,7 +633,9 @@ class TestManifestValidatorLogic:
             "zones": [{"id": "bathroom", "name": "Bathroom"}],
         }
         errors = validator.validate(manifest)
-        assert any("Порог влажности" in e.message and "вне диапазона 0-100" in e.message for e in errors)
+        assert any(
+            "Порог влажности" in e.message and "вне диапазона 0-100" in e.message for e in errors
+        )
 
     def test_humidity_threshold_at_boundary(self, validator):
         """Спецификация: Порог влажности на границе должен быть валидным"""
@@ -703,7 +711,12 @@ class TestManifestValidatorComprehensive:
         """Спецификация: Полностью валидный манифест со всеми устройствами"""
         manifest = {
             "version": 1,
-            "instance": {"id": "home_001", "name": "Smart Home", "owner": "John", "created_at": "2024-01-01"},
+            "instance": {
+                "id": "home_001",
+                "name": "Smart Home",
+                "owner": "John",
+                "created_at": "2024-01-01",
+            },
             "devices": {
                 "lighting": [
                     {

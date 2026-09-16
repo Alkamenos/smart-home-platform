@@ -40,11 +40,7 @@ class MockFSMEngine:
 
 def create_mock_state(current_state="OFF", history=None):
     """Создаёт объект State согласно спецификации fsm.py."""
-    return FSMState(
-        current_state=current_state,
-        entered_at=time.time(),
-        context={}
-    )
+    return FSMState(current_state=current_state, entered_at=time.time(), context={})
 
 
 class MockDefinition:
@@ -179,7 +175,9 @@ class TestOnFSMTransition:
         with patch.object(persistence, "_save_state") as mock_save:
             persistence._on_fsm_transition(transition_data)
 
-            mock_save.assert_called_once_with("light_living_room_mode", "ON_MOTION", "light.living_room")
+            mock_save.assert_called_once_with(
+                "light_living_room_mode", "ON_MOTION", "light.living_room"
+            )
 
     def test_updates_cache_on_transition(self, persistence):
         """Кэш обновляется при переходе."""
@@ -263,8 +261,10 @@ class TestOnPlatformStarted:
         mock_fsm_engine.add_definition("light.living_room", definition)
 
         # Мок загрузки сохранённого состояния
-        with patch.object(persistence, "_load_state", return_value="PARTY"), \
-             patch.object(persistence, "_restore_state") as mock_restore:
+        with (
+            patch.object(persistence, "_load_state", return_value="PARTY"),
+            patch.object(persistence, "_restore_state") as mock_restore,
+        ):
             persistence._on_platform_started({})
 
             mock_restore.assert_called_once_with("light.living_room", "PARTY")
@@ -280,8 +280,10 @@ class TestOnPlatformStarted:
 
         persistence.enable_for_entity("light.living_room")
 
-        with patch.object(persistence, "_load_state", return_value=None), \
-             patch.object(persistence, "_restore_state") as mock_restore:
+        with (
+            patch.object(persistence, "_load_state", return_value=None),
+            patch.object(persistence, "_restore_state") as mock_restore,
+        ):
             persistence._on_platform_started({})
 
             mock_restore.assert_not_called()
@@ -298,8 +300,10 @@ class TestOnPlatformStarted:
 
         persistence.enable_for_entity("light.nonexistent")
 
-        with patch.object(persistence, "_load_state", return_value="ON"), \
-             patch.object(persistence, "_restore_state") as mock_restore:
+        with (
+            patch.object(persistence, "_load_state", return_value="ON"),
+            patch.object(persistence, "_restore_state") as mock_restore,
+        ):
             persistence._on_platform_started({})
 
             mock_restore.assert_not_called()
@@ -322,8 +326,10 @@ class TestOnPlatformStarted:
         definition = MockDefinition(states=("OFF", "ON", "PARTY"))
         mock_fsm_engine.add_definition("light.living_room", definition)
 
-        with patch.object(persistence, "_load_state", return_value="INVALID_STATE"), \
-             patch.object(persistence, "_restore_state") as mock_restore:
+        with (
+            patch.object(persistence, "_load_state", return_value="INVALID_STATE"),
+            patch.object(persistence, "_restore_state") as mock_restore,
+        ):
             persistence._on_platform_started({})
 
             mock_restore.assert_not_called()
@@ -348,8 +354,10 @@ class TestOnPlatformStarted:
         mock_fsm_engine.add_definition("light.living_room", definition)
         mock_fsm_engine.add_definition("light.kitchen", definition)
 
-        with patch.object(persistence, "_load_state", return_value="ON"), \
-             patch.object(persistence, "_restore_state"):
+        with (
+            patch.object(persistence, "_load_state", return_value="ON"),
+            patch.object(persistence, "_restore_state"),
+        ):
             persistence._on_platform_started({})
 
             mock_logger.info.assert_any_call("Restore complete. Restored 2 states")
@@ -363,8 +371,7 @@ class TestSaveState:
         """Сохранение через input_text когда доступен."""
         persistence._input_text_available = True
 
-        with patch("asyncio.get_running_loop"), \
-             patch("asyncio.create_task") as mock_create_task:
+        with patch("asyncio.get_running_loop"), patch("asyncio.create_task") as mock_create_task:
             persistence._save_state("test_mode", "ON", "light.test")
 
             mock_create_task.assert_called_once()
@@ -373,9 +380,11 @@ class TestSaveState:
         """Fallback в файл при ошибке input_text."""
         persistence._input_text_available = True
 
-        with patch("asyncio.get_running_loop"), \
-             patch("asyncio.create_task", side_effect=Exception("Async error")), \
-             patch.object(persistence, "_save_to_file") as mock_save_file:
+        with (
+            patch("asyncio.get_running_loop"),
+            patch("asyncio.create_task", side_effect=Exception("Async error")),
+            patch.object(persistence, "_save_to_file") as mock_save_file,
+        ):
             persistence._save_state("test_mode", "ON", "light.test")
 
             mock_save_file.assert_called_once()
@@ -384,9 +393,11 @@ class TestSaveState:
         """Флаг input_text_available сбрасывается при ошибке."""
         persistence._input_text_available = True
 
-        with patch("asyncio.get_running_loop"), \
-             patch("asyncio.create_task", side_effect=Exception("Error")), \
-             patch.object(persistence, "_save_to_file"):
+        with (
+            patch("asyncio.get_running_loop"),
+            patch("asyncio.create_task", side_effect=Exception("Error")),
+            patch.object(persistence, "_save_to_file"),
+        ):
             persistence._save_state("test_mode", "ON", "light.test")
 
             assert persistence._input_text_available is False
@@ -408,8 +419,7 @@ class TestSaveToFile:
         """Создание директории для хранения."""
         storage_dir = tmp_path / ".homeassistant" / ".storage" / "fsm_persistence"
 
-        with patch("pathlib.Path.home", return_value=tmp_path), \
-             patch("builtins.open", create=True):
+        with patch("pathlib.Path.home", return_value=tmp_path), patch("builtins.open", create=True):
             persistence._save_to_file("test_mode", "ON")
 
             assert storage_dir.exists() or True  # Директория должна быть создана

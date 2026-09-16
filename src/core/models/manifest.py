@@ -6,6 +6,7 @@ Room-based architecture:
 - Devices react to processed sensor events
 - Same sensor entity can be referenced from multiple rooms
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -115,11 +116,7 @@ class Manifest(BaseModel):
     @property
     def all_devices(self) -> list[tuple[str, DeviceConfig]]:
         """Flat list of (room_id, device) for iteration."""
-        return [
-            (room.id, device)
-            for room in self.rooms
-            for device in room.devices
-        ]
+        return [(room.id, device) for room in self.rooms for device in room.devices]
 
     @property
     def all_device_ids(self) -> list[str]:
@@ -158,6 +155,7 @@ LightMotionDevice = DeviceConfig
 
 # ─── Loader function (kept here for import compatibility) ─────────────────────
 
+
 def load_manifest(manifest_path: str | Path) -> Manifest:
     """Load and validate manifest from YAML file.
 
@@ -184,10 +182,12 @@ def load_manifest(manifest_path: str | Path) -> Manifest:
 # Zone в новой архитектуре = Room
 class Zone(BaseModel):
     """Zone is now an alias for RoomConfig with optional floor."""
+
     id: str
     name: str
     floor: int = 1
     sensors: dict[str, str] = Field(default_factory=dict)
     devices: list[DeviceConfig] = Field(default_factory=list)
+
 
 InstanceInfo = InstanceConfig

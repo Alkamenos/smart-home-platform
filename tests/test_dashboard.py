@@ -61,9 +61,7 @@ class TestCreateFsmSensor:
         integration = DashboardIntegration(ha_adapter, event_bus)
 
         result = await integration.create_fsm_sensor(
-            fsm_id="light.kitchen_motion",
-            name="Kitchen Motion Light",
-            feature_type="lighting"
+            fsm_id="light.kitchen_motion", name="Kitchen Motion Light", feature_type="lighting"
         )
 
         assert result is True
@@ -87,13 +85,13 @@ class TestCreateFsmSensor:
         integration = DashboardIntegration(ha_adapter, event_bus)
 
         await integration.create_fsm_sensor(
-            fsm_id="climate.living_room",
-            name="Living Room Climate",
-            feature_type="climate"
+            fsm_id="climate.living_room", name="Living Room Climate", feature_type="climate"
         )
 
         assert "climate.living_room" in integration._created_entities
-        assert integration._created_entities["climate.living_room"] == "sensor.fsm_climate.living_room"
+        assert (
+            integration._created_entities["climate.living_room"] == "sensor.fsm_climate.living_room"
+        )
 
     @pytest.mark.asyncio
     async def test_returns_false_when_ha_call_fails(self):
@@ -105,9 +103,7 @@ class TestCreateFsmSensor:
         integration = DashboardIntegration(ha_adapter, event_bus)
 
         result = await integration.create_fsm_sensor(
-            fsm_id="light.bedroom",
-            name="Bedroom Light",
-            feature_type="lighting"
+            fsm_id="light.bedroom", name="Bedroom Light", feature_type="lighting"
         )
 
         assert result is False
@@ -128,7 +124,7 @@ class TestCreateFsmSensor:
             "climate": "mdi:thermometer",
             "ventilation": "mdi:fan",
             "security": "mdi:shield",
-            "unknown": "mdi:cog"
+            "unknown": "mdi:cog",
         }
 
         for feature_type, expected_icon in feature_icons.items():
@@ -136,7 +132,7 @@ class TestCreateFsmSensor:
             await integration.create_fsm_sensor(
                 fsm_id=f"test.{feature_type}",
                 name=f"Test {feature_type}",
-                feature_type=feature_type
+                feature_type=feature_type,
             )
 
             data = ha_adapter.call_service.call_args[1]["data"]
@@ -164,8 +160,8 @@ class TestUpdateFsmSensor:
                 "timestamp": "2024-01-01T10:00:00",
                 "old_state": "OFF",
                 "event": "motion_detected",
-                "feature_type": "lighting"
-            }
+                "feature_type": "lighting",
+            },
         )
 
         ha_adapter.set_entity_state.assert_called_once()
@@ -186,11 +182,7 @@ class TestUpdateFsmSensor:
 
         integration = DashboardIntegration(ha_adapter, event_bus)
 
-        await integration._update_fsm_sensor(
-            fsm_id="nonexistent",
-            state="ON",
-            event_data={}
-        )
+        await integration._update_fsm_sensor(fsm_id="nonexistent", state="ON", event_data={})
 
         ha_adapter.set_entity_state.assert_not_called()
 
@@ -204,11 +196,7 @@ class TestUpdateFsmSensor:
         integration = DashboardIntegration(ha_adapter, event_bus)
         integration._created_entities["light.kitchen"] = "sensor.fsm_light.kitchen"
 
-        await integration._update_fsm_sensor(
-            fsm_id="light.kitchen",
-            state="ON",
-            event_data={}
-        )
+        await integration._update_fsm_sensor(fsm_id="light.kitchen", state="ON", event_data={})
 
         ha_adapter.set_entity_state.assert_not_called()
 
@@ -226,8 +214,7 @@ class TestCreateStatusBinarySensor:
         integration = DashboardIntegration(ha_adapter, event_bus)
 
         result = await integration.create_status_binary_sensor(
-            fsm_id="light.kitchen",
-            name="Kitchen Light"
+            fsm_id="light.kitchen", name="Kitchen Light"
         )
 
         assert result is True
@@ -248,12 +235,14 @@ class TestCreateStatusBinarySensor:
         integration = DashboardIntegration(ha_adapter, event_bus)
 
         await integration.create_status_binary_sensor(
-            fsm_id="climate.bedroom",
-            name="Bedroom Climate"
+            fsm_id="climate.bedroom", name="Bedroom Climate"
         )
 
         assert "climate.bedroom_status" in integration._created_entities
-        assert integration._created_entities["climate.bedroom_status"] == "binary_sensor.fsm_climate.bedroom_status"
+        assert (
+            integration._created_entities["climate.bedroom_status"]
+            == "binary_sensor.fsm_climate.bedroom_status"
+        )
 
 
 class TestOnHaConnected:
@@ -268,11 +257,13 @@ class TestOnHaConnected:
         integration = DashboardIntegration(ha_adapter, event_bus)
         integration._created_entities = {
             "light.kitchen": "sensor.fsm_light.kitchen",
-            "climate.bedroom": "sensor.fsm_climate.bedroom"
+            "climate.bedroom": "sensor.fsm_climate.bedroom",
         }
 
         # Мокаем метод _recreate_all_entities
-        with patch.object(integration, '_recreate_all_entities', new_callable=AsyncMock) as mock_recreate:
+        with patch.object(
+            integration, "_recreate_all_entities", new_callable=AsyncMock
+        ) as mock_recreate:
             await integration._on_ha_connected({})
 
             mock_recreate.assert_called_once()
@@ -397,7 +388,7 @@ class TestRecreateAllEntities:
         integration = DashboardIntegration(ha_adapter, event_bus)
         integration._created_entities = {
             "light.kitchen": "sensor.fsm_light.kitchen",
-            "climate.bedroom": "sensor.fsm_climate.bedroom"
+            "climate.bedroom": "sensor.fsm_climate.bedroom",
         }
 
         # Просто проверяем что метод выполняется без ошибок

@@ -149,11 +149,7 @@ class TestSubscribeWithFilter:
         """Should support complex filter parameters with multiple keys."""
         bus = EventBus()
         handler = AsyncMock()
-        filter_params = {
-            "device_id": "sensor.motion_1",
-            "room": "hallway",
-            "zone": "ground_floor"
-        }
+        filter_params = {"device_id": "sensor.motion_1", "room": "hallway", "zone": "ground_floor"}
 
         bus.subscribe_with_filter("state_changed", filter_params, handler)
 
@@ -201,7 +197,7 @@ class TestMatchesFilter:
             "device_id": "sensor.motion_1",
             "room": "hallway",
             "state": "on",
-            "timestamp": "2024-01-01T00:00:00"
+            "timestamp": "2024-01-01T00:00:00",
         }
 
         result = bus._matches_filter(filter_params, payload)
@@ -254,12 +250,12 @@ class TestPublish:
         handler = AsyncMock()
         bus.subscribe("test_event", handler)
 
-        with patch('uuid.uuid4', return_value=uuid.UUID('12345678-1234-5678-1234-567812345678')):
+        with patch("uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678")):
             await bus.publish("test_event", {"data": "value"})
 
             handler.assert_called_once()
             call_kwargs = handler.call_args.kwargs
-            assert call_kwargs['trace_id'] == '12345678'
+            assert call_kwargs["trace_id"] == "12345678"
 
     @pytest.mark.asyncio
     async def test_uses_provided_trace_id(self):
@@ -270,11 +266,7 @@ class TestPublish:
 
         await bus.publish("test_event", {"data": "value"}, trace_id="custom-trace")
 
-        handler.assert_called_once_with(
-            "test_event",
-            {"data": "value"},
-            trace_id="custom-trace"
-        )
+        handler.assert_called_once_with("test_event", {"data": "value"}, trace_id="custom-trace")
 
     @pytest.mark.asyncio
     async def test_calls_all_handlers_for_event(self):
@@ -353,7 +345,9 @@ class TestPublish:
         regular_handler = AsyncMock()
         filtered_handler = AsyncMock()
         bus.subscribe("state_changed", regular_handler)
-        bus.subscribe_with_filter("state_changed", {"device_id": "sensor.motion_1"}, filtered_handler)
+        bus.subscribe_with_filter(
+            "state_changed", {"device_id": "sensor.motion_1"}, filtered_handler
+        )
 
         await bus.publish("state_changed", {"device_id": "sensor.motion_1", "state": "on"})
 
@@ -432,11 +426,13 @@ class TestEventBusIntegration:
 
         # Simulate room context manager
         room_context = {"motion_active": False}
+
         async def update_context(event_type, payload, trace_id=None):
             room_context["motion_active"] = payload.get("state") == "on"
 
         # Simulate logger
         logged_events = []
+
         async def log_event(event_type, payload, trace_id=None):
             logged_events.append({"type": event_type, "payload": payload, "trace_id": trace_id})
 
@@ -447,7 +443,7 @@ class TestEventBusIntegration:
         await bus.publish(
             "motion_detected",
             {"device_id": "sensor.motion_hallway", "state": "on"},
-            trace_id="test-trace-1"
+            trace_id="test-trace-1",
         )
 
         assert room_context["motion_active"] is True

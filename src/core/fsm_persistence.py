@@ -292,7 +292,7 @@ class FSMPersistence:
                 restored_state = State(
                     current_state=saved_state,
                     entered_at=now,
-                    context={"restored": True, "previous_state": current_state.current_state}
+                    context={"restored": True, "previous_state": current_state.current_state},
                 )
 
                 # Обновляем состояние в движке
