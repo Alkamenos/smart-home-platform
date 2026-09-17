@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog
+.PHONY: help test run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog
 
 # Default target
 help:
@@ -25,6 +25,8 @@ help:
 	@echo "Development:"
 	@echo "  make clean         - Remove build artifacts and cache"
 	@echo "  make run-mock      - Run local mock simulator for debugging"
+	@echo "  make run-webui     - Start WebUI server (development mode)"
+	@echo "  make run-webui-prod - Start WebUI server (production mode)"
 	@echo ""
 
 # Installation
@@ -100,6 +102,17 @@ run-mock:
 	python fsm_demo/full_house_demo.py
 
 # Alias for run-mock
+
+# WebUI
+run-webui:
+	@echo "🌐 Starting WebUI server..."
+	@echo "Open http://localhost:8000 in your browser"
+	uvicorn src.webui.app:app --reload --host 0.0.0.0 --port 8000
+
+run-webui-prod:
+	@echo "🌐 Starting WebUI server (production mode)..."
+	uvicorn src.webui.app:app --host 0.0.0.0 --port 8000 --workers 4
+
 run-simulator: run-mock
 
 # Generate documentation
