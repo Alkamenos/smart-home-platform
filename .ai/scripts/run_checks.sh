@@ -20,6 +20,12 @@
 #     ruff check --fix src/ tests/
 #     ruff format src/ tests/
 #
+# ⛔ ЗАПРЕЩЕНО ИЗМЕНЯТЬ .gitignore:
+# Этот файл управляется централизованно через шаблон.
+# Если ты случайно изменил .gitignore — восстанови его командой:
+#     cp .ai/templates/qwen.gitignore.fix .gitignore
+#     git add .gitignore
+#
 # =============================================================================
 
 set -e  # Exit on first error
@@ -75,20 +81,26 @@ echo -e "${GREEN}✅ Все инструменты установлены${NC}"
 echo ""
 
 # ──────────────────────────────────────────────
-# 0. Восстановление .gitignore из эталона
+# 0. Проверка: .gitignore не был изменён
 # ──────────────────────────────────────────────
 GITIGNORE_FIX="$ROOT/.ai/templates/qwen.gitignore.fix"
 
 if [[ -f "$GITIGNORE_FIX" ]]; then
     if ! diff -q "$GITIGNORE_FIX" "$ROOT/.gitignore" >/dev/null 2>&1; then
-        warn ".gitignore повреждён — восстанавливаю из qwen.gitignore.fix"
-        cp "$GITIGNORE_FIX" "$ROOT/.gitignore"
-        git add .gitignore
-        info ".gitignore восстановлен и добавлен в индекс"
+        fail ".gitignore был изменён! Это запрещено.
+
+⛔ Восстанови .gitignore из шаблона:
+   cp .ai/templates/qwen.gitignore.fix .gitignore
+   git add .gitignore
+
+Затем запусти проверки снова."
     fi
 else
-    warn "qwen.gitignore.fix не найден — пропускаю восстановление"
+    warn "qwen.gitignore.fix не найден — пропускаю проверку .gitignore"
 fi
+
+echo -e "${GREEN}✅ .gitignore не изменён${NC}"
+echo ""
 
 # 1. Tests
 echo "1️⃣  Running tests..."
@@ -143,15 +155,18 @@ fi
 echo ""
 
 # ──────────────────────────────────────────────
-# 6. Финальная проверка: .gitignore не в мусоре
+# 6. Финальная проверка: .gitignore не в staged
 # ──────────────────────────────────────────────
 if git diff --cached --name-only | grep -q '^\.gitignore$'; then
-    # если .gitignore в коммите — сверяем с эталоном
-    if [[ -f "$GITIGNORE_FIX" ]]; then
-        if ! diff -q "$GITIGNORE_FIX" "$ROOT/.gitignore" >/dev/null 2>&1; then
-            fail ".gitignore в индексе не совпадает с эталоном"
-        fi
-    fi
+    fail ".gitignore находится в staged (готов к коммиту)! Это запрещено.
+
+⛔ Убери .gitignore из индекса:
+   git restore --staged .gitignore
+
+Или восстанови шаблон, если ты его менял:
+   cp .ai/templates/qwen.gitignore.fix .gitignore
+   git restore --staged .gitignore
+"
 fi
 
 echo ""
