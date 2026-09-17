@@ -45,12 +45,16 @@ gantt
 
 ```
 
+## 📌 📌 Как использовать этот файл
+
+---
+
 ## 📌 Status Legend
 
-- ✅ Completed
-- [ ] In Progress
-- [ ] Planned
-- ✅ Cancelled
+- `[x]` Completed — задача выполнена, файлы кода существуют
+- `[ ]` In Progress — задача в работе
+- `[ ]` Planned — запланирована
+- `[x]` Cancelled — отменена
 
 ## ✅ Phase 1: Foundation
 
