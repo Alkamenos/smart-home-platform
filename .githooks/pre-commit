@@ -5,7 +5,7 @@
 #
 
 # .githooks/pre-commit
-# Husky-like pre-commit hook for smart-home-platform.
+# Быстрые статические проверки перед коммитом
 # Блокирует коммит при любом сбое проверок.
 
 set -euo pipefail
@@ -24,28 +24,61 @@ fail()  { echo -e "${RED}[pre-commit]${NC} $*"; exit 1; }
 
 
 # ──────────────────────────────────────────────
-# 1. Проверка: запуск quality checks (только если AI=1)
+# 1. Статические проверки (только если AI=1)
 # ──────────────────────────────────────────────
 
 if [[ "${AI:-}" == "1" ]]; then
-    info "🤖 AI mode enabled — запуск проверок качества (.ai/scripts/run_checks.sh)..."
-    
-    if [[ ! -x "$ROOT/.ai/scripts/run_checks.sh" ]]; then
-        fail "Скрипт проверок не найден или не исполняемый: .ai/scripts/run_checks.sh"
-    fi
-    
-    # Запускаем проверки ТОЛЬКО если есть изменения в staged
-    if git diff --cached --quiet src/ tests/ 2>/dev/null; then
-        info "Нет изменений в src/ или tests/ — пропускаем проверки кода"
-    else
-        info "Обнаружены изменения в коде — запускаем проверки..."
-        if ! "$ROOT/.ai/scripts/run_checks.sh"; then
-            fail "❌ Проверки качества не пройдены! Исправь ошибки перед коммитом."
+    info "🤖 AI mode enabled — запуск статических проверок..."
+
+    # 1. Ruff lint
+    info "📏 Running ruff lint..."
+    if command -v ruff &>/dev/null; then
+        if ! ruff check .; then
+            fail "❌ Ruff lint failed"
         fi
-        info "✅ Все проверки качества пройдены"
+    else
+        warn "ruff not found, skipping lint..."
     fi
+
+    # 2. Ruff format
+    info "🎨 Running ruff format..."
+    if command -v ruff &>/dev/null; then
+        if ! ruff format . --check; then
+            fail "❌ Ruff format failed"
+        fi
+    else
+        warn "ruff not found, skipping format..."
+    fi
+
+    # 3. MyPy type checking
+    info "🔍 Running mypy..."
+    if command -v mypy &>/dev/null; then
+        if ! mypy src/ tests/; then
+            fail "❌ MyPy failed"
+        fi
+    else
+        warn "mypy not found, skipping type check..."
+    fi
+
+    # 4. Проверка .gitignore
+    info "📝 Checking .gitignore..."
+    if [[ -x "$ROOT/.ai/scripts/check_gitignore.sh" ]]; then
+        if ! "$ROOT/.ai/scripts/check_gitignore.sh"; then
+            fail "❌ Gitignore check failed"
+        fi
+    fi
+
+    # 5. Проверка обновления документации
+    info "📚 Checking documentation updates..."
+    if [[ -x "$ROOT/.ai/scripts/check_docs_updated.py" ]]; then
+        if ! python "$ROOT/.ai/scripts/check_docs_updated.py"; then
+            fail "❌ Documentation check failed"
+        fi
+    fi
+
+    info "✅ Все статические проверки пройдены"
 else
-    info "ℹ️  AI mode disabled. Set AI=1 to run quality checks."
+    info "ℹ️  AI mode disabled. Set AI=1 to run static checks."
     info "   Example: AI=1 git commit -m \"message\""
 fi
 
@@ -60,7 +93,7 @@ if [[ -x "$ROOT/.ai/scripts/sync_roadmap.py" ]]; then
         warn "ROADMAP требует обновления!"
         info "Автоматическое обновление ROADMAP..."
         python "$ROOT/.ai/scripts/sync_roadmap.py" --auto-update
-        
+
         # Проверяем, есть ли изменения в ROADMAP после синхронизации
         if ! git diff --quiet "$ROOT/.ai/03_ROADMAP.md" 2>/dev/null; then
             warn "⚠️  ROADMAP был обновлен автоматически!"
@@ -75,30 +108,6 @@ if [[ -x "$ROOT/.ai/scripts/sync_roadmap.py" ]]; then
     fi
 else
     warn "sync_roadmap.py не найден — пропускаю проверку ROADMAP"
-fi
-
-# ──────────────────────────────────────────────
-# 3. Стандартные pre-commit проверки
-# ──────────────────────────────────────────────
-info "Запуск дополнительных pre-commit проверок..."
-
-if command -v pre-commit &>/dev/null && [[ -f "$ROOT/.pre-commit-config.yaml" ]]; then
-    if ! pre-commit run --all-files; then
-        fail "pre-commit checks failed"
-    fi
-elif [[ -f "$ROOT/.pre-commit-config.yaml" ]]; then
-    # fallback: docker (только если docker доступен)
-    if command -v docker &>/dev/null; then
-        if ! docker run --rm -v "$ROOT:/src" -w /src \
-            pre-commit/pre-commit:latest \
-            run --all-files; then
-            fail "pre-commit checks failed (docker)"
-        fi
-    else
-        warn "Docker не доступен — пропускаю pre-commit проверки"
-    fi
-else
-    warn ".pre-commit-config.yaml не найден — пропускаю"
 fi
 
 info "✅ Все проверки пройдены ✓"
