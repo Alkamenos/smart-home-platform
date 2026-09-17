@@ -53,7 +53,8 @@ if [[ "${AI:-}" == "1" ]]; then
     # 3. MyPy type checking
     info "🔍 Running mypy..."
     if command -v mypy &>/dev/null; then
-        if ! mypy src/ tests/; then
+        # Используем MYPYPATH для корректной работы с src/ структурой
+        if ! MYPYPATH=src mypy src/; then
             fail "❌ MyPy failed"
         fi
     else
