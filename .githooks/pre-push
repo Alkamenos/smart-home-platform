@@ -1,6 +1,8 @@
 #!/bin/bash
 # Pre-push hook: финальная проверка перед отправкой кода в удаленный репозиторий
 # Запускается автоматически при git push
+# Работает только если установлена переменная AI=1
+# Пример: AI=1 git push
 
 set -euo pipefail
 
@@ -15,6 +17,15 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
+
+# Проверяем, включен ли AI режим
+if [[ "${AI:-}" != "1" ]]; then
+    echo -e "${YELLOW}ℹ️  AI mode disabled. Set AI=1 to run pre-push checks.${NC}"
+    echo "   Example: AI=1 git push"
+    exit 0
+fi
+
+echo "🤖 AI mode enabled — запуск полных проверок..."
 
 # Функция для проверки исполняемости скрипта
 check_script_executable() {

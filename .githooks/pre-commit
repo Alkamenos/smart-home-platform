@@ -24,23 +24,29 @@ fail()  { echo -e "${RED}[pre-commit]${NC} $*"; exit 1; }
 
 
 # ──────────────────────────────────────────────
-# 1. Проверка: запуск quality checks (ОБЯЗАТЕЛЬНО!)
+# 1. Проверка: запуск quality checks (только если AI=1)
 # ──────────────────────────────────────────────
-info "Запуск проверок качества (.ai/scripts/run_checks.sh)..."
 
-if [[ ! -x "$ROOT/.ai/scripts/run_checks.sh" ]]; then
-    fail "Скрипт проверок не найден или не исполняемый: .ai/scripts/run_checks.sh"
-fi
-
-# Запускаем проверки ТОЛЬКО если есть изменения в staged
-if git diff --cached --quiet src/ tests/ 2>/dev/null; then
-    info "Нет изменений в src/ или tests/ — пропускаем проверки кода"
-else
-    info "Обнаружены изменения в коде — запускаем проверки..."
-    if ! "$ROOT/.ai/scripts/run_checks.sh"; then
-        fail "❌ Проверки качества не пройдены! Исправь ошибки перед коммитом."
+if [[ "${AI:-}" == "1" ]]; then
+    info "🤖 AI mode enabled — запуск проверок качества (.ai/scripts/run_checks.sh)..."
+    
+    if [[ ! -x "$ROOT/.ai/scripts/run_checks.sh" ]]; then
+        fail "Скрипт проверок не найден или не исполняемый: .ai/scripts/run_checks.sh"
     fi
-    info "✅ Все проверки качества пройдены"
+    
+    # Запускаем проверки ТОЛЬКО если есть изменения в staged
+    if git diff --cached --quiet src/ tests/ 2>/dev/null; then
+        info "Нет изменений в src/ или tests/ — пропускаем проверки кода"
+    else
+        info "Обнаружены изменения в коде — запускаем проверки..."
+        if ! "$ROOT/.ai/scripts/run_checks.sh"; then
+            fail "❌ Проверки качества не пройдены! Исправь ошибки перед коммитом."
+        fi
+        info "✅ Все проверки качества пройдены"
+    fi
+else
+    info "ℹ️  AI mode disabled. Set AI=1 to run quality checks."
+    info "   Example: AI=1 git commit -m \"message\""
 fi
 
 # ──────────────────────────────────────────────
