@@ -48,7 +48,7 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
     if manifest_path is None:
         manifest_path = "instances/leonids_house/manifest.yaml"
 
-    @app.get("/", response_class=HTMLResponse)  # type: ignore[misc]
+    @app.get("/", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def index(request: Request) -> HTMLResponse:
         """Render the main manifest editor page.
 
@@ -75,7 +75,7 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
             },
         )
 
-    @app.post("/save", response_class=HTMLResponse)  # type: ignore[misc]
+    @app.post("/save", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def save_manifest(
         request: Request,
         manifest_data: str = Form(...),
@@ -115,7 +115,7 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
                 status_code=400,
             )
 
-    @app.get("/rooms/{room_id}/edit", response_class=HTMLResponse)  # type: ignore[misc]
+    @app.get("/rooms/{room_id}/edit", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def edit_room(request: Request, room_id: int) -> HTMLResponse:
         """Edit a specific room.
 
@@ -142,7 +142,7 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
             logger.error(f"Failed to load room: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
 
-    @app.post("/rooms/add", response_class=HTMLResponse)  # type: ignore[misc]
+    @app.post("/rooms/add", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def add_room(request: Request) -> HTMLResponse:
         """Add a new room form.
 

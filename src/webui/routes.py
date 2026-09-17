@@ -21,7 +21,7 @@ template_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(template_dir))
 
 
-@router.get("/health", response_class=HTMLResponse)  # type: ignore[misc]
+@router.get("/health", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
 async def health_check(request: Request) -> HTMLResponse:
     """Health check endpoint.
 
