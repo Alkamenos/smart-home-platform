@@ -40,12 +40,23 @@ class RoomModel(BaseModel):
     )
 
 
+class InstanceModel(BaseModel):
+    """Instance configuration model."""
+
+    id: str = Field(..., description="Instance ID")
+    name: str = Field(..., description="Instance name")
+    owner: str | None = Field(default=None, description="Owner name")
+    created_at: str | None = Field(default=None, description="Creation date")
+
+
 class ManifestModel(BaseModel):
     """Main manifest configuration model."""
 
-    version: str = Field(default="3.0", description="Manifest schema version")
-    instance_name: str = Field(..., description="Instance name")
+    version: int | str = Field(default=1, description="Manifest schema version")
+    instance: InstanceModel | None = Field(default=None, description="Instance configuration")
+    instance_name: str | None = Field(default=None, description="Instance name (legacy)")
     rooms: list[RoomModel] = Field(default_factory=list, description="Rooms in the smart home")
+    zones: list[RoomModel] = Field(default_factory=list, description="Zones in the smart home")
     global_params: dict[str, Any] = Field(default_factory=dict, description="Global parameters")
 
     model_config = {"extra": "allow"}
