@@ -1,10 +1,22 @@
 # Roadmap (Machine-Readable)
 
+## 📌 Как использовать этот файл
+
+**Перед началом задачи:** Найди свою задачу в соответствующей фазе и проверь статус.
+
+**После завершения задачи:** Pre-commit хук автоматически отметит задачу как выполненную `[x]`.  
+Или обнови вручную: `python3 .ai/scripts/sync_roadmap.py --auto-update`
+
+---
+
 ## Status Legend
-- [x] Completed
-- [ ] In Progress
-- [ ] Planned
-- [x] Cancelled
+
+- `[x]` Completed — задача выполнена, файлы кода существуют
+- `[ ]` In Progress — задача в работе
+- `[ ]` Planned — запланирована
+- `[x]` Cancelled — отменена
+
+> **Примечание:** Pre-commit хук автоматически обновляет статус задач на основе наличия файлов кода.
 
 ## Phase 1: Foundation [COMPLETED: 2026-09-05]
 - [x] Basic FSM engine with states and transitions
