@@ -83,16 +83,20 @@ else
 fi
 
 # ──────────────────────────────────────────────
-# 2. Автоматическая синхронизация ROADMAP
+# 2. Обновление статусов задач и синхронизация ROADMAP
 # ──────────────────────────────────────────────
-info "Проверка актуальности ROADMAP..."
+info "Обновление статусов задач в ROADMAP..."
 
 if [[ -x "$ROOT/.ai/scripts/sync_roadmap.py" ]]; then
-    # Запускаем синхронизацию ROADMAP
+    # Сначала обновляем статусы задач на основе наличия файлов
+    info "🔄 Проверяем выполнение задач по наличию файлов кода..."
+    python "$ROOT/.ai/scripts/sync_roadmap.py" --auto-update
+
+    # Затем проверяем актуальность ROADMAP.md
     if ! python "$ROOT/.ai/scripts/sync_roadmap.py" --check-only; then
         warn "ROADMAP требует обновления!"
         info "Автоматическое обновление ROADMAP..."
-        python "$ROOT/.ai/scripts/sync_roadmap.py" --auto-update
+        python "$ROOT/.ai/scripts/sync_roadmap.py"
 
         # Проверяем, есть ли изменения в ROADMAP после синхронизации
         if ! git diff --quiet "$ROOT/.ai/03_ROADMAP.md" 2>/dev/null; then
