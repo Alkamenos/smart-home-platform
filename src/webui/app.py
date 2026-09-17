@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -12,6 +13,10 @@ from loguru import logger
 
 from ..core.models.manifest import Manifest
 from .models import ManifestModel
+
+
+if TYPE_CHECKING:
+    pass
 
 
 def create_app(manifest_path: str | None = None) -> FastAPI:
