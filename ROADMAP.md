@@ -122,15 +122,21 @@ gantt
 
 **Status:** IN PROGRESS
 
-- [ ] Web UI for manifest editing
+- ✅ Web UI for manifest editing
 - FastAPI + HTMX
 - Form validation using Pydantic models
-- [ ] Prometheus metrics export
+- Files: `src/webui/app.py`, `src/webui/routes.py`, `src/webui/models.py`, `tests/test_webui.py`
+- Implementation date: 2026-09-17
+- ✅ Prometheus metrics export
 - `/metrics` endpoint
 - FSM state changes, command latency, error rates
-- [ ] Hot-reload without restart
+- Files: `core/metrics.py`, `tests/test_metrics.py`
+- Implementation date: 2026-09-16
+- ✅ Hot-reload without restart
 - File watcher for manifest changes
 - Graceful FSM migration (unregister old, register new)
+- Files: `services/config_watcher.py`, `tests/test_hot_reload.py`
+- Implementation date: 2026-09-17
 
 ## 📌 Phase 7: Platform Extensions - Quick Wins
 

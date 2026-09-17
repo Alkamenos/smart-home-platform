@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
 Sync script: Generate human-readable ROADMAP.md from .ai/03_ROADMAP.md
+AND auto-update task status based on code files presence.
 
 Usage:
-    python .ai/scripts/sync_roadmap.py
+    python .ai/scripts/sync_roadmap.py [--check-only] [--auto-update]
 
 Input:  .ai/03_ROADMAP.md (machine-readable)
 Output: ROADMAP.md (human-readable with Mermaid diagrams)
+
+Options:
+    --check-only   Check if ROADMAP is in sync with code, exit 1 if not
+    --auto-update  Auto-update ROADMAP based on code files presence
 """
 
 #  Copyright 2026 Leonid Artemev
@@ -14,6 +19,7 @@ Output: ROADMAP.md (human-readable with Mermaid diagrams)
 
 from __future__ import annotations
 
+import argparse
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -210,8 +216,87 @@ def generate_markdown(sections: list[tuple[str, str, list[str]]]) -> str:
     return "\n".join(output)
 
 
+def check_task_files(task_line: str) -> tuple[bool, bool]:
+    """
+    Check if code files exist for a task.
+    
+    Args:
+        task_line: A task line from ROADMAP (e.g., "- [x] Web UI... Files: `src/webui/app.py`...")
+    
+    Returns:
+        Tuple of (has_code_files, all_files_exist)
+    """
+    # Extract file references from the task line
+    files_match = re.search(r"Files?:\s*`([^`]+)`", task_line, re.IGNORECASE)
+    if not files_match:
+        # No files specified, can't check
+        return False, False
+    
+    files_str = files_match.group(1)
+    # Split by comma or space
+    files = [f.strip() for f in re.split(r'[,\s]+', files_str) if f.strip()]
+    
+    if not files:
+        return False, False
+    
+    # Check if each file exists
+    all_exist = True
+    for file_path in files:
+        # Clean up file path (remove extra backticks, quotes, etc.)
+        file_path = file_path.strip('`\'"')
+        if not Path(file_path).exists():
+            all_exist = False
+            break
+    
+    return True, all_exist
+
+
+def update_roadmap_status(content: str) -> tuple[str, bool]:
+    """
+    Update task status in ROADMAP based on code files presence.
+    
+    Rules:
+    - If all files mentioned in task exist AND task is [ ], mark as [x]
+    - If task is [x] but files don't exist, keep as [x] (manual override)
+    
+    Returns:
+        Tuple of (updated_content, was_updated)
+    """
+    lines = content.split("\n")
+    updated = False
+    new_lines = []
+    
+    for line in lines:
+        # Only process task lines that are not yet completed
+        if line.strip().startswith("- [ ]"):
+            has_files, all_exist = check_task_files(line)
+            
+            if has_files and all_exist:
+                # Mark task as completed
+                new_line = line.replace("- [ ]", "- [x]", 1)
+                new_lines.append(new_line)
+                updated = True
+                
+                # Extract task name for logging
+                task_name = line[6:].split("Files")[0].split("Detail")[0].strip()
+                print(f"  ✅ Auto-marked as completed: {task_name[:60]}...")
+            else:
+                new_lines.append(line)
+        else:
+            new_lines.append(line)
+    
+    return "\n".join(new_lines), updated
+
+
 def main():
     """Main function."""
+    parser = argparse.ArgumentParser(description="Sync ROADMAP with code files")
+    parser.add_argument("--check-only", action="store_true", 
+                        help="Check if ROADMAP is in sync, exit 1 if not")
+    parser.add_argument("--auto-update", action="store_true",
+                        help="Auto-update ROADMAP based on code files")
+    args = parser.parse_args()
+    
     input_path = Path(".ai/03_ROADMAP.md")
     output_path = Path("ROADMAP.md")
 
@@ -226,12 +311,41 @@ def main():
         return 1
 
     try:
+        # Auto-update task statuses if requested
+        if args.auto_update:
+            print("🔄 Checking task completion status based on code files...")
+            content, was_updated = update_roadmap_status(content)
+            if was_updated:
+                print("✅ ROADMAP updated with completed tasks")
+                # Write updated content back to source file
+                input_path.write_text(content, encoding="utf-8")
+            else:
+                print("ℹ️  No automatic updates needed")
+        
         sections = parse_roadmap(content)
 
         if not sections:
             print("❌ No sections found in roadmap")
             return 1
 
+        # Check-only mode: verify ROADMAP is up to date
+        if args.check_only:
+            # Generate expected output and compare
+            expected_markdown = generate_markdown(sections)
+            
+            if output_path.exists():
+                actual_markdown = output_path.read_text(encoding="utf-8")
+                if expected_markdown == actual_markdown:
+                    print("✅ ROADMAP.md is in sync")
+                    return 0
+                else:
+                    print("⚠️  ROADMAP.md is out of sync")
+                    return 1
+            else:
+                print("⚠️  ROADMAP.md does not exist")
+                return 1
+        
+        # Normal mode: generate/update ROADMAP.md
         markdown = generate_markdown(sections)
 
         output_path.write_text(markdown, encoding="utf-8")
