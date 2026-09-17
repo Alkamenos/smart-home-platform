@@ -49,10 +49,10 @@ git@github.com:Alkamenos/smart-home-platform.git
    ```bash
    # Ubuntu/Debian
    sudo apt-get install openssh-client
-   
+
    # macOS
    brew install openssh
-   
+
    # Windows (Git Bash уже включает SSH)
    ```
 
@@ -60,10 +60,10 @@ git@github.com:Alkamenos/smart-home-platform.git
    ```bash
    # Создать файл ключа
    echo "$SSH_KEY" > ~/.ssh/id_rsa
-   
+
    # Установить правильные права
    chmod 600 ~/.ssh/id_rsa
-   
+
    # Добавить ключ в ssh-agent
    eval "$(ssh-agent -s)"
    ssh-add ~/.ssh/id_rsa
