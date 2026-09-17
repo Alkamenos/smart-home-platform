@@ -1,11 +1,11 @@
 # Project State
 
-*Последнее обновление: 2026-09-16*
+*Последнее обновление: 2026-09-17*
 
 ## Текущий статус
 
 **Версия:** v3.0.0 (Production Readiness)
-**Последний коммит:** 2026-09-15 — feat: implement room-based architecture
+**Последний коммит:** 2026-09-17 — feat: implement hot-reload without restart (Phase 6)
 
 ### ✅ Полностью реализовано и протестировано
 
@@ -24,6 +24,7 @@
 | Mock Adapter | `adapters/mock_adapter.py` | ✅ Stable | `test_scenarios.py` |
 | Room-Based Architecture | `bootstrap.py`, `core/` | ✅ New | Updated all tests |
 | **Prometheus Metrics** | `core/metrics.py`, `services/metrics_server.py` | ✅ New | `test_metrics.py` |
+| **Hot-Reload Service** | `services/config_watcher.py` | ✅ New | `test_hot_reload.py` |
 
 ## Known Issues
 
@@ -50,6 +51,7 @@
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-17 | Hot-reload without restart implementation | `services/config_watcher.py`, `tests/test_hot_reload.py` | ✅ Complete |
 | 2026-09-16 | Prometheus metrics collection implementation | `core/metrics.py`, `tests/test_metrics.py` | ✅ Complete |
 | 2026-09-15 | Room-based architecture implementation | `bootstrap.py`, `core/`, `tests/` | ✅ Complete |
 | 2026-09-15 | Extract `extract_device_id()` helper | `core/` | ✅ Complete |

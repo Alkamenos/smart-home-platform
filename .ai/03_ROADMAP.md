@@ -66,9 +66,11 @@
   - FSM state changes, command latency, error rates
   - Files: `core/metrics.py`, `tests/test_metrics.py`
   - Implementation date: 2026-09-16
-- [ ] Hot-reload without restart
+- [x] Hot-reload without restart
   - File watcher for manifest changes
   - Graceful FSM migration (unregister old, register new)
+  - Files: `services/config_watcher.py`, `tests/test_hot_reload.py`
+  - Implementation date: 2026-09-17
 
 ## Phase 7: Platform Extensions - Quick Wins [PLANNING]
 - [x] Declarative Guards DSL
