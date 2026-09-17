@@ -26,6 +26,59 @@
 3. **Добавлять в Known Issues.** Если ИИ нашла баг или долг — записать в `01_PROJECT_STATE.md`.
 4. **Roadmap — единый источник истины.** Все планы и статусы задач — только в `03_ROADMAP.md`.
 
+## Настройка Git и SSH
+
+### Remote репозиторий
+
+Основной remote репозиторий проекта:
+```
+git@github.com:Alkamenos/smart-home-platform.git
+```
+
+### Работа с ветками
+
+- **Основная ветка:** `main`
+- Вся разработка ведется в ветке `main`
+- Пуш выполняется непосредственно в `main`
+
+### Настройка SSH
+
+**⚠️ ВАЖНО:** Перед началом работы необходимо настроить SSH-доступ к репозиторию.
+
+1. **Установить SSH клиент** (если не установлен):
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install openssh-client
+   
+   # macOS
+   brew install openssh
+   
+   # Windows (Git Bash уже включает SSH)
+   ```
+
+2. **Настроить SSH ключ из переменной окружения `SSH_KEY`**:
+   ```bash
+   # Создать файл ключа
+   echo "$SSH_KEY" > ~/.ssh/id_rsa
+   
+   # Установить правильные права
+   chmod 600 ~/.ssh/id_rsa
+   
+   # Добавить ключ в ssh-agent
+   eval "$(ssh-agent -s)"
+   ssh-add ~/.ssh/id_rsa
+   ```
+
+3. **Проверить подключение**:
+   ```bash
+   ssh -T git@github.com
+   ```
+
+4. **Добавить remote** (если еще не добавлен):
+   ```bash
+   git remote add origin git@github.com:Alkamenos/smart-home-platform.git
+   ```
+
 ## Быстрый старт
 
 Новая задача? Следуй алгоритму из `05_WORKFLOW.md`.
