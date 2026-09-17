@@ -1,5 +1,8 @@
 """FastAPI router for Web UI routes."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +24,7 @@ template_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(template_dir))
 
 
-@router.get("/health", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
+@router.get("/health", response_class=HTMLResponse)
 async def health_check(request: Request) -> HTMLResponse:
     """Health check endpoint.
 
@@ -32,6 +35,7 @@ async def health_check(request: Request) -> HTMLResponse:
         Simple HTML response indicating service health.
     """
     return templates.TemplateResponse(
+        request,
         "health.html",
-        {"request": request, "status": "healthy"},
+        {"status": "healthy"},
     )

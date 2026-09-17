@@ -1,3 +1,8 @@
+<!--
+  ~ # Copyright 2026 Leonid Artemev
+  ~ # SPDX-License-Identifier: Apache-2.0
+  -->
+
 <div class="modal-header">
     <h5 class="modal-title">{% if room_index >= 0 %}Edit Room{% else %}Add Room{% endif %}</h5>
     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -7,16 +12,16 @@
         <input type="hidden" name="room_index" value="{{ room_index }}">
         <div class="mb-3">
             <label for="room-name" class="form-label">Room Name</label>
-            <input type="text" class="form-control" id="room-name" 
+            <input type="text" class="form-control" id="room-name"
                    value="{{ room.name if room.name else '' }}" required>
         </div>
         <div class="mb-3">
             <label for="room-id" class="form-label">Room ID</label>
-            <input type="text" class="form-control" id="room-id" 
-                   value="{{ room.id if room.id else '' }}" 
+            <input type="text" class="form-control" id="room-id"
+                   value="{{ room.id if room.id else '' }}"
                    placeholder="e.g., living_room" required>
         </div>
-        
+
         <h6>Devices</h6>
         <div id="devices-container">
             {% if room.devices %}
@@ -24,7 +29,7 @@
                 <div class="device-form border p-2 mb-2 rounded">
                     <div class="mb-2">
                         <label class="form-label">Device ID</label>
-                        <input type="text" class="form-control form-control-sm" 
+                        <input type="text" class="form-control form-control-sm"
                                value="{{ device.id }}" required>
                     </div>
                     <div class="mb-2">
@@ -40,9 +45,9 @@
                         <div class="behaviors-list">
                             {% for behavior in device.behaviors %}
                             <div class="behavior-item d-flex gap-2 mb-1">
-                                <input type="text" class="form-control form-control-sm" 
+                                <input type="text" class="form-control form-control-sm"
                                        value="{{ behavior.template }}" placeholder="template">
-                                <input type="number" class="form-control form-control-sm" 
+                                <input type="number" class="form-control form-control-sm"
                                        value="{{ behavior.priority }}" placeholder="priority" style="width: 80px;">
                                 <button type="button" class="btn btn-sm btn-danger">×</button>
                             </div>

@@ -144,7 +144,7 @@ type(scope): description
 [optional footer]
 ```
 
-**Types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`  
+**Types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
 **Scope:** `core`, `adapters`, `manifest`, `cli`, `tests`, `docs`, `webui`
 
 **Пример:**

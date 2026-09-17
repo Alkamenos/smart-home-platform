@@ -114,18 +114,18 @@
     git add .
     git commit -m "<type>: <description>"
     ```
-    
+
     **Или с проверками (рекомендуется):**
     ```bash
     AI=1 git add .
     AI=1 git commit -m "<type>: <description>"
     ```
-    
+
 32. **Сделать пуш в ветку `main`:**
     ```bash
     git push origin main
     ```
-    
+
     **Или с полными проверками (рекомендуется):**
     ```bash
     AI=1 git push origin main

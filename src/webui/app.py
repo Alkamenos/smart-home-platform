@@ -1,5 +1,8 @@
 """FastAPI application factory for Web UI."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -67,9 +70,9 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
             validated = ManifestModel(**manifest_data)
 
         return templates.TemplateResponse(
+            request,
             "index.html",
             {
-                "request": request,
                 "manifest": validated,
                 "manifest_json": manifest_data,
             },
@@ -104,14 +107,16 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
             logger.info(f"Manifest saved successfully to {manifest_path}")
 
             return templates.TemplateResponse(
+                request,
                 "partials/save_success.html",
-                {"request": request, "message": "Manifest saved successfully!"},
+                {"message": "Manifest saved successfully!"},
             )
         except Exception as e:
             logger.error(f"Failed to save manifest: {e}")
             return templates.TemplateResponse(
+                request,
                 "partials/save_error.html",
-                {"request": request, "error": str(e)},
+                {"error": str(e)},
                 status_code=400,
             )
 
@@ -133,8 +138,9 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
 
             room = manifest_data["rooms"][room_id]
             return templates.TemplateResponse(
+                request,
                 "partials/room_form.html",
-                {"request": request, "room": room, "room_index": room_id},
+                {"room": room, "room_index": room_id},
             )
         except HTTPException:
             raise
@@ -153,8 +159,9 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
             HTML fragment with empty room form.
         """
         return templates.TemplateResponse(
+            request,
             "partials/room_form.html",
-            {"request": request, "room": {}, "room_index": -1},
+            {"room": {}, "room_index": -1},
         )
 
     return app

@@ -1,3 +1,8 @@
+<!--
+  ~ # Copyright 2026 Leonid Artemev
+  ~ # SPDX-License-Identifier: Apache-2.0
+  -->
+
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
 <head>
@@ -26,13 +31,13 @@
         <div class="row">
             <div class="col-md-8">
                 <h2>Rooms & Devices</h2>
-                
+
                 <div id="rooms-list">
                     {% for room in manifest.rooms %}
                     <div class="card room-card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">{{ room.name }}</h5>
-                            <button 
+                            <button
                                 class="btn btn-sm btn-outline-primary"
                                 hx-get="/rooms/{{ loop.index0 }}/edit"
                                 hx-target="#room-edit-modal"
@@ -64,7 +69,7 @@
                     {% endfor %}
                 </div>
 
-                <button 
+                <button
                     class="btn btn-primary"
                     hx-post="/rooms/add"
                     hx-target="#room-edit-modal"
@@ -117,7 +122,7 @@
             e.preventDefault();
             const manifestData = {{ manifest_json | tojson | safe }};
             document.getElementById('manifest-data-field').value = JSON.stringify(manifestData);
-            
+
             fetch(this.action, {
                 method: 'POST',
                 headers: {
