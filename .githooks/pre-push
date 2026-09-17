@@ -1,0 +1,100 @@
+#!/bin/bash
+# Pre-push hook: финальная проверка перед отправкой кода в удаленный репозиторий
+# Запускается автоматически при git push
+
+set -euo pipefail
+
+echo "🔒 Pre-push: запуск финальных проверок перед отправкой..."
+
+# Цвета для вывода
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$REPO_ROOT"
+
+# Функция для проверки исполняемости скрипта
+check_script_executable() {
+    local script="$1"
+    if [ ! -x "$script" ]; then
+        echo -e "${YELLOW}⚠️  Скрипт $script не исполняемый. Исправляю...${NC}"
+        chmod +x "$script"
+    fi
+}
+
+# 1. Проверка наличия run_checks.sh
+RUN_CHECKS_SCRIPT="$REPO_ROOT/.ai/scripts/run_checks.sh"
+if [ -f "$RUN_CHECKS_SCRIPT" ]; then
+    check_script_executable "$RUN_CHECKS_SCRIPT"
+    
+    echo "📋 Запуск quality checks (тесты + линтер)..."
+    if ! "$RUN_CHECKS_SCRIPT"; then
+        echo -e "${RED}❌ Pre-push FAILED: Quality checks не прошли${NC}"
+        echo ""
+        echo "Исправьте ошибки и попробуйте снова:"
+        echo "  1. Запустите: $RUN_CHECKS_SCRIPT"
+        echo "  2. Исправьте найденные проблемы"
+        echo "  3. Закоммитьте исправления"
+        echo "  4. Повторите push"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Quality checks пройдены${NC}"
+else
+    echo -e "${YELLOW}⚠️  run_checks.sh не найден, пропускаем quality checks${NC}"
+fi
+
+# 2. Проверка актуальности ROADMAP.md
+SYNC_SCRIPT="$REPO_ROOT/.ai/scripts/sync_roadmap.py"
+ROADMAP_FILE="$REPO_ROOT/.ai/ROADMAP.md"
+
+if [ -f "$SYNC_SCRIPT" ] && [ -f "$ROADMAP_FILE" ]; then
+    check_script_executable "$SYNC_SCRIPT"
+    
+    echo "📋 Проверка актуальности ROADMAP..."
+    
+    # Проверяем, требует ли ROADMAP обновления
+    if python3 "$SYNC_SCRIPT" --check-only 2>/dev/null; then
+        echo -e "${GREEN}✅ ROADMAP актуален${NC}"
+    else
+        echo -e "${RED}❌ Pre-push FAILED: ROADMAP.md требует обновления${NC}"
+        echo ""
+        echo "Обнаружены задачи, статус которых не соответствует наличию файлов."
+        echo ""
+        echo "Варианты решения:"
+        echo "  Вариант A (автоматически):"
+        echo "    python3 $SYNC_SCRIPT --auto-update"
+        echo "    git add .ai/ROADMAP.md"
+        echo "    git commit -m 'docs: обновить статус задач в ROADMAP'"
+        echo ""
+        echo "  Вариант B (вручную):"
+        echo "    Откройте .ai/ROADMAP.md и обновите статусы задач"
+        echo ""
+        echo "После обновления ROADMAP повторите push."
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}⚠️  Синхронизация ROADMAP недоступна, пропускаем${NC}"
+fi
+
+# 3. Дополнительная проверка: есть ли незакоммиченные изменения в staged area
+if ! git diff-index --quiet --cached HEAD --; then
+    echo -e "${YELLOW}⚠️  Обнаружены незакоммиченные изменения в staging area${NC}"
+    echo "Рекомендуется закоммить их перед push:"
+    echo "  git status"
+    echo "  git commit -m 'ваше сообщение'"
+    echo ""
+    read -p "Продолжить push без коммита этих изменений? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Push отменен${NC}"
+        exit 1
+    fi
+fi
+
+echo ""
+echo -e "${GREEN}🎉 Все pre-push проверки пройдены успешно!${NC}"
+echo "Отправка кода в удаленный репозиторий..."
+exit 0
