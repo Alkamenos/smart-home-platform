@@ -1,0 +1,32 @@
+"""FastAPI router for Web UI routes."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+
+router = APIRouter()
+
+# Setup templates
+template_dir = Path(__file__).parent / "templates"
+templates = Jinja2Templates(directory=str(template_dir))
+
+
+@router.get("/health", response_class=HTMLResponse)
+async def health_check(request: Request) -> HTMLResponse:
+    """Health check endpoint.
+
+    Args:
+        request: FastAPI request object.
+
+    Returns:
+        Simple HTML response indicating service health.
+    """
+    return templates.TemplateResponse(
+        "health.html",
+        {"request": request, "status": "healthy"},
+    )
