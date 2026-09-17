@@ -58,9 +58,11 @@
 - [x] Remove migration tests (no external users)
 
 ## Phase 6: Advanced Features [IN PROGRESS]
-- [ ] Web UI for manifest editing
+- [x] Web UI for manifest editing
   - FastAPI + HTMX
   - Form validation using Pydantic models
+  - Files: `src/webui/app.py`, `src/webui/routes.py`, `src/webui/models.py`, `tests/test_webui.py`
+  - Implementation date: 2026-09-17
 - [x] Prometheus metrics export
   - `/metrics` endpoint
   - FSM state changes, command latency, error rates
