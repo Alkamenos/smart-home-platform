@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**FSM Visualization (Phase 7)**
+- FSMVisualizer class for generating visual diagrams from FSM definitions
+- Support for Mermaid format (web-based diagram rendering)
+- Support for Graphviz DOT format (professional graph visualization)
+- Batch export for multiple FSMs with subgraph organization
+- CLI command `export-fsm` for exporting FSMs from manifest files
+- Device-level filtering for targeted exports
+- File output and stdout support
+
 ### Changed
 
 - reorganize project structure with proper entry points
