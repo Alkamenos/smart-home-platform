@@ -74,7 +74,7 @@ timeout = 30
 packages = ["src/smart_home"]
 
 [project.scripts]
-smart-home = "smart_home.cli.main:main"
+shp = "smart_home.cli.main:main"
 
 # ===== Tool Configuration =====
 
