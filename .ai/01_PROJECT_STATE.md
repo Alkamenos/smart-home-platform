@@ -11,7 +11,7 @@
 ---
 
 **Версия:** v3.0.0 (Production Readiness)
-**Последний коммит:** 2026-09-17 — feat: implement hot-reload without restart (Phase 6)
+**Последний коммит:** 2026-09-17 — feat: implement FSM Visualization (Phase 7)
 
 ### ✅ Полностью реализовано и протестировано
 
@@ -32,6 +32,7 @@
 | **Prometheus Metrics** | `core/metrics.py`, `services/metrics_server.py` | ✅ New | `test_metrics.py` |
 | **Hot-Reload Service** | `services/config_watcher.py` | ✅ New | `test_hot_reload.py` |
 | **Web UI** | `src/webui/app.py`, `src/webui/routes.py`, `src/webui/models.py` | ✅ New | `test_webui.py` |
+| **FSM Visualization** | `src/core/fsm_visualizer.py`, `src/smart_home/cli/commands/export_fsm.py` | ✅ New | `test_fsm_visualizer.py` |
 
 ## Known Issues
 
@@ -58,6 +59,7 @@
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-17 | FSM Visualization implementation (Phase 7) | `src/core/fsm_visualizer.py`, `src/smart_home/cli/commands/export_fsm.py`, `tests/test_fsm_visualizer.py` | ✅ Complete |
 | 2026-09-17 | Web UI for manifest editing implementation | `src/webui/app.py`, `src/webui/routes.py`, `src/webui/models.py`, `tests/test_webui.py` | ✅ Complete |
 | 2026-09-17 | Hot-reload without restart implementation | `services/config_watcher.py`, `tests/test_hot_reload.py` | ✅ Complete |
 | 2026-09-16 | Prometheus metrics collection implementation | `core/metrics.py`, `tests/test_metrics.py` | ✅ Complete |
