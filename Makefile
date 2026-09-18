@@ -212,13 +212,21 @@ visualize-fsm:
 		exit 1; \
 	fi
 	@echo "🌐 Exporting FSM and preparing for browser visualization..."
-	@mkdir -p .fsm_output
-	@smart-home export-fsm $(MANIFEST) \
-		$(if $(DEVICE),--device $(DEVICE),) \
-		--format mermaid \
-		--output .fsm_output/fsm_diagram.mmd
-	@echo "✅ Diagram saved to .fsm_output/fsm_diagram.mmd"
-	@echo "📋 To view in browser:"
-	@echo "   1. Open https://mermaid.live"
-	@echo "   2. Paste content from .fsm_output/fsm_diagram.mmd"
-	@echo "   Or run: cat .fsm_output/fsm_diagram.mmd"
+	@mkdir -p visualizations
+	@if [ -n "$(DEVICE)" ]; then \
+		OUTPUT_FILE="visualizations/fsm_diagram_$(DEVICE).mmd"; \
+		smart-home export-fsm $(MANIFEST) --device $(DEVICE) --format mermaid --output $$OUTPUT_FILE; \
+		echo "✅ Diagram saved to $$OUTPUT_FILE"; \
+		echo "🚀 Opening in browser..."; \
+		content=$$(cat $$OUTPUT_FILE); \
+		url="https://mermaid.live/edit#base64=$$(echo -n "$$content" | base64 | tr -d '\n')"; \
+		python3 -c "import webbrowser; webbrowser.open('$$url')"; \
+	else \
+		OUTPUT_FILE="visualizations/fsm_diagram_all.mmd"; \
+		smart-home export-fsm $(MANIFEST) --format mermaid --output $$OUTPUT_FILE; \
+		echo "✅ Diagram saved to $$OUTPUT_FILE"; \
+		echo "🚀 Opening in browser..."; \
+		content=$$(cat $$OUTPUT_FILE); \
+		url="https://mermaid.live/edit#base64=$$(echo -n "$$content" | base64 | tr -d '\n')"; \
+		python3 -c "import webbrowser; webbrowser.open('$$url')"; \
+	fi

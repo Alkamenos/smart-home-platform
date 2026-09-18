@@ -218,3 +218,4 @@ __marimo__/
 .streamlit/secrets.toml
 .ai/.agent_active
 /.fsm_output/
+visualizations/
