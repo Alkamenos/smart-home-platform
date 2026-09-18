@@ -86,7 +86,7 @@
   - Files: `services/config_watcher.py`, `tests/test_hot_reload.py`
   - Implementation date: 2026-09-17
 
-## Phase 7: Platform Extensions - Quick Wins [IN PROGRESS]
+## Phase 7: Platform Extensions - Quick Wins [COMPLETED: 2026-09-18]
 - [x] Declarative Guards DSL
   - Files: `core/guards/`, `core/fsm.py`
   - Detail: `.ai/enhancements/01-declarative-guards-dsl.md`
@@ -97,11 +97,12 @@
   - Detail: `.ai/enhancements/02-fsm-visualization.md`
   - Priority: MEDIUM
   - Effort: 1 day
-- [ ] Interactive REPL
-  - File: `cli/commands/shell.py`
+- [x] Interactive REPL
+  - Files: `src/smart_home/cli/commands/shell.py`, `tests/test_shell.py`
   - Detail: `.ai/enhancements/03-interactive-repl.md`
   - Priority: LOW
   - Effort: 0.5 days
+  - Implementation date: 2026-09-18
 
 ## Phase 8: Platform Extensions - Core Features [PLANNING]
 - [ ] Scene Manager / Flow Engine
