@@ -239,7 +239,7 @@ class TestFSMVisualizerExport:
             output_path = os.path.join(tmpdir, "test_fsm")
 
             with pytest.raises(ValueError, match="Unsupported format"):
-                visualizer.export_to_file(sample_fsm, output_path, format="invalid")
+                visualizer.export_to_file(sample_fsm, output_path, output_format="invalid")
 
     def test_export_to_file_preserves_extension(
         self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
@@ -248,7 +248,7 @@ class TestFSMVisualizerExport:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, "test_fsm.mmd")
 
-            visualizer.export_to_file(sample_fsm, output_path, format="mermaid")
+            visualizer.export_to_file(sample_fsm, output_path, output_format="mermaid")
 
             assert os.path.exists(output_path)
 
