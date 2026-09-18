@@ -89,19 +89,25 @@ def visualizer() -> FSMVisualizer:
 class TestFSMVisualizerMermaid:
     """Tests for Mermaid diagram generation."""
 
-    def test_to_mermaid_should_generate_valid_header(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_mermaid_should_generate_valid_header(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that Mermaid output starts with correct header."""
         result = visualizer.to_mermaid(sample_fsm)
 
         assert result.startswith("stateDiagram-v2")
 
-    def test_to_mermaid_should_include_initial_state(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_mermaid_should_include_initial_state(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that initial state transition is included."""
         result = visualizer.to_mermaid(sample_fsm)
 
         assert "[*] --> OFF" in result
 
-    def test_to_mermaid_should_format_transitions(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_mermaid_should_format_transitions(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that transitions are formatted correctly."""
         result = visualizer.to_mermaid(sample_fsm)
 
@@ -109,13 +115,17 @@ class TestFSMVisualizerMermaid:
         assert "ON --> TIMEOUT: timeout" in result
         assert "TIMEOUT --> OFF: timeout" in result
 
-    def test_to_mermaid_should_handle_wildcard_state(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_mermaid_should_handle_wildcard_state(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that wildcard state (*) is handled correctly."""
         result = visualizer.to_mermaid(sample_fsm)
 
         assert "any_state --> MANUAL: manual_change" in result
 
-    def test_to_mermaid_with_device_id_should_add_title(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_mermaid_with_device_id_should_add_title(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that device_id adds title to diagram."""
         result = visualizer.to_mermaid(sample_fsm, device_id="light.kitchen")
 
@@ -125,7 +135,9 @@ class TestFSMVisualizerMermaid:
 class TestFSMVisualizerGraphviz:
     """Tests for Graphviz DOT generation."""
 
-    def test_to_graphviz_should_generate_valid_header(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_graphviz_should_generate_valid_header(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that Graphviz output starts with correct header."""
         result = visualizer.to_graphviz(sample_fsm)
 
@@ -133,25 +145,33 @@ class TestFSMVisualizerGraphviz:
         assert "rankdir=LR;" in result
         assert "node [shape=circle];" in result
 
-    def test_to_graphviz_should_include_initial_node(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_graphviz_should_include_initial_node(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that initial invisible node is created."""
         result = visualizer.to_graphviz(sample_fsm)
 
-        assert '"\"\" [shape=point, width=0.5];' in result or '"" [shape=point' in result
+        assert '""" [shape=point, width=0.5];' in result or '"" [shape=point' in result
 
-    def test_to_graphviz_should_highlight_initial_state(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_graphviz_should_highlight_initial_state(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that initial state has double peripheries."""
         result = visualizer.to_graphviz(sample_fsm)
 
-        assert 'OFF [peripheries=2];' in result
+        assert "OFF [peripheries=2];" in result
 
-    def test_to_graphviz_should_format_transitions(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_graphviz_should_format_transitions(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that transitions are formatted correctly."""
         result = visualizer.to_graphviz(sample_fsm)
 
         assert 'OFF -> ON [label="motion_detected\\ntimeout 180s"]' in result
 
-    def test_to_graphviz_should_include_guard_and_action(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_graphviz_should_include_guard_and_action(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that guard and action are noted in label."""
         result = visualizer.to_graphviz(sample_fsm)
 
@@ -159,7 +179,9 @@ class TestFSMVisualizerGraphviz:
         assert "guard" in result
         assert "action" in result
 
-    def test_to_graphviz_with_device_id_should_add_label(self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition) -> None:
+    def test_to_graphviz_with_device_id_should_add_label(
+        self, visualizer: FSMVisualizer, sample_fsm: FSMDefinition
+    ) -> None:
         """Test that device_id adds label to graph."""
         result = visualizer.to_graphviz(sample_fsm, device_id="light.kitchen")
 

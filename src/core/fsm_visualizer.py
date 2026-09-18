@@ -130,7 +130,7 @@ class FSMVisualizer:
         for state in fsm.states:
             # Highlight initial state
             if state == fsm.initial_state:
-                lines.append(f'    {state} [peripheries=2];')
+                lines.append(f"    {state} [peripheries=2];")
 
         # Add all transitions
         for transition in fsm.transitions:
