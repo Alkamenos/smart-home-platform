@@ -10,8 +10,6 @@ state machines defined in the manifest.
 
 from __future__ import annotations
 
-from typing import Any
-
 from core.fsm import FSMDefinition, Transition
 
 
@@ -79,10 +77,7 @@ class FSMVisualizer:
         trigger = transition.trigger
 
         # Handle wildcard states
-        if from_state == "*":
-            from_state_str = "any_state"
-        else:
-            from_state_str = str(from_state)
+        from_state_str = "any_state" if from_state == "*" else str(from_state)
 
         # Build label with trigger and optional timeout
         label_parts = [trigger]
@@ -160,10 +155,7 @@ class FSMVisualizer:
         trigger = transition.trigger
 
         # Handle wildcard states
-        if from_state == "*":
-            from_state_str = "any_state"
-        else:
-            from_state_str = str(from_state)
+        from_state_str = "any_state" if from_state == "*" else str(from_state)
 
         # Build label with trigger and optional info
         label_parts = [trigger]
@@ -201,7 +193,7 @@ class FSMVisualizer:
             # Add subgraph for each FSM
             safe_name = fsm.entity_id.replace(".", "_").replace("-", "_")
             lines.append(f"\n    subgraph {safe_name}")
-            lines.append(f"        direction TB")
+            lines.append("        direction TB")
             lines.append(f"        note right of {fsm.initial_state}: {device_id}")
 
             # Add initial state
@@ -220,7 +212,7 @@ class FSMVisualizer:
         self,
         fsm: FSMDefinition,
         output_path: str,
-        format: str = "mermaid",
+        output_format: str = "mermaid",
         device_id: str | None = None,
     ) -> None:
         """
@@ -229,20 +221,20 @@ class FSMVisualizer:
         Args:
             fsm: The FSM definition to visualize.
             output_path: Path to the output file.
-            format: Output format ('mermaid' or 'graphviz').
+            output_format: Output format ('mermaid' or 'graphviz').
             device_id: Optional device ID for the diagram title.
 
         Raises:
             ValueError: If format is not supported.
         """
-        if format == "mermaid":
+        if output_format == "mermaid":
             content = self.to_mermaid(fsm, device_id)
             suffix = ".mmd"
-        elif format == "graphviz":
+        elif output_format == "graphviz":
             content = self.to_graphviz(fsm, device_id)
             suffix = ".dot"
         else:
-            raise ValueError(f"Unsupported format: {format}. Use 'mermaid' or 'graphviz'.")
+            raise ValueError(f"Unsupported format: {output_format}. Use 'mermaid' or 'graphviz'.")
 
         # Ensure correct extension
         if not output_path.endswith(suffix):

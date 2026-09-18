@@ -204,12 +204,12 @@ class TestFSMVisualizerExport:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, "test_fsm")
 
-            visualizer.export_to_file(sample_fsm, output_path, format="mermaid")
+            visualizer.export_to_file(sample_fsm, output_path, output_format="mermaid")
 
             expected_path = output_path + ".mmd"
             assert os.path.exists(expected_path)
 
-            with open(expected_path, "r", encoding="utf-8") as f:
+            with open(expected_path, encoding="utf-8") as f:
                 content = f.read()
 
             assert "stateDiagram-v2" in content
@@ -221,12 +221,12 @@ class TestFSMVisualizerExport:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, "test_fsm")
 
-            visualizer.export_to_file(sample_fsm, output_path, format="graphviz")
+            visualizer.export_to_file(sample_fsm, output_path, output_format="graphviz")
 
             expected_path = output_path + ".dot"
             assert os.path.exists(expected_path)
 
-            with open(expected_path, "r", encoding="utf-8") as f:
+            with open(expected_path, encoding="utf-8") as f:
                 content = f.read()
 
             assert "digraph FSM {" in content
