@@ -1,0 +1,18 @@
+stateDiagram-v2
+    title Smart Home FSM Overview
+
+    %% light.kitchen
+    [*] --> light_kitchen_lighting_10_OFF
+    light_kitchen_lighting_10_OFF --> light_kitchen_lighting_10_ON_MOTION: motion_detected
+    light_kitchen_lighting_10_OFF --> light_kitchen_lighting_10_ON_MANUAL: manual_switch_on
+    light_kitchen_lighting_10_ON_MOTION --> light_kitchen_lighting_10_OFF: timeout, timeout 30.0s
+    light_kitchen_lighting_10_ON_MOTION --> light_kitchen_lighting_10_ON_MANUAL: manual_override
+    light_kitchen_lighting_10_ON_MANUAL --> light_kitchen_lighting_10_OFF: manual_switch_off
+    light_kitchen_lighting_10_ON_MANUAL --> light_kitchen_lighting_10_OFF: timeout, timeout 300.0s
+
+    %% light.kitchen
+    [*] --> light_kitchen_night_light_20_OFF
+    light_kitchen_night_light_20_OFF --> light_kitchen_night_light_20_ON_NIGHT: motion_detected
+    light_kitchen_night_light_20_ON_NIGHT --> light_kitchen_night_light_20_OFF: timeout, timeout 60.0s
+    light_kitchen_night_light_20_ON_NIGHT --> light_kitchen_night_light_20_OFF: manual_switch_off
+    light_kitchen_night_light_20_ON_NIGHT --> light_kitchen_night_light_20_OFF: schedule_end
