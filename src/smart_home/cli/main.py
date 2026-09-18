@@ -28,10 +28,12 @@ def main() -> int:
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # Import and setup export-fsm command
+    # Import and setup commands
     from .commands.export_fsm import setup_export_fsm_parser
+    from .commands.shell import setup_shell_parser
 
     setup_export_fsm_parser(subparsers)
+    setup_shell_parser(subparsers)
 
     args = parser.parse_args()
 

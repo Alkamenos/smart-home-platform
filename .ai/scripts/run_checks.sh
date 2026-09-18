@@ -59,7 +59,7 @@ fail()  { echo -e "${RED}[pre-commit]${NC} $*"; exit 1; }
 echo "0️⃣  Проверка наличия инструментов..."
 MISSING_TOOLS=()
 
-REQUIRED_TOOLS=("pytest" "mypy" "ruff" "interrogate", "pre-commit")
+REQUIRED_TOOLS=("pytest" "mypy" "ruff" "interrogate" "pre-commit")
 
 for tool in "${REQUIRED_TOOLS[@]}"; do
     if ! command -v "$tool" &> /dev/null; then
