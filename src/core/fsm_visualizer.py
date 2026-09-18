@@ -186,25 +186,39 @@ class FSMVisualizer:
         lines: list[str] = []
         lines.append("stateDiagram-v2")
         lines.append("    title Smart Home FSM Overview")
+        lines.append("")
 
         for idx, fsm in enumerate(fsms):
             device_id = device_ids[idx] if device_ids and idx < len(device_ids) else fsm.entity_id
 
-            # Add subgraph for each FSM
-            safe_name = fsm.entity_id.replace(".", "_").replace("-", "_")
-            lines.append(f"\n    subgraph {safe_name}")
-            lines.append("        direction TB")
-            lines.append(f"        note right of {fsm.initial_state}: {device_id}")
+            # Add section separator with comment
+            lines.append(f"    %% {device_id}")
 
-            # Add initial state
-            lines.append(f"        [*] --> {fsm.initial_state}")
+            # Add initial state with unique prefix to avoid conflicts
+            prefix = fsm.entity_id.replace(".", "_").replace("-", "_")
+            lines.append(f"    [*] --> {prefix}_{fsm.initial_state}")
 
-            # Add transitions
+            # Add transitions with prefixed state names
             for transition in fsm.transitions:
-                transition_line = self._format_mermaid_transition(transition)
-                lines.append(f"        {transition_line}")
+                from_state = transition.from_state
+                to_state = transition.to_state
+                trigger = transition.trigger
 
-            lines.append("    end")
+                # Handle wildcard states
+                from_state_str = (
+                    f"{prefix}_any_state" if from_state == "*" else f"{prefix}_{from_state}"
+                )
+                to_state_str = f"{prefix}_{to_state}"
+
+                # Build label with trigger and optional timeout
+                label_parts = [trigger]
+                if transition.timeout_sec:
+                    label_parts.append(f"timeout {transition.timeout_sec}s")
+
+                label = ", ".join(label_parts)
+                lines.append(f"    {from_state_str} --> {to_state_str}: {label}")
+
+            lines.append("")
 
         return "\n".join(lines)
 

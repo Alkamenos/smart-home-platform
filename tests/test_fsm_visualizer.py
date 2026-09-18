@@ -212,8 +212,10 @@ class TestFSMVisualizerBatch:
 
         assert "stateDiagram-v2" in result
         assert "title Smart Home FSM Overview" in result
-        assert "subgraph light_kitchen_lighting_10" in result
-        assert "subgraph light_bedroom_lighting_10" in result
+        assert "%% light.kitchen_lighting_10" in result
+        assert "%% light.bedroom_lighting_10" in result
+        assert "light_kitchen_lighting_10_OFF" in result
+        assert "light_bedroom_lighting_10_OFF" in result
 
 
 class TestFSMVisualizerExport:
