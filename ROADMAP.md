@@ -151,7 +151,7 @@ gantt
 - Detail: `.ai/enhancements/01-declarative-guards-dsl.md`
 - Priority: HIGH
 - Effort: 1-2 days
-- [ ] FSM Visualization (Mermaid/Graphviz)
+- ✅ FSM Visualization (Mermaid/Graphviz)
 - Files: `core/fsm_visualizer.py`, `cli/commands/export_fsm.py`
 - Detail: `.ai/enhancements/02-fsm-visualization.md`
 - Priority: MEDIUM
