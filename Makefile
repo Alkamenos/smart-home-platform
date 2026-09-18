@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog
+.PHONY: help test run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm
 
 # Default target
 help:
@@ -27,6 +27,16 @@ help:
 	@echo "  make run-mock      - Run local mock simulator for debugging"
 	@echo "  make run-webui     - Start WebUI server (development mode)"
 	@echo "  make run-webui-prod - Start WebUI server (production mode)"
+	@echo ""
+	@echo "FSM Visualization (Phase 7):"
+	@echo "  make export-fsm MANIFEST=<path> [DEVICE=<id>] [FORMAT=mermaid|graphviz] [OUTPUT=<file>]"
+	@echo "                         - Export FSM visualization from manifest"
+	@echo "  make export-fsm-mermaid MANIFEST=<path> [DEVICE=<id>] [OUTPUT=<file>]"
+	@echo "                         - Export FSM as Mermaid diagram"
+	@echo "  make export-fsm-graphviz MANIFEST=<path> [DEVICE=<id>] [OUTPUT=<file>]"
+	@echo "                         - Export FSM as Graphviz DOT file"
+	@echo "  make visualize-fsm MANIFEST=<path> [DEVICE=<id>]"
+	@echo "                         - Export FSM and open in browser (Mermaid)"
 	@echo ""
 
 # Installation
@@ -157,3 +167,59 @@ changelog:
 	@echo "📝 Generating changelog..."
 	@python scripts/generate_changelog.py
 	@echo "✅ CHANGELOG.md updated"
+
+# FSM Visualization (Phase 7)
+export-fsm:
+	@if [ -z "$(MANIFEST)" ]; then \
+		echo "Error: MANIFEST is required"; \
+		echo "Usage: make export-fsm MANIFEST=<path> [DEVICE=<id>] [FORMAT=mermaid|graphviz] [OUTPUT=<file>]"; \
+		exit 1; \
+	fi
+	@echo "📊 Exporting FSM visualization from $(MANIFEST)..."
+	@smart-home export-fsm $(MANIFEST) \
+		$(if $(DEVICE),--device $(DEVICE),) \
+		$(if $(FORMAT),--format $(FORMAT),--format mermaid) \
+		$(if $(OUTPUT),--output $(OUTPUT),)
+
+export-fsm-mermaid:
+	@if [ -z "$(MANIFEST)" ]; then \
+		echo "Error: MANIFEST is required"; \
+		echo "Usage: make export-fsm-mermaid MANIFEST=<path> [DEVICE=<id>] [OUTPUT=<file>]"; \
+		exit 1; \
+	fi
+	@echo "🎨 Exporting FSM as Mermaid diagram from $(MANIFEST)..."
+	@smart-home export-fsm $(MANIFEST) \
+		$(if $(DEVICE),--device $(DEVICE),) \
+		--format mermaid \
+		$(if $(OUTPUT),--output $(OUTPUT),)
+
+export-fsm-graphviz:
+	@if [ -z "$(MANIFEST)" ]; then \
+		echo "Error: MANIFEST is required"; \
+		echo "Usage: make export-fsm-graphviz MANIFEST=<path> [DEVICE=<id>] [OUTPUT=<file>]"; \
+		exit 1; \
+	fi
+	@echo "🔷 Exporting FSM as Graphviz DOT file from $(MANIFEST)..."
+	@smart-home export-fsm $(MANIFEST) \
+		$(if $(DEVICE),--device $(DEVICE),) \
+		--format graphviz \
+		$(if $(OUTPUT),--output $(OUTPUT),)
+
+visualize-fsm:
+	@if [ -z "$(MANIFEST)" ]; then \
+		echo "Error: MANIFEST is required"; \
+		echo "Usage: make visualize-fsm MANIFEST=<path> [DEVICE=<id>]"; \
+		exit 1; \
+	fi
+	@echo "🌐 Exporting FSM and preparing for browser visualization..."
+	@mkdir -p .fsm_output
+	@smart-home export-fsm $(MANIFEST) \
+		$(if $(DEVICE),--device $(DEVICE),) \
+		--format mermaid \
+		--output .fsm_output/fsm_diagram.mmd
+	@echo "✅ Diagram saved to .fsm_output/fsm_diagram.mmd"
+	@echo "📋 To view in browser:"
+	@echo "   1. Open https://mermaid.live"
+	@echo "   2. Paste content from .fsm_output/fsm_diagram.mmd"
+	@echo "   Or run: cat .fsm_output/fsm_diagram.mmd"
+
