@@ -23,10 +23,10 @@ gantt
     Phase 5- Room-Based Architecture :done, p5, 2026-10-03, 2026-10-08
 
     section Phase 6- Advanced Features
-    Phase 6- Advanced Features :active, p6, 2026-10-10, 2026-10-15
+    Phase 6- Advanced Features :done, p6, 2026-10-10, 2026-10-15
 
     section Phase 7- Platform Extensions - Quick Wins
-    Phase 7- Platform Extensions - Quick Wins :p7, 2026-10-17, 2026-10-22
+    Phase 7- Platform Extensions - Quick Wins :active, p7, 2026-10-17, 2026-10-22
 
     section Phase 8- Platform Extensions - Core Features
     Phase 8- Platform Extensions - Core Features :p8, 2026-10-24, 2026-10-29
@@ -122,9 +122,9 @@ gantt
 - ✅ Update all tests
 - ✅ Remove migration tests (no external users)
 
-## 🔄 Phase 6: Advanced Features
+## ✅ Phase 6: Advanced Features
 
-**Status:** IN PROGRESS
+**Status:** COMPLETED: 2026-09-18
 
 - ✅ Web UI for manifest editing
 - FastAPI + HTMX
@@ -142,9 +142,9 @@ gantt
 - Files: `services/config_watcher.py`, `tests/test_hot_reload.py`
 - Implementation date: 2026-09-17
 
-## 📌 Phase 7: Platform Extensions - Quick Wins
+## 🔄 Phase 7: Platform Extensions - Quick Wins
 
-**Status:** PLANNING
+**Status:** IN PROGRESS
 
 - ✅ Declarative Guards DSL
 - Files: `core/guards/`, `core/fsm.py`

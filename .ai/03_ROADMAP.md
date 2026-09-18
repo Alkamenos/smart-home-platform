@@ -69,7 +69,7 @@
 - [x] Update all tests
 - [x] Remove migration tests (no external users)
 
-## Phase 6: Advanced Features [IN PROGRESS]
+## Phase 6: Advanced Features [COMPLETED: 2026-09-18]
 - [x] Web UI for manifest editing
   - FastAPI + HTMX
   - Form validation using Pydantic models
@@ -86,7 +86,7 @@
   - Files: `services/config_watcher.py`, `tests/test_hot_reload.py`
   - Implementation date: 2026-09-17
 
-## Phase 7: Platform Extensions - Quick Wins [PLANNING]
+## Phase 7: Platform Extensions - Quick Wins [IN PROGRESS]
 - [x] Declarative Guards DSL
   - Files: `core/guards/`, `core/fsm.py`
   - Detail: `.ai/enhancements/01-declarative-guards-dsl.md`

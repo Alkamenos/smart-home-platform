@@ -59,7 +59,7 @@ fail()  { echo -e "${RED}[pre-commit]${NC} $*"; exit 1; }
 echo "0️⃣  Проверка наличия инструментов..."
 MISSING_TOOLS=()
 
-REQUIRED_TOOLS=("pytest" "mypy" "ruff" "interrogate")
+REQUIRED_TOOLS=("pytest" "mypy" "ruff" "interrogate", "pre-commit")
 
 for tool in "${REQUIRED_TOOLS[@]}"; do
     if ! command -v "$tool" &> /dev/null; then
@@ -140,6 +140,17 @@ if ruff format --check src/ tests/ 2>&1; then
 else
     echo -e "${YELLOW}⚠️  Formatting issues found${NC}"
     echo -e "${BLUE}   Исправь автоматически: ruff format src/ tests/${NC}"
+    FAILED=1
+fi
+echo ""
+
+# 4. Pre commit check
+echo "4️⃣  Pre-commit checking..."
+if pre-commit run --all-files 2>&1; then
+    echo -e "${GREEN}✅ Pre-commit check passed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Pre-commit check issues found${NC}"
+    echo -e "${BLUE}   Исправь перед комитом"
     FAILED=1
 fi
 echo ""
