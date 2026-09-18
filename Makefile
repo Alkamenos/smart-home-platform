@@ -222,4 +222,3 @@ visualize-fsm:
 	@echo "   1. Open https://mermaid.live"
 	@echo "   2. Paste content from .fsm_output/fsm_diagram.mmd"
 	@echo "   Or run: cat .fsm_output/fsm_diagram.mmd"
-
