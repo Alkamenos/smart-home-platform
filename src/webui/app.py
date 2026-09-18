@@ -189,3 +189,6 @@ def _save_manifest(path: str, data: dict) -> None:
     """
     with open(path, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+app = create_app()
