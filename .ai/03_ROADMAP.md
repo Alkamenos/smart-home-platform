@@ -124,7 +124,7 @@
   - Effort: 2-3 days
   - Implementation date: 2026-09-19
 
-## Phase 9: Observability & Reliability [IN PROGRESS]
+## Phase 9: Observability & Reliability [COMPLETED: 2026-09-19]
 - [x] Prometheus / OpenTelemetry Metrics
   - Files: `core/metrics.py`, `services/metrics_server.py`
   - Detail: `.ai/enhancements/07-prometheus-metrics.md`
@@ -135,15 +135,62 @@
   - Detail: `.ai/enhancements/08-circuit-breaker.md`
   - Priority: HIGH
   - Effort: 1 day
-- [ ] Secrets Management
+- [x] Secrets Management
   - File: `core/secrets.py`
   - Detail: `.ai/enhancements/09-secrets-management.md`
   - Priority: MEDIUM
   - Effort: 1 day
 
-## Phase 10: Architecture Improvements [IN PROGRESS]
-- [ ] Domain-Driven Design Refactoring
-  - File: `core/`
+## Phase 9.75: Production Deployment Preparation [IN PROGRESS]
+- [ ] Safe Deployment Strategy for Home Assistant
+  - Files: `docs/deployment/README.md`, `docker-compose.prod.yml`, `scripts/safe-deploy.sh`
+  - Detail: Create comprehensive deployment guide with rollback strategy
+  - User Stories:
+    * Deploy code to real HA instance without breaking existing automation
+    * Run platform in parallel with existing HA automations (shadow mode)
+    * Graceful fallback if platform fails
+  - Priority: CRITICAL
+  - Effort: 2-3 days
+- [ ] Enhanced Logging Integration
+  - Files: `services/logging_service.py`, `webui/routes/logs.py`, `webui/templates/logs.html`
+  - Detail:
+    * Integrate with HA logging system
+    * Web UI for real-time log viewing with filters
+    * Log rotation and persistence
+  - User Stories:
+    * View platform logs in HA Supervisor panel
+    * Access logs via web interface at `/logs`
+    * Export logs for debugging
+  - Priority: HIGH
+  - Effort: 1-2 days
+- [ ] Automatic Manifest Generator from Real Devices
+  - Files: `cli/commands/generate_manifest.py`, `core/manifest_generator.py`
+  - Detail:
+    * Connect to HA API and fetch all entities
+    * Auto-generate manifest.yaml based on entity types and areas
+    * Interactive CLI for reviewing and editing before applying
+  - User Stories:
+    * Run `smart-home generate-manifest --url http://homeassistant:8123 --token <TOKEN>`
+    * Review generated manifest in CLI or web UI
+    * Save to instances/<name>/manifest.yaml
+  - Priority: HIGH
+  - Effort: 1-2 days
+- [ ] Dashboard Generator for Platform Management
+  - Files: `dashboard/platform_dashboard.py`, `cli/commands/generate_dashboard.py`
+  - Detail:
+    * Generate Lovelace dashboard for monitoring platform health
+    * Cards for: FSM states, active behaviors, manual overrides, errors
+    * Controls for: reload config, view logs, toggle debug mode
+  - User Stories:
+    * Run `smart-home generate-dashboard --output lovelace_platform.yaml`
+    * Import generated dashboard into HA
+    * Real-time visibility into platform operations
+  - Priority: MEDIUM
+  - Effort: 1 day
+
+## Phase 10: Architecture Improvements [COMPLETED: 2026-09-19]
+- [x] Domain-Driven Design Refactoring
+  - Files: `core/fsm/`, `core/events/`, `core/commands/`, `core/persistence/`, `core/scheduling/`, `core/guards/`, `core/models/`
   - Detail: `.ai/enhancements/11-ddd-refactoring.md`
   - Priority: MEDIUM
   - Effort: 1-2 days
@@ -153,11 +200,12 @@
   - Priority: LOW
   - Effort: 2-3 days
   - Implementation date: 2026-09-19
-- [ ] Dependency Injection
-  - File: `bootstrap.py`
+- [x] Dependency Injection
+  - File: `core/container.py`, `bootstrap.py`
   - Detail: `.ai/enhancements/13-dependency-injection.md`
   - Priority: LOW
   - Effort: 2-3 days
+  - Implementation date: 2026-09-19
 
 ## Phase 11: Advanced Features [PLANNING]
 - [ ] LLM / NLP Adapter
