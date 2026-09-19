@@ -20,7 +20,7 @@ from typing import Any
 
 from loguru import logger
 
-from .command_dispatcher import CommandIntent
+from .commands.dispatcher import CommandIntent
 
 
 def extract_device_id(context: dict[str, Any]) -> str | None:

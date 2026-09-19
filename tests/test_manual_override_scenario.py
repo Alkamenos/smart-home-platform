@@ -34,7 +34,7 @@ def freeze_asyncio_time():
 
     real_get_event_loop = asyncio.get_event_loop
 
-    with patch("src.core.fsm.asyncio.get_event_loop") as mock_get_loop:
+    with patch("src.core.fsm.engine.asyncio.get_event_loop") as mock_get_loop:
 
         def side_effect():
             loop = real_get_event_loop()

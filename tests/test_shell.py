@@ -76,11 +76,11 @@ class TestShellCommand:
 
     def test_create_repl_context_should_have_correct_types(self) -> None:
         """Test that context components have correct types."""
-        from core.command_dispatcher import CommandDispatcher
+        from core.commands.dispatcher import CommandDispatcher
         from core.control_tracker import ControlTracker
-        from core.event_bus import EventBus
-        from core.event_router import EventRouter
-        from core.fsm import FSMEngine
+        from core.events.event_bus import EventBus
+        from core.events.event_router import EventRouter
+        from core.fsm.engine import FSMEngine
         from smart_home.cli.commands.shell import create_repl_context
 
         ctx = create_repl_context("instances/leonids_house/manifest.yaml")

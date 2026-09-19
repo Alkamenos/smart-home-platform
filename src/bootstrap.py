@@ -17,13 +17,13 @@ from typing import Any
 from adapters.ha_adapter import HAAdapter
 from adapters.mock_adapter import MockAdapter
 from core.action_handlers import register_all_actions
-from core.command_dispatcher import CommandDispatcher
+from core.commands.dispatcher import CommandDispatcher
+from core.commands.middleware import ManualLockoutMiddleware
 from core.control_tracker import ControlTracker
-from core.event_bus import EventBus
-from core.event_router import EventRouter
-from core.fsm import FSMEngine
-from core.fsm_factory import FSMFactory
-from core.middleware import ManualLockoutMiddleware
+from core.events.event_bus import EventBus
+from core.events.event_router import EventRouter
+from core.fsm.engine import FSMEngine
+from core.fsm.factory import FSMFactory
 from core.models.manifest import Manifest, load_manifest
 from core.registry import Registry
 

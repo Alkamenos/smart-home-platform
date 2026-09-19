@@ -17,10 +17,10 @@ from typing import Any
 import yaml
 from loguru import logger
 
-from .definitions import YAMLFSMDefinition, YAMLTransition
-from .fsm import FSMDefinition, FSMEngine, Transition
-from .models.manifest import BehaviorConfig
-from .registry import Registry
+from core.definitions import YAMLFSMDefinition, YAMLTransition
+from core.fsm.engine import FSMDefinition, FSMEngine, Transition
+from core.models.manifest import BehaviorConfig
+from core.registry import Registry
 
 
 class FSMFactory:
@@ -271,7 +271,7 @@ class FSMFactory:
             # Если в params есть schedule, создаем guard функцию для проверки расписания
             schedule_guard_fn = None
             if behavior.params and "schedule" in behavior.params:
-                from .guards.schedule_guard import is_within_schedule
+                from core.guards.schedule_guard import is_within_schedule
 
                 schedule_guard_fn = is_within_schedule
 

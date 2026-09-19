@@ -31,7 +31,7 @@ from core import (
     Manifest,
     RoomConfig,
 )
-from core.event_router import EventRouter
+from core.events.event_router import EventRouter
 
 
 class MockFSMEngine:

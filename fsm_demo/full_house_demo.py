@@ -31,8 +31,8 @@ from adapters.ha_adapter import HAAdapter
 
 # Import core components
 from core import FSMEngine, Manifest, Registry, load_manifest
-from core.event_router import EventRouter
-from core.fsm_factory import FSMFactory
+from core.events.event_router import EventRouter
+from core.fsm.factory import FSMFactory
 
 
 class MockHass:

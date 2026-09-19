@@ -62,10 +62,11 @@ from typing import Any
 
 # Mock imports for standalone testing (remove in actual HA deployment)
 try:
+    from core.event_bus import EventBus
+
     from adapters.ha_adapter import HAAdapter
     from core import DefinitionLoader, FSMEngine, StateRegistry, load_manifest
-    from core.event_bus import EventBus
-    from core.event_router import EventRouter
+    from core.events.event_router import EventRouter
 except ImportError:
     # Fallback for environments where modules aren't available
     HAAdapter = None  # type: ignore

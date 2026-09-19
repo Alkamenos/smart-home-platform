@@ -10,7 +10,7 @@ state machines defined in the manifest.
 
 from __future__ import annotations
 
-from core.fsm import FSMDefinition, Transition
+from core.fsm.engine import FSMDefinition, Transition
 
 
 class FSMVisualizer:

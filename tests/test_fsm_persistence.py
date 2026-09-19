@@ -20,8 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from core.fsm import State as FSMState
-from core.fsm_persistence import FSMPersistence
+from core.fsm.engine import State as FSMState
+from core.fsm.persistence import FSMPersistence
 
 
 class MockFSMEngine:

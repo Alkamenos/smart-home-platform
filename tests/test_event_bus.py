@@ -7,7 +7,8 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from src.core.event_bus import EventBus
+
+from core.events.event_bus import EventBus
 
 
 class TestEventBusInitialization:

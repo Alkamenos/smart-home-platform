@@ -55,7 +55,7 @@ def generate_fsms_from_manifest(manifest: dict[str, Any]) -> list[tuple[str, FSM
         List of tuples (device_id, fsm_definition).
     """
     from core.fsm import FSMEngine
-    from core.fsm_factory import FSMFactory
+    from core.fsm.factory import FSMFactory
     from core.models.manifest import BehaviorConfig
     from core.registry import Registry
 
@@ -91,7 +91,7 @@ def cmd_export_fsm(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, non-zero for error).
     """
-    from core.fsm_visualizer import FSMVisualizer
+    from core.fsm.visualizer import FSMVisualizer
 
     try:
         manifest = load_manifest(args.manifest)

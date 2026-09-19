@@ -16,8 +16,8 @@ from typing import Any
 
 import pytest
 
-from core.fsm import FSMDefinition, Transition
-from core.fsm_visualizer import FSMVisualizer
+from core.fsm.engine import FSMDefinition, Transition
+from core.fsm.visualizer import FSMVisualizer
 
 
 @pytest.fixture

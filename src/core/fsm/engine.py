@@ -22,8 +22,8 @@ from loguru import logger
 
 
 if TYPE_CHECKING:
-    from .command_dispatcher import CommandDispatcher, CommandIntent
-    from .state_persistence import StatePersistence
+    from core.commands.dispatcher import CommandDispatcher, CommandIntent
+    from core.persistence.state_persistence import StatePersistence
 
 
 # @dataclass (frozen=True)
@@ -318,7 +318,7 @@ class FSMEngine:
                 result = await result
 
             # Если action возвращает CommandIntent и есть dispatcher - отправляем его
-            from .command_dispatcher import CommandIntent
+            from core.commands.dispatcher import CommandIntent
 
             if isinstance(result, CommandIntent):
                 if self._dispatcher is not None:

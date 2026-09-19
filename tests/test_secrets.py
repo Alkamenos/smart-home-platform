@@ -104,9 +104,9 @@ class TestSecretsResolverResolve:
         """Test non-string values return unchanged."""
         resolver = SecretsResolver(load_dotenv=False)
 
-        assert resolver.resolve(123) == 123  # type: ignore[arg-type]
+        assert resolver.resolve(123) == 123  # type: ignore[arg-type,comparison-overlap]
         assert resolver.resolve(None) is None  # type: ignore[arg-type]
-        assert resolver.resolve(True) is True  # type: ignore[arg-type]
+        assert resolver.resolve(True) is True  # type: ignore[arg-type,comparison-overlap]
 
 
 class TestSecretsResolverDict:

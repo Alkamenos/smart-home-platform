@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.context_manager import ContextManager, TimeRange
+from core.persistence.context_manager import ContextManager, TimeRange
 
 
 @pytest.fixture
@@ -197,7 +197,7 @@ class TestSubscribeSchedule:
 
     def test_updates_context_immediately_on_subscribe(self, context_manager):
         """Контекст обновляется сразу при подписке на расписание."""
-        with patch("core.context_manager.time.localtime") as mock_localtime:
+        with patch("core.persistence.context_manager.time.localtime") as mock_localtime:
             mock_localtime.return_value.tm_hour = 10
             mock_localtime.return_value.tm_min = 30
 
@@ -207,7 +207,7 @@ class TestSubscribeSchedule:
 
     def test_sets_context_false_when_outside_schedule(self, context_manager):
         """Контекст устанавливается в False вне расписания."""
-        with patch("core.context_manager.time.localtime") as mock_localtime:
+        with patch("core.persistence.context_manager.time.localtime") as mock_localtime:
             mock_localtime.return_value.tm_hour = 3
             mock_localtime.return_value.tm_min = 0
 
@@ -380,7 +380,7 @@ class TestIntegrationScenarios:
 
     def test_schedule_based_lighting(self, context_manager):
         """Сценарий: освещение по расписанию."""
-        with patch("core.context_manager.time.localtime") as mock_localtime:
+        with patch("core.persistence.context_manager.time.localtime") as mock_localtime:
             mock_localtime.return_value.tm_hour = 20
             mock_localtime.return_value.tm_min = 0
 
@@ -395,7 +395,7 @@ class TestIntegrationScenarios:
         context_manager.subscribe_sensor("binary_sensor.bedroom_motion", "bedroom_motion_sensor")
 
         # Расписание (ночной режим)
-        with patch("core.context_manager.time.localtime") as mock_localtime:
+        with patch("core.persistence.context_manager.time.localtime") as mock_localtime:
             mock_localtime.return_value.tm_hour = 23
             mock_localtime.return_value.tm_min = 0
 

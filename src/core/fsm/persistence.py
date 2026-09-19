@@ -291,7 +291,7 @@ class FSMPersistence:
                 now = time.time()
 
                 # Создаём новое состояние (используем State из того же модуля)
-                from .fsm import State
+                from core.fsm.engine import State
 
                 restored_state = State(
                     current_state=saved_state,

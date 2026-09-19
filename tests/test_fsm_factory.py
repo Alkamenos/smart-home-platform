@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from core.fsm import FSMEngine
-from core.fsm_factory import FSMFactory
+from core.fsm.engine import FSMEngine
+from core.fsm.factory import FSMFactory
 from core.models.manifest import BehaviorConfig, DeviceConfig, Manifest
 from core.registry import Registry
 

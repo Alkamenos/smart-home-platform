@@ -4,10 +4,10 @@
 #  SPDX-License-Identifier: Apache-2.0
 
 from core.action_handlers import release_device, turn_on_night_light
-from core.command_dispatcher import CommandDispatcher, CommandIntent
-from core.event_bus import EventBus
-from core.fsm import FSMDefinition, FSMEngine, State, Transition
-from core.middleware import ManualLockoutMiddleware, Middleware
+from core.commands.dispatcher import CommandDispatcher, CommandIntent
+from core.commands.middleware import ManualLockoutMiddleware, Middleware
+from core.events.event_bus import EventBus
+from core.fsm.engine import FSMDefinition, FSMEngine, State, Transition
 from core.models.manifest import (
     AutomationDomainRules,
     AutomationRules,
@@ -22,15 +22,15 @@ from core.models.manifest import (
     VentilationAutomation,
     load_manifest,
 )
-from core.registry import Registry
-from core.scheduler import ScheduledTask, Scheduler
-from core.state_persistence import StatePersistence
-from core.state_store import (
+from core.persistence.state_persistence import StatePersistence
+from core.persistence.state_store import (
     DebouncedStateStore,
     FileStateStore,
     InputTextStateStore,
     MemoryStateStore,
 )
+from core.registry import Registry
+from core.scheduling.scheduler import ScheduledTask, Scheduler
 
 
 __all__ = [

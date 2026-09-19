@@ -13,8 +13,8 @@ from typing import Any
 
 from loguru import logger
 
-from .fsm import FSMEngine
-from .models.manifest import Manifest
+from core.fsm.engine import FSMEngine
+from core.models.manifest import Manifest
 
 
 class EventRouter:

@@ -51,7 +51,7 @@ class TestBootstrapPlatform:
         ctx = bootstrap_platform(str(MANIFEST_PATH))
 
         assert ctx.event_bus is not None
-        from core.event_bus import EventBus
+        from core.events.event_bus import EventBus
 
         assert isinstance(ctx.event_bus, EventBus)
 

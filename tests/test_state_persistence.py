@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
-from core.state_persistence import StatePersistence
+from core.persistence.state_persistence import StatePersistence
 
 
 class TestStatePersistenceInitialization:
@@ -107,7 +107,7 @@ class TestSaveState:
         assert "light.test" in data
 
     @patch("sys.platform", "linux")
-    @patch("core.state_persistence.fcntl")
+    @patch("core.persistence.state_persistence.fcntl")
     def test_uses_fcntl_locking_on_linux(self, mock_fcntl, persistence):
         """На Linux используется fcntl.flock"""
         mock_fcntl.LOCK_EX = 1
@@ -378,8 +378,8 @@ class TestAtomicWrite:
 class TestConcurrentAccess:
     """Тесты concurrent доступа (с моками)"""
 
-    @patch("core.state_persistence.StatePersistence._acquire_lock")
-    @patch("core.state_persistence.StatePersistence._release_lock")
+    @patch("core.persistence.state_persistence.StatePersistence._acquire_lock")
+    @patch("core.persistence.state_persistence.StatePersistence._release_lock")
     def test_acquire_lock_before_read(self, mock_release, mock_acquire):
         """Блокировка приобретается перед чтением"""
         fd, path = tempfile.mkstemp(suffix=".json")

@@ -14,9 +14,10 @@ from abc import ABC, abstractmethod
 
 from loguru import logger
 
-from .command_dispatcher import CommandIntent
-from .control_tracker import ControlTracker, TriggerSource
-from .models.manifest import AutomationRules
+from core.control_tracker import ControlTracker, TriggerSource
+from core.models.manifest import AutomationRules
+
+from .dispatcher import CommandIntent
 
 
 class Middleware(ABC):
