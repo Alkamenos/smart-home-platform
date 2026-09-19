@@ -6,6 +6,7 @@
 from core.action_handlers import release_device, turn_on_night_light
 from core.commands.dispatcher import CommandDispatcher, CommandIntent
 from core.commands.middleware import ManualLockoutMiddleware, Middleware
+from core.container import Container, PlatformContext
 from core.events.event_bus import EventBus
 from core.fsm.engine import FSMDefinition, FSMEngine, State, Transition
 from core.models.manifest import (
@@ -29,6 +30,13 @@ from core.persistence.state_store import (
     InputTextStateStore,
     MemoryStateStore,
 )
+from core.plugin_interfaces import (
+    AdapterPlugin,
+    BehaviorPlugin,
+    MiddlewarePlugin,
+    PluginMetadata,
+)
+from core.plugin_loader import PluginInfo, PluginLoader, PluginLoadResult
 from core.registry import Registry
 from core.scheduling.scheduler import ScheduledTask, Scheduler
 
@@ -65,4 +73,15 @@ __all__ = [
     "Dashboard",
     "BehaviorConfig",
     "AutomationDomainRules",
+    # Plugin system
+    "PluginLoader",
+    "PluginInfo",
+    "PluginLoadResult",
+    "BehaviorPlugin",
+    "MiddlewarePlugin",
+    "AdapterPlugin",
+    "PluginMetadata",
+    # DI Container
+    "Container",
+    "PlatformContext",
 ]

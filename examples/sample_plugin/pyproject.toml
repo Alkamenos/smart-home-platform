@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sample-plugin"
+version = "1.0.0"
+description = "Sample plugin for Smart Home Platform - demonstrates plugin system capabilities"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Smart Home Team", email = "team@example.com"}
+]
+keywords = ["smart-home", "plugin", "automation", "party-mode"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.entry-points."smart_home.behaviors"]
+party_mode = "sample_plugin.behavior:PartyModeBehavior"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sample_plugin*"]
