@@ -63,7 +63,7 @@ class SecretsResolver:
                     env_path = Path.cwd().parent / ".env"
 
             if env_path.exists():
-                _load_dotenv(dotenv_path=env_path)
+                _load_dotenv(dotenv_path=env_path, override=True)
                 logger.info(f"Loaded environment from {env_path}")
             else:
                 logger.debug("No .env file found, using system environment")
