@@ -143,50 +143,37 @@
 
 ## Phase 9.75: Production Deployment Preparation [IN PROGRESS]
 - [ ] Safe Deployment Strategy for Home Assistant
-  - Files: `docs/deployment/README.md`, `docker-compose.prod.yml`, `scripts/safe-deploy.sh`
-  - Detail: Create comprehensive deployment guide with rollback strategy
+  - Detail: `.ai/enhancements/16-safe-deployment.md`
+  - Priority: CRITICAL
+  - Effort: 2-3 days
   - User Stories:
     * Deploy code to real HA instance without breaking existing automation
     * Run platform in parallel with existing HA automations (shadow mode)
     * Graceful fallback if platform fails
-  - Priority: CRITICAL
-  - Effort: 2-3 days
 - [ ] Enhanced Logging Integration
-  - Files: `services/logging_service.py`, `webui/routes/logs.py`, `webui/templates/logs.html`
-  - Detail:
-    * Integrate with HA logging system
-    * Web UI for real-time log viewing with filters
-    * Log rotation and persistence
+  - Detail: `.ai/enhancements/17-enhanced-logging.md`
+  - Priority: HIGH
+  - Effort: 1-2 days
   - User Stories:
     * View platform logs in HA Supervisor panel
     * Access logs via web interface at `/logs`
     * Export logs for debugging
+- [ ] Automatic Manifest Generator from Real Devices
+  - Detail: `.ai/enhancements/18-automatic-manifest-generator.md`
   - Priority: HIGH
   - Effort: 1-2 days
-- [ ] Automatic Manifest Generator from Real Devices
-  - Files: `cli/commands/generate_manifest.py`, `core/manifest_generator.py`
-  - Detail:
-    * Connect to HA API and fetch all entities
-    * Auto-generate manifest.yaml based on entity types and areas
-    * Interactive CLI for reviewing and editing before applying
   - User Stories:
     * Run `smart-home generate-manifest --url http://homeassistant:8123 --token <TOKEN>`
     * Review generated manifest in CLI or web UI
     * Save to instances/<name>/manifest.yaml
-  - Priority: HIGH
-  - Effort: 1-2 days
 - [ ] Dashboard Generator for Platform Management
-  - Files: `dashboard/platform_dashboard.py`, `cli/commands/generate_dashboard.py`
-  - Detail:
-    * Generate Lovelace dashboard for monitoring platform health
-    * Cards for: FSM states, active behaviors, manual overrides, errors
-    * Controls for: reload config, view logs, toggle debug mode
+  - Detail: `.ai/enhancements/19-dashboard-generator.md`
+  - Priority: MEDIUM
+  - Effort: 1 day
   - User Stories:
     * Run `smart-home generate-dashboard --output lovelace_platform.yaml`
     * Import generated dashboard into HA
     * Real-time visibility into platform operations
-  - Priority: MEDIUM
-  - Effort: 1 day
 
 ## Phase 10: Architecture Improvements [COMPLETED: 2026-09-19]
 - [x] Domain-Driven Design Refactoring
