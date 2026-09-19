@@ -124,13 +124,13 @@
   - Effort: 2-3 days
   - Implementation date: 2026-09-19
 
-## Phase 9: Observability & Reliability [PLANNING]
-- [ ] Prometheus / OpenTelemetry Metrics
+## Phase 9: Observability & Reliability [IN PROGRESS]
+- [x] Prometheus / OpenTelemetry Metrics
   - Files: `core/metrics.py`, `services/metrics_server.py`
   - Detail: `.ai/enhancements/07-prometheus-metrics.md`
   - Priority: HIGH
   - Effort: 1-2 days
-- [ ] Circuit Breaker Pattern
+- [x] Circuit Breaker Pattern
   - File: `adapters/ha_adapter.py`
   - Detail: `.ai/enhancements/08-circuit-breaker.md`
   - Priority: HIGH
@@ -141,7 +141,7 @@
   - Priority: MEDIUM
   - Effort: 1 day
 
-## Phase 10: Architecture Improvements [FUTURE]
+## Phase 10: Architecture Improvements [IN PROGRESS]
 - [ ] Domain-Driven Design Refactoring
   - File: `core/`
   - Detail: `.ai/enhancements/11-ddd-refactoring.md`
@@ -158,7 +158,7 @@
   - Priority: LOW
   - Effort: 2-3 days
 
-## Phase 11: Advanced Features [FUTURE]
+## Phase 11: Advanced Features [PLANNING]
 - [ ] LLM / NLP Adapter
   - Files: `adapters/nlp_adapter.py`, `core/nlp_parser.py`
   - Detail: `.ai/enhancements/10-llm-nlp-adapter.md`

@@ -190,12 +190,12 @@ gantt
 
 **Status:** PLANNING
 
-- [ ] Prometheus / OpenTelemetry Metrics
+- ✅ Prometheus / OpenTelemetry Metrics
 - Files: `core/metrics.py`, `services/metrics_server.py`
 - Detail: `.ai/enhancements/07-prometheus-metrics.md`
 - Priority: HIGH
 - Effort: 1-2 days
-- [ ] Circuit Breaker Pattern
+- ✅ Circuit Breaker Pattern
 - File: `adapters/ha_adapter.py`
 - Detail: `.ai/enhancements/08-circuit-breaker.md`
 - Priority: HIGH

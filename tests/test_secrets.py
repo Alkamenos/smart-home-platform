@@ -9,6 +9,9 @@ Tests cover:
 - .env file loading
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import os
 from pathlib import Path
 from typing import Any
@@ -259,6 +262,7 @@ class TestSecretsResolverEnvFile:
 
     def test_load_env_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading environment from .env file."""
+        pytest.importorskip("dotenv")  # <--- Тест скипнется, если библиотеки нет
         # Create .env file first
         env_file = tmp_path / ".env"
         env_file.write_text("TEST_ENV_VAR=loaded_from_file\n")
@@ -278,6 +282,7 @@ class TestSecretsResolverEnvFile:
     def test_load_env_file_explicit_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        pytest.importorskip("dotenv")  # <--- Тест скипнется, если библиотеки нет
         """Test loading environment from explicit .env file path."""
         # Create .env file first
         env_file = tmp_path / "custom.env"
