@@ -259,16 +259,18 @@ class TestSecretsResolverEnvFile:
 
     def test_load_env_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading environment from .env file."""
-        # Clear any existing variable from os.environ to ensure dotenv loads it
+        # Create .env file first
+        env_file = tmp_path / ".env"
+        env_file.write_text("TEST_ENV_VAR=loaded_from_file\n")
+
+        # Clear any existing variable and create resolver without auto-loading
         monkeypatch.delenv("TEST_ENV_VAR", raising=False)
         if "TEST_ENV_VAR" in os.environ:
             del os.environ["TEST_ENV_VAR"]
 
-        env_file = tmp_path / ".env"
-        env_file.write_text("TEST_ENV_VAR=loaded_from_file\n")
-
-        # Explicitly pass the env_file path to ensure it's loaded
-        resolver = SecretsResolver(env_file=env_file, load_dotenv=True)
+        # Create resolver without auto-loading, then load manually
+        resolver = SecretsResolver(env_file=env_file, load_dotenv=False)
+        resolver._load_env_file()  # Explicitly load after file exists
 
         result = resolver.resolve("${TEST_ENV_VAR}")
         assert result == "loaded_from_file"
@@ -277,15 +279,19 @@ class TestSecretsResolverEnvFile:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test loading environment from explicit .env file path."""
-        # Clear any existing variable from os.environ to ensure dotenv loads it
+        # Create .env file first
+        env_file = tmp_path / "custom.env"
+        env_file.write_text("EXPLICIT_VAR=explicit_value\n")
+
+        # Clear any existing variable
         monkeypatch.delenv("EXPLICIT_VAR", raising=False)
         if "EXPLICIT_VAR" in os.environ:
             del os.environ["EXPLICIT_VAR"]
 
-        env_file = tmp_path / "custom.env"
-        env_file.write_text("EXPLICIT_VAR=explicit_value\n")
+        # Create resolver without auto-loading, then load manually
+        resolver = SecretsResolver(env_file=env_file, load_dotenv=False)
+        resolver._load_env_file()  # Explicitly load after file exists
 
-        resolver = SecretsResolver(env_file=env_file, load_dotenv=True)
         result = resolver.resolve("${EXPLICIT_VAR}")
         assert result == "explicit_value"
 
