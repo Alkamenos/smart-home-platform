@@ -135,12 +135,32 @@
   - Detail: `.ai/enhancements/08-circuit-breaker.md`
   - Priority: HIGH
   - Effort: 1 day
-- [x] Secrets Management
+- [ ] Secrets Management
   - File: `core/secrets.py`
   - Detail: `.ai/enhancements/09-secrets-management.md`
   - Priority: MEDIUM
   - Effort: 1 day
 
+## Phase 9.8: Critical Production Fixes [PLANNING]
+[ ] CRITICAL Docker Entrypoint & Bootstrap Fix
+  - Files: deploy/docker/Dockerfile, src/main.py, pyproject.toml
+  - Detail: .ai/enhancements/20-docker-entrypoint-fix.md
+  - Priority: CRITICAL
+  - Effort: 0.5 days
+[ ] CRITICAL WebSocket Reconnection Reliability
+  - File: src/adapters/ha_adapter.py
+  - Detail: .ai/enhancements/21-websocket-reconnect.md
+  - Priority: CRITICAL
+  - Effort: 1 day
+[ ] Command Intent TTL & Auto-Release
+  - Files: src/core/commands/dispatcher.py, src/core/commands/models.py
+  - Detail: .ai/enhancements/22-intent-ttl-dispatcher.md
+  - Priority: HIGH
+  - Effort: 1 day
+
+## Phase 10: Architecture Improvements [IN PROGRESS]
+- [x] Domain-Driven Design Refactoring
+  - File: `core/`
 ## Phase 9.75: Production Deployment Preparation [IN PROGRESS]
 - [ ] Safe Deployment Strategy for Home Assistant
   - Detail: `.ai/enhancements/16-safe-deployment.md`
@@ -186,6 +206,8 @@
   - Detail: `.ai/enhancements/12-plugin-system.md`
   - Priority: LOW
   - Effort: 2-3 days
+- [x] Dependency Injection
+  - File: `bootstrap.py`
   - Implementation date: 2026-09-19
 - [x] Dependency Injection
   - File: `core/container.py`, `bootstrap.py`
@@ -205,6 +227,17 @@
   - Detail: `.ai/enhancements/14-hot-reloading.md`
   - Priority: LOW
   - Effort: 1-2 days
+
+- [ ] Event History Persistence (Data Lake)
+  - Files: src/analytics/db.py, src/analytics/history_recorder.py
+  - Detail: .ai/enhancements/23-event-history-persistence.md
+  - Priority: HIGH
+  - Effort: 2 days
+[ ] Predictive AI Middleware
+  - Files: src/core/middleware/predictiveai.py, src/analytics/routineanalyzer.py
+  - Detail: .ai/enhancements/24-predictive-ai-middleware.md
+  - Priority: MEDIUM
+  - Effort: 3-5 days
 
 ## Phase 12: Platform Maturity [FUTURE]
 - [ ] Plugin system for custom behaviors
