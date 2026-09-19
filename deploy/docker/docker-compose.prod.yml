@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  behavioral-platform:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        - BUILD_ENV=production
+    container_name: behavioral-platform
+    restart: unless-stopped
+
+    # Network mode: host для доступа ко всем устройствам HA
+    network_mode: host
+
+    # Environment variables
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - SHADOW_MODE=false
+      - HA_URL=http://localhost:8123
+      - HA_TOKEN=${HA_TOKEN}
+      - CONFIG_PATH=/config/behavioral_platform
+      - DATA_PATH=/data/behavioral_platform
+
+    # Volumes
+    volumes:
+      # Конфигурация
+      - ./config:/config/behavioral_platform:rw
+      # Данные (состояния, логи)
+      - ./data:/data/behavioral_platform:rw
+      # Логи HA (опционально, для интеграции)
+      - /var/log/homeassistant:/var/log/homeassistant:ro
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.cli.health_check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Logging driver
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "7"
+
+    # Labels для обнаружения в HA
+    labels:
+      - "behavioral.platform.enabled=true"
+      - "behavioral.platform.version=1.0.0"
+
+  # Опционально: сервис для веб-интерфейса логов
+  log-viewer:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile.logviewer
+    container_name: behavioral-log-viewer
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - LOG_PATH=/data/behavioral_platform/logs
+      - PORT=8081
+    volumes:
+      - ./data:/data/behavioral_platform:ro
+    depends_on:
+      - behavioral-platform
+    profiles:
+      - with-ui
