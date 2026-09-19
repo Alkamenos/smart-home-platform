@@ -104,7 +104,7 @@
   - Effort: 0.5 days
   - Implementation date: 2026-09-18
 
-## Phase 8: Platform Extensions - Core Features [IN PROGRESS]
+## Phase 8: Platform Extensions - Core Features [COMPLETED: 2026-09-19]
 - [x] Scene Manager / Flow Engine
   - Files: `core/scene_manager.py`, `core/models/scene.py`
   - Detail: `.ai/enhancements/04-scene-manager.md`
@@ -117,11 +117,12 @@
   - Priority: MEDIUM
   - Effort: 2 days
   - Implementation date: 2026-09-19
-- [ ] Digital Twin / Simulator
-  - Files: `core/simulator.py`, `cli/commands/simulate.py`
+- [x] Digital Twin / Simulator
+  - Files: `core/simulator.py`, `core/models/simulation.py`, `tests/test_digital_twin.py`
   - Detail: `.ai/enhancements/06-digital-twin.md`
   - Priority: MEDIUM
   - Effort: 2-3 days
+  - Implementation date: 2026-09-19
 
 ## Phase 9: Observability & Reliability [PLANNING]
 - [ ] Prometheus / OpenTelemetry Metrics
