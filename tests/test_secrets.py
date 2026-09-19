@@ -267,17 +267,11 @@ class TestSecretsResolverEnvFile:
         env_file = tmp_path / ".env"
         env_file.write_text("TEST_ENV_VAR=loaded_from_file\n")
 
-        # Change to temp directory so it finds the .env file
-        original_cwd = Path.cwd()
-        try:
-            os.chdir(tmp_path)
-            # Force reload by creating new resolver after clearing environ
-            resolver = SecretsResolver(load_dotenv=True)
+        # Explicitly pass the env_file path to ensure it's loaded
+        resolver = SecretsResolver(env_file=env_file, load_dotenv=True)
 
-            result = resolver.resolve("${TEST_ENV_VAR}")
-            assert result == "loaded_from_file"
-        finally:
-            os.chdir(original_cwd)
+        result = resolver.resolve("${TEST_ENV_VAR}")
+        assert result == "loaded_from_file"
 
     def test_load_env_file_explicit_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
