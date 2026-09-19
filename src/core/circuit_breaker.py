@@ -10,11 +10,13 @@ from overload during failures. The circuit breaker has three states:
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from loguru import logger
+
 
 T = TypeVar("T")
 
@@ -245,8 +247,7 @@ class CircuitBreaker:
         if current_state == CircuitState.OPEN:
             self._record_rejection()
             raise CircuitBreakerError(
-                f"Circuit breaker '{self._name}' is OPEN. "
-                f"Service calls are blocked until recovery."
+                f"Circuit breaker '{self._name}' is OPEN. Service calls are blocked until recovery."
             )
 
         if current_state == CircuitState.HALF_OPEN:
