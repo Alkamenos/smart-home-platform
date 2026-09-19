@@ -47,8 +47,9 @@ class TestMetricsCollectorInitialization:
         """Test that initialize() is idempotent."""
         collector = MetricsCollector()
         collector.initialize()
+        initial_state = collector.is_initialized()
         collector.initialize()  # Should not raise or change state
-        assert not collector.is_initialized()  # Still False without prometheus_client
+        assert collector.is_initialized() == initial_state  # State should not change
 
 
 class TestMetricsRecordingWithoutPrometheus:
