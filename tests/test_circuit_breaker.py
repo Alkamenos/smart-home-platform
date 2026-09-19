@@ -6,10 +6,8 @@ Tests cover all circuit breaker states, transitions, and edge cases.
 from __future__ import annotations
 
 import time
-from unittest.mock import Mock
 
 import pytest
-
 from src.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -94,10 +92,10 @@ class TestCircuitBreakerSuccess:
     def test_successful_call_in_closed_state(self) -> None:
         """Test successful call keeps circuit closed."""
         breaker = CircuitBreaker(name="test")
-        
+
         def success_func() -> str:
             return "success"
-        
+
         result = breaker.execute(success_func)
         assert result == "success"
         assert breaker.is_closed
@@ -108,26 +106,26 @@ class TestCircuitBreakerSuccess:
         """Test that success resets failure count in CLOSED state."""
         config = CircuitBreakerConfig(failure_threshold=3)
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         def success_func() -> str:
             return "success"
-        
+
         # Two failures
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         # One success should reset failure count
         breaker.execute(success_func)
-        
+
         # Two more failures should not open circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         assert breaker.is_closed
 
 
@@ -138,15 +136,15 @@ class TestCircuitBreakerFailure:
         """Test circuit opens after reaching failure threshold."""
         config = CircuitBreakerConfig(failure_threshold=3)
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         # Three failures should open circuit
         for _ in range(3):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         assert breaker.is_open
         assert breaker.stats.failed_calls == 3
         assert breaker.stats.state_changes == 1  # CLOSED -> OPEN
@@ -155,24 +153,24 @@ class TestCircuitBreakerFailure:
         """Test that calls are rejected when circuit is open."""
         config = CircuitBreakerConfig(failure_threshold=2)
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         def success_func() -> str:
             return "success"
-        
+
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         assert breaker.is_open
-        
+
         # Calls should be rejected
         with pytest.raises(CircuitBreakerError):
             breaker.execute(success_func)
-        
+
         assert breaker.stats.rejected_calls == 1
 
 
@@ -186,20 +184,20 @@ class TestCircuitBreakerRecovery:
             recovery_timeout_sec=0.1,
         )
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         assert breaker.is_open
-        
+
         # Wait for timeout
         time.sleep(0.15)
-        
+
         # Accessing state should trigger transition
         assert breaker.is_half_open
 
@@ -212,28 +210,28 @@ class TestCircuitBreakerRecovery:
             half_open_max_calls=3,
         )
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         def success_func() -> str:
             return "success"
-        
+
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         # Wait for timeout
         time.sleep(0.15)
-        
+
         # Trigger transition to HALF-OPEN
         assert breaker.state == CircuitState.HALF_OPEN
-        
+
         # Two successful calls should close circuit
         breaker.execute(success_func)
         breaker.execute(success_func)
-        
+
         assert breaker.is_closed
 
     def test_reopen_on_failure_in_half_open(self) -> None:
@@ -243,25 +241,25 @@ class TestCircuitBreakerRecovery:
             recovery_timeout_sec=0.1,
         )
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         # Wait for timeout
         time.sleep(0.15)
-        
+
         # Trigger transition to HALF-OPEN
         assert breaker.state == CircuitState.HALF_OPEN
-        
+
         # Failure in HALF-OPEN should reopen circuit
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             breaker.execute(fail_func)
-        
+
         assert breaker.is_open
 
 
@@ -276,27 +274,27 @@ class TestCircuitBreakerHalfOpenLimits:
             half_open_max_calls=2,
         )
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         def success_func() -> str:
             return "success"
-        
+
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         # Wait for timeout
         time.sleep(0.15)
-        
+
         # Trigger transition to HALF-OPEN
         assert breaker.state == CircuitState.HALF_OPEN
-        
+
         # Make max calls without completing them (simulate in-progress)
         breaker._half_open_calls = 2
-        
+
         # Next call should be rejected
         with pytest.raises(CircuitBreakerError):
             breaker.execute(success_func)
@@ -308,11 +306,11 @@ class TestCircuitBreakerDecorator:
     def test_decorator_wraps_function(self) -> None:
         """Test that decorator properly wraps function."""
         breaker = CircuitBreaker(name="test")
-        
+
         @breaker.call
         def my_func(x: int) -> int:
             return x * 2
-        
+
         result = my_func(5)
         assert result == 10
         assert breaker.stats.successful_calls == 1
@@ -325,20 +323,20 @@ class TestCircuitBreakerReset:
         """Test that reset clears all state."""
         config = CircuitBreakerConfig(failure_threshold=2)
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         assert breaker.is_open
-        
+
         # Reset
         breaker.reset()
-        
+
         assert breaker.is_closed
         assert breaker.stats.total_calls == 0
         assert breaker.stats.state_changes == 0
@@ -350,9 +348,9 @@ class TestCircuitBreakerStateInfo:
     def test_get_state_info_returns_dict(self) -> None:
         """Test that get_state_info returns proper dictionary."""
         breaker = CircuitBreaker(name="test")
-        
+
         info = breaker.get_state_info()
-        
+
         assert "name" in info
         assert "state" in info
         assert "is_closed" in info
@@ -361,7 +359,7 @@ class TestCircuitBreakerStateInfo:
         assert "failure_count" in info
         assert "half_open_calls" in info
         assert "stats" in info
-        
+
         assert info["name"] == "test"
         assert info["state"] == "closed"
         assert info["is_closed"] is True
@@ -374,30 +372,30 @@ class TestCircuitBreakerEdgeCases:
         """Test that CircuitBreakerError doesn't count as failure."""
         config = CircuitBreakerConfig(failure_threshold=2)
         breaker = CircuitBreaker(name="test", config=config)
-        
+
         def fail_func() -> None:
-            raise Exception("fail")
-        
+            raise RuntimeError("fail")
+
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 breaker.execute(fail_func)
-        
+
         initial_failed = breaker.stats.failed_calls
-        
+
         # Try to call when open - should raise CircuitBreakerError
         with pytest.raises(CircuitBreakerError):
             breaker.execute(lambda: "test")
-        
+
         # Failed calls count should not increase
         assert breaker.stats.failed_calls == initial_failed
 
     def test_exception_propagates_correctly(self) -> None:
         """Test that original exceptions are propagated."""
         breaker = CircuitBreaker(name="test")
-        
+
         def custom_error_func() -> None:
             raise ValueError("custom error")
-        
+
         with pytest.raises(ValueError, match="custom error"):
             breaker.execute(custom_error_func)
