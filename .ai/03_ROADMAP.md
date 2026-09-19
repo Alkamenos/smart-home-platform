@@ -104,17 +104,19 @@
   - Effort: 0.5 days
   - Implementation date: 2026-09-18
 
-## Phase 8: Platform Extensions - Core Features [PLANNING]
-- [ ] Scene Manager / Flow Engine
+## Phase 8: Platform Extensions - Core Features [IN PROGRESS]
+- [x] Scene Manager / Flow Engine
   - Files: `core/scene_manager.py`, `core/models/scene.py`
   - Detail: `.ai/enhancements/04-scene-manager.md`
   - Priority: HIGH
   - Effort: 2-3 days
-- [ ] Room Aggregation & Policies
+  - Implementation date: 2026-09-18
+- [x] Room Aggregation & Policies
   - Files: `core/room_manager.py`, `core/models/room.py`
   - Detail: `.ai/enhancements/05-room-aggregation.md`
   - Priority: MEDIUM
   - Effort: 2 days
+  - Implementation date: 2026-09-19
 - [ ] Digital Twin / Simulator
   - Files: `core/simulator.py`, `cli/commands/simulate.py`
   - Detail: `.ai/enhancements/06-digital-twin.md`

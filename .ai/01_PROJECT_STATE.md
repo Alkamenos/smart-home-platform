@@ -1,6 +1,6 @@
 # Project State
 
-*Последнее обновление: 2026-09-18*
+*Последнее обновление: 2026-09-19*
 
 ## 📌 Как использовать этот файл
 
@@ -11,7 +11,7 @@
 ---
 
 **Версия:** v3.0.0 (Production Readiness)
-**Последний коммит:** 2026-09-18 — feat: implement Interactive REPL (Phase 7)
+**Последний коммит:** 2026-09-19 — feat: implement Room Aggregation & Policies (Phase 8)
 
 ### ✅ Полностью реализовано и протестировано
 
@@ -34,6 +34,8 @@
 | **Web UI** | `src/webui/app.py`, `src/webui/routes.py`, `src/webui/models.py` | ✅ New | `test_webui.py` |
 | **FSM Visualization** | `src/core/fsm_visualizer.py`, `src/smart_home/cli/commands/export_fsm.py` | ✅ New | `test_fsm_visualizer.py` |
 | **Interactive REPL** | `src/smart_home/cli/commands/shell.py`, `tests/test_shell.py` | ✅ New | `test_shell.py` |
+| **Scene Manager** | `src/core/scene_manager.py`, `src/core/models/scene.py`, `tests/test_scene_manager.py` | ✅ New | `test_scene_manager.py` |
+| **Room Aggregation & Policies** | `src/core/room_manager.py`, `src/core/models/room.py`, `tests/test_room_aggregation.py` | ✅ New | `test_room_aggregation.py` |
 
 ## Known Issues
 
@@ -60,6 +62,8 @@
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-19 | Room Aggregation & Policies implementation (Phase 8) | `src/core/room_manager.py`, `src/core/models/room.py`, `tests/test_room_aggregation.py` | ✅ Complete |
+| 2026-09-18 | Scene Manager / Flow Engine implementation (Phase 8) | `src/core/scene_manager.py`, `src/core/models/scene.py`, `tests/test_scene_manager.py` | ✅ Complete |
 | 2026-09-18 | Interactive REPL implementation (Phase 7) | `src/smart_home/cli/commands/shell.py`, `tests/test_shell.py` | ✅ Complete |
 | 2026-09-17 | FSM Visualization implementation (Phase 7) | `src/core/fsm_visualizer.py`, `src/smart_home/cli/commands/export_fsm.py`, `tests/test_fsm_visualizer.py` | ✅ Complete |
 | 2026-09-17 | Web UI for manifest editing implementation | `src/webui/app.py`, `src/webui/routes.py`, `src/webui/models.py`, `tests/test_webui.py` | ✅ Complete |
