@@ -29,7 +29,7 @@ gantt
     Phase 7- Platform Extensions - Quick Wins :done, p7, 2026-10-17, 2026-10-22
 
     section Phase 8- Platform Extensions - Core Features
-    Phase 8- Platform Extensions - Core Features :p8, 2026-10-24, 2026-10-29
+    Phase 8- Platform Extensions - Core Features :done, p8, 2026-10-24, 2026-10-29
 
     section Phase 9- Observability & Reliability
     Phase 9- Observability & Reliability :p9, 2026-10-31, 2026-11-05
@@ -163,25 +163,28 @@ gantt
 - Effort: 0.5 days
 - Implementation date: 2026-09-18
 
-## 📌 Phase 8: Platform Extensions - Core Features
+## ✅ Phase 8: Platform Extensions - Core Features
 
-**Status:** PLANNING
+**Status:** COMPLETED: 2026-09-19
 
-- [ ] Scene Manager / Flow Engine
+- ✅ Scene Manager / Flow Engine
 - Files: `core/scene_manager.py`, `core/models/scene.py`
 - Detail: `.ai/enhancements/04-scene-manager.md`
 - Priority: HIGH
 - Effort: 2-3 days
-- [ ] Room Aggregation & Policies
+- Implementation date: 2026-09-18
+- ✅ Room Aggregation & Policies
 - Files: `core/room_manager.py`, `core/models/room.py`
 - Detail: `.ai/enhancements/05-room-aggregation.md`
 - Priority: MEDIUM
 - Effort: 2 days
-- [ ] Digital Twin / Simulator
-- Files: `core/simulator.py`, `cli/commands/simulate.py`
+- Implementation date: 2026-09-19
+- ✅ Digital Twin / Simulator
+- Files: `core/simulator.py`, `core/models/simulation.py`, `tests/test_digital_twin.py`
 - Detail: `.ai/enhancements/06-digital-twin.md`
 - Priority: MEDIUM
 - Effort: 2-3 days
+- Implementation date: 2026-09-19
 
 ## 📌 Phase 9: Observability & Reliability
 
