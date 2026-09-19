@@ -11,7 +11,7 @@
 ---
 
 **Версия:** v3.0.0 (Production Readiness)
-**Последний коммит:** 2026-09-19 — feat: implement Room Aggregation & Policies (Phase 8)
+**Последний коммит:** 2026-09-19 — feat(core): Add Secrets Management for secure credential handling
 
 ### ✅ Полностью реализовано и протестировано
 
@@ -36,8 +36,35 @@
 | **Interactive REPL** | `src/smart_home/cli/commands/shell.py`, `tests/test_shell.py` | ✅ New | `test_shell.py` |
 | **Scene Manager** | `src/core/scene_manager.py`, `src/core/models/scene.py`, `tests/test_scene_manager.py` | ✅ New | `test_scene_manager.py` |
 | **Room Aggregation & Policies** | `src/core/room_manager.py`, `src/core/models/room.py`, `tests/test_room_aggregation.py` | ✅ New | `test_room_aggregation.py` |
+| **Secrets Management** | `src/core/secrets.py`, `tests/test_secrets.py` | ✅ New | `test_secrets.py` |
 
-## Known Issues
+## Последние значимые изменения
+
+### 2026-09-19 — Phase 9: Secrets Management ✅
+
+**Задача:** Безопасное хранение токенов, паролей и чувствительных данных.
+
+**Реализация:**
+- `src/core/secrets.py` — модуль управления секретами
+- `tests/test_secrets.py` — комплексные тесты (33 теста, 93% покрытие)
+
+**Функциональность:**
+- Резолвинг переменных окружения с синтаксисом `${VAR_NAME}`
+- Поддержка значений по умолчанию: `${VAR_NAME:default_value}`
+- Рекурсивная обработка nested структур (dict/list/tuple)
+- Валидация манифестов на наличие plain-text секретов
+- Опциональная загрузка `.env` файлов через python-dotenv
+- Convenience функции: `resolve_secrets()`, `validate_secrets()`
+
+**Интеграция:** Готово к использованию в manifest loader для безопасной подстановки секретов.
+
+**Файлы:**
+- `src/core/secrets.py` (новый)
+- `tests/test_secrets.py` (новый)
+
+**Статус:** ✅ Завершено, все проверки пройдены
+
+---
 
 ### 🔴 Critical (Blocker для production)
 
