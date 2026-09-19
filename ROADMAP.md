@@ -32,10 +32,10 @@ gantt
     Phase 8- Platform Extensions - Core Features :done, p8, 2026-10-24, 2026-10-29
 
     section Phase 9- Observability & Reliability
-    Phase 9- Observability & Reliability :p9, 2026-10-31, 2026-11-05
+    Phase 9- Observability & Reliability :active, p9, 2026-10-31, 2026-11-05
 
     section Phase 10- Architecture Improvements
-    Phase 10- Architecture Improvements :p10, 2026-11-07, 2026-11-12
+    Phase 10- Architecture Improvements :active, p10, 2026-11-07, 2026-11-12
 
     section Phase 11- Advanced Features
     Phase 11- Advanced Features :p11, 2026-11-14, 2026-11-19
@@ -186,9 +186,9 @@ gantt
 - Effort: 2-3 days
 - Implementation date: 2026-09-19
 
-## 📌 Phase 9: Observability & Reliability
+## 🔄 Phase 9: Observability & Reliability
 
-**Status:** PLANNING
+**Status:** IN PROGRESS
 
 - ✅ Prometheus / OpenTelemetry Metrics
 - Files: `core/metrics.py`, `services/metrics_server.py`
@@ -206,9 +206,9 @@ gantt
 - Priority: MEDIUM
 - Effort: 1 day
 
-## 🔮 Phase 10: Architecture Improvements
+## 🔄 Phase 10: Architecture Improvements
 
-**Status:** FUTURE
+**Status:** IN PROGRESS
 
 - [ ] Domain-Driven Design Refactoring
 - File: `core/`
@@ -226,9 +226,9 @@ gantt
 - Priority: LOW
 - Effort: 2-3 days
 
-## 🔮 Phase 11: Advanced Features
+## 📌 Phase 11: Advanced Features
 
-**Status:** FUTURE
+**Status:** PLANNING
 
 - [ ] LLM / NLP Adapter
 - Files: `adapters/nlp_adapter.py`, `core/nlp_parser.py`
