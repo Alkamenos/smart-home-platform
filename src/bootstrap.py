@@ -2,7 +2,7 @@
 Bootstrap module for Smart Home Platform.
 
 This module provides the bootstrap_platform() function that initializes
-all platform components and wires them together correctly.
+all platform components using the DI Container.
 """
 
 #  Copyright 2026 Leonid Artemev
@@ -10,111 +10,21 @@ all platform components and wires them together correctly.
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
-from typing import Any
-
-from adapters.ha_adapter import HAAdapter
-from adapters.mock_adapter import MockAdapter
-from core.action_handlers import register_all_actions
-from core.commands.dispatcher import CommandDispatcher
-from core.commands.middleware import ManualLockoutMiddleware
-from core.control_tracker import ControlTracker
-from core.events.event_bus import EventBus
-from core.events.event_router import EventRouter
-from core.fsm.engine import FSMEngine
-from core.fsm.factory import FSMFactory
-from core.models.manifest import Manifest, load_manifest
-from core.registry import Registry
-
-
-@dataclass
-class PlatformContext:
-    """
-    Container for all platform components.
-
-    Attributes:
-        manifest: Loaded manifest with automation rules.
-        event_bus: EventBus for publishing/subscribing to events.
-        fsm: FSMEngine for state machine management.
-        control_tracker: ControlTracker for tracking manual interventions.
-        adapter: HAAdapter or MockAdapter for calling services.
-        dispatcher: CommandDispatcher with middleware chain.
-        event_router: EventRouter for routing sensor events to FSMs.
-    """
-
-    manifest: Manifest
-    event_bus: EventBus
-    fsm: FSMEngine
-    control_tracker: ControlTracker
-    adapter: Any  # HAAdapter or MockAdapter
-    dispatcher: CommandDispatcher
-    event_router: EventRouter
+from core.container import Container, PlatformContext
 
 
 def bootstrap_platform(manifest_path: str) -> PlatformContext:
-    """Bootstrap the smart home platform with all components."""
+    """
+    Bootstrap the smart home platform using DI Container.
 
-    # 1. Load manifest
-    manifest = load_manifest(manifest_path)
+    Args:
+        manifest_path: Path to the manifest YAML file.
 
-    # 2. Create EventBus
-    event_bus = EventBus()
-
-    # 3. Create FSMEngine
-    fsm = FSMEngine()
-
-    # 4. Create ControlTracker
-    control_tracker = ControlTracker(history_size=100)
-
-    # 5. Create EventRouter (uses room-based manifest)
-    event_router = EventRouter(manifest=manifest, engine=fsm)
-
-    # 6. Create adapter
-    ws_url = os.environ.get("HA_WEBSOCKET_URL", "ws://localhost:8123/api/websocket")
-    ha_token = os.environ.get("HA_TOKEN")
-    if ha_token:
-        adapter = HAAdapter(
-            mode="websocket",
-            engine=fsm,
-            event_router=event_router,
-            ws_url=ws_url,
-            token=ha_token,
-        )
-    else:
-        adapter = MockAdapter()
-        adapter.set_event_router(event_router)
-
-    # 7. Create CommandDispatcher
-    dispatcher = CommandDispatcher(ha_adapter=adapter, middlewares=[])
-
-    # 8. Create ManualLockoutMiddleware
-    middleware = ManualLockoutMiddleware(
-        automation_rules=manifest.automation_rules,
-        control_tracker=control_tracker,
-    )
-
-    # 9. Add middleware to dispatcher
-    dispatcher.add_middleware(middleware)
-
-    # 10. Link adapter to FSM engine
-    adapter.set_fsm_engine(fsm)
-
-    # 11. Create FSMs from manifest via FSMFactory
-    registry = Registry()
-    register_all_actions(registry)
-    factory = FSMFactory(engine=fsm, registry=registry, event_bus=event_bus)
-    factory.create_and_register(manifest)
-
-    return PlatformContext(
-        manifest=manifest,
-        event_bus=event_bus,
-        fsm=fsm,
-        control_tracker=control_tracker,
-        adapter=adapter,
-        dispatcher=dispatcher,
-        event_router=event_router,
-    )
+    Returns:
+        PlatformContext with all initialized components.
+    """
+    container = Container(manifest_path=manifest_path)
+    return container.build()
 
 
 if __name__ == "__main__":
