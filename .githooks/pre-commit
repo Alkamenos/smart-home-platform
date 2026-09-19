@@ -24,64 +24,59 @@ fail()  { echo -e "${RED}[pre-commit]${NC} $*"; exit 1; }
 
 
 # ──────────────────────────────────────────────
-# 1. Статические проверки (только если AI=1)
+# 1. Статические проверки (ВСЕГДА при коммите)
 # ──────────────────────────────────────────────
 
-if [[ "${AI:-}" == "1" ]]; then
-    info "🤖 AI mode enabled — запуск статических проверок..."
+info "🤖 Запуск статических проверок перед коммитом..."
 
-    # 1. Ruff lint
-    info "📏 Running ruff lint..."
-    if command -v ruff &>/dev/null; then
-        if ! ruff check .; then
-            fail "❌ Ruff lint failed"
-        fi
-    else
-        warn "ruff not found, skipping lint..."
+# 1. Ruff lint
+info "📏 Running ruff lint..."
+if command -v ruff &>/dev/null; then
+    if ! ruff check .; then
+        fail "❌ Ruff lint failed"
     fi
-
-    # 2. Ruff format
-    info "🎨 Running ruff format..."
-    if command -v ruff &>/dev/null; then
-        if ! ruff format . --check; then
-            fail "❌ Ruff format failed"
-        fi
-    else
-        warn "ruff not found, skipping format..."
-    fi
-
-    # 3. MyPy type checking
-    info "🔍 Running mypy..."
-    if command -v mypy &>/dev/null; then
-        # Используем MYPYPATH для корректной работы с src/ структурой
-        if ! MYPYPATH=src mypy src/; then
-            fail "❌ MyPy failed"
-        fi
-    else
-        warn "mypy not found, skipping type check..."
-    fi
-
-    # 4. Проверка .gitignore
-    info "📝 Checking .gitignore..."
-    if [[ -x "$ROOT/.ai/scripts/check_gitignore.sh" ]]; then
-        if ! "$ROOT/.ai/scripts/check_gitignore.sh"; then
-            fail "❌ Gitignore check failed"
-        fi
-    fi
-
-    # 5. Проверка обновления документации
-    info "📚 Checking documentation updates..."
-    if [[ -x "$ROOT/.ai/scripts/check_docs_updated.py" ]]; then
-        if ! python "$ROOT/.ai/scripts/check_docs_updated.py"; then
-            fail "❌ Documentation check failed"
-        fi
-    fi
-
-    info "✅ Все статические проверки пройдены"
 else
-    info "ℹ️  AI mode disabled. Set AI=1 to run static checks."
-    info "   Example: AI=1 git commit -m \"message\""
+    warn "ruff not found, skipping lint..."
 fi
+
+# 2. Ruff format
+info "🎨 Running ruff format..."
+if command -v ruff &>/dev/null; then
+    if ! ruff format . --check; then
+        fail "❌ Ruff format failed"
+    fi
+else
+    warn "ruff not found, skipping format..."
+fi
+
+# 3. MyPy type checking
+info "🔍 Running mypy..."
+if command -v mypy &>/dev/null; then
+    # Используем MYPYPATH для корректной работы с src/ структурой
+    if ! MYPYPATH=src mypy src/; then
+        fail "❌ MyPy failed"
+    fi
+else
+    warn "mypy not found, skipping type check..."
+fi
+
+# 4. Проверка .gitignore
+info "📝 Checking .gitignore..."
+if [[ -x "$ROOT/.ai/scripts/check_gitignore.sh" ]]; then
+    if ! "$ROOT/.ai/scripts/check_gitignore.sh"; then
+        fail "❌ Gitignore check failed"
+    fi
+fi
+
+# 5. Проверка обновления документации
+info "📚 Checking documentation updates..."
+if [[ -x "$ROOT/.ai/scripts/check_docs_updated.py" ]]; then
+    if ! python "$ROOT/.ai/scripts/check_docs_updated.py"; then
+        fail "❌ Documentation check failed"
+    fi
+fi
+
+info "✅ Все статические проверки пройдены"
 
 # ──────────────────────────────────────────────
 # 2. Обновление статусов задач и синхронизация ROADMAP

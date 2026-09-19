@@ -24,26 +24,21 @@ fail()  { echo -e "${RED}[pre-push]${NC} $*"; exit 1; }
 
 
 # ──────────────────────────────────────────────
-# Проверка: запуск full quality checks (только если AI=1)
+# Проверка: запуск full quality checks (ВСЕГДА при пуше)
 # ──────────────────────────────────────────────
 
-if [[ "${AI:-}" == "1" ]]; then
-    info "🤖 AI mode enabled — запуск полных проверок качества..."
+info "🤖 Запуск полных проверок качества перед пушем..."
 
-    if [[ ! -x "$ROOT/.ai/scripts/run_checks.sh" ]]; then
-        fail "Скрипт проверок не найден или не исполняемый: .ai/scripts/run_checks.sh"
-    fi
-
-    info "Запускаем run_checks.sh (тесты + линтер + покрытие)..."
-    if ! "$ROOT/.ai/scripts/run_checks.sh"; then
-        fail "❌ Проверки качества не пройдены! Исправь ошибки перед пушем."
-    fi
-
-    info "✅ Все проверки качества пройдены"
-else
-    info "ℹ️  AI mode disabled. Set AI=1 to run full quality checks."
-    info "   Example: AI=1 git push"
+if [[ ! -x "$ROOT/.ai/scripts/run_checks.sh" ]]; then
+    fail "Скрипт проверок не найден или не исполняемый: .ai/scripts/run_checks.sh"
 fi
+
+info "Запускаем run_checks.sh (тесты + линтер + покрытие)..."
+if ! "$ROOT/.ai/scripts/run_checks.sh"; then
+    fail "❌ Проверки качества не пройдены! Исправь ошибки перед пушем."
+fi
+
+info "✅ Все проверки качества пройдены"
 
 info "✅ Pre-push проверки пройдены ✓"
 exit 0
