@@ -259,8 +259,10 @@ class TestSecretsResolverEnvFile:
 
     def test_load_env_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading environment from .env file."""
-        # Clear any existing variable
+        # Clear any existing variable from os.environ to ensure dotenv loads it
         monkeypatch.delenv("TEST_ENV_VAR", raising=False)
+        if "TEST_ENV_VAR" in os.environ:
+            del os.environ["TEST_ENV_VAR"]
 
         env_file = tmp_path / ".env"
         env_file.write_text("TEST_ENV_VAR=loaded_from_file\n")
@@ -269,6 +271,7 @@ class TestSecretsResolverEnvFile:
         original_cwd = Path.cwd()
         try:
             os.chdir(tmp_path)
+            # Force reload by creating new resolver after clearing environ
             resolver = SecretsResolver(load_dotenv=True)
 
             result = resolver.resolve("${TEST_ENV_VAR}")
@@ -280,7 +283,10 @@ class TestSecretsResolverEnvFile:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test loading environment from explicit .env file path."""
+        # Clear any existing variable from os.environ to ensure dotenv loads it
         monkeypatch.delenv("EXPLICIT_VAR", raising=False)
+        if "EXPLICIT_VAR" in os.environ:
+            del os.environ["EXPLICIT_VAR"]
 
         env_file = tmp_path / "custom.env"
         env_file.write_text("EXPLICIT_VAR=explicit_value\n")
