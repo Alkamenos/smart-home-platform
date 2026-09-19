@@ -141,6 +141,40 @@
   - Priority: MEDIUM
   - Effort: 1 day
 
+
+## Phase 9.75: Production Deployment Preparation [IN PROGRESS]
+- [x] Safe Deployment Strategy for Home Assistant
+  - Detail: `.ai/enhancements/16-safe-deployment.md`
+  - Priority: CRITICAL
+  - Effort: 2-3 days
+  - User Stories:
+    * Deploy code to real HA instance without breaking existing automation
+    * Run platform in parallel with existing HA automations (shadow mode)
+    * Graceful fallback if platform fails
+- [x] Enhanced Logging Integration
+  - Detail: `.ai/enhancements/17-enhanced-logging.md`
+  - Priority: HIGH
+  - Effort: 1-2 days
+  - User Stories:
+    * View platform logs in HA Supervisor panel
+    * Access logs via web interface at `/logs`
+    * Export logs for debugging
+- [x] Automatic Manifest Generator from Real Devices
+  - Detail: `.ai/enhancements/18-automatic-manifest-generator.md`
+  - Priority: HIGH
+  - Effort: 1-2 days
+  - User Stories:
+    * Run `smart-home generate-manifest --url http://homeassistant:8123 --token <TOKEN>`
+    * Review generated manifest in CLI or web UI
+    * Save to instances/<name>/manifest.yaml
+- [ ] Dashboard Generator for Platform Management
+  - Detail: `.ai/enhancements/19-dashboard-generator.md`
+  - Priority: MEDIUM
+  - Effort: 1 day
+  - User Stories:
+    * Run `smart-home generate-dashboard --output lovelace_platform.yaml`
+    * Import generated dashboard into HA
+    * Real-time visibility into platform operations
 ## Phase 9.8: Critical Production Fixes [PLANNING]
 [ ] CRITICAL Docker Entrypoint & Bootstrap Fix
   - Files: deploy/docker/Dockerfile, src/main.py, pyproject.toml
@@ -158,43 +192,6 @@
   - Priority: HIGH
   - Effort: 1 day
 
-## Phase 10: Architecture Improvements [IN PROGRESS]
-- [x] Domain-Driven Design Refactoring
-  - File: `core/`
-## Phase 9.75: Production Deployment Preparation [IN PROGRESS]
-- [ ] Safe Deployment Strategy for Home Assistant
-  - Detail: `.ai/enhancements/16-safe-deployment.md`
-  - Priority: CRITICAL
-  - Effort: 2-3 days
-  - User Stories:
-    * Deploy code to real HA instance without breaking existing automation
-    * Run platform in parallel with existing HA automations (shadow mode)
-    * Graceful fallback if platform fails
-- [ ] Enhanced Logging Integration
-  - Detail: `.ai/enhancements/17-enhanced-logging.md`
-  - Priority: HIGH
-  - Effort: 1-2 days
-  - User Stories:
-    * View platform logs in HA Supervisor panel
-    * Access logs via web interface at `/logs`
-    * Export logs for debugging
-- [ ] Automatic Manifest Generator from Real Devices
-  - Detail: `.ai/enhancements/18-automatic-manifest-generator.md`
-  - Priority: HIGH
-  - Effort: 1-2 days
-  - User Stories:
-    * Run `smart-home generate-manifest --url http://homeassistant:8123 --token <TOKEN>`
-    * Review generated manifest in CLI or web UI
-    * Save to instances/<name>/manifest.yaml
-- [ ] Dashboard Generator for Platform Management
-  - Detail: `.ai/enhancements/19-dashboard-generator.md`
-  - Priority: MEDIUM
-  - Effort: 1 day
-  - User Stories:
-    * Run `smart-home generate-dashboard --output lovelace_platform.yaml`
-    * Import generated dashboard into HA
-    * Real-time visibility into platform operations
-
 ## Phase 10: Architecture Improvements [COMPLETED: 2026-09-19]
 - [x] Domain-Driven Design Refactoring
   - Files: `core/fsm/`, `core/events/`, `core/commands/`, `core/persistence/`, `core/scheduling/`, `core/guards/`, `core/models/`
@@ -206,9 +203,6 @@
   - Detail: `.ai/enhancements/12-plugin-system.md`
   - Priority: LOW
   - Effort: 2-3 days
-- [x] Dependency Injection
-  - File: `bootstrap.py`
-  - Implementation date: 2026-09-19
 - [x] Dependency Injection
   - File: `core/container.py`, `bootstrap.py`
   - Detail: `.ai/enhancements/13-dependency-injection.md`
@@ -227,7 +221,6 @@
   - Detail: `.ai/enhancements/14-hot-reloading.md`
   - Priority: LOW
   - Effort: 1-2 days
-
 - [ ] Event History Persistence (Data Lake)
   - Files: src/analytics/db.py, src/analytics/history_recorder.py
   - Detail: .ai/enhancements/23-event-history-persistence.md

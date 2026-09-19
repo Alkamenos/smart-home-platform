@@ -1,19 +1,23 @@
 """Tests for structured logger and logging service."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
 
 import pytest
-from src.core.structured_logger import (
+
+from core.structured_logger import (
     LoggingContext,
     SensitiveDataFilter,
     StructuredFormatter,
     create_structured_logger,
     get_logger,
 )
-from src.services.logging_service import LogBuffer, LoggingService
+from services.logging_service import LogBuffer, LoggingService
 
 
 class TestStructuredFormatter:

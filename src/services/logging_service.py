@@ -5,6 +5,9 @@ Centralized logging service with multiple output handlers,
 log rotation, and WebSocket streaming support.
 """
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 import logging
 from collections.abc import Callable
@@ -12,7 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from src.core.structured_logger import (
+from core.structured_logger import (
     SensitiveDataFilter,
     StructuredFormatter,
 )

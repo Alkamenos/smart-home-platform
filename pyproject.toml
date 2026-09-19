@@ -83,6 +83,9 @@ shp = "smart_home.cli.main:main"
 [tool.mypy]
 python_version = "3.12"
 strict = true
+mypy_path = "src"
+explicit_package_bases = true
+namespace_packages = true
 ignore_missing_imports = true
 warn_return_any = true
 warn_unused_configs = true
@@ -90,7 +93,6 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
-explicit_package_bases = true
 
 disable_error_code = [
     "misc",

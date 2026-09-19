@@ -37,14 +37,17 @@ gantt
     section Phase 9.75- Production Deployment Preparation
     Phase 9.75- Production Deployment Preparation :active, p10, 2026-11-07, 2026-11-12
 
+    section Phase 9.8- Critical Production Fixes
+    Phase 9.8- Critical Production Fixes :p11, 2026-11-14, 2026-11-19
+
     section Phase 10- Architecture Improvements
-    Phase 10- Architecture Improvements :done, p11, 2026-11-14, 2026-11-19
+    Phase 10- Architecture Improvements :done, p12, 2026-11-21, 2026-11-26
 
     section Phase 11- Advanced Features
-    Phase 11- Advanced Features :p12, 2026-11-21, 2026-11-26
+    Phase 11- Advanced Features :p13, 2026-11-28, 2026-12-03
 
     section Phase 12- Platform Maturity
-    Phase 12- Platform Maturity :p13, 2026-11-28, 2026-12-03
+    Phase 12- Platform Maturity :p14, 2026-12-05, 2026-12-10
 
 ```
 
@@ -203,7 +206,7 @@ gantt
 - Detail: `.ai/enhancements/08-circuit-breaker.md`
 - Priority: HIGH
 - Effort: 1 day
-- ✅ Secrets Management
+- [ ] Secrets Management
 - File: `core/secrets.py`
 - Detail: `.ai/enhancements/09-secrets-management.md`
 - Priority: MEDIUM
@@ -213,17 +216,17 @@ gantt
 
 **Status:** IN PROGRESS
 
-- [ ] Safe Deployment Strategy for Home Assistant
+- ✅ Safe Deployment Strategy for Home Assistant
 - Detail: `.ai/enhancements/16-safe-deployment.md`
 - Priority: CRITICAL
 - Effort: 2-3 days
 - User Stories:
-- [ ] Enhanced Logging Integration
+- ✅ Enhanced Logging Integration
 - Detail: `.ai/enhancements/17-enhanced-logging.md`
 - Priority: HIGH
 - Effort: 1-2 days
 - User Stories:
-- [ ] Automatic Manifest Generator from Real Devices
+- ✅ Automatic Manifest Generator from Real Devices
 - Detail: `.ai/enhancements/18-automatic-manifest-generator.md`
 - Priority: HIGH
 - Effort: 1-2 days
@@ -233,6 +236,23 @@ gantt
 - Priority: MEDIUM
 - Effort: 1 day
 - User Stories:
+
+## 📌 Phase 9.8: Critical Production Fixes
+
+**Status:** PLANNING
+
+- Files: deploy/docker/Dockerfile, src/main.py, pyproject.toml
+- Detail: .ai/enhancements/20-docker-entrypoint-fix.md
+- Priority: CRITICAL
+- Effort: 0.5 days
+- File: src/adapters/ha_adapter.py
+- Detail: .ai/enhancements/21-websocket-reconnect.md
+- Priority: CRITICAL
+- Effort: 1 day
+- Files: src/core/commands/dispatcher.py, src/core/commands/models.py
+- Detail: .ai/enhancements/22-intent-ttl-dispatcher.md
+- Priority: HIGH
+- Effort: 1 day
 
 ## ✅ Phase 10: Architecture Improvements
 
@@ -248,7 +268,6 @@ gantt
 - Detail: `.ai/enhancements/12-plugin-system.md`
 - Priority: LOW
 - Effort: 2-3 days
-- Implementation date: 2026-09-19
 - ✅ Dependency Injection
 - File: `core/container.py`, `bootstrap.py`
 - Detail: `.ai/enhancements/13-dependency-injection.md`
@@ -270,6 +289,15 @@ gantt
 - Detail: `.ai/enhancements/14-hot-reloading.md`
 - Priority: LOW
 - Effort: 1-2 days
+- [ ] Event History Persistence (Data Lake)
+- Files: src/analytics/db.py, src/analytics/history_recorder.py
+- Detail: .ai/enhancements/23-event-history-persistence.md
+- Priority: HIGH
+- Effort: 2 days
+- Files: src/core/middleware/predictiveai.py, src/analytics/routineanalyzer.py
+- Detail: .ai/enhancements/24-predictive-ai-middleware.md
+- Priority: MEDIUM
+- Effort: 3-5 days
 
 ## 🔮 Phase 12: Platform Maturity
 
