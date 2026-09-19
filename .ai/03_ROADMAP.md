@@ -147,11 +147,12 @@
   - Detail: `.ai/enhancements/11-ddd-refactoring.md`
   - Priority: MEDIUM
   - Effort: 1-2 days
-- [ ] Plugin System
+- [x] Plugin System
   - File: `core/plugin_loader.py`
   - Detail: `.ai/enhancements/12-plugin-system.md`
   - Priority: LOW
   - Effort: 2-3 days
+  - Implementation date: 2026-09-19
 - [ ] Dependency Injection
   - File: `bootstrap.py`
   - Detail: `.ai/enhancements/13-dependency-injection.md`
