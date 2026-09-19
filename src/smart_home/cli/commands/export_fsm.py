@@ -54,6 +54,7 @@ def generate_fsms_from_manifest(manifest: dict[str, Any]) -> list[tuple[str, FSM
     Returns:
         List of tuples (device_id, fsm_definition).
     """
+    from core.events.event_bus import EventBus
     from core.fsm import FSMEngine
     from core.fsm.factory import FSMFactory
     from core.models.manifest import BehaviorConfig
@@ -61,7 +62,10 @@ def generate_fsms_from_manifest(manifest: dict[str, Any]) -> list[tuple[str, FSM
 
     engine = FSMEngine()
     registry = Registry()
-    factory = FSMFactory(engine=engine, registry=registry, features_dir="src/features")
+    event_bus = EventBus()
+    factory = FSMFactory(
+        engine=engine, registry=registry, features_dir="src/features", event_bus=event_bus
+    )
 
     fsms: list[tuple[str, FSMDefinition]] = []
 
