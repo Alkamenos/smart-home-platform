@@ -124,17 +124,19 @@
   - Effort: 2-3 days
   - Implementation date: 2026-09-19
 
-## Phase 9: Observability & Reliability [PLANNING]
-- [ ] Prometheus / OpenTelemetry Metrics
+## Phase 9: Observability & Reliability [IN PROGRESS]
+- [x] Prometheus / OpenTelemetry Metrics
   - Files: `core/metrics.py`, `services/metrics_server.py`
   - Detail: `.ai/enhancements/07-prometheus-metrics.md`
   - Priority: HIGH
   - Effort: 1-2 days
-- [ ] Circuit Breaker Pattern
-  - File: `adapters/ha_adapter.py`
+  - Implementation date: 2026-09-16
+- [x] Circuit Breaker Pattern
+  - File: `adapters/circuit_breaker.py`
   - Detail: `.ai/enhancements/08-circuit-breaker.md`
   - Priority: HIGH
   - Effort: 1 day
+  - Implementation date: 2026-09-16
 - [ ] Secrets Management
   - File: `core/secrets.py`
   - Detail: `.ai/enhancements/09-secrets-management.md`
