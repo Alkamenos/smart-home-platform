@@ -195,7 +195,19 @@ CREATE INDEX idx_transitions_entity ON fsm_transitions(entity_id);
 
 ## 📝 ПОШАГОВЫЙ ПЛАН РЕАЛИЗАЦИИ
 
-### 🎨 Фича 1: Визуализация FSM
+### ✅ Фича 1: Визуализация FSM — ГОТОВО
+- ✅ Шаг 1.1: EventStore для истории событий
+- ✅ Шаг 1.2: Интеграция с FSMVisualizer (endpoint /api/fsm/{entity_id}/diagram)
+- ✅ Шаг 1.3: UI карточка устройства с FSM статусом
+- ✅ Шаг 1.4: Modal с Mermaid-диаграммой
+
+### ✅ Фича 2: Графики событий — ГОТОВО
+- ✅ Шаг 2.1: API для графиков (/api/events/history)
+- ✅ Шаг 2.2: Dashboard страница (/dashboard)
+- ✅ Шаг 2.3: Chart.js интеграция для time-series графиков
+- ⏳ Шаг 2.4: Heatmap (placeholder готов, требует реализации)
+
+### ⏳ Фича 3: Manual Override
 
 #### Шаг 1.1: История переходов FSM
 - Создать `src/core/persistence/event_store.py` с SQLite backend
