@@ -14,7 +14,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from ..core.models.manifest import Manifest
+from src.core.models.manifest import Manifest
+
 from .models import ManifestModel
 
 

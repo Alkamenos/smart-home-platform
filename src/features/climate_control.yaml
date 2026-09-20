@@ -1,0 +1,29 @@
+# Climate control template
+initial_state: "IDLE"
+debounce_sec: 1.0
+
+states:
+  - "IDLE"
+  - "HEATING"
+  - "COOLING"
+
+transitions:
+  - from_state: "IDLE"
+    to_state: "HEATING"
+    trigger: "temperature_low"
+    action: "climate_heat"
+
+  - from_state: "IDLE"
+    to_state: "COOLING"
+    trigger: "temperature_high"
+    action: "climate_cool"
+
+  - from_state: "HEATING"
+    to_state: "IDLE"
+    trigger: "temperature_reached"
+    action: "climate_off"
+
+  - from_state: "COOLING"
+    to_state: "IDLE"
+    trigger: "temperature_reached"
+    action: "climate_off"

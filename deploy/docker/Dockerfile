@@ -6,6 +6,7 @@ ARG BUILD_ENV=production
 
 # Рабочая директория
 WORKDIR /app
+ENV PYTHONPATH=/app/src
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,16 +15,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Копирование зависимостей
-COPY requirements.txt .
-COPY requirements-dev.txt .
 
-# Установка Python зависимостей
-RUN pip install --no-cache-dir -r requirements.txt
+COPY README.md .
 
-# Копирование кода
+COPY pyproject.toml .
 COPY src/ ./src/
-COPY config/ ./config/
+COPY src/features/ ./features/
+COPY instances/ ./instances/
+
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir .
 
 # Создание директорий для данных и логов
 RUN mkdir -p /data/behavioral_platform/logs \
@@ -33,7 +34,7 @@ RUN mkdir -p /data/behavioral_platform/logs \
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     BUILD_ENV=${BUILD_ENV} \
-    CONFIG_PATH=/config/behavioral_platform \
+    CONFIG_PATH=/config/instances/leonids_house \
     DATA_PATH=/data/behavioral_platform
 
 # Health check endpoint

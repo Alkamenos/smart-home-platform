@@ -39,7 +39,8 @@ class MockAdapter:
         await adapter.call_service("light", "turn_on", "light.kitchen", {})
     """
 
-    def __init__(self) -> None:
+    def __init__(self, engine: Any | None = None) -> None:
+        self._engine = engine
         """Initialize MockAdapter with empty state."""
         self._states: dict[str, Any] = {}
         self._fsm_engine: Any = None

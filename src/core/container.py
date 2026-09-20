@@ -153,7 +153,7 @@ class Container:
                     token=ha_token,
                 )
             else:
-                self._adapter = MockAdapter()
+                self._adapter = MockAdapter(engine=self.fsm)
                 self._adapter.set_event_router(self.event_router)
         return self._adapter
 
@@ -215,7 +215,7 @@ class Container:
         self.factory.create_and_register(self.manifest)
 
         # Link adapter to FSM engine
-        self.adapter.set_fsm_engine(self.fsm)
+        # self.adapter.set_fsm_engine(self.fsm)
 
         return PlatformContext(
             manifest=self.manifest,

@@ -20,7 +20,7 @@ from core.models.room import RoomConfig, RoomState
 
 
 if TYPE_CHECKING:
-    from ..event_bus import EventBus
+    from src.event_bus import EventBus
 
 
 class RoomManager:

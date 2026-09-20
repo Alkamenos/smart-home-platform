@@ -195,18 +195,14 @@ class SimpleHAWebSocketClient:
             return None
 
 
-try:
-    from homeassistant_websocket import HomeAssistantWS  # type: ignore
-
-    HAS_WS_LIBRARY = True
-except ImportError:
-    HAS_WS_LIBRARY = True
-    HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
+# Always use SimpleHAWebSocketClient (no external dependency)
+HAS_WS_LIBRARY = True
+HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
 
 
 if TYPE_CHECKING:
-    from ..core.event_router import EventRouter
-    from ..core.middleware import ManualLockoutMiddleware
+    from src.core.event_router import EventRouter
+    from src.core.middleware import ManualLockoutMiddleware
 
 
 class HAAdapter:
@@ -417,10 +413,6 @@ class HAAdapter:
 
     async def _connect_websocket(self) -> None:
         """Establish WebSocket connection with exponential backoff."""
-        if not HAS_WS_LIBRARY or HomeAssistantWS is None:
-            logger.error("HAAdapter: homeassistant-websocket library not available")
-            return
-
         reconnect_delay = 1.0
         max_reconnect_delay = 60.0
 
@@ -429,16 +421,31 @@ class HAAdapter:
                 log = self._get_logger(self._generate_trace_id())
                 log.info(f"HAAdapter: connecting to WebSocket {self._ws_url}")
 
+                # Отладочный лог
+                log.info(f"HAAdapter: HomeAssistantWS class = {HomeAssistantWS}")
+                log.info(f"HAAdapter: HAS_WS_LIBRARY = {HAS_WS_LIBRARY}")
+
                 self._session = aiohttp.ClientSession()
+
+                # Создаём клиент
                 self._ws_client = HomeAssistantWS(
                     url=self._ws_url,
                     token=self._token,
                     session=self._session,
                 )
 
-                await self._ws_client.connect()
-                log.info("HAAdapter: WebSocket connected")
+                log.info(f"HAAdapter: ws_client created = {self._ws_client}")
 
+                # Подключаемся
+                await self._ws_client.connect()
+
+                # КРИТИЧЕСКАЯ ПРОВЕРКА: реально ли подключились?
+                if not getattr(self._ws_client, "connected", False):
+                    raise ConnectionError("WebSocket connect() succeeded but connected=False")
+
+                log.info("HAAdapter: WebSocket connected successfully")
+
+                # Подписываемся на события
                 await self._ws_client.subscribe(
                     self._handle_ws_state_change,
                     {"type": "state_changed"},
@@ -447,16 +454,25 @@ class HAAdapter:
 
                 reconnect_delay = 1.0
 
-                # Wait for shutdown signal
+                # Ждём сигнала остановки
                 await self._shutdown_event.wait()
 
             except asyncio.CancelledError:
                 logger.info("HAAdapter: WebSocket connection cancelled")
                 break
+
             except Exception as e:
                 trace_id = self._generate_trace_id()
                 log = self._get_logger(trace_id)
-                log.error(f"HAAdapter: WebSocket error: {e}")
+                log.error(f"HAAdapter: connection error: {type(e).__name__}: {e}")
+
+                # Логируем состояние для отладки
+                log.error(f"HAAdapter: _ws_client is None = {self._ws_client is None}")
+                if self._ws_client is not None:
+                    log.error(
+                        f"HAAdapter: _ws_client.connected = {getattr(self._ws_client, 'connected', 'N/A')}"
+                    )
+                    log.error(f"HAAdapter: _ws_client.ws = {getattr(self._ws_client, 'ws', 'N/A')}")
 
                 if not self._shutdown_event.is_set():
                     log.info(f"HAAdapter: reconnecting in {reconnect_delay:.1f}s")
