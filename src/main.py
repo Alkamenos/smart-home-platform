@@ -34,6 +34,19 @@ async def run_platform():
     app = create_app(str(manifest_path))
     config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="warning")
     server = uvicorn.Server(config)
+    try:
+        logger.info(f"🌐 Creating FastAPI app with manifest: {manifest_path}")
+        app = create_app(manifest_path)
+        logger.info("✅ FastAPI app created successfully")
+        config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="info")
+        server = uvicorn.Server(config)
+        logger.info("✅ Uvicorn server configured on port 8125")
+    except Exception as e:
+        logger.error(f"❌ Failed to create FastAPI app: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise
 
     # 3. Graceful Shutdown
     loop = asyncio.get_running_loop()

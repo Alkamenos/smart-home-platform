@@ -72,7 +72,16 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
             validated = ManifestModel(**manifest_data)
         except Exception as e:
             logger.error(f"Failed to load manifest: {e}")
-            manifest_data = {"version": "3.0", "instance_name": "", "rooms": []}
+            manifest_data = {
+                "instance": {
+                    "id": "error",
+                    "name": "Error loading",
+                    "owner": "unknown",
+                    "created_at": "",
+                },
+                "version": 1,
+                "rooms": [],
+            }
             validated = ManifestModel(**manifest_data)
 
         return templates.TemplateResponse(
@@ -195,6 +204,3 @@ def _save_manifest(path: str, data: dict) -> None:
     """
     with open(path, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-
-
-app = create_app()

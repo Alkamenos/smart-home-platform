@@ -22,6 +22,7 @@ COPY pyproject.toml .
 COPY src/ ./src/
 COPY src/features/ ./features/
 COPY instances/ ./instances/
+COPY src/webui/templates/ ./src/webui/templates/
 
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir .
