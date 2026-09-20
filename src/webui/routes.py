@@ -81,3 +81,47 @@ async def get_fsm_diagram(entity_id: str) -> Response:
     except Exception as e:
         logger.error(f"Failed to generate FSM diagram for {entity_id}: {e}")
         return Response(content=f"Error: {e}", status_code=500)
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request) -> HTMLResponse:
+    """Dashboard page with event charts.
+
+    Args:
+        request: FastAPI request object.
+
+    Returns:
+        Dashboard HTML page with Chart.js graphs.
+    """
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {"title": "Dashboard"},
+    )
+
+
+@router.get("/api/events/history")
+async def get_events_history() -> dict:
+    """Get event history data for charts.
+
+    Returns:
+        JSON data for Chart.js visualization.
+    """
+    # Mock data for now - will be replaced with EventStore integration
+    return {
+        "labels": ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"],
+        "datasets": [
+            {
+                "label": "Motion Events",
+                "data": [5, 2, 15, 8, 12, 20],
+                "borderColor": "#0d6efd",
+                "tension": 0.1,
+            },
+            {
+                "label": "Light Commands",
+                "data": [3, 1, 10, 5, 8, 15],
+                "borderColor": "#ffc107",
+                "tension": 0.1,
+            },
+        ],
+    }
