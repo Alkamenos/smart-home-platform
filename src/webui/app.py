@@ -23,6 +23,11 @@ if TYPE_CHECKING:
     pass
 
 
+def _get_project_root() -> Path:
+    """Get the project root directory."""
+    return Path(__file__).parent.parent.parent
+
+
 def create_app(manifest_path: str | None = None) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -48,9 +53,9 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
 
     app.include_router(router)
 
-    # Default manifest path
+    # Default manifest path - resolve relative to project root
     if manifest_path is None:
-        manifest_path = "instances/leonids_house/manifest.yaml"
+        manifest_path = str(_get_project_root() / "instances" / "leonids_house" / "manifest.yaml")
 
     @app.get("/", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def index(request: Request) -> HTMLResponse:

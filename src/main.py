@@ -5,6 +5,7 @@
 import asyncio
 import os
 import signal
+from pathlib import Path
 
 import uvicorn
 from loguru import logger
@@ -14,17 +15,23 @@ from webui.app import create_app
 
 
 async def run_platform():
-    manifest_dir = os.environ.get("CONFIG_PATH", "instances/leonids_house")
-    manifest_path = os.path.join(manifest_dir, "manifest.yaml")
+    # Get project root (parent of src directory)
+    project_root = Path(__file__).parent.parent
+
+    manifest_dir = os.environ.get("CONFIG_PATH", project_root / "instances" / "leonids_house")
+    manifest_path = Path(manifest_dir) / "manifest.yaml"
+
+    # Convert to absolute path to ensure it works regardless of CWD
+    manifest_path = manifest_path.resolve()
 
     logger.info(f"🚀 Bootstrapping Smart Home Platform from {manifest_path}")
-    ctx = bootstrap_platform(manifest_path)
+    ctx = bootstrap_platform(str(manifest_path))
 
     # 1. Запуск WebSocket коннекта к HA (в фоне)
     await ctx.adapter.start()
 
     # 2. Запуск FastAPI для Healthcheck (порт 8125, как в docker-compose)
-    app = create_app(manifest_path)
+    app = create_app(str(manifest_path))
     config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="warning")
     server = uvicorn.Server(config)
 
