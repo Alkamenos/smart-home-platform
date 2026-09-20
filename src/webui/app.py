@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import yaml
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -146,6 +146,60 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
 
     # Initialize manifest store
     manifest_store = ManifestStore(manifest_path)
+
+    # WebSocket connection manager for real-time updates
+    class ConnectionManager:
+        """Manages WebSocket connections for live updates."""
+
+        def __init__(self) -> None:
+            """Initialize the connection manager."""
+            self.active_connections: list[WebSocket] = []
+
+        async def connect(self, websocket: WebSocket) -> None:
+            """Accept a new WebSocket connection."""
+            await websocket.accept()
+            self.active_connections.append(websocket)
+            logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+
+        def disconnect(self, websocket: WebSocket) -> None:
+            """Remove a WebSocket connection."""
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+            logger.info(
+                f"WebSocket disconnected. Total connections: {len(self.active_connections)}"
+            )
+
+        async def broadcast(self, message: dict) -> None:
+            """Send a message to all connected clients."""
+            import json
+
+            for connection in self.active_connections:
+                try:
+                    await connection.send_text(json.dumps(message))
+                except Exception as e:
+                    logger.error(f"Failed to send message to WebSocket: {e}")
+
+    manager = ConnectionManager()
+
+    @app.websocket("/ws/live")
+    async def websocket_endpoint(websocket: WebSocket) -> None:
+        """WebSocket endpoint for real-time event streaming."""
+        await manager.connect(websocket)
+        try:
+            while True:
+                # Keep connection alive, receive messages if needed
+                data = await websocket.receive_text()
+                # Optionally handle incoming messages from client
+                logger.debug(f"Received WebSocket message: {data}")
+        except WebSocketDisconnect:
+            manager.disconnect(websocket)
+        except Exception as e:
+            logger.error(f"WebSocket error: {e}")
+            manager.disconnect(websocket)
+
+    async def broadcast_event(event_data: dict) -> None:
+        """Broadcast an event to all connected WebSocket clients."""
+        await manager.broadcast(event_data)
 
     @app.get("/", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def index(request: Request) -> HTMLResponse:

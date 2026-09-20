@@ -209,6 +209,112 @@
                 }
             }
         });
+
+        // WebSocket connection for real-time updates
+        (function() {
+            let socket = null;
+            let reconnectDelay = 1000;
+            const maxReconnectDelay = 30000;
+
+            function connect() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws/live`;
+
+                socket = new WebSocket(wsUrl);
+
+                socket.onopen = function() {
+                    console.log('WebSocket connected');
+                    reconnectDelay = 1000; // Reset delay on successful connection
+                };
+
+                socket.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('WebSocket message received:', data);
+
+                        // Show toast notification
+                        showToast(data.type, data.message || JSON.stringify(data));
+
+                        // Handle specific event types
+                        if (data.type === 'fsm_transition') {
+                            // Could update device status in real-time
+                            console.log('FSM transition:', data.entity_id, data.new_state);
+                        } else if (data.type === 'sensor_event') {
+                            // Could update sensor readings
+                            console.log('Sensor event:', data.sensor_id, data.value);
+                        } else if (data.type === 'manual_override') {
+                            // Could highlight overridden devices
+                            console.log('Manual override:', data.entity_id);
+                        } else if (data.type === 'ai_suggestion') {
+                            // Could show AI suggestions
+                            console.log('AI suggestion:', data.suggestion);
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse WebSocket message:', e);
+                    }
+                };
+
+                socket.onclose = function() {
+                    console.log('WebSocket disconnected');
+                    socket = null;
+
+                    // Attempt to reconnect with exponential backoff
+                    setTimeout(function() {
+                        if (reconnectDelay < maxReconnectDelay) {
+                            reconnectDelay *= 2;
+                        }
+                        console.log(`Attempting to reconnect in ${reconnectDelay}ms`);
+                        connect();
+                    }, reconnectDelay);
+                };
+
+                socket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    if (socket) {
+                        socket.close();
+                    }
+                };
+            }
+
+            function showToast(type, message) {
+                // Create or get existing toast container
+                let toastContainer = document.getElementById('toast-container');
+                if (!toastContainer) {
+                    toastContainer = document.createElement('div');
+                    toastContainer.id = 'toast-container';
+                    toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
+                    toastContainer.style.zIndex = '11';
+                    document.body.appendChild(toastContainer);
+                }
+
+                // Create toast element
+                const toastId = 'toast-' + Date.now();
+                const bgClass = type === 'error' ? 'bg-danger' : 'bg-info';
+                const toastHtml = `
+                    <div id="${toastId}" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                        <div class="toast-header ${bgClass} text-white">
+                            <strong class="me-auto">${type}</strong>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                        </div>
+                        <div class="toast-body">${message}</div>
+                    </div>
+                `;
+
+                toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+
+                const toastEl = document.getElementById(toastId);
+                const toast = new bootstrap.Toast(toastEl, { delay: 5000 });
+                toast.show();
+
+                // Remove toast from DOM after it's hidden
+                toastEl.addEventListener('hidden.bs.toast', function() {
+                    toastEl.remove();
+                });
+            }
+
+            // Connect on page load
+            connect();
+        })();
     </script>
 </body>
 </html>
