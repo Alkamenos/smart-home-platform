@@ -254,6 +254,10 @@ class HAAdapter:
 
         logger.info(f"HAAdapter initialized in '{mode}' mode")
 
+    def set_fsm_engine(self, engine) -> None:
+        """Set the FSM engine reference (called by Container.build())."""
+        self._fsm_engine = engine
+
     def _generate_trace_id(self) -> str:
         return str(uuid.uuid4())[:8]
 
