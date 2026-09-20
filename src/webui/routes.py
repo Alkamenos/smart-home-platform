@@ -100,6 +100,52 @@ async def dashboard(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/api/history/activity-heatmap")
+async def get_activity_heatmap() -> dict:
+    """Get activity heatmap data aggregated by hour of day.
+
+    Returns:
+        JSON data for heatmap visualization (hour x day_of_week).
+    """
+    # Mock data for now - will be replaced with EventStore aggregation
+    # Format: array of 7 days (Mon-Sun), each with 24 hours
+    import random
+
+    random.seed(42)  # For consistent mock data
+
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    heatmap_data = []
+
+    for day in days:
+        day_hours = []
+        for hour in range(24):
+            # Simulate higher activity during morning and evening
+            base_activity = 5
+            if 7 <= hour <= 9:  # Morning peak
+                base_activity += 15
+            elif 18 <= hour <= 22:  # Evening peak
+                base_activity += 20
+            elif 0 <= hour <= 6:  # Night low
+                base_activity = 2
+
+            # Add some randomness
+            activity = max(0, base_activity + random.randint(-3, 3))
+            day_hours.append(activity)
+
+        heatmap_data.append(
+            {
+                "day": day,
+                "values": day_hours,
+            }
+        )
+
+    return {
+        "days": days,
+        "hours": list(range(24)),
+        "data": heatmap_data,
+    }
+
+
 @router.get("/api/events/history")
 async def get_events_history() -> dict:
     """Get event history data for charts.

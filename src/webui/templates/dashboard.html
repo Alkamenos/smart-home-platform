@@ -28,21 +28,21 @@
             </div>
         </div>
 
-        <!-- Heatmap placeholder -->
+        <!-- Heatmap -->
         <div class="card bg-secondary mb-4">
             <div class="card-header">
                 <h5>Activity Heatmap by Hour</h5>
             </div>
             <div class="card-body">
-                <div id="heatmapPlaceholder" class="text-center py-5">
-                    <p class="text-muted">Heatmap visualization coming soon...</p>
+                <div class="chart-container" style="height: 500px;">
+                    <canvas id="heatmapChart"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Fetch event history data and render chart
+        // Fetch event history data and render time-series chart
         fetch('/api/events/history')
             .then(response => response.json())
             .then(data => {
@@ -73,6 +73,71 @@
             })
             .catch(error => {
                 console.error('Error loading event history:', error);
+            });
+
+        // Fetch heatmap data and render
+        fetch('/api/history/activity-heatmap')
+            .then(response => response.json())
+            .then(data => {
+                const ctx = document.getElementById('heatmapChart').getContext('2d');
+
+                // Transform data for Chart.js matrix
+                const datasets = data.data.map((dayData, index) => ({
+                    label: dayData.day,
+                    data: dayData.values.map((value, hour) => ({
+                        x: hour,
+                        y: value,
+                    })),
+                    backgroundColor: `rgba(${13 + index * 20}, ${110 + index * 10}, ${253 - index * 20}, 0.6)`,
+                    borderColor: `rgba(${13 + index * 20}, ${110 + index * 10}, ${253 - index * 20}, 1)`,
+                    borderWidth: 1,
+                }));
+
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.hours.map(h => `${h}:00`),
+                        datasets: datasets,
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: { color: '#fff', boxWidth: 12 }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${context.raw.y} events`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                stacked: true,
+                                ticks: { color: '#ccc' },
+                                grid: { color: '#444' },
+                                title: {
+                                    display: true,
+                                    text: 'Number of Events',
+                                    color: '#ccc'
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                ticks: { color: '#ccc' },
+                                grid: { color: '#444' }
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading heatmap data:', error);
             });
     </script>
 </body>
