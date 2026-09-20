@@ -10,11 +10,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Home Manifest Editor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js"></script>
     <style>
         .room-card { margin-bottom: 1rem; }
         .device-item { border-left: 3px solid #0d6efd; padding-left: 1rem; margin: 0.5rem 0; }
         .behavior-badge { font-size: 0.8em; margin-right: 0.3em; }
         .sensor-item { font-family: monospace; font-size: 0.9em; }
+        .unsaved-indicator { display: none; }
+        .has-changes .unsaved-indicator { display: inline; }
     </style>
 </head>
 <body>
@@ -23,21 +26,64 @@
             <span class="navbar-brand mb-0 h1">🏠 Smart Home Manifest Editor</span>
             <span class="navbar-text">
                 {{ manifest.instance.name }} (v{{ manifest.version }})
+                <span class="badge bg-warning text-dark unsaved-indicator {% if has_unsaved_changes %}has-changes{% endif %}">
+                    ⚠️ Unsaved changes
+                </span>
             </span>
         </div>
+        <div class="d-flex gap-2">
+            <button hx-get="/manifest/reload"
+                    hx-target="body"
+                    hx-swap="outerHTML"
+                    class="btn btn-outline-secondary btn-sm">
+                🔄 Revert
+            </button>
+            <button hx-post="/save"
+                    hx-target="#save-message"
+                    class="btn btn-primary btn-sm">
+                💾 Save Manifest
+            </button>
+        </div>
     </nav>
+
+    <div id="save-message"></div>
 
     <div class="container mt-4">
         <div class="row">
             <div class="col-md-8">
-                <h2>Rooms & Devices</h2>
+                <h2>Rooms & Devices 
+                    <button hx-get="/rooms/-1/edit"
+                            hx-target="#edit-modal-content"
+                            data-bs-toggle="modal"
+                            data-bs-target="#editModal"
+                            class="btn btn-sm btn-outline-primary ms-2">
+                        ➕ Add Room
+                    </button>
+                </h2>
 
+                <div id="rooms-container">
                 {% if manifest.rooms %}
                     {% for room in manifest.rooms %}
-                    <div class="card room-card">
+                    <div class="card room-card" id="room-{{ loop.index0 }}">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h3 class="mb-0">{{ room.name }} <small class="text-muted">({{ room.id }})</small></h3>
-                            <span class="badge bg-secondary">{{ room.devices|length }} devices</span>
+                            <div>
+                                <span class="badge bg-secondary me-2">{{ room.devices|length }} devices</span>
+                                <button hx-get="/rooms/{{ loop.index0 }}/edit"
+                                        hx-target="#edit-modal-content"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editModal"
+                                        class="btn btn-sm btn-outline-primary">
+                                    ✏️ Edit
+                                </button>
+                                <button hx-delete="/rooms/{{ loop.index0 }}"
+                                        hx-target="#room-{{ loop.index0 }}"
+                                        hx-swap="outerHTML"
+                                        hx-confirm="Удалить комнату {{ room.name }}?"
+                                        class="btn btn-sm btn-outline-danger ms-1">
+                                    🗑️
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             {% if room.sensors %}
@@ -67,6 +113,8 @@
                                 {% endif %}
                             </div>
                             {% endfor %}
+                            {% else %}
+                            <p class="text-muted mb-0">No devices configured</p>
                             {% endif %}
                         </div>
                     </div>
@@ -76,6 +124,7 @@
                         ⚠️ No rooms configured in manifest.
                     </div>
                 {% endif %}
+                </div>
             </div>
 
             <div class="col-md-4">
@@ -120,6 +169,17 @@
                     </div>
                 </div>
                 {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div id="edit-modal-content">
+                    <!-- Content loaded via HTMX -->
+                </div>
             </div>
         </div>
     </div>

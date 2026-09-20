@@ -1,0 +1,59 @@
+<!--
+  ~ # Copyright 2026 Leonid Artemev
+  ~ # SPDX-License-Identifier: Apache-2.0
+  -->
+
+<!-- Room card partial for HTMX swaps -->
+<div class="card room-card" id="room-{{ room_index }}">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="mb-0">{{ room.name }} <small class="text-muted">({{ room.id }})</small></h3>
+        <div>
+            <span class="badge bg-secondary me-2">{{ room.devices|length }} devices</span>
+            <button hx-get="/rooms/{{ room_index }}/edit"
+                    hx-target="#room-{{ room_index }}"
+                    hx-swap="outerHTML"
+                    class="btn btn-sm btn-outline-primary">
+                ✏️ Edit
+            </button>
+            <button hx-delete="/rooms/{{ room_index }}"
+                    hx-target="#room-{{ room_index }}"
+                    hx-swap="outerHTML"
+                    hx-confirm="Удалить комнату {{ room.name }}?"
+                    class="btn btn-sm btn-outline-danger ms-1">
+                🗑️
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if room.sensors %}
+        <h5>📡 Sensors</h5>
+        <ul class="list-group list-group-flush mb-3">
+            {% for sensor_type, sensor_id in room.sensors.items() %}
+            <li class="list-group-item sensor-item">
+                <strong>{{ sensor_type }}:</strong> {{ sensor_id }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if room.devices %}
+        <h5>🔌 Devices</h5>
+        {% for device in room.devices %}
+        <div class="device-item">
+            <h6>{{ device.id }} <span class="badge bg-secondary">{{ device.type }}</span></h6>
+            {% if device.behaviors %}
+            <div class="mt-2">
+                {% for behavior in device.behaviors %}
+                <span class="badge bg-primary behavior-badge">
+                    {{ behavior.template }} (priority: {{ behavior.priority }})
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted mb-0">No devices configured</p>
+        {% endif %}
+    </div>
+</div>
