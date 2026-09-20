@@ -104,7 +104,7 @@
                                 <div class="d-flex justify-content-between align-items-center">
                                     <h6>{{ device.id }} <span class="badge bg-secondary">{{ device.type }}</span></h6>
                                     <button class="btn btn-sm btn-outline-primary"
-                                            hx-get="/devices/{{ room.name }}/{{ device.id }}/edit"
+                                            hx-get="/devices/{{ loop.parent.index0 }}/{{ device.id }}/edit"
                                             hx-target="#device-form-container">
                                         Edit
                                     </button>
@@ -197,5 +197,17 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Close modal after room is added
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            if (evt.detail.requestConfig.path.includes('/rooms/add')) {
+                var modalEl = document.getElementById('editModal');
+                var modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) {
+                    modal.hide();
+                }
+            }
+        });
+    </script>
 </body>
 </html>
