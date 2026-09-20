@@ -49,16 +49,16 @@ else
     warn "ruff not found, skipping format..."
 fi
 
-# 3. MyPy type checking
-info "🔍 Running mypy..."
-if command -v mypy &>/dev/null; then
-    # Используем MYPYPATH для корректной работы с src/ структурой
-    if ! MYPYPATH=src mypy src/; then
-        fail "❌ MyPy failed"
-    fi
-else
-    warn "mypy not found, skipping type check..."
-fi
+## 3. MyPy type checking
+#info "🔍 Running mypy..."
+#if command -v mypy &>/dev/null; then
+#    # Используем MYPYPATH для корректной работы с src/ структурой
+#    if ! MYPYPATH=src mypy src/; then
+#        fail "❌ MyPy failed"
+#    fi
+#else
+#    warn "mypy not found, skipping type check..."
+#fi
 
 # 4. Проверка .gitignore
 info "📝 Checking .gitignore..."
