@@ -104,11 +104,17 @@
                             <div class="device-item">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <h6>{{ device.id }} <span class="badge bg-secondary">{{ device.type }}</span></h6>
-                                    <button class="btn btn-sm btn-outline-primary"
-                                            hx-get="/devices/{{ room_idx }}/{{ device.id }}/edit"
-                                            hx-target="#device-form-container">
-                                        Edit
-                                    </button>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-info me-1"
+                                                onclick="openFSMModal('{{ device.id }}')">
+                                            📊 FSM
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-primary"
+                                                hx-get="/devices/{{ room_idx }}/{{ device.id }}/edit"
+                                                hx-target="#device-form-container">
+                                            Edit
+                                        </button>
+                                    </div>
                                 </div>
                                 {% if device.behaviors %}
                                 <div class="mt-2">
@@ -197,6 +203,25 @@
         </div>
     </div>
 
+    <!-- FSM Diagram Modal -->
+    <div class="modal fade" id="fsmModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">FSM Diagram for <span id="fsm-device-id"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="fsm-diagram-container">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Close modal after room is added
@@ -209,6 +234,45 @@
                 }
             }
         });
+
+        // FSM Modal functions
+        function openFSMModal(deviceId) {
+            const modalEl = document.getElementById('fsmModal');
+            const modal = new bootstrap.Modal(modalEl);
+
+            // Set device ID in title
+            document.getElementById('fsm-device-id').textContent = deviceId;
+
+            // Show modal
+            modal.show();
+
+            // Load diagram
+            loadFSMDiagram(deviceId);
+
+            // Clear content when modal is closed
+            modalEl.addEventListener('hidden.bs.modal', function() {
+                document.getElementById('fsm-diagram-container').innerHTML = '';
+            }, { once: true });
+        }
+
+        function loadFSMDiagram(deviceId) {
+            fetch(`/api/fsm/${deviceId}/diagram`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(htmlContent => {
+                    const container = document.getElementById('fsm-diagram-container');
+                    container.innerHTML = htmlContent;
+                })
+                .catch(error => {
+                    console.error('Error loading FSM diagram:', error);
+                    document.getElementById('fsm-diagram-container').innerHTML =
+                        `<div class="alert alert-danger">Error loading diagram: ${error.message}</div>`;
+                });
+        }
 
         // WebSocket connection for real-time updates
         (function() {
