@@ -1,0 +1,107 @@
+<!--
+  ~ # Copyright 2026 Leonid Artemev
+  ~ # SPDX-License-Identifier: Apache-2.0
+  -->
+
+<div class="card">
+    <div class="card-header">
+        <h4>{% if device.id %}Edit Device{% else %}Add Device{% endif %}</h4>
+    </div>
+    <div class="card-body">
+        <form hx-post="/devices/save" hx-target="#device-form-container" hx-swap="outerHTML">
+            <input type="hidden" name="room_index" value="{{ room_index }}">
+            <input type="hidden" name="device_index" value="{{ device_index }}">
+
+            <div class="mb-3">
+                <label for="device_id" class="form-label">Device ID</label>
+                <input type="text" class="form-control" id="device_id" name="device_id"
+                       value="{{ device.id if device.id else '' }}" required>
+                <div class="form-text">e.g., light.kitchen</div>
+            </div>
+
+            <div class="mb-3">
+                <label for="device_type" class="form-label">Device Type</label>
+                <select class="form-select" id="device_type" name="device_type" required>
+                    <option value="">Select type...</option>
+                    <option value="light" {% if device.type == 'light' %}selected{% endif %}>Light</option>
+                    <option value="climate" {% if device.type == 'climate' %}selected{% endif %}>Climate</option>
+                    <option value="ventilation" {% if device.type == 'ventilation' %}selected{% endif %}>Ventilation</option>
+                    <option value="sensor" {% if device.type == 'sensor' %}selected{% endif %}>Sensor</option>
+                    <option value="switch" {% if device.type == 'switch' %}selected{% endif %}>Switch</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label for="device_name" class="form-label">Device Name (optional)</label>
+                <input type="text" class="form-control" id="device_name" name="device_name"
+                       value="{{ device.name if device.name else '' }}">
+            </div>
+
+            <h5>Behaviors</h5>
+            <div id="behaviors-container">
+                {% if device.behaviors %}
+                    {% for behavior in device.behaviors %}
+                    <div class="behavior-item border rounded p-3 mb-2">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">Template</label>
+                                <input type="text" class="form-control" name="behavior_template_{{ loop.index0 }}"
+                                       value="{{ behavior.template }}" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Priority</label>
+                                <input type="number" class="form-control" name="behavior_priority_{{ loop.index0 }}"
+                                       value="{{ behavior.priority }}" required>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Params (JSON)</label>
+                                <textarea class="form-control" name="behavior_params_{{ loop.index0 }}">{{ behavior.params | tojson }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <button type="button" class="btn btn-sm btn-outline-primary mb-3" onclick="addBehavior()">
+                + Add Behavior
+            </button>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Save Device</button>
+                <button type="button" class="btn btn-secondary"
+                        hx-get="/" hx-target="#device-form-container" hx-swap="outerHTML">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let behaviorCount = {{ device.behaviors|length if device.behaviors else 0 }};
+
+function addBehavior() {
+    const container = document.getElementById('behaviors-container');
+    const div = document.createElement('div');
+    div.className = 'behavior-item border rounded p-3 mb-2';
+    div.innerHTML = `
+        <div class="row">
+            <div class="col-md-4">
+                <label class="form-label">Template</label>
+                <input type="text" class="form-control" name="behavior_template_${behaviorCount}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Priority</label>
+                <input type="number" class="form-control" name="behavior_priority_${behaviorCount}" required>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">Params (JSON)</label>
+                <textarea class="form-control" name="behavior_params_${behaviorCount}">{}</textarea>
+            </div>
+        </div>
+    `;
+    container.appendChild(div);
+    behaviorCount++;
+}
+</script>

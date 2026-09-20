@@ -392,6 +392,170 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
                 status_code=400,
             )
 
+    @app.get("/devices/{room_id}/{device_id}/edit", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
+    async def edit_device(request: Request, room_id: int, device_id: str) -> HTMLResponse:
+        """Edit a specific device.
+
+        Args:
+            request: FastAPI request object.
+            room_id: Index of the room containing the device.
+            device_id: ID of the device to edit.
+
+        Returns:
+            HTML fragment with device edit form.
+        """
+        try:
+            manifest_data = _load_manifest(manifest_path)
+            if room_id >= len(manifest_data.get("rooms", [])):
+                raise HTTPException(status_code=404, detail="Room not found")
+
+            room = manifest_data["rooms"][room_id]
+            device = None
+            device_index = -1
+            for idx, dev in enumerate(room.get("devices", [])):
+                if dev.get("id") == device_id:
+                    device = dev
+                    device_index = idx
+                    break
+
+            if device is None:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            return templates.TemplateResponse(
+                request,
+                "partials/device_form.html",
+                {
+                    "device": device,
+                    "device_index": device_index,
+                    "room_index": room_id,
+                },
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to load device: {e}")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.get("/devices/{room_id}/add", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
+    async def add_device(request: Request, room_id: int) -> HTMLResponse:
+        """Add a new device form.
+
+        Args:
+            request: FastAPI request object.
+            room_id: Index of the room to add device to.
+
+        Returns:
+            HTML fragment with empty device form.
+        """
+        return templates.TemplateResponse(
+            request,
+            "partials/device_form.html",
+            {"device": {}, "device_index": -1, "room_index": room_id},
+        )
+
+    @app.post("/devices/save", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
+    async def save_device(
+        request: Request,
+        room_index: str = Form(...),
+        device_index: str = Form(...),
+        device_id: str = Form(...),
+        device_type: str = Form(...),
+        device_name: str = Form(""),
+    ) -> HTMLResponse:
+        """Save device changes.
+
+        Args:
+            request: FastAPI request object.
+            room_index: Index of the room.
+            device_index: Index of the device (-1 for new).
+            device_id: Device entity ID.
+            device_type: Device type.
+            device_name: Human-readable device name.
+
+        Returns:
+            HTML response with success/error message.
+        """
+        import json
+
+        try:
+            manifest_data = _load_manifest(manifest_path)
+            room_idx = int(room_index)
+            dev_idx = int(device_index)
+
+            if room_idx >= len(manifest_data.get("rooms", [])):
+                raise HTTPException(status_code=404, detail="Room not found")
+
+            # Build behaviors from form data
+            behaviors = []
+            form_data = await request.form()
+            idx = 0
+            while True:
+                template_key = f"behavior_template_{idx}"
+                if template_key not in form_data:
+                    break
+                behavior = {
+                    "template": form_data[template_key],
+                    "priority": int(form_data[f"behavior_priority_{idx}"]),
+                    "params": json.loads(form_data.get(f"behavior_params_{idx}", "{}")),
+                }
+                behaviors.append(behavior)
+                idx += 1
+
+            device = {
+                "id": device_id,
+                "type": device_type,
+                "name": device_name,
+                "behaviors": behaviors,
+            }
+
+            room = manifest_data["rooms"][room_idx]
+            if "devices" not in room:
+                room["devices"] = []
+
+            if dev_idx >= 0 and dev_idx < len(room["devices"]):
+                room["devices"][dev_idx] = device
+            else:
+                room["devices"].append(device)
+
+            # Validate
+            ManifestModel(**manifest_data)
+            Manifest(**manifest_data)
+
+            # Save
+            _save_manifest(manifest_path, manifest_data)
+
+            logger.info(f"Device {device_id} saved successfully")
+
+            # Return updated room card
+            room_data = room
+            room_card_html = f"""
+            <div class="card room-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">{room_data.get("name", "Unknown")} <small class="text-muted">({room_data.get("id", "")})</small></h3>
+                    <span class="badge bg-secondary">{len(room_data.get("devices", []))} devices</span>
+                </div>
+                <div class="card-body">
+                    <h5>🔌 Devices</h5>
+                    <p>Device {device_id} saved successfully!</p>
+                    <button class="btn btn-sm btn-primary"
+                            hx-get="/devices/{room_idx}/{device_id}/edit"
+                            hx-target="#device-form-container">
+                        Edit
+                    </button>
+                </div>
+            </div>
+            """
+            return HTMLResponse(content=room_card_html)
+
+        except Exception as e:
+            logger.error(f"Failed to save device: {e}")
+            return templates.TemplateResponse(
+                request,
+                "partials/save_error.html",
+                {"error": str(e)},
+                status_code=400,
+            )
+
     return app
 
 
