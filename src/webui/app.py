@@ -519,7 +519,6 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
 
             # Validate
             ManifestModel(**manifest_data)
-            Manifest(**manifest_data)
 
             # Save
             _save_manifest(manifest_path, manifest_data)

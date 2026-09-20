@@ -104,7 +104,7 @@
                                 <div class="d-flex justify-content-between align-items-center">
                                     <h6>{{ device.id }} <span class="badge bg-secondary">{{ device.type }}</span></h6>
                                     <button class="btn btn-sm btn-outline-primary"
-                                            hx-get="/devices/{{ loop.parent.loop.index0 }}/{{ device.id }}/edit"
+                                            hx-get="/devices/{{ room.name }}/{{ device.id }}/edit"
                                             hx-target="#device-form-container">
                                         Edit
                                     </button>
