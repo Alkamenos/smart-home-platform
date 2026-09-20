@@ -207,7 +207,13 @@ CREATE INDEX idx_transitions_entity ON fsm_transitions(entity_id);
 - ✅ Шаг 2.3: Chart.js интеграция для time-series графиков
 - ✅ Шаг 2.4: Heatmap визуализация активности по часам и дням недели
 
-### ⏳ Фича 3: Manual Override
+### ✅ Фича 3: Manual Override — ГОТОВО
+- ✅ Шаг 3.1: API endpoints для overrides (GET /api/overrides, POST /api/override, DELETE /api/override/{entity_id})
+- ✅ Шаг 3.2: UI панель управления overrides в dashboard.html
+- ✅ Шаг 3.3: JavaScript логика для создания/удаления overrides
+- ✅ Шаг 3.4: Интеграция с EventStore (save_override, remove_override, get_active_overrides)
+
+### ⏳ Фича 4: AI Suggestions
 
 #### Шаг 1.1: История переходов FSM
 - Создать `src/core/persistence/event_store.py` с SQLite backend

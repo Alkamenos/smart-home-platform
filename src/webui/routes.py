@@ -5,13 +5,16 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
+
+from src.core.persistence.event_store import EventStore
 
 
 if TYPE_CHECKING:
@@ -23,6 +26,9 @@ router = APIRouter()
 # Setup templates
 template_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(template_dir))
+
+# Initialize EventStore
+event_store = EventStore()
 
 
 @router.get("/health", response_class=HTMLResponse)
@@ -153,21 +159,106 @@ async def get_events_history() -> dict:
     Returns:
         JSON data for Chart.js visualization.
     """
-    # Mock data for now - will be replaced with EventStore integration
+    # Get real events from EventStore
+    events = event_store.get_events(limit=100)
+
+    # Aggregate events by hour
+    from collections import defaultdict
+
+    hourly_counts = defaultdict(int)
+
+    current_time = time.time()
+    hours_24 = 24 * 60 * 60
+
+    for event in events:
+        # Calculate which hour bucket this event falls into (relative to now)
+        hours_ago = (current_time - event.timestamp) / hours_24
+        if hours_ago <= 1:  # Last 24 hours
+            hour_bucket = int((1 - hours_ago) * 24) % 24
+            hourly_counts[hour_bucket] += 1
+
+    # Build labels and data
+    labels = [f"{h:02d}:00" for h in range(24)]
+    data_values = [hourly_counts.get(h, 0) for h in range(24)]
+
     return {
-        "labels": ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"],
+        "labels": labels,
         "datasets": [
             {
-                "label": "Motion Events",
-                "data": [5, 2, 15, 8, 12, 20],
+                "label": "Events (Last 24h)",
+                "data": data_values,
                 "borderColor": "#0d6efd",
                 "tension": 0.1,
-            },
-            {
-                "label": "Light Commands",
-                "data": [3, 1, 10, 5, 8, 15],
-                "borderColor": "#ffc107",
-                "tension": 0.1,
+                "fill": False,
             },
         ],
     }
+
+
+@router.get("/api/overrides")
+async def get_overrides() -> list[dict]:
+    """Get active manual overrides.
+
+    Returns:
+        List of active override records.
+    """
+    return event_store.get_active_overrides()
+
+
+@router.post("/api/override")
+async def create_override(request: Request) -> Any:
+    """Create a new manual override.
+
+    Args:
+        request: FastAPI request with JSON body containing:
+            - entity_id: Device entity ID
+            - action: Override action (e.g., "force_on", "force_off")
+            - duration: Duration in seconds
+
+    Returns:
+        Status message.
+    """
+    try:
+        data = await request.json()
+        entity_id = data.get("entity_id")
+        action = data.get("action")
+        duration = data.get("duration", 3600)  # Default 1 hour
+
+        if not entity_id or not action:
+            return {"error": "Missing entity_id or action"}, 400
+
+        current_time = time.time()
+        expires_at = current_time + duration
+
+        event_store.save_override(
+            entity_id=entity_id,
+            started_at=current_time,
+            expires_at=expires_at,
+            reason=f"Manual override: {action}",
+            user_id="webui",
+        )
+
+        return {"status": "success", "message": f"Override created for {entity_id}"}
+
+    except Exception as e:
+        logger.error(f"Failed to create override: {e}")
+        return {"error": str(e)}, 500
+
+
+@router.delete("/api/override/{entity_id}")
+async def remove_override(entity_id: str) -> Any:
+    """Remove a manual override.
+
+    Args:
+        entity_id: Device entity ID to remove override for.
+
+    Returns:
+        Status message.
+    """
+    try:
+        event_store.remove_override(entity_id)
+        return {"status": "success", "message": f"Override removed for {entity_id}"}
+
+    except Exception as e:
+        logger.error(f"Failed to remove override: {e}")
+        return {"error": str(e)}, 500

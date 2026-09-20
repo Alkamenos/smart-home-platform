@@ -39,6 +39,54 @@
                 </div>
             </div>
         </div>
+
+        <!-- Manual Overrides Section -->
+        <div class="card bg-secondary mb-4">
+            <div class="card-header">
+                <h5>Manual Overrides</h5>
+            </div>
+            <div class="card-body">
+                <!-- Active Overrides Table -->
+                <h6>Active Overrides</h6>
+                <table class="table table-dark table-striped">
+                    <thead>
+                        <tr>
+                            <th>Device</th>
+                            <th>Action</th>
+                            <th>Expires At</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="overridesTableBody">
+                        <tr><td colspan="5">Loading...</td></tr>
+                    </tbody>
+                </table>
+
+                <!-- New Override Form -->
+                <h6 class="mt-4">Create New Override</h6>
+                <form id="newOverrideForm" class="row g-3">
+                    <div class="col-md-4">
+                        <label for="entityId" class="form-label">Device Entity ID</label>
+                        <input type="text" class="form-control" id="entityId" placeholder="light.kitchen" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="overrideAction" class="form-label">Action</label>
+                        <select class="form-select" id="overrideAction" required>
+                            <option value="force_on">Force ON</option>
+                            <option value="force_off">Force OFF</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="duration" class="form-label">Duration (seconds)</label>
+                        <input type="number" class="form-control" id="duration" value="3600" min="60" max="86400">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">Create</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -139,6 +187,90 @@
             .catch(error => {
                 console.error('Error loading heatmap data:', error);
             });
+
+        // Manual Overrides: Load active overrides
+        function loadOverrides() {
+            fetch('/api/overrides')
+                .then(response => response.json())
+                .then(overrides => {
+                    const tbody = document.getElementById('overridesTableBody');
+                    if (overrides.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5">No active overrides</td></tr>';
+                        return;
+                    }
+
+                    tbody.innerHTML = overrides.map(override => {
+                        const expiresAt = new Date(override.expires_at * 1000).toLocaleString();
+                        const isActive = override.expires_at > Date.now() / 1000;
+                        return `
+                            <tr>
+                                <td>${override.entity_id}</td>
+                                <td>${override.reason}</td>
+                                <td>${expiresAt}</td>
+                                <td><span class="badge bg-${isActive ? 'success' : 'danger'}">${isActive ? 'Active' : 'Expired'}</span></td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger" onclick="removeOverride('${override.entity_id}')">Remove</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                })
+                .catch(error => {
+                    console.error('Error loading overrides:', error);
+                    document.getElementById('overridesTableBody').innerHTML = '<tr><td colspan="5">Error loading overrides</td></tr>';
+                });
+        }
+
+        // Manual Overrides: Remove override
+        function removeOverride(entityId) {
+            fetch(`/api/override/${entityId}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.status === 'success') {
+                        loadOverrides(); // Reload table
+                    } else {
+                        alert(`Failed to remove override: ${result.error}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error removing override:', error);
+                    alert('Error removing override');
+                });
+        }
+
+        // Manual Overrides: Create new override
+        document.getElementById('newOverrideForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const entityId = document.getElementById('entityId').value;
+            const action = document.getElementById('overrideAction').value;
+            const duration = parseInt(document.getElementById('duration').value);
+
+            fetch('/api/override', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entity_id: entityId, action: action, duration: duration })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    loadOverrides(); // Reload table
+                    // Reset form
+                    document.getElementById('entityId').value = '';
+                    document.getElementById('overrideAction').value = 'force_on';
+                    document.getElementById('duration').value = '3600';
+                } else {
+                    alert(`Failed to create override: ${result.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error creating override:', error);
+                alert('Error creating override');
+            });
+        });
+
+        // Load overrides on page load
+        loadOverrides();
     </script>
 </body>
 </html>
