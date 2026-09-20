@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
@@ -220,14 +220,14 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
             )
 
     @app.get("/manifest/reload")  # type: ignore[untyped-decorator]
-    async def reload_manifest(request: Request) -> RedirectResponse:
+    async def reload_manifest(request: Request) -> Response:
         """Reload manifest from file (revert unsaved changes).
 
         Args:
             request: FastAPI request object.
 
         Returns:
-            Redirect to index page.
+            Redirect to index page or error template.
         """
         try:
             manifest_store.revert()
@@ -241,7 +241,6 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
             )
 
         # Redirect to index
-        from fastapi.responses import RedirectResponse
 
         return RedirectResponse(url="/")
 
