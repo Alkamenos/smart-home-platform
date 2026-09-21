@@ -73,6 +73,16 @@ class StructuredFormatter(logging.Formatter):
     Converts log records to JSON format with enriched context.
     """
 
+    # ANSI color codes (same as ColoredConsoleHandler)
+    COLORS = {
+        logging.DEBUG: "\033[90m",  # Bright Black / Gray
+        logging.INFO: "\033[37m",  # White
+        logging.WARNING: "\033[33m",  # Yellow
+        logging.ERROR: "\033[31m",  # Red
+        logging.CRITICAL: "\033[35m",  # Magenta
+    }
+    RESET = "\033[0m"  # Reset color
+
     def __init__(
         self,
         include_timestamp: bool = True,
@@ -153,14 +163,27 @@ class StructuredFormatter(logging.Formatter):
             record: Log record to format.
 
         Returns:
-            Formatted log string with colors.
+            Formatted log string with ANSI colors.
         """
-        timestamp = datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[
+            :-3
+        ]
         level = record.levelname
         component = record.name.split(".")[-1]  # Use last part of module name
+        func_line = f"{record.funcName}:{record.lineno}"
         message = record.getMessage()
 
-        return f"[{timestamp}] [{level}] [{component}] {message}"
+        # Get color for this level
+        color = self.COLORS.get(record.levelno, "")
+        reset = self.RESET
+
+        # Apply colors to different parts
+        timestamp_colored = f"\033[32m{timestamp}\033[0m"  # Green timestamp
+        level_colored = f"{color}{level: <8}{reset}"  # Level color
+        component_colored = f"\033[36m{component}\033[0m"  # Cyan component
+        func_line_colored = f"\033[36m{func_line}\033[0m"  # Cyan function:line
+
+        return f"{timestamp_colored} | {level_colored} | {component_colored}:{func_line_colored} - {message}"
 
     def _extract_extra_context(self, record: logging.LogRecord) -> dict[str, Any]:
         """
