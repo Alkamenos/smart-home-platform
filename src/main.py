@@ -14,6 +14,55 @@ from bootstrap import bootstrap_platform
 from webui.app import create_app
 
 
+# Настройка loguru с цветным выводом для Docker
+# Определяем нужно ли раскрашивать логи
+SHOULD_COLORIZE = os.getenv("FORCE_COLOR", "true").lower() in ("1", "true", "yes", "on")
+
+# Уровень логирования из переменной окружения
+LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG")
+
+# Цветной формат для loguru
+COLORED_FORMAT = (
+    "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+    "<level>{level: <8}</level> | "
+    "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+    "<level>{message}</level>"
+)
+
+# Формат без цветов (для файлов)
+PLAIN_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}"
+
+# Удаляем стандартный обработчик loguru
+logger.remove()
+
+# Добавляем обработчик в stderr с цветами
+logger.add(
+    "stderr",
+    level=LOG_LEVEL,
+    format=COLORED_FORMAT,
+    colorize=SHOULD_COLORIZE,
+    backtrace=True,
+    diagnose=False,
+    enqueue=True,
+)
+
+# Опционально: лог в файл (без цветов)
+LOG_FILE = os.getenv("LOG_FILE")
+if LOG_FILE:
+    logger.add(
+        LOG_FILE,
+        level="DEBUG",
+        format=PLAIN_FORMAT,
+        colorize=False,
+        rotation="10 MB",
+        retention="7 days",
+        compression="zip",
+        backtrace=True,
+    )
+
+logger.info(f"Logger initialized (colorize={SHOULD_COLORIZE}, level={LOG_LEVEL})")
+
+
 async def run_platform():
     # Get project root (parent of src directory)
     project_root = Path(__file__).parent.parent
