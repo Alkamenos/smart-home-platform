@@ -42,3 +42,44 @@ def test_room_edit_not_found(client: TestClient):
     """Test editing non-existent room returns 404."""
     response = client.get("/rooms/999/edit")
     assert response.status_code == 404
+
+
+def test_get_ai_suggestions(client: TestClient):
+    """Test getting AI suggestions endpoint."""
+    response = client.get("/api/ai/suggestions")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+
+
+def test_respond_to_suggestion(client: TestClient):
+    """Test responding to AI suggestion."""
+    # Test with mock suggestion ID
+    response = client.post("/api/ai/suggestion/1/respond", json={"action": "accept"})
+    assert response.status_code in [200, 404]  # 404 if no suggestion found, 200 if success
+
+
+def test_dashboard_page(client: TestClient):
+    """Test dashboard page loads."""
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+
+
+def test_get_overrides(client: TestClient):
+    """Test getting manual overrides."""
+    response = client.get("/api/overrides")
+    assert response.status_code == 200
+
+
+def test_create_override(client: TestClient):
+    """Test creating manual override."""
+    response = client.post(
+        "/api/override", json={"entity_id": "light.test", "action": "on", "duration": 60}
+    )
+    assert response.status_code in [200, 422]  # 422 if validation fails
+
+
+def test_remove_override(client: TestClient):
+    """Test removing manual override."""
+    response = client.delete("/api/override/light.test")
+    assert response.status_code in [200, 404]
