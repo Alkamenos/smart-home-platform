@@ -292,7 +292,7 @@
                 .then(suggestions => {
                     const container = document.getElementById('suggestionsContainer');
                     const pendingSuggestions = suggestions.filter(s => s.status === 'pending');
-                    
+
                     if (pendingSuggestions.length === 0) {
                         container.innerHTML = '<div class="col-12 text-center">No pending suggestions</div>';
                         return;
@@ -301,7 +301,7 @@
                     container.innerHTML = pendingSuggestions.map(suggestion => {
                         const timestamp = new Date(suggestion.timestamp * 1000).toLocaleString();
                         const confidencePercent = Math.round(suggestion.confidence * 100);
-                        
+
                         return `
                             <div class="col-md-6 mb-3">
                                 <div class="card bg-dark border-primary">
@@ -325,7 +325,7 @@
                 })
                 .catch(error => {
                     console.error('Error loading suggestions:', error);
-                    document.getElementById('suggestionsContainer').innerHTML = 
+                    document.getElementById('suggestionsContainer').innerHTML =
                         '<div class="col-12 text-center text-danger">Error loading suggestions</div>';
                 });
         }
