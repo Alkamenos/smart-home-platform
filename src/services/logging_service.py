@@ -15,7 +15,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+# Import ColoredConsoleHandler and StructuredFormatter for use in logging_service
 from core.structured_logger import (
+    ColoredConsoleHandler,
     SensitiveDataFilter,
     StructuredFormatter,
 )
@@ -227,6 +229,7 @@ class LoggingService:
         enable_console: bool = True,
         enable_file: bool = True,
         enable_masking: bool = True,
+        colored_console: bool = True,
     ) -> bool:
         """
         Initialize the logging service.
@@ -236,6 +239,7 @@ class LoggingService:
             enable_console: Enable console output.
             enable_file: Enable file output.
             enable_masking: Enable sensitive data masking.
+            colored_console: Enable colored console output.
 
         Returns:
             True if initialization successful.
@@ -253,44 +257,70 @@ class LoggingService:
             # Clear existing handlers
             self._root_logger.handlers.clear()
 
-            # Add structured formatter
-            formatter = StructuredFormatter(
-                include_timestamp=True,
-                include_level=True,
-                include_location=False,
-            )
+            # Add sensitive data filter
+            if enable_masking:
+                sensitive_filter = SensitiveDataFilter()
+                self._root_logger.addFilter(sensitive_filter)
 
             # Console handler
             if enable_console:
-                console_handler = logging.StreamHandler()
+                if colored_console:
+                    # Use colored console handler with human-readable format
+                    console_handler = ColoredConsoleHandler()
+                    console_formatter = StructuredFormatter(
+                        include_timestamp=True,
+                        include_level=True,
+                        include_location=False,
+                        colored=True,
+                    )
+                else:
+                    # Use standard handler with JSON format
+                    console_handler = logging.StreamHandler()
+                    console_formatter = StructuredFormatter(
+                        include_timestamp=True,
+                        include_level=True,
+                        include_location=False,
+                        colored=False,
+                    )
+
                 console_handler.setLevel(level)
-                console_handler.setFormatter(formatter)
+                console_handler.setFormatter(console_formatter)
+                if enable_masking:
+                    console_handler.addFilter(sensitive_filter)
                 self._root_logger.addHandler(console_handler)
                 self._handlers.append(console_handler)
 
-            # File handler
+            # File handler (always JSON format for parsing)
             if enable_file:
                 log_file = self.log_dir / "platform.log"
                 file_handler = logging.FileHandler(log_file, encoding="utf-8")
                 file_handler.setLevel(level)
-                file_handler.setFormatter(formatter)
+                file_formatter = StructuredFormatter(
+                    include_timestamp=True,
+                    include_level=True,
+                    include_location=False,
+                    colored=False,  # Files always use JSON
+                )
+                file_handler.setFormatter(file_formatter)
+                if enable_masking:
+                    file_handler.addFilter(sensitive_filter)
                 self._root_logger.addHandler(file_handler)
                 self._handlers.append(file_handler)
 
-            # Buffering handler for real-time streaming
+            # Buffering handler for real-time streaming (JSON format)
             buffer_handler = BufferingHandler(self.buffer)
             buffer_handler.setLevel(level)
-            buffer_handler.setFormatter(formatter)
+            buffer_formatter = StructuredFormatter(
+                include_timestamp=True,
+                include_level=True,
+                include_location=False,
+                colored=False,
+            )
+            buffer_handler.setFormatter(buffer_formatter)
+            if enable_masking:
+                buffer_handler.addFilter(sensitive_filter)
             self._root_logger.addHandler(buffer_handler)
             self._handlers.append(buffer_handler)
-
-            # Add sensitive data filter to root logger and all handlers
-            if enable_masking:
-                sensitive_filter = SensitiveDataFilter()
-                self._root_logger.addFilter(sensitive_filter)
-                # Also add filter to each handler to ensure masking works
-                for handler in self._handlers:
-                    handler.addFilter(sensitive_filter)
 
             # Prevent propagation
             self._root_logger.propagate = False

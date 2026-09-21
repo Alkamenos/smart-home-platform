@@ -14,6 +14,50 @@ from pathlib import Path
 from typing import Any
 
 
+class ColoredConsoleHandler(logging.StreamHandler):
+    """
+    Console handler with colored output for better log readability.
+
+    Uses ANSI color codes to highlight different log levels.
+    """
+
+    # ANSI color codes
+    COLORS = {
+        logging.DEBUG: "\033[36m",  # Cyan
+        logging.INFO: "\033[32m",  # Green
+        logging.WARNING: "\033[33m",  # Yellow
+        logging.ERROR: "\033[31m",  # Red
+        logging.CRITICAL: "\033[35m",  # Magenta
+    }
+    RESET = "\033[0m"  # Reset color
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """
+        Emit a log record with colored output.
+
+        Args:
+            record: Log record to emit.
+        """
+        try:
+            # Get color for this level
+            color = self.COLORS.get(record.levelno, "")
+
+            # Format the message
+            msg = self.format(record)
+
+            # Apply color if this is a TTY
+            if self.stream and hasattr(self.stream, "isatty") and self.stream.isatty():
+                msg = f"{color}{msg}{self.RESET}"
+
+            # Write to stream
+            self.stream.write(msg + self.terminator)
+            self.flush()
+        except RuntimeError as e:
+            # Ignore errors during shutdown
+            if "event loop is closed" not in str(e).lower():
+                pass
+
+
 class StructuredFormatter(logging.Formatter):
     """
     JSON formatter for structured logging.
@@ -26,6 +70,7 @@ class StructuredFormatter(logging.Formatter):
         include_timestamp: bool = True,
         include_level: bool = True,
         include_location: bool = False,
+        colored: bool = False,
     ):
         """
         Initialize the structured formatter.
@@ -34,11 +79,13 @@ class StructuredFormatter(logging.Formatter):
             include_timestamp: Include ISO timestamp in output.
             include_level: Include log level in output.
             include_location: Include file/line location (verbose).
+            colored: Enable colored output for console.
         """
         super().__init__()
         self.include_timestamp = include_timestamp
         self.include_level = include_level
         self.include_location = include_location
+        self.colored = colored
 
     def format(self, record: logging.LogRecord) -> str:
         """
@@ -48,8 +95,13 @@ class StructuredFormatter(logging.Formatter):
             record: Log record to format.
 
         Returns:
-            JSON-formatted log entry.
+            JSON-formatted log entry (or colored text if enabled).
         """
+        # If colored mode is enabled, use human-readable format with colors
+        if self.colored:
+            return self._format_colored(record)
+
+        # Otherwise use JSON format
         log_data: dict[str, Any] = {}
 
         # Add timestamp
@@ -84,6 +136,23 @@ class StructuredFormatter(logging.Formatter):
             log_data["context"] = extra_context
 
         return json.dumps(log_data, default=str, ensure_ascii=False)
+
+    def _format_colored(self, record: logging.LogRecord) -> str:
+        """
+        Format log record as human-readable colored text.
+
+        Args:
+            record: Log record to format.
+
+        Returns:
+            Formatted log string with colors.
+        """
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
+        level = record.levelname
+        component = record.name.split(".")[-1]  # Use last part of module name
+        message = record.getMessage()
+
+        return f"[{timestamp}] [{level}] [{component}] {message}"
 
     def _extract_extra_context(self, record: logging.LogRecord) -> dict[str, Any]:
         """
@@ -240,6 +309,7 @@ def create_structured_logger(
     enable_console: bool = True,
     enable_masking: bool = True,
     include_location: bool = False,
+    colored_console: bool = True,
 ) -> logging.Logger:
     """
     Create a configured structured logger.
@@ -251,6 +321,7 @@ def create_structured_logger(
         enable_console: Enable console output.
         enable_masking: Enable sensitive data masking.
         include_location: Include file/line in logs (verbose).
+        colored_console: Enable colored output for console logs.
 
     Returns:
         Configured logger instance.
@@ -261,32 +332,49 @@ def create_structured_logger(
     # Clear existing handlers to avoid duplicates
     logger.handlers.clear()
 
-    # Create formatter
-    formatter = StructuredFormatter(
-        include_timestamp=True,
-        include_level=True,
-        include_location=include_location,
-    )
-
     # Add sensitive data filter
     if enable_masking:
         logger.addFilter(SensitiveDataFilter())
 
     # Console handler
     if enable_console:
-        console_handler = logging.StreamHandler(sys.stdout)
+        if colored_console:
+            # Use colored console handler with human-readable format
+            console_handler = ColoredConsoleHandler(sys.stdout)
+            console_formatter = StructuredFormatter(
+                include_timestamp=True,
+                include_level=True,
+                include_location=False,
+                colored=True,
+            )
+        else:
+            # Use standard handler with JSON format
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_formatter = StructuredFormatter(
+                include_timestamp=True,
+                include_level=True,
+                include_location=False,
+                colored=False,
+            )
+
         console_handler.setLevel(level)
-        console_handler.setFormatter(formatter)
+        console_handler.setFormatter(console_formatter)
         logger.addHandler(console_handler)
 
-    # File handler
+    # File handler (always JSON format for parsing)
     if log_file:
         # Ensure directory exists
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
+        file_formatter = StructuredFormatter(
+            include_timestamp=True,
+            include_level=True,
+            include_location=include_location,
+            colored=False,  # Files always use JSON
+        )
+        file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)
 
     # Prevent propagation to root logger
@@ -329,12 +417,13 @@ class LoggingContext:
             delattr(self.logger, "_adapter")
 
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(name: str, colored_console: bool = True) -> logging.Logger:
     """
     Get or create a logger with default structured configuration.
 
     Args:
         name: Logger name.
+        colored_console: Enable colored console output.
 
     Returns:
         Configured logger instance.
@@ -350,4 +439,5 @@ def get_logger(name: str) -> logging.Logger:
         level=logging.INFO,
         enable_console=True,
         enable_masking=True,
+        colored_console=colored_console,
     )
