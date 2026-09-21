@@ -18,6 +18,10 @@ from typing import Any
 # Проверка нужно ли раскрашивать логи (для Docker)
 SHOULD_COLORIZE = os.getenv("FORCE_COLOR", "true").lower() in ("1", "true", "yes", "on")
 
+# Уровень логирования из переменной окружения
+LOG_LEVEL_STR = os.getenv("LOG_LEVEL", "DEBUG").upper()
+LOG_LEVEL = getattr(logging, LOG_LEVEL_STR, logging.DEBUG)
+
 
 class ColoredConsoleHandler(logging.StreamHandler):
     """
@@ -335,7 +339,7 @@ class SensitiveDataFilter(logging.Filter):
 
 def create_structured_logger(
     name: str,
-    level: int = logging.INFO,
+    level: int | None = None,
     log_file: Path | None = None,
     enable_console: bool = True,
     enable_masking: bool = True,
@@ -347,7 +351,7 @@ def create_structured_logger(
 
     Args:
         name: Logger name (typically __name__).
-        level: Logging level.
+        level: Logging level (defaults to LOG_LEVEL from env).
         log_file: Optional file path for file handler.
         enable_console: Enable console output.
         enable_masking: Enable sensitive data masking.
@@ -357,6 +361,10 @@ def create_structured_logger(
     Returns:
         Configured logger instance.
     """
+    # Use default LOG_LEVEL from environment if not specified
+    if level is None:
+        level = LOG_LEVEL
+
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
@@ -464,10 +472,10 @@ def get_logger(name: str, colored_console: bool = True) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    # Create new structured logger
+    # Create new structured logger with default LOG_LEVEL from env
     return create_structured_logger(
         name=name,
-        level=logging.INFO,
+        level=None,  # Use LOG_LEVEL from environment
         enable_console=True,
         enable_masking=True,
         colored_console=colored_console,
