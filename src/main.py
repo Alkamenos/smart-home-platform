@@ -113,9 +113,11 @@ async def run_platform():
     logger.info(f"🌐 Creating FastAPI app with manifest: {manifest_path}")
     app = create_app(str(manifest_path), container_instance=container)
     logger.info("✅ FastAPI app created successfully")
-    config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="info")
+
+    # Принудительно ставим уровень DEBUG для всех логов Uvicorn
+    config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="debug")
     server = uvicorn.Server(config)
-    logger.info("✅ Uvicorn server configured on port 8125")
+    logger.info("✅ Uvicorn server configured on port 8125 (log_level=debug)")
 
     # 3. Graceful Shutdown
     loop = asyncio.get_running_loop()
