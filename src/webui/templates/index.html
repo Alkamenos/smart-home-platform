@@ -270,8 +270,9 @@
                         container.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
                         return;
                     }
-                    // Render Mermaid diagram
-                    container.innerHTML = `<div class="mermaid">${data.diagram}</div>`;
+                    // Render Mermaid diagram - replace newlines with spaces for Mermaid syntax
+                    const diagramText = data.diagram.replace(/\\n/g, '\n');
+                    container.innerHTML = `<div class="mermaid">${diagramText}</div>`;
 
                     // Reinitialize Mermaid for the new content
                     mermaid.initialize({
