@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -56,7 +57,7 @@ async def get_fsm_diagram(entity_id: str) -> Response:
         entity_id: Device entity ID.
 
     Returns:
-        HTML page with Mermaid.js rendering the FSM diagram.
+        JSON with Mermaid diagram definition.
     """
     try:
         # For now, return a simple Mermaid diagram
@@ -70,23 +71,18 @@ async def get_fsm_diagram(entity_id: str) -> Response:
         ON
     }}"""
 
-        html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <style>body {{ margin: 0; padding: 20px; font-family: sans-serif; }}</style>
-</head>
-<body>
-    <div class="mermaid">{mermaid_diagram}</div>
-    <script>mermaid.initialize({{ startOnLoad: true }});</script>
-</body>
-</html>"""
-
-        return Response(content=html_content, media_type="text/html")
+        return Response(
+            content=json.dumps({"diagram": mermaid_diagram}),
+            media_type="application/json",
+        )
 
     except Exception as e:
         logger.error(f"Failed to generate FSM diagram for {entity_id}: {e}")
-        return Response(content=f"Error: {e}", status_code=500)
+        return Response(
+            content=json.dumps({"error": str(e)}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
