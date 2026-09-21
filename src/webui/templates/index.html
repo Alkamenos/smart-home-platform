@@ -272,9 +272,19 @@
                     }
                     // Render Mermaid diagram
                     container.innerHTML = `<div class="mermaid">${data.diagram}</div>`;
-                    mermaid.initialize({ startOnLoad: false });
-                    mermaid.run({
-                        nodes: container.querySelectorAll('.mermaid')
+
+                    // Reinitialize Mermaid for the new content
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        theme: 'default',
+                        securityLevel: 'loose'
+                    });
+
+                    // Use requestAnimationFrame to ensure DOM is ready
+                    requestAnimationFrame(() => {
+                        mermaid.run({
+                            nodes: container.querySelectorAll('.mermaid')
+                        });
                     });
                 })
                 .catch(error => {
