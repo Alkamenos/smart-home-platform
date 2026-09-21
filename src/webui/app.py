@@ -153,12 +153,14 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
     manifest_store = ManifestStore(manifest_path)
 
     # Initialize discovery routes
-    from src.core.container import container
-
     try:
+        from src.core.container import Container
+
         from .routes_discovery import init_discovery_routes
 
-        init_discovery_routes(container.ha_adapter, manifest_path)
+        # Create container instance to get HA adapter
+        _container = Container(manifest_path=manifest_path)
+        init_discovery_routes(_container.adapter, manifest_path)
     except Exception as e:
         logger.warning(f"Could not initialize discovery routes: {e}")
 
