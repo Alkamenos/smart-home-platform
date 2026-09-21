@@ -56,9 +56,13 @@ class DeviceDiscoveryService:
         filter_area: str | None = None,
     ) -> dict:
         """Сканировать устройства с пагинацией."""
-        ws_client = getattr(self._ha_adapter, "_ws_client", None)
-        if ws_client is None or not getattr(ws_client, "connected", False):
+        # Проверяем подключение через публичный метод is_connected
+        if not getattr(self._ha_adapter, "is_connected", False):
             raise RuntimeError("HA WebSocket client not connected")
+
+        ws_client = getattr(self._ha_adapter, "_ws_client", None)
+        if ws_client is None:
+            raise RuntimeError("HA WebSocket client not available")
 
         all_states = await ws_client.get_states()
 
