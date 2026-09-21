@@ -20,6 +20,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - FORCE_COLOR=true          # Раскраска логов в Docker
       - SHADOW_MODE=${SHADOW_MODE:-false}
       - HA_URL=${HA_URL}
       - HA_WEBSOCKET_URL=${HA_WEBSOCKET_URL}

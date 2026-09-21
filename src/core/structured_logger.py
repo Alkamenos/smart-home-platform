@@ -7,6 +7,7 @@ sensitive data masking, and multiple output handlers.
 
 import json
 import logging
+import os
 import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -14,17 +15,22 @@ from pathlib import Path
 from typing import Any
 
 
+# Проверка нужно ли раскрашивать логи (для Docker)
+SHOULD_COLORIZE = os.getenv("FORCE_COLOR", "true").lower() in ("1", "true", "yes", "on")
+
+
 class ColoredConsoleHandler(logging.StreamHandler):
     """
     Console handler with colored output for better log readability.
 
     Uses ANSI color codes to highlight different log levels.
+    Works in Docker when FORCE_COLOR=true is set.
     """
 
     # ANSI color codes
     COLORS = {
-        logging.DEBUG: "\033[36m",  # Cyan
-        logging.INFO: "\033[32m",  # Green
+        logging.DEBUG: "\033[90m",  # Bright Black / Gray
+        logging.INFO: "\033[37m",  # White
         logging.WARNING: "\033[33m",  # Yellow
         logging.ERROR: "\033[31m",  # Red
         logging.CRITICAL: "\033[35m",  # Magenta
@@ -45,8 +51,10 @@ class ColoredConsoleHandler(logging.StreamHandler):
             # Format the message
             msg = self.format(record)
 
-            # Apply color if this is a TTY
-            if self.stream and hasattr(self.stream, "isatty") and self.stream.isatty():
+            # Apply color if TTY or FORCE_COLOR is set
+            if self.stream and (
+                SHOULD_COLORIZE or (hasattr(self.stream, "isatty") and self.stream.isatty())
+            ):
                 msg = f"{color}{msg}{self.RESET}"
 
             # Write to stream
