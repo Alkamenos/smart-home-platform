@@ -25,13 +25,15 @@ async def run_platform():
     manifest_path = manifest_path.resolve()
 
     logger.info(f"🚀 Bootstrapping Smart Home Platform from {manifest_path}")
-    ctx = bootstrap_platform(str(manifest_path))
+    container = bootstrap_platform(str(manifest_path))
+    ctx = container  # Alias for backward compatibility
 
     # 1. Запуск WebSocket коннекта к HA (в фоне)
     await ctx.adapter.start()
 
     # 2. Запуск FastAPI для Healthcheck (порт 8125, как в docker-compose)
-    app = create_app(str(manifest_path))
+    # Pass the container instance so discovery routes can use the connected adapter
+    app = create_app(str(manifest_path), container_instance=container)
     config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="warning")
     server = uvicorn.Server(config)
     try:

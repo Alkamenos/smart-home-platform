@@ -19,7 +19,7 @@ from .models import ManifestModel
 
 
 if TYPE_CHECKING:
-    pass
+    from src.core.container import Container
 
 
 class ManifestStore:
@@ -115,12 +115,16 @@ def _get_project_root() -> Path:
     return Path(__file__).parent.parent.parent
 
 
-def create_app(manifest_path: str | None = None) -> FastAPI:
+def create_app(
+    manifest_path: str | None = None, container_instance: Container | None = None
+) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Args:
         manifest_path: Path to the manifest file to edit.
                       If None, uses default instance path.
+        container_instance: Optional shared Container instance from main.py.
+                           If provided, uses its adapter for discovery routes.
 
     Returns:
         Configured FastAPI application instance.
@@ -152,15 +156,24 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
     # Initialize manifest store
     manifest_store = ManifestStore(manifest_path)
 
-    # Initialize discovery routes
+    # Initialize discovery routes with the shared adapter instance
+    # The adapter is already connected in main.py via ctx.adapter.start()
     try:
         from src.core.container import Container
 
         from .routes_discovery import init_discovery_routes
 
-        # Create container instance to get HA adapter
-        _container = Container(manifest_path=manifest_path)
+        # Use provided container or create a new one
+        if container_instance is not None:
+            _container = container_instance
+            logger.info("Using shared container instance for discovery routes")
+        else:
+            _container = Container(manifest_path=manifest_path)
+            _ = _container.build()  # Trigger initialization
+            logger.info("Created new container instance for discovery routes")
+
         init_discovery_routes(_container.adapter, manifest_path)
+        logger.info("Discovery routes initialized with shared adapter")
     except Exception as e:
         logger.warning(f"Could not initialize discovery routes: {e}")
 
