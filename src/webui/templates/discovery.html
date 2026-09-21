@@ -1,0 +1,446 @@
+<!--
+  ~ # Copyright 2026 Leonid Artemev
+  ~ # SPDX-License-Identifier: Apache-2.0
+  -->
+
+<!DOCTYPE html>
+<html lang="ru" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мастер обнаружения устройств - Smart Home</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js"></script>
+    <style>
+        .device-item { border-left: 3px solid #0d6efd; padding-left: 1rem; margin: 0.5rem 0; }
+        .auto-apply-badge { background-color: #198754; color: white; padding: 0.2em 0.6em; border-radius: 0.25rem; font-size: 0.75em; }
+        .manual-badge { background-color: #ffc107; color: black; padding: 0.2em 0.6em; border-radius: 0.25rem; font-size: 0.75em; }
+        .progress-container { display: none; }
+        .scanning .progress-container { display: block; }
+        .category-filter-btn { margin: 0.2rem; }
+        .domain-filter-btn { margin: 0.2rem; }
+        .pagination-btn { margin: 0 0.2rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">🔍 Мастер обнаружения устройств</span>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/" class="btn btn-outline-secondary btn-sm">← Назад к редактору</a>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <!-- Панель управления -->
+        <div class="row mb-3">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">📊 Статистика обнаружения</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="stats-summary" class="row">
+                            <div class="col-md-3">
+                                <div class="stat-card text-center">
+                                    <h3 id="total-devices">-</h3>
+                                    <p class="text-muted">Всего устройств</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card text-center">
+                                    <h3 id="auto-apply-count">-</h3>
+                                    <p class="text-muted">Автоприменение</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card text-center">
+                                    <h3 id="manual-count">-</h3>
+                                    <p class="text-muted">Требуют внимания</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stat-card text-center">
+                                    <h3 id="pages-count">-</h3>
+                                    <p class="text-muted">Страниц</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Прогресс сканирования -->
+        <div class="row mb-3 progress-container" id="scan-progress">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="progress">
+                            <div id="scan-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <p class="text-muted mt-2" id="scan-status">Ожидание сканирования...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Фильтры и управление -->
+        <div class="row mb-3">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">🎛️ Фильтры и управление</h5>
+                        <button id="scan-btn" class="btn btn-primary btn-sm" onclick="startScan()">
+                            🔄 Сканировать устройства
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label for="filter-domain" class="form-label">Фильтр по домену:</label>
+                                <select id="filter-domain" class="form-select form-select-sm" onchange="applyFilters()">
+                                    <option value="">Все домены</option>
+                                    <option value="light">Свет (light)</option>
+                                    <option value="switch">Выключатели (switch)</option>
+                                    <option value="sensor">Датчики (sensor)</option>
+                                    <option value="binary_sensor">Бинарные датчики</option>
+                                    <option value="climate">Климат (climate)</option>
+                                    <option value="fan">Вентиляция (fan)</option>
+                                    <option value="cover">Шторы/ворота (cover)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="filter-category" class="form-label">Фильтр по категории:</label>
+                                <select id="filter-category" class="form-select form-select-sm" onchange="applyFilters()">
+                                    <option value="">Все категории</option>
+                                    <option value="lighting">Освещение</option>
+                                    <option value="climate_control">Климат контроль</option>
+                                    <option value="ventilation">Вентиляция</option>
+                                    <option value="temperature_sensor">Датчики температуры</option>
+                                    <option value="humidity_sensor">Датчики влажности</option>
+                                    <option value="motion_sensor">Датчики движения</option>
+                                    <option value="monitoring_only">Только мониторинг</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="filter-area" class="form-label">Фильтр по комнате:</label>
+                                <input type="text" id="filter-area" class="form-control form-control-sm" placeholder="Начните вводить..." oninput="applyFilters()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Список устройств -->
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">📱 Обнаруженные устройства</h5>
+                        <div id="pagination-info" class="text-muted small"></div>
+                    </div>
+                    <div class="card-body" id="devices-list">
+                        <p class="text-muted text-center">Нажмите "Сканировать устройства" для начала</p>
+                    </div>
+                    <div class="card-footer">
+                        <nav aria-label="Пагинация">
+                            <ul class="pagination pagination-sm justify-content-center" id="pagination-controls">
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Панель применения -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">⚡ Быстрое применение</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="apply-form">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="auto-lighting" checked>
+                                <label class="form-check-label" for="auto-lighting">
+                                    🌟 Освещение (lighting)
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="auto-climate" checked>
+                                <label class="form-check-label" for="auto-climate">
+                                    🌡️ Климат контроль (climate_control)
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="auto-ventilation" checked>
+                                <label class="form-check-label" for="auto-ventilation">
+                                    💨 Вентиляция (ventilation)
+                                </label>
+                            </div>
+                            <hr>
+                            <button type="button" class="btn btn-success w-100 mb-2" onclick="applyAll()">
+                                ✅ Применить все шаблоны
+                            </button>
+                            <button type="button" class="btn btn-outline-primary w-100" onclick="dryRun()">
+                                🔍 Тестовый запуск
+                            </button>
+                        </form>
+                        <div id="apply-result" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentPage = 1;
+        let totalPages = 0;
+        let currentData = null;
+
+        async function startScan() {
+            const scanBtn = document.getElementById('scan-btn');
+            const progressBar = document.getElementById('scan-progress-bar');
+            const scanStatus = document.getElementById('scan-status');
+            const scanProgress = document.getElementById('scan-progress');
+
+            scanBtn.disabled = true;
+            scanProgress.classList.add('scanning');
+            progressBar.style.width = '0%';
+            scanStatus.textContent = 'Подключение к Home Assistant...';
+
+            try {
+                // Имитация прогресса
+                let progress = 0;
+                const interval = setInterval(() => {
+                    if (progress < 90) {
+                        progress += 10;
+                        progressBar.style.width = progress + '%';
+                    }
+                }, 200);
+
+                const response = await fetch('/discovery/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({page: '1', page_size: '25'})
+                });
+
+                clearInterval(interval);
+                progressBar.style.width = '100%';
+
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+
+                currentData = await response.json();
+                totalPages = currentData.total_pages;
+                currentPage = 1;
+
+                updateStats(currentData);
+                renderDevices(currentData.devices);
+                renderPagination();
+
+                scanStatus.textContent = `Сканирование завершено! Найдено ${currentData.total} устройств.`;
+                setTimeout(() => {
+                    scanProgress.classList.remove('scanning');
+                    scanBtn.disabled = false;
+                }, 2000);
+
+            } catch (error) {
+                scanStatus.textContent = `Ошибка: ${error.message}`;
+                scanProgress.classList.remove('scanning');
+                scanBtn.disabled = false;
+            }
+        }
+
+        function updateStats(data) {
+            document.getElementById('total-devices').textContent = data.total;
+            document.getElementById('auto-apply-count').textContent = data.auto_apply_stats.auto_apply;
+            document.getElementById('manual-count').textContent = data.auto_apply_stats.manual;
+            document.getElementById('pages-count').textContent = data.total_pages;
+        }
+
+        function renderDevices(devices) {
+            const container = document.getElementById('devices-list');
+            if (devices.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">Устройства не найдены</p>';
+                return;
+            }
+
+            let html = '<div class="list-group list-group-flush">';
+            devices.forEach(device => {
+                const badgeClass = device.auto_apply ? 'auto-apply-badge' : 'manual-badge';
+                const badgeText = device.auto_apply ? '✅ Авто' : '⚠️ Ручное';
+                const behaviorInfo = device.suggested_behavior ? `<br><small class="text-muted">Шаблон: ${device.suggested_behavior}</small>` : '';
+
+                html += `
+                    <div class="list-group-item list-group-item-action device-item">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1">${device.friendly_name || device.name}</h6>
+                                <small class="text-muted">${device.entity_id}</small>
+                                ${behaviorInfo}
+                            </div>
+                            <div class="text-end">
+                                <span class="${badgeClass}">${badgeText}</span>
+                                <br><small class="text-muted">${device.domain} / ${device.category}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function renderPagination() {
+            const container = document.getElementById('pagination-controls');
+            const infoContainer = document.getElementById('pagination-info');
+
+            infoContainer.textContent = `Страница ${currentPage} из ${totalPages}`;
+
+            let html = '';
+
+            // Previous button
+            html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                <button class="page-link pagination-btn" onclick="goToPage(${currentPage - 1})">← Пред.</button>
+            </li>`;
+
+            // Page numbers
+            const maxVisible = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+
+            if (endPage - startPage + 1 < maxVisible) {
+                startPage = Math.max(1, endPage - maxVisible + 1);
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                    <button class="page-link pagination-btn" onclick="goToPage(${i})">${i}</button>
+                </li>`;
+            }
+
+            // Next button
+            html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                <button class="page-link pagination-btn" onclick="goToPage(${currentPage + 1})">След. →</button>
+            </li>`;
+
+            container.innerHTML = html;
+        }
+
+        async function goToPage(page) {
+            if (page < 1 || page > totalPages || !currentData) return;
+
+            currentPage = page;
+            const filterDomain = document.getElementById('filter-domain').value;
+            const filterCategory = document.getElementById('filter-category').value;
+            const filterArea = document.getElementById('filter-area').value;
+
+            try {
+                const response = await fetch('/discovery/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({
+                        page: page.toString(),
+                        page_size: '25',
+                        filter_domain: filterDomain,
+                        filter_category: filterCategory,
+                        filter_area: filterArea
+                    })
+                });
+
+                if (!response.ok) throw new Error(await response.text());
+                currentData = await response.json();
+                renderDevices(currentData.devices);
+                renderPagination();
+            } catch (error) {
+                alert(`Ошибка загрузки страницы: ${error.message}`);
+            }
+        }
+
+        async function applyFilters() {
+            if (!currentData) return;
+            await goToPage(1);
+        }
+
+        async function applyAll() {
+            const autoLighting = document.getElementById('auto-lighting').checked;
+            const autoClimate = document.getElementById('auto-climate').checked;
+            const autoVentilation = document.getElementById('auto-ventilation').checked;
+            const resultDiv = document.getElementById('apply-result');
+
+            resultDiv.innerHTML = '<div class="alert alert-info">Применение...</div>';
+
+            try {
+                const response = await fetch('/discovery/apply', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({
+                        include_all: 'false',
+                        auto_apply_lighting: autoLighting.toString(),
+                        auto_apply_climate: autoClimate.toString(),
+                        auto_apply_ventilation: autoVentilation.toString(),
+                        dry_run: 'false'
+                    })
+                });
+
+                if (!response.ok) throw new Error(await response.text());
+                const result = await response.json();
+
+                if (result.success) {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <strong>✅ Успешно!</strong><br>
+                            Добавлено устройств: ${result.devices_added}<br>
+                            Backup: ${result.backup_path}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = '<div class="alert alert-warning">⚠️ Не удалось применить</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="alert alert-danger">❌ Ошибка: ${error.message}</div>`;
+            }
+        }
+
+        async function dryRun() {
+            const autoLighting = document.getElementById('auto-lighting').checked;
+            const autoClimate = document.getElementById('auto-climate').checked;
+            const autoVentilation = document.getElementById('auto-ventilation').checked;
+            const resultDiv = document.getElementById('apply-result');
+
+            resultDiv.innerHTML = '<div class="alert alert-info">Проверка...</div>';
+
+            try {
+                const response = await fetch('/discovery/apply', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams({
+                        include_all: 'false',
+                        auto_apply_lighting: autoLighting.toString(),
+                        auto_apply_climate: autoClimate.toString(),
+                        auto_apply_ventilation: autoVentilation.toString(),
+                        dry_run: 'true'
+                    })
+                });
+
+                if (!response.ok) throw new Error(await response.text());
+                const result = await response.json();
+
+                resultDiv.innerHTML = `
+                    <div class="alert alert-info">
+                        <strong>🔍 Тестовый запуск</strong><br>
+                        Будет добавлено устройств: ${result.would_add}
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="alert alert-danger">❌ Ошибка: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

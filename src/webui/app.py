@@ -140,12 +140,27 @@ def create_app(manifest_path: str | None = None) -> FastAPI:
 
     app.include_router(router)
 
+    # Include discovery routes
+    from .routes_discovery import router as discovery_router
+
+    app.include_router(discovery_router)
+
     # Default manifest path - resolve relative to project root
     if manifest_path is None:
         manifest_path = str(_get_project_root() / "instances" / "leonids_house" / "manifest.yaml")
 
     # Initialize manifest store
     manifest_store = ManifestStore(manifest_path)
+
+    # Initialize discovery routes
+    from src.core.container import container
+
+    try:
+        from .routes_discovery import init_discovery_routes
+
+        init_discovery_routes(container.ha_adapter, manifest_path)
+    except Exception as e:
+        logger.warning(f"Could not initialize discovery routes: {e}")
 
     # WebSocket connection manager for real-time updates
     class ConnectionManager:
