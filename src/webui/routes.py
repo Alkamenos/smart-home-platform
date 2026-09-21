@@ -271,7 +271,7 @@ async def get_ai_suggestions() -> list[dict]:
     Returns:
         List of suggestion records. If empty, returns mock suggestions for demo.
     """
-    suggestions = event_store.get_suggestions(limit=50)
+    suggestions = event_store.get_suggestions()
 
     # If no suggestions in DB, generate mock data for demonstration
     if not suggestions:
