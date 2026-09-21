@@ -1,8 +1,10 @@
 """
-Logger - Структурированное логирование с контекстом
+Logger - Структурированное логирование с контекстом и цветами
 
 Формат логов:
 {"timestamp", "level", "component", "entity_id", "message", "context"}
+
+Использует ColoredConsoleHandler для цветного вывода в Docker.
 """
 
 #  Copyright 2026 Leonid Artemev
@@ -14,6 +16,8 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from core.structured_logger import SHOULD_COLORIZE, ColoredConsoleHandler, StructuredFormatter
+
 
 # Глобальный кэш логгеров
 _loggers_cache = {}
@@ -21,13 +25,13 @@ _loggers_cache = {}
 
 def get_logger(component: str = "platform") -> logging.Logger:
     """
-    Получить инстанс логгера для компонента
+    Получить инстанс логгера для компонента с цветным выводом
 
     Args:
         component: Название компонента
 
     Returns:
-        logging.Logger: Настроенный логгер
+        logging.Logger: Настроенный логгер с цветами
     """
     if component in _loggers_cache:
         return _loggers_cache[component]
@@ -38,13 +42,16 @@ def get_logger(component: str = "platform") -> logging.Logger:
 
     # Если еще нет handlers, добавляем
     if not logger.handlers:
-        handler = logging.StreamHandler()
+        # Используем ColoredConsoleHandler для цветного вывода
+        handler = ColoredConsoleHandler()
         handler.setLevel(logging.DEBUG)
 
-        # Формат с компонентом
-        formatter = logging.Formatter(
-            "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
+        # Формат с цветами
+        formatter = StructuredFormatter(
+            include_timestamp=True,
+            include_level=True,
+            include_location=False,
+            colored=SHOULD_COLORIZE,
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
