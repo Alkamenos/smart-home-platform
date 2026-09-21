@@ -56,8 +56,8 @@ class DeviceDiscoveryService:
         filter_area: str | None = None,
     ) -> dict:
         """Сканировать устройства с пагинацией."""
-        # Проверяем подключение через публичный метод is_connected
-        if not getattr(self._ha_adapter, "is_connected", False):
+        # Проверяем подключение через публичный property is_connected
+        if not self._ha_adapter.is_connected:
             raise RuntimeError("HA WebSocket client not connected")
 
         ws_client = getattr(self._ha_adapter, "_ws_client", None)
