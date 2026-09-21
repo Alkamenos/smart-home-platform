@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 import uuid
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
@@ -458,8 +459,36 @@ class HAAdapter:
 
                 reconnect_delay = 1.0
 
-                # Ждём сигнала остановки
-                await self._shutdown_event.wait()
+                # 🆕 Инициализируем timestamp последнего события
+                self._last_event_time = time.time()
+
+                # 🆕 Запускаем heartbeat задачу для обнаружения мёртвых соединений
+                heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+                try:
+                    # Ждём сигнала остановки или завершения listen_task (если есть)
+                    listen_task = getattr(self._ws_client, "_listen_task", None)
+                    tasks = [asyncio.ensure_future(self._shutdown_event.wait())]
+                    if listen_task and not listen_task.done():
+                        tasks.append(listen_task)
+
+                    done, pending = await asyncio.wait(
+                        tasks,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+
+                    # Если listen_task завершился — соединение разорвано извне
+                    if listen_task and listen_task in done:
+                        try:
+                            listen_task.result()
+                        except Exception as e:
+                            log.warning(f"HAAdapter: listen_task ended unexpectedly: {e}")
+                        # Выходим из try блока, чтобы сработал reconnect
+                finally:
+                    # Останавливаем heartbeat при любом выходе
+                    heartbeat_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await heartbeat_task
 
             except asyncio.CancelledError:
                 logger.info("HAAdapter: WebSocket connection cancelled")
@@ -526,6 +555,47 @@ class HAAdapter:
             with contextlib.suppress(Exception):
                 await self._session.close()
             self._session = None
+
+    async def _heartbeat_loop(self) -> None:
+        """Send periodic pings to detect dead WebSocket connections.
+
+        Without this, silent TCP disconnections (e.g., NAT timeout on router)
+        will leave the connection stuck forever - no events, no errors.
+        The heartbeat detects stale connections and forces a reconnect.
+        """
+        try:
+            while not self._shutdown_event.is_set():
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+                if not (self._ws_client and getattr(self._ws_client, "connected", False)):
+                    continue
+
+                # Check time since last event - if too long, connection is stale
+                last_event = getattr(self, "_last_event_time", None)
+                if last_event is not None:
+                    time_since = time.time() - last_event
+                    if time_since > 300:  # 5 minutes without events = stale
+                        logger.warning(
+                            f"HAAdapter: No events for {time_since:.0f}s, connection is stale - forcing reconnect"
+                        )
+                        if self._ws_client:
+                            self._ws_client.connected = False
+                            with contextlib.suppress(Exception):
+                                await self._ws_client.close()
+                        continue
+
+                # Send ping to keep connection alive
+                try:
+                    ws = getattr(self._ws_client, "ws", None)
+                    if ws and hasattr(ws, "ping"):
+                        await asyncio.wait_for(ws.ping(), timeout=5)
+                        logger.debug("HAAdapter: WebSocket ping sent")
+                except (TimeoutError, Exception) as e:
+                    logger.warning(f"HAAdapter: ping failed ({e}), forcing reconnect")
+                    if self._ws_client:
+                        self._ws_client.connected = False
+        except asyncio.CancelledError:
+            pass
 
     async def stop(self) -> None:
         logger.info("HAAdapter: initiating graceful shutdown")
