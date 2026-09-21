@@ -16,11 +16,16 @@ services:
     # Network mode: host для доступа ко всем устройствам HA
 #    network_mode: host
 
+    # TTY для поддержки ANSI цветов в логах Docker
+    tty: true
+    stdin_open: false
+
     # Environment variables
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - FORCE_COLOR=true          # Раскраска логов в Docker
+      - FORCE_COLOR=1          # Принудительная раскраска (1 вместо true)
+      - CLICOLOR_FORCE=1       # Универсальный флаг для CLI
       - SHADOW_MODE=${SHADOW_MODE:-false}
       - HA_URL=${HA_URL}
       - HA_WEBSOCKET_URL=${HA_WEBSOCKET_URL}
