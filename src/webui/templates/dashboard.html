@@ -87,6 +87,19 @@
                 </form>
             </div>
         </div>
+
+        <!-- AI Suggestions Section -->
+        <div class="card bg-secondary mb-4">
+            <div class="card-header">
+                <h5>AI Recommendations</h5>
+            </div>
+            <div class="card-body">
+                <h6>Pending Suggestions</h6>
+                <div id="suggestionsContainer" class="row">
+                    <div class="col-12 text-center">Loading suggestions...</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -271,6 +284,75 @@
 
         // Load overrides on page load
         loadOverrides();
+
+        // AI Suggestions: Load suggestions
+        function loadSuggestions() {
+            fetch('/api/ai/suggestions')
+                .then(response => response.json())
+                .then(suggestions => {
+                    const container = document.getElementById('suggestionsContainer');
+                    const pendingSuggestions = suggestions.filter(s => s.status === 'pending');
+                    
+                    if (pendingSuggestions.length === 0) {
+                        container.innerHTML = '<div class="col-12 text-center">No pending suggestions</div>';
+                        return;
+                    }
+
+                    container.innerHTML = pendingSuggestions.map(suggestion => {
+                        const timestamp = new Date(suggestion.timestamp * 1000).toLocaleString();
+                        const confidencePercent = Math.round(suggestion.confidence * 100);
+                        
+                        return `
+                            <div class="col-md-6 mb-3">
+                                <div class="card bg-dark border-primary">
+                                    <div class="card-body">
+                                        <h6 class="card-title">${suggestion.entity_id}</h6>
+                                        <p class="card-text">${suggestion.description}</p>
+                                        <small class="text-muted">
+                                            <strong>Reasoning:</strong> ${suggestion.reasoning}<br>
+                                            <strong>Confidence:</strong> ${confidencePercent}%<br>
+                                            <strong>Time:</strong> ${timestamp}
+                                        </small>
+                                        <div class="mt-3">
+                                            <button class="btn btn-success btn-sm" onclick="respondToSuggestion('${suggestion.id}', 'accept')">Accept</button>
+                                            <button class="btn btn-danger btn-sm" onclick="respondToSuggestion('${suggestion.id}', 'reject')">Reject</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                })
+                .catch(error => {
+                    console.error('Error loading suggestions:', error);
+                    document.getElementById('suggestionsContainer').innerHTML = 
+                        '<div class="col-12 text-center text-danger">Error loading suggestions</div>';
+                });
+        }
+
+        // AI Suggestions: Respond to suggestion
+        function respondToSuggestion(suggestionId, action) {
+            fetch(`/api/ai/suggestion/${suggestionId}/respond`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    loadSuggestions(); // Reload suggestions
+                } else {
+                    alert(`Failed to respond: ${result.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error responding to suggestion:', error);
+                alert('Error responding to suggestion');
+            });
+        }
+
+        // Load suggestions on page load
+        loadSuggestions();
     </script>
 </body>
 </html>

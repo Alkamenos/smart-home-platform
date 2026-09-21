@@ -262,3 +262,89 @@ async def remove_override(entity_id: str) -> Any:
     except Exception as e:
         logger.error(f"Failed to remove override: {e}")
         return {"error": str(e)}, 500
+
+
+@router.get("/api/ai/suggestions")
+async def get_ai_suggestions() -> list[dict]:
+    """Get AI suggestions (pending, accepted, rejected).
+
+    Returns:
+        List of suggestion records. If empty, returns mock suggestions for demo.
+    """
+    suggestions = event_store.get_suggestions(limit=50)
+
+    # If no suggestions in DB, generate mock data for demonstration
+    if not suggestions:
+        import random
+
+        random.seed(42)
+
+        mock_suggestions = [
+            {
+                "id": "sugg_001",
+                "timestamp": time.time() - random.randint(3600, 86400),
+                "entity_id": "light.living_room",
+                "suggestion_type": "behavior_adjustment",
+                "description": "Turn on living room light at 19:00 instead of 18:30 based on sunset patterns",
+                "reasoning": "Historical data shows manual overrides occur 80% of the time at 19:00",
+                "confidence": 0.85,
+                "status": "pending",
+            },
+            {
+                "id": "sugg_002",
+                "timestamp": time.time() - random.randint(7200, 172800),
+                "entity_id": "thermostat.main",
+                "suggestion_type": "energy_optimization",
+                "description": "Reduce heating by 2°C during 10:00-16:00 when house is empty",
+                "reasoning": "Motion sensors show no activity during these hours on weekdays",
+                "confidence": 0.92,
+                "status": "pending",
+            },
+            {
+                "id": "sugg_003",
+                "timestamp": time.time() - random.randint(86400, 259200),
+                "entity_id": "light.kitchen",
+                "suggestion_type": "automation_creation",
+                "description": "Create automation: turn on kitchen light when motion detected between 6:00-8:00",
+                "reasoning": "Pattern detected: manual activation every morning at 6:30-7:00",
+                "confidence": 0.78,
+                "status": "accepted",
+            },
+        ]
+        return mock_suggestions
+
+    return suggestions
+
+
+@router.post("/api/ai/suggestion/{suggestion_id}/respond")
+async def respond_to_suggestion(suggestion_id: str, request: Request) -> Any:
+    """Respond to an AI suggestion (accept/reject).
+
+    Args:
+        suggestion_id: ID of the suggestion to respond to.
+        request: FastAPI request with JSON body containing:
+            - action: 'accept' or 'reject'
+
+    Returns:
+        Status message.
+    """
+    try:
+        data = await request.json()
+        action = data.get("action")
+
+        if action not in ["accept", "reject"]:
+            return {"error": "Action must be 'accept' or 'reject'"}, 400
+
+        # Update suggestion status in EventStore
+        new_status = "accepted" if action == "accept" else "rejected"
+        event_store.update_suggestion_status(
+            suggestion_id=suggestion_id,
+            status=new_status,
+            responded_at=time.time(),
+        )
+
+        return {"status": "success", "message": f"Suggestion {suggestion_id} {new_status}"}
+
+    except Exception as e:
+        logger.error(f"Failed to respond to suggestion {suggestion_id}: {e}")
+        return {"error": str(e)}, 500
