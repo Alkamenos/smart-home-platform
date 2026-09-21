@@ -63,14 +63,7 @@ async def get_fsm_diagram(entity_id: str) -> Response:
         # For now, return a simple Mermaid diagram
         # In production, this would load from manifest and use FSMVisualizer
         mermaid_diagram = (
-            "stateDiagram-v2\n"
-            "[*] --> OFF\n"
-            "OFF --> ON: motion_detected\n"
-            "ON --> OFF: no_motion\n"
-            f"state {entity_id} {{\n"
-            "    OFF\n"
-            "    ON\n"
-            "}}"
+            "stateDiagram-v2\n[*] --> OFF\nOFF --> ON: motion_detected\nON --> OFF: no_motion"
         )
 
         return Response(
