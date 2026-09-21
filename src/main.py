@@ -3,6 +3,7 @@
 
 # src/main.py
 import asyncio
+import logging
 import os
 import signal
 from pathlib import Path
@@ -61,6 +62,48 @@ if LOG_FILE:
     )
 
 logger.info(f"Logger initialized (colorize={SHOULD_COLORIZE}, level={LOG_LEVEL})")
+
+# Настройка uvicorn логгера с цветным выводом
+uvicorn_logger = logging.getLogger("uvicorn")
+uvicorn_logger.handlers.clear()  # Удалить стандартные handlers
+
+# Добавить colored handler
+uvicorn_handler = logging.StreamHandler()
+uvicorn_handler.setLevel(logging.INFO)
+
+
+# Цветной формат для uvicorn
+class UvicornColoredFormatter(logging.Formatter):
+    """Цветной formatter для uvicorn логов."""
+
+    COLORS = {
+        logging.DEBUG: "\033[90m",
+        logging.INFO: "\033[37m",
+        logging.WARNING: "\033[33m",
+        logging.ERROR: "\033[31m",
+        logging.CRITICAL: "\033[35m",
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelno, "")
+        reset = self.RESET
+
+        timestamp = self.formatTime(record, "%Y-%m-%d %H:%M:%S.%f")[:-3]
+        level = record.levelname
+        message = record.getMessage()
+
+        # Apply colors
+        timestamp_colored = f"\033[32m{timestamp}\033[0m"
+        level_colored = f"{color}{level: <8}{reset}"
+
+        return f"{timestamp_colored} | {level_colored} | {message}"
+
+
+uvicorn_formatter = UvicornColoredFormatter()
+uvicorn_handler.setFormatter(uvicorn_formatter)
+uvicorn_logger.addHandler(uvicorn_handler)
+uvicorn_logger.setLevel(logging.INFO)
 
 
 async def run_platform():
