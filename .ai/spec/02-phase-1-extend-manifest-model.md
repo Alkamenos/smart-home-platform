@@ -57,29 +57,29 @@ class DeviceConfig(BaseModel):
     type: str
     name: str = ""
     behaviors: list[BehaviorConfig] = Field(default_factory=list)
-    
+
     # NEW: Origin tracking
     origin: Literal["home_assistant", "manual", "imported"] = "manual"
-    
+
     # NEW: External identifiers for idempotency
     external_ids: dict[str, str] = Field(default_factory=dict)
     # Example: {"homeAssistantDeviceId": "a1b2c3", "homeAssistantAreaId": "living_room"}
-    
+
     # NEW: Source connection reference
     source_connection_id: str | None = None
-    
+
     # NEW: Device metadata from HA
     manufacturer: str | None = None
     model: str | None = None
     software_version: str | None = None
-    
+
     # NEW: Capabilities (replaces simple type)
     capabilities: list[CapabilityConfig] = Field(default_factory=list)
-    
+
     # NEW: AI metadata
     ai_metadata: dict[str, Any] = Field(default_factory=dict)
     # Example: {"description": "Main light", "aliases": ["люстра", "свет"]}
-    
+
     # NEW: Sync information
     sync_info: dict[str, Any] = Field(default_factory=dict)
     # Example: {"last_imported_at": "2026-01-15T10:30:00Z", "status": "ok"}
@@ -128,18 +128,18 @@ class CapabilityConfig(BaseModel):
 ```python
 class AreaConfig(BaseModel):
     """Area/room configuration with external IDs."""
-    
+
     id: str
     name: str
     aliases: list[str] = Field(default_factory=list)
-    
+
     # NEW: Origin tracking
     origin: Literal["home_assistant", "manual"] = "manual"
-    
+
     # NEW: External identifiers
     external_ids: dict[str, str] = Field(default_factory=dict)
     # Example: {"homeAssistantAreaId": "living_room"}
-    
+
     # NEW: Sync information
     sync_info: dict[str, Any] = Field(default_factory=dict)
 ```
@@ -152,14 +152,14 @@ class AreaConfig(BaseModel):
 class Manifest(BaseModel):
     instance: InstanceConfig
     version: int = 1
-    
+
     # NEW: Areas as separate section (optional)
     areas: list[AreaConfig] = Field(default_factory=list)
-    
+
     rooms: list[RoomConfig] = Field(default_factory=list)
     automation_rules: AutomationRules = Field(default_factory=AutomationRules)
     dashboard: Dashboard = Field(default_factory=Dashboard)
-    
+
     # NEW: Connections reference (for multi-HA support)
     connections: list[dict[str, Any]] = Field(default_factory=list)
     # Will be defined in Phase 3 (Connection Manager)
@@ -203,7 +203,7 @@ def migrate_device(old_device: dict) -> DeviceConfig:
         external_ids={},
         capabilities=[],
     )
-    
+
     # Create simple capability from type if needed
     if old_device["type"] in ["light", "switch", "climate"]:
         device.capabilities.append(
@@ -214,7 +214,7 @@ def migrate_device(old_device: dict) -> DeviceConfig:
                 supports={},
             )
         )
-    
+
     return device
 ```
 
