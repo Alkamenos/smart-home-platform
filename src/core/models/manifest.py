@@ -36,13 +36,41 @@ class BehaviorConfig(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
+class DeviceCapabilities(BaseModel):
+    """Device capabilities based on HA domain and entity features."""
+
+    domain: str = "unknown"  # HA domain: light, switch, climate, etc.
+    supported_features: list[str] = Field(default_factory=list)
+    unit_of_measurement: str | None = None
+    device_class: str | None = None
+
+
+class DeviceOrigin(BaseModel):
+    """Information about where the device was imported from."""
+
+    source: str = "manual"  # manual, home_assistant, mqtt, etc.
+    instance_id: str | None = None  # HA instance ID if imported
+    imported_at: str | None = None  # ISO timestamp of import
+    last_synced_at: str | None = None  # Last successful sync timestamp
+
+
 class DeviceConfig(BaseModel):
-    """Device as an actuator inside a room."""
+    """Device as an actuator inside a room.
+
+    Extended with origin tracking and external identifiers for idempotent imports.
+    """
 
     id: str
     type: str
     name: str = ""
     behaviors: list[BehaviorConfig] = Field(default_factory=list)
+
+    # New fields for Phase 1: Import support
+    origin: DeviceOrigin = Field(default_factory=DeviceOrigin)
+    external_ids: dict[str, str] = Field(
+        default_factory=dict
+    )  # {source: external_id}, e.g., {"home_assistant": "light.bedroom_main"}
+    capabilities: DeviceCapabilities | None = None  # Optional capabilities info
 
 
 class RoomConfig(BaseModel):

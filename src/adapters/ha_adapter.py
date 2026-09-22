@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING, Any
 import aiohttp
 from loguru import logger
 
+from .ha_models import AreaInfo, DeviceInfo, EntityInfo, EntityState
+
 
 class SimpleHAWebSocketClient:
     """Minimal WebSocket client implementing HA WebSocket API protocol.
@@ -131,6 +133,11 @@ class SimpleHAWebSocketClient:
             await self.ws.send(json.dumps(sub_msg))
 
     async def get_states(self):
+        """Get states of all entities.
+
+        Returns:
+            List of entity state dictionaries from HA.
+        """
         if not self.ws or not self.connected:
             return []
 
@@ -158,6 +165,48 @@ class SimpleHAWebSocketClient:
             response = await asyncio.wait_for(result_future, timeout=15)
             return response.get("result", [])
         except TimeoutError:
+            return []
+
+    async def get_config_data(self, endpoint: str) -> list[dict]:
+        """Get configuration registry data from HA.
+
+        Args:
+            endpoint: Registry endpoint (e.g., 'area/list', 'device_registry/list')
+
+        Returns:
+            List of configuration objects from HA.
+        """
+        if not self.ws or not self.connected:
+            return []
+
+        self._msg_id += 1
+        msg_id = self._msg_id
+        loop = asyncio.get_event_loop()
+        result_future: asyncio.Future = loop.create_future()
+
+        def on_result(msg):
+            if not result_future.done():
+                result_future.set_result(msg)
+
+        self._handlers[msg_id] = on_result
+
+        await self.ws.send(
+            json.dumps(
+                {
+                    "id": msg_id,
+                    "type": endpoint,
+                }
+            )
+        )
+
+        try:
+            response = await asyncio.wait_for(result_future, timeout=15)
+            return response.get("result", [])
+        except TimeoutError:
+            logger.warning(f"Timeout getting config data from {endpoint}")
+            return []
+        except Exception as e:
+            logger.error(f"Error getting config data from {endpoint}: {e}")
             return []
 
     async def call_service(self, domain, service, service_data=None, return_response=True):
@@ -627,6 +676,153 @@ class HAAdapter:
         if self._mode == "pyscript":
             return True
         return self._ws_client is not None and self._ws_client.connected
+
+    # ─── Phase 2: HA Registry Data Retrieval Methods ──────────────────────────
+
+    async def get_areas(self) -> list[AreaInfo]:
+        """Get all areas from Home Assistant.
+
+        Returns:
+            List of AreaInfo objects representing HA areas/zones.
+        """
+        if self._mode == "pyscript":
+            logger.warning("HAAdapter: get_areas() not available in pyscript mode")
+            return []
+
+        raw_data = await self._ws_client.get_config_data("config/area/list")
+        areas = []
+        for item in raw_data:
+            try:
+                area = AreaInfo(
+                    id=item.get("area_id", ""),
+                    name=item.get("name", ""),
+                    floor_id=item.get("floor_id"),
+                    labels=item.get("labels", []),
+                )
+                areas.append(area)
+            except Exception as e:
+                logger.warning(f"HAAdapter: Failed to parse area data: {e}")
+        return areas
+
+    async def get_devices(self, area_id: str | None = None) -> list[DeviceInfo]:
+        """Get devices from Home Assistant.
+
+        Args:
+            area_id: Optional area ID to filter devices by area.
+
+        Returns:
+            List of DeviceInfo objects representing HA devices.
+        """
+        if self._mode == "pyscript":
+            logger.warning("HAAdapter: get_devices() not available in pyscript mode")
+            return []
+
+        raw_data = await self._ws_client.get_config_data("config/device_registry/list")
+        devices = []
+        for item in raw_data:
+            try:
+                # Filter by area if specified
+                if area_id and item.get("area_id") != area_id:
+                    continue
+
+                device = DeviceInfo(
+                    id=item.get("id", ""),
+                    name=item.get("name_by_user") or item.get("name", ""),
+                    model=item.get("model"),
+                    manufacturer=item.get("manufacturer"),
+                    sw_version=item.get("sw_version"),
+                    hw_version=item.get("hw_version"),
+                    serial_number=item.get("serial_number"),
+                    identifiers=[(ident[0], ident[1]) for ident in item.get("identifiers", [])],
+                    connections=[(conn[0], conn[1]) for conn in item.get("connections", [])],
+                    area_id=item.get("area_id"),
+                    labels=item.get("labels", []),
+                )
+                devices.append(device)
+            except Exception as e:
+                logger.warning(f"HAAdapter: Failed to parse device data: {e}")
+        return devices
+
+    async def get_entities(self, device_id: str | None = None) -> list[EntityInfo]:
+        """Get entities from Home Assistant.
+
+        Args:
+            device_id: Optional device ID to filter entities by device.
+
+        Returns:
+            List of EntityInfo objects representing HA entities.
+        """
+        if self._mode == "pyscript":
+            logger.warning("HAAdapter: get_entities() not available in pyscript mode")
+            return []
+
+        raw_data = await self._ws_client.get_config_data("config/entity_registry/list")
+        entities = []
+        for item in raw_data:
+            try:
+                # Filter by device if specified
+                if device_id and item.get("device_id") != device_id:
+                    continue
+
+                # Parse entity_id to extract domain
+                entity_id = item.get("entity_id", "")
+                domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+                entity = EntityInfo(
+                    entity_id=entity_id,
+                    name=item.get("name"),
+                    platform=item.get("platform", ""),
+                    domain=domain,
+                    device_id=item.get("device_id"),
+                    area_id=item.get("area_id"),
+                    labels=item.get("labels", []),
+                    disabled_by=item.get("disabled_by"),
+                    hidden_by=item.get("hidden_by"),
+                    capabilities=item.get("capabilities", {}),
+                    device_class=item.get("device_class"),
+                    unit_of_measurement=item.get("unit_of_measurement"),
+                )
+                entities.append(entity)
+            except Exception as e:
+                logger.warning(f"HAAdapter: Failed to parse entity data: {e}")
+        return entities
+
+    async def get_entity_states(self) -> list[EntityState]:
+        """Get current states of all entities.
+
+        Returns:
+            List of EntityState objects representing current entity states.
+        """
+        if self._mode == "pyscript":
+            logger.warning("HAAdapter: get_entity_states() not available in pyscript mode")
+            return []
+
+        raw_data = await self._ws_client.get_states()
+        states = []
+        for item in raw_data:
+            try:
+                from datetime import datetime
+
+                entity_id = item.get("entity_id", "")
+                last_changed_str = item.get("last_changed", "")
+                last_updated_str = item.get("last_updated", "")
+
+                # Parse timestamps
+                last_changed = datetime.fromisoformat(last_changed_str.replace("Z", "+00:00"))
+                last_updated = datetime.fromisoformat(last_updated_str.replace("Z", "+00:00"))
+
+                state = EntityState(
+                    entity_id=entity_id,
+                    state=item.get("state", ""),
+                    attributes=item.get("attributes", {}),
+                    last_changed=last_changed,
+                    last_updated=last_updated,
+                    context=item.get("context", {}),
+                )
+                states.append(state)
+            except Exception as e:
+                logger.warning(f"HAAdapter: Failed to parse entity state: {e}")
+        return states
 
 
 HomeAssistantAdapter = HAAdapter
