@@ -46,7 +46,7 @@ class ImportSummary:
 ```python
 class DeviceImportService:
     """Сервис импорта устройств из Home Assistant."""
-    
+
     def __init__(
         self,
         ha_adapter: HAAdapter,
@@ -56,7 +56,7 @@ class DeviceImportService:
         self.ha_adapter = ha_adapter
         self.manifest_manager = manifest_manager
         self.domain_mapper = domain_mapper or DomainMapper()
-    
+
     async def import_devices(
         self,
         instance_id: str,
@@ -66,13 +66,13 @@ class DeviceImportService:
     ) -> ImportSummary:
         """
         Импортировать устройства из HA в манифест.
-        
+
         Args:
             instance_id: ID экземпляра HA в манифесте
             area_id: Опционально, импорт только из конкретной области
             dry_run: Если True, не сохранять изменения
             include_technical: Включать технические сущности (сенсоры, binary_sensor)
-        
+
         Returns:
             ImportSummary с результатами импорта
         """
@@ -84,7 +84,7 @@ class DeviceImportService:
 ```python
 class DomainMapper:
     """Маппинг доменов Home Assistant в capabilities платформы."""
-    
+
     # Базовые домены для импорта
     PRIMARY_DOMAINS = {
         "light": ["light"],
@@ -100,7 +100,7 @@ class DomainMapper:
         "input_button": ["button"],
         "input_select": ["select"],
     }
-    
+
     # Технические домены (импортируются только если include_technical=True)
     TECHNICAL_DOMAINS = {
         "sensor": ["sensor"],
@@ -112,7 +112,7 @@ class DomainMapper:
         "datetime": ["datetime"],
         "time": ["time"],
     }
-    
+
     # Исключаемые домены
     EXCLUDED_DOMAINS = {
         "automation",
@@ -132,18 +132,18 @@ class DomainMapper:
         "tts",
         "notify",
     }
-    
+
     def get_capabilities(self, entity_domain: str) -> list[str]:
         """
         Получить capabilities для домена сущности.
-        
+
         Args:
             entity_domain: Домен сущности HA (e.g., 'light', 'switch')
-        
+
         Returns:
             Список capabilities платформы
         """
-    
+
     def should_import_entity(
         self,
         entity_domain: str,
@@ -151,19 +151,19 @@ class DomainMapper:
     ) -> bool:
         """
         Проверить, следует ли импортировать сущность данного домена.
-        
+
         Args:
             entity_domain: Домен сущности
             include_technical: Включать ли технические домены
-        
+
         Returns:
             True если сущность должна быть импортирована
         """
-    
+
     def is_primary_device(self, entity_domain: str) -> bool:
         """
         Проверить, является ли домен основным устройством.
-        
+
         Основные устройства создаются как отдельные devices в манифесте.
         Технические сущности добавляются как capabilities к существующим устройствам.
         """

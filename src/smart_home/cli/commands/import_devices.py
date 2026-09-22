@@ -146,7 +146,7 @@ async def import_devices_command(args: argparse.Namespace) -> int:
         import asyncio
 
         max_wait = 10
-        waited = 0
+        waited = 0.0
         while not ha_adapter.is_connected() and waited < max_wait:
             await asyncio.sleep(0.5)
             waited += 0.5
