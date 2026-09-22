@@ -147,11 +147,11 @@ async def import_devices_command(args: argparse.Namespace) -> int:
 
         max_wait = 10
         waited = 0.0
-        while not ha_adapter.is_connected() and waited < max_wait:
+        while not ha_adapter.is_connected and waited < max_wait:
             await asyncio.sleep(0.5)
             waited += 0.5
 
-        if not ha_adapter.is_connected():
+        if not ha_adapter.is_connected:
             logger.error("Failed to connect to Home Assistant")
             return 1
 
