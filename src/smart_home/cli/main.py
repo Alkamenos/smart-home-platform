@@ -30,9 +30,11 @@ def main() -> int:
 
     # Import and setup commands
     from .commands.export_fsm import setup_export_fsm_parser
+    from .commands.import_devices import setup_import_devices_parser
     from .commands.shell import setup_shell_parser
 
     setup_export_fsm_parser(subparsers)
+    setup_import_devices_parser(subparsers)
     setup_shell_parser(subparsers)
 
     args = parser.parse_args()

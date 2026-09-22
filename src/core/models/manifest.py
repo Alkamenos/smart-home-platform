@@ -173,6 +173,78 @@ class Manifest(BaseModel):
         room = self.get_room_for_device(device_id)
         return room.sensors if room else {}
 
+    def find_device_by_external_id(
+        self, origin_source: str, external_id: str
+    ) -> tuple[RoomConfig, DeviceConfig] | None:
+        """
+        Find a device by external ID and origin source.
+
+        Args:
+            origin_source: Origin source (e.g., 'home_assistant')
+            external_id: External ID from the source system
+
+        Returns:
+            Tuple of (RoomConfig, DeviceConfig) if found, None otherwise
+        """
+        for room in self.rooms:
+            for device in room.devices:
+                if (
+                    device.origin
+                    and device.origin.source == origin_source
+                    and device.external_ids
+                    and device.external_ids.get(origin_source) == external_id
+                ):
+                    return (room, device)
+        return None
+
+    def add_or_update_device(
+        self,
+        room_id: str,
+        device: DeviceConfig,
+    ) -> tuple[bool, DeviceConfig]:
+        """
+        Add new device or update existing one in a room.
+
+        Args:
+            room_id: ID of the room to add/update device in
+            device: DeviceConfig to add or update
+
+        Returns:
+            Tuple of (is_new, device) where is_new is True if device was created
+        """
+        # Find room
+        room = next((r for r in self.rooms if r.id == room_id), None)
+        if not room:
+            raise ValueError(f"Room {room_id} not found")
+
+        # Check if device exists by external_id
+        if device.external_ids:
+            for origin_source, ext_id in device.external_ids.items():
+                existing = self.find_device_by_external_id(origin_source, ext_id)
+                if existing:
+                    existing_room, existing_device = existing
+                    # Update existing device
+                    existing_device.name = device.name
+                    existing_device.capabilities = device.capabilities
+                    existing_device.origin.last_synced_at = device.origin.last_synced_at
+                    return (False, existing_device)
+
+        # Check if device exists by ID
+        existing_device = next((d for d in room.devices if d.id == device.id), None)
+        if existing_device:
+            # Update existing device
+            existing_device.name = device.name
+            existing_device.type = device.type
+            existing_device.behaviors = device.behaviors
+            existing_device.origin = device.origin
+            existing_device.external_ids = device.external_ids
+            existing_device.capabilities = device.capabilities
+            return (False, existing_device)
+
+        # Add new device
+        room.devices.append(device)
+        return (True, device)
+
 
 # ─── Backward compatibility aliases ───────────────────────────────────────────
 # Старые имена для совместимости с существующими тестами и модулями
