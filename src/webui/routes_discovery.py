@@ -12,6 +12,7 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from src.adapters.ha_adapter import HAAdapter
+    from src.core.container import Container
 
 router = APIRouter()
 
@@ -19,12 +20,22 @@ _discovery_service = None
 _manifest_path: str | None = None
 
 
-def init_discovery_routes(ha_adapter: HAAdapter, manifest_path: str) -> None:
-    """Initialize the discovery service with HA adapter and manifest path."""
+def init_discovery_routes(
+    ha_adapter: HAAdapter,
+    manifest_path: str,
+    container: Container | None = None,
+) -> None:
+    """Initialize the discovery service with HA adapter and manifest path.
+
+    Args:
+        ha_adapter: Home Assistant adapter used to scan entities.
+        manifest_path: Path to the manifest YAML file.
+        container: Optional platform container, used for FSM hot-reload.
+    """
     global _discovery_service, _manifest_path
     from src.core.discovery.discovery_service import DeviceDiscoveryService
 
-    _discovery_service = DeviceDiscoveryService(ha_adapter)
+    _discovery_service = DeviceDiscoveryService(ha_adapter, container=container)
     _manifest_path = manifest_path
     logger.info(f"Discovery routes initialized with manifest: {manifest_path}")
 

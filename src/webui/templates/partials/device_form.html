@@ -4,11 +4,13 @@
   -->
 
 <div class="card">
-    <div class="card-header">
-        <h4>{% if device.id %}Edit Device{% else %}Add Device{% endif %}</h4>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0">{% if device.id %}Edit Device{% else %}Add Device{% endif %}</h4>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
     </div>
     <div class="card-body">
-        <form hx-post="/devices/save" hx-target="#device-form-container" hx-swap="outerHTML">
+        <form hx-post="/devices/save"
+              hx-on::after-request="if(event.detail.successful) { bootstrap.Modal.getInstance(document.getElementById('deviceModal')).hide(); window.location.reload(); }">
             <input type="hidden" name="room_index" value="{{ room_index }}">
             <input type="hidden" name="device_index" value="{{ device_index }}">
 
@@ -69,8 +71,7 @@
 
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary">Save Device</button>
-                <button type="button" class="btn btn-secondary"
-                        hx-get="/" hx-target="#device-form-container" hx-swap="outerHTML">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     Cancel
                 </button>
             </div>

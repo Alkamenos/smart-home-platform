@@ -19,7 +19,12 @@ def test_index_page_loads(client: TestClient):
     """Test that index page loads successfully."""
     response = client.get("/")
     assert response.status_code == 200
-    assert b"Smart Home Manifest Editor" in response.content
+    assert b"Smart Home - Manifest Editor" in response.content
+    # Room cards must expose the ids that HTMX swaps target
+    assert b'id="room-0"' in response.content
+    # Modals targeted by the room/device edit buttons must exist
+    assert b'id="edit-modal-content"' in response.content
+    assert b'id="device-form-container"' in response.content
 
 
 def test_health_endpoint(client: TestClient):

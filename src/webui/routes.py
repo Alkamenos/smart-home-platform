@@ -49,25 +49,92 @@ async def health_check(request: Request) -> HTMLResponse:
     )
 
 
+def _build_mermaid_state_diagram(definitions: list[Any]) -> str:
+    """Build a Mermaid stateDiagram-v2 from FSM definitions.
+
+    Args:
+        definitions: FSMDefinition objects to render.
+
+    Returns:
+        Mermaid diagram source.
+    """
+    lines = ["stateDiagram-v2"]
+
+    for definition in definitions:
+        target = definition.target_device_id or definition.entity_id
+        if len(definitions) > 1:
+            lines.append(f"state '{target}' as {definition.entity_id}")
+
+        initial = definition.initial_state
+        lines.append(f"{definition.entity_id} : {initial}")
+
+        seen: set[tuple[str, str, str]] = set()
+        for transition in definition.transitions:
+            label = transition.trigger
+            if transition.guard is not None:
+                guard_name = getattr(transition.guard, "__name__", "guard")
+                label = f"{label} [{guard_name}]"
+            if transition.priority:
+                label = f"{label} (p{transition.priority})"
+
+            key = (transition.from_state, transition.to_state, label)
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(
+                f"{definition.entity_id} : {transition.from_state} --> {transition.to_state} : {label}"
+            )
+
+    if len(definitions) > 1:
+        lines.append(f"[*] --> {definitions[0].entity_id}")
+
+    return "\n".join(lines)
+
+
 @router.get("/api/fsm/{entity_id}/diagram", response_class=Response)
-async def get_fsm_diagram(entity_id: str) -> Response:
+async def get_fsm_diagram(request: Request, entity_id: str) -> Response:
     """Generate FSM diagram for a device.
 
     Args:
+        request: FastAPI request object.
         entity_id: Device entity ID.
 
     Returns:
         JSON with Mermaid diagram definition.
     """
     try:
-        # For now, return a simple Mermaid diagram
-        # In production, this would load from manifest and use FSMVisualizer
-        mermaid_diagram = (
-            "stateDiagram-v2\n[*] --> OFF\nOFF --> ON: motion_detected\nON --> OFF: no_motion"
-        )
+        container = getattr(request.app.state, "container", None)
+        if container is None:
+            return Response(
+                content=json.dumps({"error": "Platform container is not available"}),
+                status_code=503,
+                media_type="application/json",
+            )
+
+        fsm_engine = container.fsm
+        definitions = [
+            definition
+            for definition in fsm_engine._definitions.values()
+            if entity_id in (definition.entity_id, definition.target_device_id)
+        ]
+
+        if not definitions:
+            return Response(
+                content=json.dumps(
+                    {
+                        "error": (
+                            f"No FSM registered for '{entity_id}'. "
+                            "The device may have no behaviors configured, "
+                            "or its templates failed to load."
+                        )
+                    }
+                ),
+                status_code=404,
+                media_type="application/json",
+            )
 
         return Response(
-            content=json.dumps({"diagram": mermaid_diagram}),
+            content=json.dumps({"diagram": _build_mermaid_state_diagram(definitions)}),
             media_type="application/json",
         )
 

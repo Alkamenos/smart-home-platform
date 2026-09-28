@@ -158,6 +158,7 @@ def create_app(
 
     # Initialize discovery routes with the shared adapter instance
     # The adapter is already connected in main.py via ctx.adapter.start()
+    _container = None
     try:
         from src.core.container import Container
 
@@ -172,10 +173,13 @@ def create_app(
             _ = _container.build()  # Trigger initialization
             logger.info("Created new container instance for discovery routes")
 
-        init_discovery_routes(_container.adapter, manifest_path)
+        init_discovery_routes(_container.adapter, manifest_path, container=_container)
         logger.info("Discovery routes initialized with shared adapter")
     except Exception as e:
         logger.warning(f"Could not initialize discovery routes: {e}")
+
+    # Expose the platform container to routers that need it (e.g. FSM diagrams)
+    app.state.container = _container
 
     # WebSocket connection manager for real-time updates
     class ConnectionManager:

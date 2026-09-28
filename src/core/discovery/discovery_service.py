@@ -12,6 +12,7 @@ from .models import BulkApplyRequest, DiscoveredDevice
 
 if TYPE_CHECKING:
     from src.adapters.ha_adapter import HAAdapter
+    from src.core.container import Container
 
 
 SYSTEM_DOMAINS = {
@@ -42,8 +43,15 @@ PAGE_SIZE = 25
 class DeviceDiscoveryService:
     """Сканирует 200+ устройств с пагинацией и автоприменением шаблонов."""
 
-    def __init__(self, ha_adapter: HAAdapter) -> None:
+    def __init__(self, ha_adapter: HAAdapter, container: Container | None = None) -> None:
+        """Initialize the discovery service.
+
+        Args:
+            ha_adapter: Adapter used to scan Home Assistant entities.
+            container: Optional platform container, required for FSM hot-reload.
+        """
         self._ha_adapter = ha_adapter
+        self._container = container
         self._classifier = DeviceClassifier()
         logger.info("DeviceDiscoveryService initialized")
 
@@ -346,18 +354,24 @@ class DeviceDiscoveryService:
             "backup_path": backup_path,
         }
 
-    async def _hot_reload_fsm(self, manifest: dict):
-        """Пересоздать FSM definitions после обновления манифеста."""
+    async def _hot_reload_fsm(self, manifest: dict) -> None:
+        """Пересоздать FSM definitions после обновления манифеста.
+
+        Args:
+            manifest: Updated manifest data.
+        """
+        if self._container is None:
+            logger.warning("Hot reload skipped: no container available")
+            return
+
         try:
             from src.core.manifest_generator import ManifestAutomationGenerator
 
             generator = ManifestAutomationGenerator(manifest)
             result = generator.generate_all()
 
-            from src.core.container import container
-
-            fsm_engine = container.fsm_engine
-            event_router = container.event_router
+            fsm_engine = self._container.fsm
+            event_router = self._container.event_router
 
             all_definitions = (
                 result.lighting_definitions

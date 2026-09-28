@@ -222,6 +222,13 @@
             gap: 0.5rem;
         }
 
+        .room-footer {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            gap: 0.5rem;
+        }
+
         .action-btn {
             background: rgba(255, 255, 255, 0.1);
             border: none;
@@ -612,103 +619,8 @@
 
                 <div class="room-grid" id="rooms-container">
                     {% for room in manifest.rooms %}
-                    {% set room_idx = loop.index0 %}
-                    <div class="room-card" data-room="{{ room.id }}">
-                        <div class="room-header">
-                            <h3 class="room-title">
-                                <i class="bi bi-door-closed"></i>
-                                <div>
-                                    <strong>{{ room.name }}</strong>
-                                    <div class="room-id">{{ room.id }}</div>
-                                </div>
-                            </h3>
-                        </div>
-
-                        {% if room.devices or room.sensors %}
-                        <div class="device-grid">
-                            <!-- Sensors -->
-                            {% if room.sensors %}
-                                {% for sensor_type, sensor_id in room.sensors.items() %}
-                                <div class="device-card" data-device="{{ sensor_id }}">
-                                    <div class="device-header">
-                                        <h6 class="device-name">
-                                            <i class="bi bi-thermometer"></i>
-                                            {{ sensor_type|replace('_', ' ')|title }}
-                                        </h6>
-                                        <span class="device-type">Sensor</span>
-                                    </div>
-                                    <div class="device-meta">
-                                        <span class="device-meta-item">
-                                            <i class="bi bi-tag"></i> {{ sensor_id }}
-                                        </span>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            {% endif %}
-
-                            <!-- Devices -->
-                            {% for device in room.devices %}
-                            <div class="device-card" data-device="{{ device.id }}">
-                                <div class="device-header">
-                                    <h6 class="device-name">{{ device.id }}</h6>
-                                    <span class="device-type">{{ device.type }}</span>
-                                </div>
-
-                                {% if device.behaviors %}
-                                <div class="device-behaviors">
-                                    {% for behavior in device.behaviors %}
-                                    <span class="behavior-tag">
-                                        {{ behavior.template }} <br>
-                                        <small>P:{{ behavior.priority }}</small>
-                                    </span>
-                                    {% endfor %}
-                                </div>
-                                {% endif %}
-
-                                <div class="device-meta">
-                                    <span class="device-meta-item">
-                                        <i class="bi bi-folder"></i> {{ room.name }}
-                                    </span>
-                                </div>
-
-                                <div class="device-actions">
-                                    <button class="device-action" onclick="showFSM('{{ device.id }}')">
-                                        <i class="bi bi-diagram-3"></i> FSM
-                                    </button>
-                                    <button class="device-action" 
-                                            hx-get="/devices/{{ room_idx }}/{{ device.id }}/edit"
-                                            hx-target="#device-form-container"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#editModal">
-                                        <i class="bi bi-pencil"></i> Edit
-                                    </button>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-                        {% else %}
-                        <div class="empty-state">
-                            <p style="margin-bottom: 0;">No devices in this room</p>
-                        </div>
-                        {% endif %}
-
-                        <div style="padding: 1rem 1.25rem; border-top: 1px solid rgba(255, 255, 255, 0.05); display: flex; gap: 0.5rem;">
-                            <button class="action-btn" 
-                                    hx-get="/rooms/{{ room_idx }}/edit"
-                                    hx-target="#edit-modal-content"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#editModal">
-                                <i class="bi bi-pencil"></i> Edit Room
-                            </button>
-                            <button class="action-btn danger" 
-                                    hx-delete="/rooms/{{ room_idx }}"
-                                    hx-target="closest .room-card"
-                                    hx-swap="outerHTML swap:1s"
-                                    hx-confirm="Delete room '{{ room.name }}'?">
-                                <i class="bi bi-trash"></i> Delete
-                            </button>
-                        </div>
-                    </div>
+                    {% set room_index = loop.index0 %}
+                    {% include "partials/room_card.html" %}
                     {% endfor %}
                 </div>
                 {% else %}
@@ -796,18 +708,23 @@
     <!-- Save Message -->
     <div id="save-message" style="position: fixed; top: 70px; right: 20px; max-width: 400px; z-index: 1000;"></div>
 
-    <!-- Edit Modal -->
+    <!-- Edit Modal (room add/edit) - fragment provides its own header/body -->
     <div class="modal fade" id="editModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <div id="edit-modal-content">
+                    <!-- Content loaded via HTMX -->
                 </div>
-                <div class="modal-body">
-                    <div id="edit-modal-content">
-                        <!-- Content loaded via HTMX -->
-                    </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Edit Modal - device_form.html targets #device-form-container -->
+    <div class="modal fade" id="deviceModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div id="device-form-container">
+                    <!-- Content loaded via HTMX -->
                 </div>
             </div>
         </div>
@@ -855,35 +772,48 @@
         // FSM Modal
         function showFSM(deviceId) {
             const modalEl = document.getElementById('fsmModal');
-            const modal = new bootstrap.Modal(modalEl);
+            const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
             document.getElementById('fsm-device-id').textContent = deviceId;
             modal.show();
             loadFSMDiagram(deviceId);
         }
 
         function loadFSMDiagram(deviceId) {
-            fetch(`/api/fsm/${deviceId}/diagram`)
-                .then(r => r.json())
-                .then(data => {
-                    const container = document.getElementById('fsm-diagram-container');
-                    if (data.error) {
-                        container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            const container = document.getElementById('fsm-diagram-container');
+            container.innerHTML = '<div class="text-center py-5"><div class="loading-spinner"></div></div>';
+
+            fetch(`/api/fsm/${encodeURIComponent(deviceId)}/diagram`)
+                .then(r => r.json().then(data => ({ ok: r.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok || data.error) {
+                        container.innerHTML = `<div class="alert alert-warning mb-0">
+                            <i class="bi bi-info-circle"></i> ${data.error || 'FSM unavailable'}
+                        </div>`;
                         return;
                     }
-                    const diagramText = data.diagram.replace(/\\n/g, '\n');
-                    container.innerHTML = `<div class="mermaid">${diagramText}</div>`;
-                    mermaid.initialize({startOnLoad: false, theme: 'dark', securityLevel: 'loose'});
-                    requestAnimationFrame(() => mermaid.run({nodes: container.querySelectorAll('.mermaid')}));
+                    // Reset container so repeated opens re-render cleanly
+                    container.innerHTML = '<pre class="mermaid" id="fsm-mermaid"></pre>';
+                    const pre = document.getElementById('fsm-mermaid');
+                    pre.textContent = data.diagram;
+
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        theme: 'dark',
+                        securityLevel: 'strict',
+                        flowchart: { htmlLabels: false }
+                    });
+                    return mermaid.run({ nodes: [pre] });
                 })
                 .catch(e => {
-                    document.getElementById('fsm-diagram-container').innerHTML = 
-                        `<div class="alert alert-danger">Error: ${e.message}</div>`;
+                    container.innerHTML =
+                        `<div class="alert alert-danger mb-0">Error: ${e.message}</div>`;
                 });
         }
 
-        // Close modal on success
+        // Close modal on successful room add/update
         document.body.addEventListener('htmx:afterRequest', function(evt) {
-            if (evt.detail.requestConfig.path.includes('/rooms/add') || evt.detail.requestConfig.path.includes('/devices')) {
+            const path = evt.detail.requestConfig.path || '';
+            if (evt.detail.successful && (path.includes('/rooms/add') || path.includes('/rooms/') && path.includes('/update'))) {
                 const modalEl = document.getElementById('editModal');
                 const modal = bootstrap.Modal.getInstance(modalEl);
                 if (modal) modal.hide();
