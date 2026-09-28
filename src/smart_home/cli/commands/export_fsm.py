@@ -63,9 +63,7 @@ def generate_fsms_from_manifest(manifest: dict[str, Any]) -> list[tuple[str, FSM
     engine = FSMEngine()
     registry = Registry()
     event_bus = EventBus()
-    factory = FSMFactory(
-        engine=engine, registry=registry, features_dir="src/features", event_bus=event_bus
-    )
+    factory = FSMFactory(engine=engine, registry=registry, event_bus=event_bus)
 
     fsms: list[tuple[str, FSMDefinition]] = []
 

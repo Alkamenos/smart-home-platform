@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -49,6 +50,18 @@ async def health_check(request: Request) -> HTMLResponse:
     )
 
 
+def _mermaid_state_id(raw: str) -> str:
+    """Sanitize an identifier so Mermaid accepts it as a state id.
+
+    Args:
+        raw: Raw entity id, e.g. ``light.kitchen_lighting_10``.
+
+    Returns:
+        Identifier safe to use in a stateDiagram-v2.
+    """
+    return re.sub(r"[^0-9a-zA-Z_]", "_", raw)
+
+
 def _build_mermaid_state_diagram(definitions: list[Any]) -> str:
     """Build a Mermaid stateDiagram-v2 from FSM definitions.
 
@@ -59,21 +72,29 @@ def _build_mermaid_state_diagram(definitions: list[Any]) -> str:
         Mermaid diagram source.
     """
     lines = ["stateDiagram-v2"]
+    single = len(definitions) == 1
+    initial_targets: list[str] = []
 
     for definition in definitions:
+        entity = _mermaid_state_id(definition.entity_id)
         target = definition.target_device_id or definition.entity_id
-        if len(definitions) > 1:
-            lines.append(f"state '{target}' as {definition.entity_id}")
+        initial_targets.append(entity)
 
-        initial = definition.initial_state
-        lines.append(f"{definition.entity_id} : {initial}")
+        # A device may own several behaviors, each with its own state machine.
+        # They are rendered as separate machines. Aliasing several ids onto the
+        # same display name is rejected by Mermaid, so only a lone machine gets
+        # the friendly device label.
+        if single:
+            lines.append(f"state '{target}' as {entity}")
+        lines.append(f"{entity} : {definition.initial_state}")
 
         seen: set[tuple[str, str, str]] = set()
         for transition in definition.transitions:
             label = transition.trigger
             if transition.guard is not None:
-                guard_name = getattr(transition.guard, "__name__", "guard")
-                label = f"{label} [{guard_name}]"
+                guard_name = getattr(transition.guard, "__name__", "")
+                if guard_name and guard_name not in ("guard", "guard_fn", "combined_guard"):
+                    label = f"{label} [{guard_name}]"
             if transition.priority:
                 label = f"{label} (p{transition.priority})"
 
@@ -81,12 +102,10 @@ def _build_mermaid_state_diagram(definitions: list[Any]) -> str:
             if key in seen:
                 continue
             seen.add(key)
-            lines.append(
-                f"{definition.entity_id} : {transition.from_state} --> {transition.to_state} : {label}"
-            )
+            lines.append(f"{entity} : {transition.from_state} --> {transition.to_state} : {label}")
 
-    if len(definitions) > 1:
-        lines.append(f"[*] --> {definitions[0].entity_id}")
+    for entity in initial_targets:
+        lines.append(f"[*] --> {entity}")
 
     return "\n".join(lines)
 

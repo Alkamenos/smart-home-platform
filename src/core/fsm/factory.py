@@ -23,6 +23,41 @@ from core.models.manifest import BehaviorConfig
 from core.registry import Registry
 
 
+# Каталог с YAML-шаблонами автоматизаций: src/features/
+_PACKAGE_FEATURES_DIR = Path(__file__).resolve().parents[2] / "features"
+
+
+def _resolve_features_dir(features_dir: str | None) -> Path:
+    """Определить каталог с YAML-шаблонами автоматизаций.
+
+    Путь по умолчанию вычисляется относительно пакета, а не относительно
+    текущего рабочего каталога, иначе шаблоны не находились бы при запуске
+    не из корня проекта.
+
+    Args:
+        features_dir: Явно заданный путь. Может быть относительным.
+
+    Returns:
+        Путь к каталогу с шаблонами.
+    """
+    if features_dir is None:
+        return _PACKAGE_FEATURES_DIR
+
+    candidate = Path(features_dir)
+    if candidate.is_absolute() or candidate.is_dir():
+        return candidate
+
+    # Относительный путь не найден — пробуем разрешить его от корня проекта.
+    project_relative = _PACKAGE_FEATURES_DIR.parent.parent / candidate
+    if project_relative.is_dir():
+        return project_relative
+
+    logger.warning(
+        f"Каталог шаблонов '{candidate}' не найден, используется {_PACKAGE_FEATURES_DIR}"
+    )
+    return _PACKAGE_FEATURES_DIR
+
+
 class FSMFactory:
     """
     Фабрика для создания FSM на основе композиции поведений.
@@ -47,7 +82,7 @@ class FSMFactory:
         self,
         engine: FSMEngine,
         registry: Registry,
-        features_dir: str = "features",
+        features_dir: str | None = None,
         event_bus: Any | None = None,
     ) -> None:
         """
@@ -56,12 +91,13 @@ class FSMFactory:
         Args:
             engine: Экземпляр FSMEngine для регистрации автоматов.
             registry: Экземпляр Registry для получения guard/action функций.
-            features_dir: Путь к папке с YAML шаблонами.
+            features_dir: Путь к папке с YAML шаблонами. Если не указан,
+                используется каталог ``features`` рядом с пакетом ``src``.
             event_bus: Опциональный EventBus для подписки на события сенсоров.
         """
         self._engine = engine
         self._registry = registry
-        self._features_dir = Path(features_dir)
+        self._features_dir = _resolve_features_dir(features_dir)
         self._template_cache: dict[str, dict[str, Any]] = {}
         self._event_bus = event_bus
 
@@ -171,6 +207,12 @@ class FSMFactory:
 
                 def guard_fn(state, context):
                     return schedule_guard_fn(context)
+
+        # Сохраняем исходное имя guard, чтобы визуализации не показывали
+        # безликое "guard_fn" вместо meaningful имени из YAML-шаблона.
+        if guard_fn is not None:
+            parts = [name for name in (yaml_transition.guard, "schedule") if name]
+            guard_fn.__name__ = "+".join(parts)
 
         return Transition(
             from_state=yaml_transition.from_state,
