@@ -8,62 +8,274 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мастер обнаружения устройств - Smart Home</title>
+    <title>Мастер добавления устройств - Smart Home</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js"></script>
     <style>
-        .device-item { border-left: 3px solid #0d6efd; padding-left: 1rem; margin: 0.5rem 0; }
-        .auto-apply-badge { background-color: #198754; color: white; padding: 0.2em 0.6em; border-radius: 0.25rem; font-size: 0.75em; }
-        .manual-badge { background-color: #ffc107; color: black; padding: 0.2em 0.6em; border-radius: 0.25rem; font-size: 0.75em; }
-        .progress-container { display: none; }
-        .scanning .progress-container { display: block; }
-        .category-filter-btn { margin: 0.2rem; }
-        .domain-filter-btn { margin: 0.2rem; }
-        .pagination-btn { margin: 0 0.2rem; }
+        :root {
+            --primary-color: #0d6efd;
+            --success-color: #198754;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #0dcaf0;
+        }
+
+        body {
+            font-size: 14px;
+        }
+
+        .device-card {
+            border-left: 4px solid var(--primary-color);
+            padding: 0;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .device-card:hover {
+            background-color: rgba(13, 110, 253, 0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .device-card.selected {
+            background-color: rgba(25, 135, 84, 0.1);
+            border-left-color: var(--success-color);
+        }
+
+        .device-checkbox {
+            margin-right: 0.75rem;
+            cursor: pointer;
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+
+        .device-header {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            gap: 0.5rem;
+        }
+
+        .device-body {
+            padding: 0 0.75rem 0.75rem 3.25rem;
+            font-size: 0.85rem;
+            color: #999;
+        }
+
+        .device-meta {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .badge-custom {
+            background-color: rgba(13, 110, 253, 0.2);
+            color: #0d6efd;
+            padding: 0.35rem 0.6rem;
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+        }
+
+        .badge-auto {
+            background-color: rgba(25, 135, 84, 0.2);
+            color: var(--success-color);
+        }
+
+        .badge-manual {
+            background-color: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+
+        .filter-sidebar {
+            position: sticky;
+            top: 1rem;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+
+        .filter-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .filter-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #999;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .filter-btn {
+            font-size: 0.85rem;
+            margin-bottom: 0.4rem;
+            text-align: left;
+            justify-content: flex-start;
+        }
+
+        .preview-panel {
+            position: sticky;
+            top: 1rem;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .preview-item {
+            background: rgba(13, 110, 253, 0.05);
+            border-left: 3px solid var(--primary-color);
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.85rem;
+        }
+
+        .preview-item-remove {
+            cursor: pointer;
+            color: var(--danger-color);
+            float: right;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+
+        .preview-item-remove:hover {
+            opacity: 1;
+        }
+
+        .stat-box {
+            text-align: center;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-box h4 {
+            margin-bottom: 0.25rem;
+            color: var(--primary-color);
+        }
+
+        .stat-box p {
+            font-size: 0.85rem;
+            color: #999;
+            margin-bottom: 0;
+        }
+
+        .search-input {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: #fff !important;
+        }
+
+        .search-input::placeholder {
+            color: #999;
+        }
+
+        .btn-action {
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+        }
+
+        .progress-indicator {
+            font-size: 0.8rem;
+            padding: 0.5rem;
+            background: rgba(13, 110, 253, 0.1);
+            border-radius: 0.25rem;
+            text-align: center;
+            color: var(--primary-color);
+        }
+
+        .devices-loading {
+            text-align: center;
+            padding: 2rem;
+            color: #999;
+        }
+
+        .spinner-border-sm {
+            width: 1rem;
+            height: 1rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #999;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 1024px) {
+            .filter-sidebar {
+                max-height: 400px;
+            }
+
+            .preview-panel {
+                max-height: 400px;
+            }
+        }
+
+        .alert-custom {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .select-all-checkbox {
+            width: 1.25rem;
+            height: 1.25rem;
+            margin-right: 0.75rem;
+        }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom">
         <div class="container-fluid">
-            <span class="navbar-brand mb-0 h1">🔍 Мастер обнаружения устройств</span>
-        </div>
-        <div class="d-flex gap-2">
-            <a href="/" class="btn btn-outline-secondary btn-sm">← Назад к редактору</a>
+            <span class="navbar-brand">
+                <i class="bi bi-plus-circle"></i> Добавление устройств
+            </span>
+            <div class="d-flex gap-2">
+                <a href="/" class="btn btn-outline-secondary btn-sm">← Назад</a>
+            </div>
         </div>
     </nav>
 
-    <div class="container-fluid mt-4">
-        <!-- Панель управления -->
-        <div class="row mb-3">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">📊 Статистика обнаружения</h5>
-                    </div>
+    <div class="container-fluid mt-4 mb-4">
+        <!-- Header with stats -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
                     <div class="card-body">
-                        <div id="stats-summary" class="row">
+                        <div class="row text-center">
                             <div class="col-md-3">
-                                <div class="stat-card text-center">
-                                    <h3 id="total-devices">-</h3>
-                                    <p class="text-muted">Всего устройств</p>
+                                <div class="stat-box">
+                                    <h4 id="total-devices">-</h4>
+                                    <p>Всего устройств</p>
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <div class="stat-card text-center">
-                                    <h3 id="auto-apply-count">-</h3>
-                                    <p class="text-muted">Автоприменение</p>
+                                <div class="stat-box">
+                                    <h4 id="auto-count">-</h4>
+                                    <p>✅ Автоприменение</p>
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <div class="stat-card text-center">
-                                    <h3 id="manual-count">-</h3>
-                                    <p class="text-muted">Требуют внимания</p>
+                                <div class="stat-box">
+                                    <h4 id="manual-count">-</h4>
+                                    <p>⚠️ Требует внимания</p>
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <div class="stat-card text-center">
-                                    <h3 id="pages-count">-</h3>
-                                    <p class="text-muted">Страниц</p>
+                                <div class="stat-box">
+                                    <h4 id="selected-count">0</h4>
+                                    <p>🎯 Выбрано</p>
                                 </div>
                             </div>
                         </div>
@@ -72,222 +284,235 @@
             </div>
         </div>
 
-        <!-- Прогресс сканирования -->
-        <div class="row mb-3 progress-container" id="scan-progress">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="progress">
-                            <div id="scan-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                        </div>
-                        <p class="text-muted mt-2" id="scan-status">Ожидание сканирования...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Фильтры и управление -->
-        <div class="row mb-3">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">🎛️ Фильтры и управление</h5>
-                        <button id="scan-btn" class="btn btn-primary btn-sm" onclick="startScan()">
-                            🔄 Сканировать устройства
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-4">
-                                <label for="filter-domain" class="form-label">Фильтр по домену:</label>
-                                <select id="filter-domain" class="form-select form-select-sm" onchange="applyFilters()">
-                                    <option value="">Все домены</option>
-                                    <option value="light">Свет (light)</option>
-                                    <option value="switch">Выключатели (switch)</option>
-                                    <option value="sensor">Датчики (sensor)</option>
-                                    <option value="binary_sensor">Бинарные датчики</option>
-                                    <option value="climate">Климат (climate)</option>
-                                    <option value="fan">Вентиляция (fan)</option>
-                                    <option value="cover">Шторы/ворота (cover)</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="filter-category" class="form-label">Фильтр по категории:</label>
-                                <select id="filter-category" class="form-select form-select-sm" onchange="applyFilters()">
-                                    <option value="">Все категории</option>
-                                    <option value="lighting">Освещение</option>
-                                    <option value="climate_control">Климат контроль</option>
-                                    <option value="ventilation">Вентиляция</option>
-                                    <option value="temperature_sensor">Датчики температуры</option>
-                                    <option value="humidity_sensor">Датчики влажности</option>
-                                    <option value="motion_sensor">Датчики движения</option>
-                                    <option value="monitoring_only">Только мониторинг</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="filter-area" class="form-label">Фильтр по комнате:</label>
-                                <input type="text" id="filter-area" class="form-control form-control-sm" placeholder="Начните вводить..." oninput="applyFilters()">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Список устройств -->
+        <!-- Main content -->
         <div class="row">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">📱 Обнаруженные устройства</h5>
+            <!-- Left: Filters and Scan -->
+            <div class="col-lg-2">
+                <div class="card border-0 shadow-sm filter-sidebar">
+                    <div class="card-body">
+                        <h6 class="mb-3">
+                            <i class="bi bi-funnel"></i> Управление
+                        </h6>
+
+                        <button id="scan-btn" class="btn btn-primary w-100 btn-action mb-3" onclick="startScan()">
+                            <i class="bi bi-arrow-repeat"></i> Сканировать
+                        </button>
+
+                        <hr>
+
+                        <div class="filter-group">
+                            <label>Быстрый выбор</label>
+                            <button class="btn btn-outline-secondary w-100 filter-btn mb-2" onclick="selectAll()">
+                                ✓ Выбрать все
+                            </button>
+                            <button class="btn btn-outline-secondary w-100 filter-btn mb-2" onclick="deselectAll()">
+                                ✗ Очистить
+                            </button>
+                            <button class="btn btn-outline-secondary w-100 filter-btn" onclick="selectAuto()">
+                                ✅ Только авто
+                            </button>
+                        </div>
+
+                        <hr>
+
+                        <div class="filter-group">
+                            <label>По домену</label>
+                            <div id="domain-filters"></div>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>По категории</label>
+                            <div id="category-filters"></div>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Поиск</label>
+                            <input type="text" id="search-box" class="form-control form-control-sm search-input" 
+                                   placeholder="Entity ID или имя..." oninput="applyFilters()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center: Device List -->
+            <div class="col-lg-7">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-list-ul"></i> Обнаруженные устройства
+                        </h5>
                         <div id="pagination-info" class="text-muted small"></div>
                     </div>
-                    <div class="card-body" id="devices-list">
-                        <p class="text-muted text-center">Нажмите "Сканировать устройства" для начала</p>
+                    <div class="card-body" style="max-height: calc(100vh - 300px); overflow-y: auto;">
+                        <div id="devices-container" class="devices-loading">
+                            <p class="text-muted">Нажмите "Сканировать" для начала</p>
+                        </div>
                     </div>
-                    <div class="card-footer">
+                    <div class="card-footer bg-transparent">
                         <nav aria-label="Пагинация">
-                            <ul class="pagination pagination-sm justify-content-center" id="pagination-controls">
+                            <ul class="pagination pagination-sm justify-content-center mb-0" id="pagination-controls">
                             </ul>
                         </nav>
                     </div>
                 </div>
             </div>
 
-            <!-- Панель применения -->
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">⚡ Быстрое применение</h5>
+            <!-- Right: Preview and Actions -->
+            <div class="col-lg-3">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-transparent">
+                        <h5 class="mb-0">
+                            <i class="bi bi-eye"></i> Предпросмотр
+                        </h5>
                     </div>
-                    <div class="card-body">
-                        <form id="apply-form">
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="auto-lighting" checked>
-                                <label class="form-check-label" for="auto-lighting">
-                                    🌟 Освещение (lighting)
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="auto-climate" checked>
-                                <label class="form-check-label" for="auto-climate">
-                                    🌡️ Климат контроль (climate_control)
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="auto-ventilation" checked>
-                                <label class="form-check-label" for="auto-ventilation">
-                                    💨 Вентиляция (ventilation)
-                                </label>
-                            </div>
-                            <hr>
-                            <button type="button" class="btn btn-success w-100 mb-2" onclick="applyAll()">
-                                ✅ Применить все шаблоны
-                            </button>
-                            <button type="button" class="btn btn-outline-primary w-100" onclick="dryRun()">
-                                🔍 Тестовый запуск
-                            </button>
-                        </form>
-                        <div id="apply-result" class="mt-3"></div>
+                    <div class="preview-panel">
+                        <div id="preview-list">
+                            <p class="text-muted text-center" style="padding: 1rem 0;">
+                                Выбранных устройств нет
+                            </p>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Action buttons -->
+                <div class="card border-0 shadow-sm mt-3">
+                    <div class="card-body">
+                        <button class="btn btn-outline-primary w-100 btn-action mb-2" onclick="dryRun()">
+                            <i class="bi bi-eye"></i> Тестовый запуск
+                        </button>
+                        <button class="btn btn-success w-100 btn-action" onclick="applySelected()">
+                            <i class="bi bi-check-circle"></i> Применить
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div id="status-area" class="mt-3"></div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let allDevices = [];
+        let selectedDevices = new Set();
         let currentPage = 1;
-        let totalPages = 0;
-        let currentData = null;
+        let totalPages = 1;
+        let currentFilters = {
+            domain: null,
+            category: null,
+            search: ''
+        };
 
         async function startScan() {
-            const scanBtn = document.getElementById('scan-btn');
-            const progressBar = document.getElementById('scan-progress-bar');
-            const scanStatus = document.getElementById('scan-status');
-            const scanProgress = document.getElementById('scan-progress');
-
-            scanBtn.disabled = true;
-            scanProgress.classList.add('scanning');
-            progressBar.style.width = '0%';
-            scanStatus.textContent = 'Подключение к Home Assistant...';
+            const btn = document.getElementById('scan-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Сканирование...';
 
             try {
-                // Имитация прогресса
-                let progress = 0;
-                const interval = setInterval(() => {
-                    if (progress < 90) {
-                        progress += 10;
-                        progressBar.style.width = progress + '%';
-                    }
-                }, 200);
-
                 const response = await fetch('/discovery/scan', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                     body: new URLSearchParams({page: '1', page_size: '25'})
                 });
 
-                clearInterval(interval);
-                progressBar.style.width = '100%';
+                if (!response.ok) throw new Error(await response.text());
 
-                if (!response.ok) {
-                    throw new Error(await response.text());
-                }
-
-                currentData = await response.json();
-                totalPages = currentData.total_pages;
+                const data = await response.json();
+                allDevices = data.devices;
+                totalPages = data.total_pages;
                 currentPage = 1;
 
-                updateStats(currentData);
-                renderDevices(currentData.devices);
+                updateStats(data);
+                renderFilterButtons(data);
+                renderDevices(data.devices);
                 renderPagination();
 
-                scanStatus.textContent = `Сканирование завершено! Найдено ${currentData.total} устройств.`;
-                setTimeout(() => {
-                    scanProgress.classList.remove('scanning');
-                    scanBtn.disabled = false;
-                }, 2000);
-
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
             } catch (error) {
-                scanStatus.textContent = `Ошибка: ${error.message}`;
-                scanProgress.classList.remove('scanning');
-                scanBtn.disabled = false;
+                showStatus('error', `Ошибка сканирования: ${error.message}`);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
             }
         }
 
         function updateStats(data) {
             document.getElementById('total-devices').textContent = data.total;
-            document.getElementById('auto-apply-count').textContent = data.auto_apply_stats.auto_apply;
-            document.getElementById('manual-count').textContent = data.auto_apply_stats.manual;
-            document.getElementById('pages-count').textContent = data.total_pages;
+            document.getElementById('auto-count').textContent = data.auto_apply_stats?.auto_apply || 0;
+            document.getElementById('manual-count').textContent = data.auto_apply_stats?.manual || 0;
+        }
+
+        function renderFilterButtons(data) {
+            // Domain filters
+            const domainContainer = document.getElementById('domain-filters');
+            domainContainer.innerHTML = '';
+            Object.entries(data.by_domain || {}).forEach(([domain, count]) => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-outline-secondary w-100 filter-btn';
+                btn.textContent = `${domain} (${count})`;
+                btn.onclick = () => {
+                    currentFilters.domain = currentFilters.domain === domain ? null : domain;
+                    applyFilters();
+                };
+                domainContainer.appendChild(btn);
+            });
+
+            // Category filters
+            const categoryContainer = document.getElementById('category-filters');
+            categoryContainer.innerHTML = '';
+            Object.entries(data.by_category || {}).forEach(([category, count]) => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-outline-secondary w-100 filter-btn';
+                btn.textContent = `${category} (${count})`;
+                btn.onclick = () => {
+                    currentFilters.category = currentFilters.category === category ? null : category;
+                    applyFilters();
+                };
+                categoryContainer.appendChild(btn);
+            });
         }
 
         function renderDevices(devices) {
-            const container = document.getElementById('devices-list');
+            const container = document.getElementById('devices-container');
             if (devices.length === 0) {
-                container.innerHTML = '<p class="text-muted text-center">Устройства не найдены</p>';
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="bi bi-inbox"></i>
+                        <p>Устройства не найдены</p>
+                    </div>
+                `;
                 return;
             }
 
             let html = '<div class="list-group list-group-flush">';
             devices.forEach(device => {
-                const badgeClass = device.auto_apply ? 'auto-apply-badge' : 'manual-badge';
-                const badgeText = device.auto_apply ? '✅ Авто' : '⚠️ Ручное';
-                const behaviorInfo = device.suggested_behavior ? `<br><small class="text-muted">Шаблон: ${device.suggested_behavior}</small>` : '';
+                const isSelected = selectedDevices.has(device.entity_id);
+                const autoApplyBadge = device.auto_apply 
+                    ? '<span class="badge badge-custom badge-auto">✅ Авто</span>' 
+                    : '<span class="badge badge-custom badge-manual">⚠️ Ручное</span>';
 
                 html += `
-                    <div class="list-group-item list-group-item-action device-item">
-                        <div class="d-flex w-100 justify-content-between align-items-center">
-                            <div>
-                                <h6 class="mb-1">${device.friendly_name || device.name}</h6>
-                                <small class="text-muted">${device.entity_id}</small>
-                                ${behaviorInfo}
+                    <div class="card device-card ${isSelected ? 'selected' : ''}" 
+                         onclick="toggleDevice('${device.entity_id}', this)">
+                        <div class="device-header">
+                            <input type="checkbox" class="device-checkbox" 
+                                   ${isSelected ? 'checked' : ''} 
+                                   onclick="event.stopPropagation()">
+                            <div class="flex-grow-1">
+                                <div style="font-weight: 500;">${device.friendly_name || device.name}</div>
+                                <small style="color: #666;">${device.entity_id}</small>
                             </div>
-                            <div class="text-end">
-                                <span class="${badgeClass}">${badgeText}</span>
-                                <br><small class="text-muted">${device.domain} / ${device.category}</small>
+                            ${autoApplyBadge}
+                        </div>
+                        <div class="device-body">
+                            <div class="device-meta">
+                                <span class="badge badge-custom">🏷️ ${device.domain}</span>
+                                <span class="badge badge-custom">📁 ${device.category}</span>
+                                ${device.area_id ? `<span class="badge badge-custom">📍 ${device.area_id}</span>` : ''}
                             </div>
+                            ${device.suggested_behavior ? `<div style="margin-top: 0.5rem;"><small>Шаблон: <strong>${device.suggested_behavior}</strong></small></div>` : ''}
+                            <div style="margin-top: 0.5rem; color: #777;"><small>Статус: ${device.state}</small></div>
                         </div>
                     </div>
                 `;
@@ -301,146 +526,227 @@
             const infoContainer = document.getElementById('pagination-info');
 
             infoContainer.textContent = `Страница ${currentPage} из ${totalPages}`;
-
             let html = '';
 
-            // Previous button
+            // Previous
             html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-                <button class="page-link pagination-btn" onclick="goToPage(${currentPage - 1})">← Пред.</button>
+                <button class="page-link" onclick="goToPage(${currentPage - 1})">← Пред.</button>
             </li>`;
 
             // Page numbers
             const maxVisible = 5;
-            let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-            let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-
-            if (endPage - startPage + 1 < maxVisible) {
-                startPage = Math.max(1, endPage - maxVisible + 1);
+            let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let end = Math.min(totalPages, start + maxVisible - 1);
+            if (end - start + 1 < maxVisible) {
+                start = Math.max(1, end - maxVisible + 1);
             }
 
-            for (let i = startPage; i <= endPage; i++) {
+            for (let i = start; i <= end; i++) {
                 html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
-                    <button class="page-link pagination-btn" onclick="goToPage(${i})">${i}</button>
+                    <button class="page-link" onclick="goToPage(${i})">${i}</button>
                 </li>`;
             }
 
-            // Next button
+            // Next
             html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-                <button class="page-link pagination-btn" onclick="goToPage(${currentPage + 1})">След. →</button>
+                <button class="page-link" onclick="goToPage(${currentPage + 1})">След. →</button>
             </li>`;
 
             container.innerHTML = html;
         }
 
         async function goToPage(page) {
-            if (page < 1 || page > totalPages || !currentData) return;
+            if (page < 1 || page > totalPages) return;
 
             currentPage = page;
-            const filterDomain = document.getElementById('filter-domain').value;
-            const filterCategory = document.getElementById('filter-category').value;
-            const filterArea = document.getElementById('filter-area').value;
+            const params = new URLSearchParams({
+                page: page.toString(),
+                page_size: '25',
+                filter_domain: currentFilters.domain || '',
+                filter_category: currentFilters.category || '',
+                filter_area: currentFilters.search || ''
+            });
 
             try {
                 const response = await fetch('/discovery/scan', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams({
-                        page: page.toString(),
-                        page_size: '25',
-                        filter_domain: filterDomain,
-                        filter_category: filterCategory,
-                        filter_area: filterArea
-                    })
+                    body: params
                 });
 
                 if (!response.ok) throw new Error(await response.text());
-                currentData = await response.json();
-                renderDevices(currentData.devices);
+                const data = await response.json();
+                allDevices = data.devices;
+                renderDevices(data.devices);
                 renderPagination();
             } catch (error) {
-                alert(`Ошибка загрузки страницы: ${error.message}`);
+                showStatus('error', `Ошибка загрузки: ${error.message}`);
             }
         }
 
-        async function applyFilters() {
-            if (!currentData) return;
-            await goToPage(1);
+        function applyFilters() {
+            currentFilters.search = document.getElementById('search-box').value;
+            goToPage(1);
         }
 
-        async function applyAll() {
-            const autoLighting = document.getElementById('auto-lighting').checked;
-            const autoClimate = document.getElementById('auto-climate').checked;
-            const autoVentilation = document.getElementById('auto-ventilation').checked;
-            const resultDiv = document.getElementById('apply-result');
+        function toggleDevice(entityId, element) {
+            if (selectedDevices.has(entityId)) {
+                selectedDevices.delete(entityId);
+            } else {
+                selectedDevices.add(entityId);
+            }
+            updatePreview();
+            element.classList.toggle('selected');
+        }
 
-            resultDiv.innerHTML = '<div class="alert alert-info">Применение...</div>';
+        function selectAll() {
+            allDevices.forEach(d => selectedDevices.add(d.entity_id));
+            updatePreview();
+            document.querySelectorAll('.device-card').forEach(el => el.classList.add('selected'));
+        }
+
+        function deselectAll() {
+            selectedDevices.clear();
+            updatePreview();
+            document.querySelectorAll('.device-card').forEach(el => el.classList.remove('selected'));
+        }
+
+        function selectAuto() {
+            selectedDevices.clear();
+            allDevices.forEach(d => {
+                if (d.auto_apply) selectedDevices.add(d.entity_id);
+            });
+            updatePreview();
+            document.querySelectorAll('.device-card').forEach(el => {
+                const isAuto = allDevices.some(d => d.entity_id && el.textContent.includes(d.entity_id) && d.auto_apply);
+                el.classList.toggle('selected', isAuto);
+            });
+        }
+
+        function updatePreview() {
+            const container = document.getElementById('preview-list');
+            document.getElementById('selected-count').textContent = selectedDevices.size;
+
+            if (selectedDevices.size === 0) {
+                container.innerHTML = '<p class="text-muted text-center" style="padding: 1rem 0;">Выбранных устройств нет</p>';
+                return;
+            }
+
+            let html = '';
+            selectedDevices.forEach(entityId => {
+                const device = allDevices.find(d => d.entity_id === entityId);
+                if (device) {
+                    html += `
+                        <div class="preview-item">
+                            <span class="preview-item-remove" onclick="toggleDevice('${entityId}'); updatePreview();">✕</span>
+                            <strong>${device.friendly_name || device.name}</strong><br>
+                            <small>${device.entity_id}</small><br>
+                            <small style="color: #999;">Комната: ${device.area_id || 'не назначена'}</small>
+                        </div>
+                    `;
+                }
+            });
+            container.innerHTML = html;
+        }
+
+        async function dryRun() {
+            if (selectedDevices.size === 0) {
+                showStatus('warning', 'Выберите хотя бы одно устройство');
+                return;
+            }
+
+            const selections = Array.from(selectedDevices).map(entityId => {
+                const device = allDevices.find(d => d.entity_id === entityId);
+                return {
+                    device_entity_id: entityId,
+                    target_room: device.area_id || 'unassigned',
+                    behavior_template: device.suggested_behavior
+                };
+            });
+
+            showStatus('info', 'Проверка...');
 
             try {
-                const response = await fetch('/discovery/apply', {
+                const response = await fetch('/discovery/apply-selective', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams({
-                        include_all: 'false',
-                        auto_apply_lighting: autoLighting.toString(),
-                        auto_apply_climate: autoClimate.toString(),
-                        auto_apply_ventilation: autoVentilation.toString(),
-                        dry_run: 'false'
-                    })
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({selections, dry_run: true})
+                });
+
+                if (!response.ok) throw new Error(await response.text());
+                const result = await response.json();
+                showStatus('info', `Будет добавлено устройств: <strong>${result.would_add}</strong>`);
+            } catch (error) {
+                showStatus('error', `Ошибка: ${error.message}`);
+            }
+        }
+
+        async function applySelected() {
+            if (selectedDevices.size === 0) {
+                showStatus('warning', 'Выберите хотя бы одно устройство');
+                return;
+            }
+
+            const selections = Array.from(selectedDevices).map(entityId => {
+                const device = allDevices.find(d => d.entity_id === entityId);
+                return {
+                    device_entity_id: entityId,
+                    target_room: device.area_id || 'unassigned',
+                    behavior_template: device.suggested_behavior
+                };
+            });
+
+            showStatus('info', '<span class="spinner-border spinner-border-sm me-2"></span>Применение...');
+
+            try {
+                const response = await fetch('/discovery/apply-selective', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({selections, dry_run: false})
                 });
 
                 if (!response.ok) throw new Error(await response.text());
                 const result = await response.json();
 
                 if (result.success) {
-                    resultDiv.innerHTML = `
-                        <div class="alert alert-success">
-                            <strong>✅ Успешно!</strong><br>
-                            Добавлено устройств: ${result.devices_added}<br>
-                            Backup: ${result.backup_path}
-                        </div>
-                    `;
+                    showStatus('success', 
+                        `✅ Успешно добавлено: <strong>${result.devices_added}</strong> устройств`);
+                    selectedDevices.clear();
+                    updatePreview();
+                    deselectAll();
                 } else {
-                    resultDiv.innerHTML = '<div class="alert alert-warning">⚠️ Не удалось применить</div>';
+                    showStatus('error', 'Ошибка при применении');
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<div class="alert alert-danger">❌ Ошибка: ${error.message}</div>`;
+                showStatus('error', `Ошибка: ${error.message}`);
             }
         }
 
-        async function dryRun() {
-            const autoLighting = document.getElementById('auto-lighting').checked;
-            const autoClimate = document.getElementById('auto-climate').checked;
-            const autoVentilation = document.getElementById('auto-ventilation').checked;
-            const resultDiv = document.getElementById('apply-result');
+        function showStatus(type, message) {
+            const statusArea = document.getElementById('status-area');
+            const alertClass = {
+                'success': 'alert-success',
+                'error': 'alert-danger',
+                'warning': 'alert-warning',
+                'info': 'alert-info'
+            }[type] || 'alert-info';
 
-            resultDiv.innerHTML = '<div class="alert alert-info">Проверка...</div>';
+            statusArea.innerHTML = `
+                <div class="alert ${alertClass} alert-custom" role="alert">
+                    ${message}
+                </div>
+            `;
 
-            try {
-                const response = await fetch('/discovery/apply', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams({
-                        include_all: 'false',
-                        auto_apply_lighting: autoLighting.toString(),
-                        auto_apply_climate: autoClimate.toString(),
-                        auto_apply_ventilation: autoVentilation.toString(),
-                        dry_run: 'true'
-                    })
-                });
-
-                if (!response.ok) throw new Error(await response.text());
-                const result = await response.json();
-
-                resultDiv.innerHTML = `
-                    <div class="alert alert-info">
-                        <strong>🔍 Тестовый запуск</strong><br>
-                        Будет добавлено устройств: ${result.would_add}
-                    </div>
-                `;
-            } catch (error) {
-                resultDiv.innerHTML = `<div class="alert alert-danger">❌ Ошибка: ${error.message}</div>`;
+            // Auto-hide after 5 seconds for success
+            if (type === 'success') {
+                setTimeout(() => statusArea.innerHTML = '', 5000);
             }
         }
+
+        // Auto-load on page load
+        window.addEventListener('load', () => {
+            startScan();
+        });
     </script>
 </body>
 </html>

@@ -102,6 +102,31 @@ async def bulk_apply(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.post("/discovery/apply-selective")
+async def apply_selective(request: Request) -> JSONResponse:
+    """Apply selectively chosen devices to manifest.
+
+    Expects JSON body with list of device selections.
+    """
+    if _discovery_service is None or _manifest_path is None:
+        raise HTTPException(status_code=503, detail="Discovery service not initialized")
+
+    try:
+        body = await request.json()
+        selections = body.get("selections", [])
+        dry_run = body.get("dry_run", False)
+
+        result = await _discovery_service.apply_selective(
+            selections=selections,
+            manifest_path=_manifest_path,
+            dry_run=dry_run,
+        )
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Selective apply failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @router.get("/discovery/stats")
 async def get_stats() -> JSONResponse:
     """Get quick statistics about discovered devices."""

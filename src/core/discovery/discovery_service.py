@@ -239,6 +239,113 @@ class DeviceDiscoveryService:
         logger.info(f"Bulk apply: {added_count} devices added. Backup: {backup_path}")
         return {"success": True, "devices_added": added_count, "backup_path": backup_path}
 
+    async def apply_selective(
+        self, selections: list[dict], manifest_path: str, dry_run: bool = False
+    ) -> dict:
+        """Apply selectively chosen devices to manifest.
+
+        Args:
+            selections: List of device selections with entity_id, room, behavior, etc.
+            manifest_path: Path to manifest file
+            dry_run: If True, don't write to file, just return what would be added
+
+        Returns:
+            Result with success status and number of devices added/would be added
+        """
+        from datetime import datetime
+
+        import yaml
+
+        # Load current manifest
+        with open(manifest_path) as f:
+            manifest = yaml.safe_load(f) or {}
+
+        rooms = manifest.setdefault("rooms", [])
+        added_devices = []
+        failed_devices = []
+
+        for selection in selections:
+            try:
+                entity_id: str | None = selection.get("device_entity_id")
+                if not entity_id:
+                    continue
+
+                target_room: str = selection.get("target_room", "unassigned") or "unassigned"
+                behavior_template: str | None = selection.get("behavior_template")
+                domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
+
+                # Find or create room
+                room = next((r for r in rooms if r["id"] == target_room), None)
+                if room is None and not dry_run:
+                    room = {
+                        "id": target_room,
+                        "name": target_room.replace("_", " ").title(),
+                        "sensors": {},
+                        "devices": [],
+                    }
+                    rooms.append(room)
+                elif room is None:
+                    room = {
+                        "id": target_room,
+                        "name": target_room.replace("_", " ").title(),
+                        "sensors": {},
+                        "devices": [],
+                    }
+
+                # Determine device type based on domain
+                if domain in ("sensor", "binary_sensor"):
+                    # For sensors, extract type from entity_id or use as-is
+                    sensor_type = entity_id.split("_")[1] if "_" in entity_id else "custom"
+                    room.setdefault("sensors", {})[sensor_type] = entity_id
+                else:
+                    # For regular devices
+                    device_entry = {"id": entity_id, "type": domain}
+                    if behavior_template:
+                        device_entry["behaviors"] = [
+                            {
+                                "template": behavior_template,
+                                "priority": 10,
+                                "params": selection.get("behavior_params", {}),
+                            }
+                        ]
+                    room.setdefault("devices", []).append(device_entry)
+
+                added_devices.append(entity_id)
+            except Exception as e:
+                logger.warning(f"Failed to add device {entity_id}: {e}")
+                failed_devices.append({"entity_id": entity_id, "error": str(e)})
+
+        if dry_run:
+            return {
+                "dry_run": True,
+                "would_add": len(added_devices),
+                "devices": added_devices,
+            }
+
+        # Create backup
+        backup_path = f"{manifest_path}.bak.{datetime.now():%Y%m%d_%H%M%S}"
+        with open(backup_path, "w") as f:
+            yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
+
+        # Save manifest
+        with open(manifest_path, "w") as f:
+            yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
+
+        # Hot reload
+        await self._hot_reload_fsm(manifest)
+
+        logger.info(
+            f"Selective apply: {len(added_devices)} devices added, "
+            f"{len(failed_devices)} failed. Backup: {backup_path}"
+        )
+        return {
+            "success": True,
+            "devices_added": len(added_devices),
+            "failed": len(failed_devices),
+            "failed_devices": failed_devices,
+            "backup_path": backup_path,
+        }
+
     async def _hot_reload_fsm(self, manifest: dict):
         """Пересоздать FSM definitions после обновления манифеста."""
         try:
