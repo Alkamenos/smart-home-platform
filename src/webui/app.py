@@ -22,6 +22,57 @@ if TYPE_CHECKING:
     from src.core.container import Container
 
 
+class LogStore:
+    """In-memory storage for application logs."""
+
+    def __init__(self, max_logs: int = 5000) -> None:
+        """Initialize the log store.
+
+        Args:
+            max_logs: Maximum number of logs to keep in memory.
+        """
+        self.logs: list[dict] = []
+        self.max_logs = max_logs
+
+    def add(self, level: str, message: str, timestamp: str | None = None) -> None:
+        """Add a log entry.
+
+        Args:
+            level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+            message: Log message.
+            timestamp: ISO format timestamp (auto-generated if not provided).
+        """
+        import datetime
+
+        if timestamp is None:
+            timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+
+        log_entry = {
+            "timestamp": timestamp,
+            "level": level.upper(),
+            "message": message,
+        }
+
+        self.logs.insert(0, log_entry)  # Add to beginning for newest first
+        if len(self.logs) > self.max_logs:
+            self.logs = self.logs[: self.max_logs]
+
+    def get_logs(self, limit: int = 1000) -> list[dict]:
+        """Get logs.
+
+        Args:
+            limit: Maximum number of logs to return.
+
+        Returns:
+            List of log entries.
+        """
+        return self.logs[:limit]
+
+    def clear(self) -> None:
+        """Clear all logs."""
+        self.logs = []
+
+
 class ManifestStore:
     """In-memory storage for manifest with undo support."""
 
@@ -156,7 +207,34 @@ def create_app(
     # Initialize manifest store
     manifest_store = ManifestStore(manifest_path)
 
-    # Initialize discovery routes with the shared adapter instance
+    # Initialize log store
+    log_store = LogStore()
+
+    # Add initial info log
+    log_store.add("INFO", "Web UI started")
+
+    # Configure loguru to log to both console and log store
+    def loguru_sink(message):
+        """Custom loguru sink to write logs to log store."""
+        try:
+            # Extract log level and message from loguru record
+            record = message.record
+            level = record["level"].name
+            msg = record["message"]
+            timestamp = record["time"].isoformat()
+            log_store.add(level, msg, timestamp)
+        except Exception:
+            pass  # Silently ignore logging errors to avoid recursion
+
+    # Remove default handlers and add custom ones
+    logger.remove()
+    logger.add(loguru_sink, format="{message}", level="DEBUG")
+    # Keep console logging for development
+    logger.add(
+        lambda msg: print(msg, end=""),
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+        level="INFO",
+    )
     # The adapter is already connected in main.py via ctx.adapter.start()
     _container = None
     try:
@@ -512,6 +590,13 @@ def create_app(
             if device is None:
                 raise HTTPException(status_code=404, detail="Device not found")
 
+            # Load available templates
+            from .template_loader import get_template_loader
+
+            loader = get_template_loader()
+            templates_data = loader.load_all()
+            template_list = sorted(templates_data.keys())
+
             return templates.TemplateResponse(
                 request,
                 "partials/device_form.html",
@@ -519,6 +604,9 @@ def create_app(
                     "device": device,
                     "device_index": device_index,
                     "room_index": room_id,
+                    "current_room_id": room.id,
+                    "available_rooms": manifest_store.current.rooms,
+                    "available_templates": template_list,
                 },
             )
         except HTTPException:
@@ -538,11 +626,37 @@ def create_app(
         Returns:
             HTML fragment with empty device form.
         """
-        return templates.TemplateResponse(
-            request,
-            "partials/device_form.html",
-            {"device": {}, "device_index": -1, "room_index": room_id},
-        )
+        try:
+            # Ensure manifest is loaded
+            if manifest_store.current is None:
+                manifest_store.load()
+
+            # Load available templates
+            from .template_loader import get_template_loader
+
+            loader = get_template_loader()
+            templates_data = loader.load_all()
+            template_list = sorted(templates_data.keys())
+
+            # Get room info
+            rooms = manifest_store.current.rooms if manifest_store.current else []
+            current_room_id = rooms[room_id].id if room_id < len(rooms) else ""
+
+            return templates.TemplateResponse(
+                request,
+                "partials/device_form.html",
+                {
+                    "device": {},
+                    "device_index": -1,
+                    "room_index": room_id,
+                    "current_room_id": current_room_id,
+                    "available_rooms": rooms,
+                    "available_templates": template_list,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to load add device form: {e}")
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/devices/save", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def save_device(
@@ -607,14 +721,41 @@ def create_app(
                 behaviors=behaviors,
             )
 
-            room = manifest_store.current.rooms[room_idx]
+            # Check if room was changed (move device to different room)
+            target_room_id = form_data.get("room_id", "")
+            current_room = manifest_store.current.rooms[room_idx]
 
-            if dev_idx >= 0 and dev_idx < len(room.devices):
-                room.devices[dev_idx] = device
+            # Find target room by ID if specified
+            target_room = current_room
+            target_room_idx = room_idx
+
+            if target_room_id and target_room_id != current_room.id:
+                # Find room by ID
+                for idx, room in enumerate(manifest_store.current.rooms):
+                    if room.id == target_room_id:
+                        target_room = room
+                        target_room_idx = idx
+                        break
+
+                logger.info(
+                    f"Moving device {device_id} from room {current_room.id} to {target_room.id}"
+                )
+
+            # Remove device from current room if it exists and room changed
+            if dev_idx >= 0 and dev_idx < len(current_room.devices) and target_room_idx != room_idx:
+                current_room.devices.pop(dev_idx)
+
+            # Add/update device in target room
+            if dev_idx >= 0 and dev_idx < len(target_room.devices) and target_room_idx == room_idx:
+                # Update existing device in same room
+                target_room.devices[dev_idx] = device
             else:
-                room.devices.append(device)
+                # Add new device or to different room
+                target_room.devices.append(device)
 
             manifest_store.mark_changed()
+            # Persist changes to YAML file with backup
+            manifest_store.save()
             logger.info(f"Device {device_id} saved successfully")
 
             # Return success response that closes modal and reloads page
@@ -632,6 +773,56 @@ def create_app(
                 {"error": str(e)},
                 status_code=400,
             )
+
+    @app.get("/logs", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
+    async def logs_page(request: Request) -> HTMLResponse:
+        """Render the logs page.
+
+        Args:
+            request: FastAPI request object.
+
+        Returns:
+            HTML response with logs viewer.
+        """
+        return templates.TemplateResponse(request, "logs.html", {})
+
+    @app.get("/api/logs")  # type: ignore[untyped-decorator]
+    async def get_logs(limit: int = 1000) -> list:
+        """Get application logs.
+
+        Args:
+            limit: Maximum number of logs to return.
+
+        Returns:
+            List of log entries.
+        """
+        return log_store.get_logs(limit)
+
+    @app.delete("/api/logs")  # type: ignore[untyped-decorator]
+    async def clear_logs() -> dict:
+        """Clear all logs.
+
+        Returns:
+            Status message.
+        """
+        log_store.clear()
+        logger.info("Logs cleared via API")
+        return {"status": "success", "message": "Logs cleared"}
+
+    @app.websocket("/ws/logs")  # type: ignore[untyped-decorator]
+    async def websocket_logs(websocket: WebSocket) -> None:
+        """WebSocket endpoint for real-time log streaming.
+
+        Args:
+            websocket: WebSocket connection.
+        """
+        await websocket.accept()
+        try:
+            while True:
+                # Keep connection alive
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
 
     return app
 

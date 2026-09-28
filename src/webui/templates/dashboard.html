@@ -1,3 +1,8 @@
+<!--
+  ~ # Copyright 2026 Leonid Artemev
+  ~ # SPDX-License-Identifier: Apache-2.0
+  -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,14 +12,72 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-dark-5@1.1.3/dist/css/bootstrap-dark.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <style>
         body { margin: 0; padding: 20px; font-family: sans-serif; }
         .chart-container { position: relative; height: 400px; margin-bottom: 30px; }
     </style>
 </head>
 <body class="bg-dark text-light">
-    <div class="container-fluid">
+    <nav class="navbar navbar-dark" style="background: linear-gradient(90deg, #0a0e27 0%, #1a1a2e 100%); border-bottom: 2px solid #00d4ff;">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </span>
+            <div class="d-flex gap-2">
+                <a href="/logs" class="btn btn-outline-light btn-sm" title="View logs">
+                    <i class="bi bi-file-text"></i> Logs
+                </a>
+                <a href="/" class="btn btn-outline-light btn-sm" title="Back to manifest editor">
+                    <i class="bi bi-pencil-square"></i> Manifest
+                </a>
+                <button class="btn btn-outline-light btn-sm" onclick="location.reload()" title="Refresh dashboard">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid" style="padding-top: 20px;">
         <h1 class="mb-4">{{ title }}</h1>
+
+        <!-- Device Status Section -->
+        <div class="card bg-secondary mb-4">
+            <div class="card-header">
+                <h5>Device Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped">
+                        <thead>
+                            <tr>
+                                <th>Device</th>
+                                <th>Type</th>
+                                <th>Room</th>
+                                <th>Behaviors</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceStatusTable">
+                            <tr><td colspan="6">Loading devices...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- FSM Diagrams Section -->
+        <div class="card bg-secondary mb-4">
+            <div class="card-header">
+                <h5>Device FSM State Diagrams</h5>
+            </div>
+            <div class="card-body">
+                <div id="fsmDiagramsContainer" class="row">
+                    <div class="col-12 text-center">Loading FSM diagrams...</div>
+                </div>
+            </div>
+        </div>
 
         <!-- Time-series chart -->
         <div class="card bg-secondary mb-4">
@@ -103,6 +166,95 @@
     </div>
 
     <script>
+        // Initialize Mermaid
+        mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+
+        // Load device status into table
+        function loadDeviceStatus() {
+            const devices = {{ devices | tojson }};
+
+            if (!devices || devices.length === 0) {
+                document.getElementById('deviceStatusTable').innerHTML =
+                    '<tr><td colspan="6" class="text-center text-muted">No devices configured</td></tr>';
+                return;
+            }
+
+            const tbody = document.getElementById('deviceStatusTable');
+            tbody.innerHTML = devices.map(device => `
+                <tr>
+                    <td><strong>${device.id}</strong></td>
+                    <td><span class="badge bg-info">${device.type}</span></td>
+                    <td>${device.room || 'N/A'}</td>
+                    <td>
+                        ${device.behaviors && device.behaviors.length > 0 ?
+                            device.behaviors.map(b => `<span class="badge bg-primary me-1">${b.template} (p${b.priority})</span>`).join('') :
+                            '<span class="text-muted">No behaviors</span>'
+                        }
+                    </td>
+                    <td><span class="badge bg-success">Active</span></td>
+                    <td>
+                        <a href="/devices/0/${device.id}/edit" class="btn btn-sm btn-outline-light">
+                            <i class="bi bi-pencil"></i> Edit
+                        </a>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Load FSM diagrams
+        function loadFSMDiagrams() {
+            // Fetch manifest to get device list
+            const devices = {{ devices | tojson }};
+
+            if (!devices || devices.length === 0) {
+                document.getElementById('fsmDiagramsContainer').innerHTML =
+                    '<div class="col-12 text-center text-muted">No devices configured</div>';
+                return;
+            }
+
+            const container = document.getElementById('fsmDiagramsContainer');
+            container.innerHTML = '';
+
+            devices.forEach((device, index) => {
+                const deviceId = device.id;
+
+                // Create container for this device
+                const col = document.createElement('div');
+                col.className = 'col-lg-6 mb-4';
+                col.innerHTML = `
+                    <div class="card bg-dark border-secondary">
+                        <div class="card-header bg-dark">
+                            <h6 class="card-title mb-0">${deviceId}</h6>
+                            <small class="text-muted">Type: ${device.type}</small>
+                        </div>
+                        <div class="card-body">
+                            <div id="fsm-${deviceId.replace(/\./g, '-')}" class="mermaid-diagram" style="display: flex; justify-content: center; align-items: center; min-height: 300px;">
+                                <div class="spinner-border text-info" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(col);
+
+                // Fetch FSM diagram for this device
+                fetch(`/api/fsm/${deviceId}/diagram`)
+                    .then(response => response.text())
+                    .then(diagramText => {
+                        const diagramContainer = document.getElementById(`fsm-${deviceId.replace(/\./g, '-')}`);
+                        diagramContainer.innerHTML = diagramText;
+                        // Re-render mermaid diagrams
+                        mermaid.contentLoaded();
+                    })
+                    .catch(error => {
+                        console.error(`Error loading FSM for ${deviceId}:`, error);
+                        const diagramContainer = document.getElementById(`fsm-${deviceId.replace(/\./g, '-')}`);
+                        diagramContainer.innerHTML = `<div class="alert alert-warning">Failed to load FSM diagram</div>`;
+                    });
+            });
+        }
+
         // Fetch event history data and render time-series chart
         fetch('/api/events/history')
             .then(response => response.json())
@@ -284,6 +436,12 @@
 
         // Load overrides on page load
         loadOverrides();
+
+        // Load device status on page load
+        loadDeviceStatus();
+
+        // Load FSM diagrams on page load
+        loadFSMDiagrams();
 
         // AI Suggestions: Load suggestions
         function loadSuggestions() {

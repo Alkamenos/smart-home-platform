@@ -608,7 +608,7 @@
                 <div class="section-title">
                     <i class="bi bi-door-closed"></i>
                     Rooms & Devices
-                    <button class="btn btn-sm btn-outline-light ms-auto" 
+                    <button class="btn btn-sm btn-outline-light ms-auto"
                             hx-get="/rooms/-1/edit"
                             hx-target="#edit-modal-content"
                             data-bs-toggle="modal"
@@ -696,8 +696,9 @@
                     <div class="sidebar-section">
                         <h6><i class="bi bi-question-circle"></i> Help</h6>
                         <ul class="sidebar-list">
-                            <li><a href="/health"><i class="bi bi-heart-pulse"></i> Health Check</a></li>
+                        <li><a href="/health"><i class="bi bi-heart-pulse"></i> Health Check</a></li>
                             <li><a href="/dashboard"><i class="bi bi-graph-up"></i> Dashboard</a></li>
+                            <li><a href="/logs"><i class="bi bi-file-text"></i> Logs</a></li>
                         </ul>
                     </div>
                 </div>
@@ -756,7 +757,7 @@
         document.getElementById('search-box').addEventListener('input', function(e) {
             const query = e.target.value.toLowerCase();
             const cards = document.querySelectorAll('.room-card, .device-card');
-            
+
             cards.forEach(card => {
                 const text = card.textContent.toLowerCase();
                 card.style.display = text.includes(query) ? '' : 'none';

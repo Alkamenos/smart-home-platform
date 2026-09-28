@@ -5,10 +5,18 @@ services:
       dockerfile: deploy/docker/Dockerfile
       args:
         - BUILD_ENV=production
-    env_file: # ← ДОБАВЬ ЭТИ 2 СТРОКИ
+      # Оптимизация для быстрого построения
+#      cache_from:
+#        - type=registry
+      labels:
+        - "build.version=${BUILD_VERSION:-latest}"
+    env_file:
       - .env.prod
     container_name: behavioral-platform
     restart: unless-stopped
+
+    # Статус на успешный запуск контейнера
+    pull_policy: if_not_present
 
     ports:
       - "${WEBUI_PORT:-8125}:8125"
@@ -23,9 +31,9 @@ services:
     # Environment variables
     environment:
       - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - FORCE_COLOR=1          # Принудительная раскраска (1 вместо true)
-      - CLICOLOR_FORCE=1       # Универсальный флаг для CLI
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}  # DEBUG для видимости HA сообщений
+      - FORCE_COLOR=1                   # Принудительная раскраска для Docker
+      - CLICOLOR_FORCE=1                # Универсальный флаг для CLI
       - SHADOW_MODE=${SHADOW_MODE:-false}
       - HA_URL=${HA_URL}
       - HA_WEBSOCKET_URL=${HA_WEBSOCKET_URL}

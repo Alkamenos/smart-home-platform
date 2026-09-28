@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import signal
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -33,18 +34,19 @@ COLORED_FORMAT = (
 # Формат без цветов (для файлов)
 PLAIN_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}"
 
-# Удаляем стандартный обработчик loguru
+# Конфигурируем loguru для совместимости с Docker логами
 logger.remove()
 
-# Добавляем обработчик в stderr с цветами
+# Добавляем обработчик в stderr с цветами для Docker
+# stderr автоматически попадает в docker logs
 logger.add(
-    "stderr",
+    sys.stderr,
     level=LOG_LEVEL,
     format=COLORED_FORMAT,
     colorize=SHOULD_COLORIZE,
     backtrace=True,
     diagnose=False,
-    enqueue=True,
+    enqueue=False,  # Без очереди для синхронности логов в Docker
 )
 
 # Опционально: лог в файл (без цветов)

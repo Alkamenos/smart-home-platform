@@ -1,0 +1,81 @@
+# Speed Control Template - ABSTRACT TEMPLATE
+#
+# Template for fans with variable speed control (circulating fans, extractors, etc).
+# Supports 0-100% speed adjustment.
+#
+# EXPECTED PARAMETERS in params (from manifest):
+#   - min_speed: int (0-100, default 0) - Minimum speed when on
+#   - max_speed: int (0-100, default 100) - Maximum speed
+#   - default_speed: int (0-100, default 50) - Default operating speed
+#
+# EXAMPLE USAGE in manifest.yaml:
+#   devices:
+#     - type: fan
+#       id: fan.circulation_living_room
+#       behaviors:
+#         - template: speed_control
+#           priority: 10
+#           params:
+#             min_speed: 25
+#             max_speed: 100
+#             default_speed: 50
+
+initial_state: "OFF"
+debounce_sec: 0.5
+
+states:
+  - "OFF"
+  - "LOW"
+  - "MEDIUM"
+  - "HIGH"
+  - "MANUAL_OVERRIDE"
+
+transitions:
+  # Turn on to low speed
+  - from_state: "OFF"
+    to_state: "LOW"
+    trigger: "turn_on"
+    action: "set_low_speed"
+
+  # Increase from low to medium
+  - from_state: "LOW"
+    to_state: "MEDIUM"
+    trigger: "increase_speed"
+    action: "set_medium_speed"
+
+  # Increase from medium to high
+  - from_state: "MEDIUM"
+    to_state: "HIGH"
+    trigger: "increase_speed"
+    action: "set_high_speed"
+
+  # Decrease from high to medium
+  - from_state: "HIGH"
+    to_state: "MEDIUM"
+    trigger: "decrease_speed"
+    action: "set_medium_speed"
+
+  # Decrease from medium to low
+  - from_state: "MEDIUM"
+    to_state: "LOW"
+    trigger: "decrease_speed"
+    action: "set_low_speed"
+
+  # Turn off from any speed
+  - from_state: ["LOW", "MEDIUM", "HIGH"]
+    to_state: "OFF"
+    trigger: "turn_off"
+    action: "turn_off_fan"
+
+  # Manual override from any state
+  - from_state: "*"
+    to_state: "MANUAL_OVERRIDE"
+    trigger: "manual_change"
+    action: "record_manual_override"
+
+  # Exit manual override after timeout
+  - from_state: "MANUAL_OVERRIDE"
+    to_state: "OFF"
+    trigger: "timeout"
+    action: "turn_off_fan"
+    timeout_sec: 3600  # 1 hour

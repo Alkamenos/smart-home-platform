@@ -327,7 +327,7 @@
 
                         <div class="filter-group">
                             <label>Поиск</label>
-                            <input type="text" id="search-box" class="form-control form-control-sm search-input" 
+                            <input type="text" id="search-box" class="form-control form-control-sm search-input"
                                    placeholder="Entity ID или имя..." oninput="applyFilters()">
                         </div>
                     </div>
@@ -488,16 +488,16 @@
             let html = '<div class="list-group list-group-flush">';
             devices.forEach(device => {
                 const isSelected = selectedDevices.has(device.entity_id);
-                const autoApplyBadge = device.auto_apply 
-                    ? '<span class="badge badge-custom badge-auto">✅ Авто</span>' 
+                const autoApplyBadge = device.auto_apply
+                    ? '<span class="badge badge-custom badge-auto">✅ Авто</span>'
                     : '<span class="badge badge-custom badge-manual">⚠️ Ручное</span>';
 
                 html += `
-                    <div class="card device-card ${isSelected ? 'selected' : ''}" 
+                    <div class="card device-card ${isSelected ? 'selected' : ''}"
                          onclick="toggleDevice('${device.entity_id}', this)">
                         <div class="device-header">
-                            <input type="checkbox" class="device-checkbox" 
-                                   ${isSelected ? 'checked' : ''} 
+                            <input type="checkbox" class="device-checkbox"
+                                   ${isSelected ? 'checked' : ''}
                                    onclick="event.stopPropagation()">
                             <div class="flex-grow-1">
                                 <div style="font-weight: 500;">${device.friendly_name || device.name}</div>
@@ -623,104 +623,222 @@
             });
         }
 
-        function updatePreview() {
-            const container = document.getElementById('preview-list');
-            document.getElementById('selected-count').textContent = selectedDevices.size;
+         let deviceRoomAssignments = {}; // Store room assignments
 
-            if (selectedDevices.size === 0) {
-                container.innerHTML = '<p class="text-muted text-center" style="padding: 1rem 0;">Выбранных устройств нет</p>';
-                return;
-            }
+         function updatePreview() {
+             const container = document.getElementById('preview-list');
+             document.getElementById('selected-count').textContent = selectedDevices.size;
 
-            let html = '';
-            selectedDevices.forEach(entityId => {
-                const device = allDevices.find(d => d.entity_id === entityId);
-                if (device) {
-                    html += `
-                        <div class="preview-item">
-                            <span class="preview-item-remove" onclick="toggleDevice('${entityId}'); updatePreview();">✕</span>
-                            <strong>${device.friendly_name || device.name}</strong><br>
-                            <small>${device.entity_id}</small><br>
-                            <small style="color: #999;">Комната: ${device.area_id || 'не назначена'}</small>
-                        </div>
-                    `;
-                }
-            });
-            container.innerHTML = html;
-        }
+             if (selectedDevices.size === 0) {
+                 container.innerHTML = '<p class="text-muted text-center" style="padding: 1rem 0;">Выбранных устройств нет</p>';
+                 return;
+             }
 
-        async function dryRun() {
-            if (selectedDevices.size === 0) {
-                showStatus('warning', 'Выберите хотя бы одно устройство');
-                return;
-            }
+             let html = '';
+             selectedDevices.forEach(entityId => {
+                 const device = allDevices.find(d => d.entity_id === entityId);
+                 if (device) {
+                     const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
+                     html += `
+                         <div class="preview-item">
+                             <span class="preview-item-remove" onclick="toggleDevice('${entityId}'); updatePreview();">✕</span>
+                             <strong>${device.friendly_name || device.name}</strong><br>
+                             <small>${device.entity_id}</small><br>
+                             <small style="color: #999;">
+                                 Комната:
+                                 <a href="#" onclick="openRoomSelector('${entityId}'); return false;" style="cursor: pointer; text-decoration: underline;">
+                                     ${assignedRoom}
+                                 </a>
+                             </small>
+                         </div>
+                     `;
+                 }
+             });
+             container.innerHTML = html;
+         }
 
-            const selections = Array.from(selectedDevices).map(entityId => {
-                const device = allDevices.find(d => d.entity_id === entityId);
-                return {
-                    device_entity_id: entityId,
-                    target_room: device.area_id || 'unassigned',
-                    behavior_template: device.suggested_behavior
-                };
-            });
+         let existingRooms = []; // Cache of existing rooms
 
-            showStatus('info', 'Проверка...');
+         async function loadExistingRooms() {
+             try {
+                 const response = await fetch('/api/rooms', {
+                     method: 'GET'
+                 });
+                 if (response.ok) {
+                     const data = await response.json();
+                     existingRooms = data.rooms || [];
+                 }
+             } catch (error) {
+                 console.warn('Could not load existing rooms:', error);
+                 existingRooms = [];
+             }
+         }
 
-            try {
-                const response = await fetch('/discovery/apply-selective', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({selections, dry_run: true})
-                });
+         function openRoomSelector(entityId) {
+             const device = allDevices.find(d => d.entity_id === entityId);
+             const currentRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
 
-                if (!response.ok) throw new Error(await response.text());
-                const result = await response.json();
-                showStatus('info', `Будет добавлено устройств: <strong>${result.would_add}</strong>`);
-            } catch (error) {
-                showStatus('error', `Ошибка: ${error.message}`);
-            }
-        }
+             // Create modal
+             const modal = document.createElement('div');
+             modal.className = 'modal fade';
+             modal.id = 'roomSelectorModal';
+             modal.tabIndex = -1;
+             modal.innerHTML = `
+                 <div class="modal-dialog modal-sm">
+                     <div class="modal-content bg-dark border-secondary">
+                         <div class="modal-header border-secondary">
+                             <h5 class="modal-title">
+                                 Выбор комнаты для ${device.friendly_name || device.name}
+                             </h5>
+                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                         </div>
+                         <div class="modal-body">
+                             <div class="mb-3">
+                                 <label class="form-label">Существующие комнаты:</label>
+                                 <div id="roomOptions" style="max-height: 200px; overflow-y: auto;">
+                                     ${existingRooms.length > 0
+                                         ? existingRooms.map(room => `
+                                             <div class="form-check">
+                                                 <input class="form-check-input room-radio" type="radio" name="room" id="room_${room.id}" value="${room.id}"
+                                                     ${currentRoom === room.id ? 'checked' : ''}>
+                                                 <label class="form-check-label" for="room_${room.id}">
+                                                     ${room.name || room.id}
+                                                 </label>
+                                             </div>
+                                         `).join('')
+                                         : '<p class="text-muted small">Нет существующих комнат</p>'
+                                     }
+                                 </div>
+                             </div>
+                             <hr>
+                             <div class="mb-3">
+                                 <label class="form-label">Или создайте новую:</label>
+                                 <input type="text" class="form-control form-control-sm bg-secondary text-white border-secondary"
+                                        id="newRoomName" placeholder="Название комнаты (например: kitchen)">
+                                 <small class="text-muted d-block mt-2">Используйте строчные буквы и подчеркивание (напр. living_room)</small>
+                             </div>
+                         </div>
+                         <div class="modal-footer border-secondary">
+                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                             <button type="button" class="btn btn-primary" onclick="saveRoomAssignment('${entityId}')">Сохранить</button>
+                         </div>
+                     </div>
+                 </div>
+             `;
 
-        async function applySelected() {
-            if (selectedDevices.size === 0) {
-                showStatus('warning', 'Выберите хотя бы одно устройство');
-                return;
-            }
+             document.body.appendChild(modal);
+             const roomModal = new bootstrap.Modal(modal);
+             roomModal.show();
+             modal.addEventListener('hidden.bs.modal', () => modal.remove());
+         }
 
-            const selections = Array.from(selectedDevices).map(entityId => {
-                const device = allDevices.find(d => d.entity_id === entityId);
-                return {
-                    device_entity_id: entityId,
-                    target_room: device.area_id || 'unassigned',
-                    behavior_template: device.suggested_behavior
-                };
-            });
+         function saveRoomAssignment(entityId) {
+             const selectedRadio = document.querySelector('input[name="room"]:checked');
+             const newRoomName = document.getElementById('newRoomName').value.trim().toLowerCase();
 
-            showStatus('info', '<span class="spinner-border spinner-border-sm me-2"></span>Применение...');
+             let selectedRoom = null;
+             if (selectedRadio) {
+                 selectedRoom = selectedRadio.value;
+             } else if (newRoomName) {
+                 selectedRoom = newRoomName.replace(/\s+/g, '_');
+                 // Add to existing rooms if not present
+                 if (!existingRooms.find(r => r.id === selectedRoom)) {
+                     existingRooms.push({
+                         id: selectedRoom,
+                         name: selectedRoom.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+                     });
+                 }
+             }
 
-            try {
-                const response = await fetch('/discovery/apply-selective', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({selections, dry_run: false})
-                });
+             if (!selectedRoom) {
+                 alert('Пожалуйста, выберите комнату или введите новую');
+                 return;
+             }
 
-                if (!response.ok) throw new Error(await response.text());
-                const result = await response.json();
+             deviceRoomAssignments[entityId] = selectedRoom;
+             updatePreview();
 
-                if (result.success) {
-                    showStatus('success', 
-                        `✅ Успешно добавлено: <strong>${result.devices_added}</strong> устройств`);
-                    selectedDevices.clear();
-                    updatePreview();
-                    deselectAll();
-                } else {
-                    showStatus('error', 'Ошибка при применении');
-                }
-            } catch (error) {
-                showStatus('error', `Ошибка: ${error.message}`);
-            }
-        }
+             // Close modal
+             const modal = document.getElementById('roomSelectorModal');
+             const bsModal = bootstrap.Modal.getInstance(modal);
+             bsModal.hide();
+         }
+
+         async function dryRun() {
+             if (selectedDevices.size === 0) {
+                 showStatus('warning', 'Выберите хотя бы одно устройство');
+                 return;
+             }
+
+             const selections = Array.from(selectedDevices).map(entityId => {
+                 const device = allDevices.find(d => d.entity_id === entityId);
+                 const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
+                 return {
+                     device_entity_id: entityId,
+                     target_room: assignedRoom,
+                     behavior_template: device.suggested_behavior
+                 };
+             });
+
+             showStatus('info', 'Проверка...');
+
+             try {
+                 const response = await fetch('/discovery/apply-selective', {
+                     method: 'POST',
+                     headers: {'Content-Type': 'application/json'},
+                     body: JSON.stringify({selections, dry_run: true})
+                 });
+
+                 if (!response.ok) throw new Error(await response.text());
+                 const result = await response.json();
+                 showStatus('info', `Будет добавлено устройств: <strong>${result.would_add}</strong>`);
+             } catch (error) {
+                 showStatus('error', `Ошибка: ${error.message}`);
+             }
+         }
+
+         async function applySelected() {
+             if (selectedDevices.size === 0) {
+                 showStatus('warning', 'Выберите хотя бы одно устройство');
+                 return;
+             }
+
+             const selections = Array.from(selectedDevices).map(entityId => {
+                 const device = allDevices.find(d => d.entity_id === entityId);
+                 const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
+                 return {
+                     device_entity_id: entityId,
+                     target_room: assignedRoom,
+                     behavior_template: device.suggested_behavior
+                 };
+             });
+
+             showStatus('info', '<span class="spinner-border spinner-border-sm me-2"></span>Применение...');
+
+             try {
+                 const response = await fetch('/discovery/apply-selective', {
+                     method: 'POST',
+                     headers: {'Content-Type': 'application/json'},
+                     body: JSON.stringify({selections, dry_run: false})
+                 });
+
+                 if (!response.ok) throw new Error(await response.text());
+                 const result = await response.json();
+
+                 if (result.success) {
+                     showStatus('success',
+                         `✅ Успешно добавлено: <strong>${result.devices_added}</strong> устройств`);
+                     selectedDevices.clear();
+                     deviceRoomAssignments = {};
+                     updatePreview();
+                     deselectAll();
+                 } else {
+                     showStatus('error', 'Ошибка при применении');
+                 }
+             } catch (error) {
+                 showStatus('error', `Ошибка: ${error.message}`);
+             }
+         }
 
         function showStatus(type, message) {
             const statusArea = document.getElementById('status-area');
@@ -743,10 +861,11 @@
             }
         }
 
-        // Auto-load on page load
-        window.addEventListener('load', () => {
-            startScan();
-        });
+         // Auto-load on page load
+         window.addEventListener('load', () => {
+             loadExistingRooms();
+             startScan();
+         });
     </script>
 </body>
 </html>

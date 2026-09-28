@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs - Smart Home</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: linear-gradient(90deg, #0a0e27 0%, #1a1a2e 100%);
+            border-bottom: 2px solid #00d4ff;
+        }
+
+        .log-viewer {
+            background: #0a0e27;
+            border: 1px solid #00d4ff;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 10px;
+            padding: 8px;
+            border-bottom: 1px solid #333;
+            align-items: flex-start;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-timestamp {
+            color: #0dcaf0;
+            min-width: 180px;
+            flex-shrink: 0;
+        }
+
+        .log-level {
+            min-width: 70px;
+            flex-shrink: 0;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+
+        .log-level.debug {
+            color: #6c757d;
+        }
+
+        .log-level.info {
+            color: #0dcaf0;
+        }
+
+        .log-level.warning {
+            color: #ffc107;
+        }
+
+        .log-level.error {
+            color: #dc3545;
+        }
+
+        .log-level.critical {
+            color: #ff6b6b;
+        }
+
+        .log-message {
+            flex: 1;
+            word-break: break-word;
+            color: #e0e0e0;
+        }
+
+        .log-entry.error .log-message {
+            color: #ff9999;
+        }
+
+        .log-entry.warning .log-message {
+            color: #ffcc99;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+
+        .stat-label {
+            color: #888;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .filter-btn {
+            padding: 5px 15px;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+
+        .filter-btn.active {
+            background: #00d4ff;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .filter-btn:not(.active) {
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+        }
+
+        .filter-btn:hover {
+            background: #444;
+        }
+
+        .scroll-indicator {
+            text-align: center;
+            padding: 10px;
+            color: #888;
+            font-size: 11px;
+        }
+
+        .container-xl {
+            max-width: 1400px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container-xl">
+            <span class="navbar-brand mb-0 h1">
+                <i class="bi bi-file-text"></i> System Logs
+            </span>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-light btn-sm" onclick="clearLogs()" title="Clear logs">
+                    <i class="bi bi-trash"></i> Clear
+                </button>
+                <button class="btn btn-outline-light btn-sm" onclick="toggleAutoScroll()" id="autoScrollBtn" title="Auto-scroll to bottom">
+                    <i class="bi bi-arrow-down-circle"></i> Auto
+                </button>
+                <a href="/" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-house"></i> Home
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-xl mt-4">
+        <!-- Statistics -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="totalLogs">0</div>
+                <div class="stat-label">Total Logs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="infoLogs">0</div>
+                <div class="stat-label">Info</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="warningLogs">0</div>
+                <div class="stat-label">Warnings</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="errorLogs">0</div>
+                <div class="stat-label">Errors</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div>
+            <label class="form-label">Filter by Level:</label>
+            <div class="filter-buttons">
+                <button class="filter-btn active" onclick="filterByLevel('all')">All</button>
+                <button class="filter-btn" onclick="filterByLevel('debug')">Debug</button>
+                <button class="filter-btn" onclick="filterByLevel('info')">Info</button>
+                <button class="filter-btn" onclick="filterByLevel('warning')">Warning</button>
+                <button class="filter-btn" onclick="filterByLevel('error')">Error</button>
+                <button class="filter-btn" onclick="filterByLevel('critical')">Critical</button>
+            </div>
+        </div>
+
+        <!-- Search -->
+        <div class="mb-3">
+            <input type="text" class="form-control bg-dark text-light" id="searchInput"
+                   placeholder="Search logs..." onkeyup="searchLogs()">
+        </div>
+
+        <!-- Log Viewer -->
+        <div class="log-viewer" id="logViewer"></div>
+        <div class="scroll-indicator">
+            <small>Scroll to see more logs or click <strong>Auto</strong> to auto-scroll</small>
+        </div>
+    </div>
+
+    <script>
+        let allLogs = [];
+        let filteredLogs = [];
+        let currentFilter = 'all';
+        let currentSearch = '';
+        let autoScroll = true;
+
+        // Fetch logs via WebSocket or polling
+        function loadLogs() {
+            fetch('/api/logs?limit=1000')
+                .then(response => response.json())
+                .then(logs => {
+                    allLogs = logs || [];
+                    updateLogs();
+                })
+                .catch(error => {
+                    console.error('Error loading logs:', error);
+                    document.getElementById('logViewer').innerHTML =
+                        '<div class="alert alert-danger">Error loading logs</div>';
+                });
+        }
+
+        function updateLogs() {
+            // Apply filters
+            filteredLogs = allLogs.filter(log => {
+                const levelMatch = currentFilter === 'all' || log.level.toLowerCase() === currentFilter;
+                const searchMatch = currentSearch === '' ||
+                    log.message.toLowerCase().includes(currentSearch.toLowerCase()) ||
+                    log.timestamp.includes(currentSearch);
+                return levelMatch && searchMatch;
+            });
+
+            // Update statistics
+            updateStats();
+
+            // Render logs
+            renderLogs();
+        }
+
+        function updateStats() {
+            const stats = {
+                debug: 0,
+                info: 0,
+                warning: 0,
+                error: 0,
+                critical: 0
+            };
+
+            allLogs.forEach(log => {
+                const level = log.level.toLowerCase();
+                if (level in stats) {
+                    stats[level]++;
+                }
+            });
+
+            document.getElementById('totalLogs').textContent = allLogs.length;
+            document.getElementById('infoLogs').textContent = stats.info;
+            document.getElementById('warningLogs').textContent = stats.warning;
+            document.getElementById('errorLogs').textContent = stats.error;
+        }
+
+        function renderLogs() {
+            const viewer = document.getElementById('logViewer');
+
+            if (filteredLogs.length === 0) {
+                viewer.innerHTML = '<div class="text-center text-muted py-4">No logs matching filter</div>';
+                return;
+            }
+
+            const html = filteredLogs.map(log => `
+                <div class="log-entry ${log.level.toLowerCase()}">
+                    <div class="log-timestamp">${log.timestamp}</div>
+                    <div class="log-level ${log.level.toLowerCase()}">${log.level}</div>
+                    <div class="log-message">${escapeHtml(log.message)}</div>
+                </div>
+            `).join('');
+
+            viewer.innerHTML = html;
+
+            // Auto-scroll to bottom
+            if (autoScroll) {
+                viewer.scrollTop = viewer.scrollHeight;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function filterByLevel(level) {
+            currentFilter = level;
+
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            updateLogs();
+        }
+
+        function searchLogs() {
+            currentSearch = document.getElementById('searchInput').value;
+            updateLogs();
+        }
+
+        function clearLogs() {
+            if (confirm('Are you sure you want to clear all logs?')) {
+                fetch('/api/logs', { method: 'DELETE' })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.status === 'success') {
+                            allLogs = [];
+                            updateLogs();
+                        }
+                    })
+                    .catch(error => console.error('Error clearing logs:', error));
+            }
+        }
+
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            const btn = document.getElementById('autoScrollBtn');
+            btn.classList.toggle('active', autoScroll);
+            if (autoScroll) {
+                document.getElementById('logViewer').scrollTop =
+                    document.getElementById('logViewer').scrollHeight;
+            }
+        }
+
+        // Load logs on page load
+        loadLogs();
+
+        // Refresh logs every 2 seconds
+        setInterval(loadLogs, 2000);
+
+        // WebSocket for real-time logs (optional)
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${protocol}//${window.location.host}/ws/logs`);
+
+            ws.onmessage = (event) => {
+                const log = JSON.parse(event.data);
+                allLogs.unshift(log); // Add to beginning
+                if (allLogs.length > 5000) {
+                    allLogs.pop(); // Keep only last 5000 logs
+                }
+                updateLogs();
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                // Fall back to polling
+            };
+        }
+
+        // Try WebSocket, fall back to polling if it fails
+        try {
+            connectWebSocket();
+        } catch (error) {
+            console.log('WebSocket not available, using polling');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+# Smart Lock Template - ABSTRACT TEMPLATE
+#
+# Template for smart door locks with secure lock/unlock states.
+# Supports automatic locking and manual override with time-based unlock.
+#
+# EXPECTED PARAMETERS in params (from manifest):
+#   - auto_lock_timeout_sec: int (default 300) - Auto-lock after unlock expires
+#
+# EXAMPLE USAGE in manifest.yaml:
+#   devices:
+#     - type: lock
+#       id: lock.front_door
+#       behaviors:
+#         - template: smart_lock
+#           priority: 20  # High priority for security
+#           params:
+#             auto_lock_timeout_sec: 300
+
+initial_state: "LOCKED"
+debounce_sec: 0.5
+
+states:
+  - "LOCKED"
+  - "UNLOCKED"
+  - "UNLOCKING"
+  - "LOCKING"
+  - "JAMMED"
+
+transitions:
+  # Unlocking process
+  - from_state: "LOCKED"
+    to_state: "UNLOCKING"
+    trigger: "unlock"
+    action: "start_unlock"
+
+  - from_state: "UNLOCKING"
+    to_state: "UNLOCKED"
+    trigger: "unlocked"
+    action: "confirm_unlock"
+    timeout_sec: 10  # Max 10 seconds to unlock
+
+  # Auto-lock timeout
+  - from_state: "UNLOCKED"
+    to_state: "LOCKING"
+    trigger: "timeout"
+    action: "start_lock"
+    timeout_sec: 300  # Auto-lock after 5 minutes
+
+  # Locking process
+  - from_state: ["UNLOCKING", "UNLOCKED", "LOCKING"]
+    to_state: "LOCKING"
+    trigger: "lock"
+    action: "start_lock"
+
+  - from_state: "LOCKING"
+    to_state: "LOCKED"
+    trigger: "locked"
+    action: "confirm_lock"
+    timeout_sec: 10  # Max 10 seconds to lock
+
+  # Jam detection (critical)
+  - from_state: "*"
+    to_state: "JAMMED"
+    trigger: "jam_detected"
+    action: "alert_jam"
+    priority: 100  # Critical priority
+
+  # Manual intervention
+  - from_state: "JAMMED"
+    to_state: "LOCKED"
+    trigger: "jam_cleared"
+    action: "confirm_lock"
+
+  # Emergency unlock (bypass security, requires manual acknowledgment)
+  - from_state: ["LOCKED", "JAMMED"]
+    to_state: "UNLOCKED"
+    trigger: "emergency_unlock"
+    action: "emergency_unlock"
+    priority: 150  # Highest priority

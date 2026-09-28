@@ -1,5 +1,8 @@
 """Routes for Device Discovery Wizard."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -135,6 +138,32 @@ async def apply_selective(request: Request) -> JSONResponse:
         return JSONResponse(content=result)
     except Exception as e:
         logger.error(f"Selective apply failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/api/rooms")
+async def get_rooms() -> JSONResponse:
+    """Get list of existing rooms from manifest."""
+    if _manifest_path is None:
+        raise HTTPException(status_code=503, detail="Manifest path not initialized")
+
+    try:
+        from pathlib import Path
+
+        import yaml
+
+        if not Path(_manifest_path).exists():
+            return JSONResponse(content={"rooms": []})
+
+        with open(_manifest_path) as f:
+            manifest = yaml.safe_load(f) or {}
+
+        rooms = manifest.get("rooms", [])
+        return JSONResponse(
+            content={"rooms": [{"id": room.get("id"), "name": room.get("name")} for room in rooms]}
+        )
+    except Exception as e:
+        logger.error(f"Failed to get rooms: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

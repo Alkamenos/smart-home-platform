@@ -1,0 +1,50 @@
+# Generic Switch Template - ABSTRACT TEMPLATE
+#
+# Простой шаблон для управления любым коммутатором (на/выключить).
+# Используется для автоматизации, которые могут быть вручную переопределены.
+#
+# EXPECTED PARAMETERS in params (from manifest):
+#   - (none required for minimal mode)
+#
+# EXAMPLE USAGE in manifest.yaml:
+#   devices:
+#     - type: switch
+#       id: switch.outlet_kitchen
+#       behaviors:
+#         - template: generic_switch
+#           priority: 10
+#           params: {}
+
+initial_state: "OFF"
+debounce_sec: 0.5
+
+states:
+  - "OFF"
+  - "ON"
+  - "MANUAL_OVERRIDE"
+
+transitions:
+  # Автоматическое включение
+  - from_state: "OFF"
+    to_state: "ON"
+    trigger: "turn_on"
+    action: "turn_on_switch"
+
+  # Автоматическое выключение
+  - from_state: "ON"
+    to_state: "OFF"
+    trigger: "turn_off"
+    action: "turn_off_switch"
+
+  # Ручное переопределение
+  - from_state: "*"
+    to_state: "MANUAL_OVERRIDE"
+    trigger: "manual_change"
+    action: "record_manual_override"
+
+  # Выход из ручного переопределения после таймаута
+  - from_state: "MANUAL_OVERRIDE"
+    to_state: "OFF"
+    trigger: "timeout"
+    action: "turn_off_switch"
+    timeout_sec: 3600  # 1 час

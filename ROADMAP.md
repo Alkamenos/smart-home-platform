@@ -237,6 +237,58 @@ gantt
 - Effort: 1 day
 - User Stories:
 
+## 🆕 Phase 9.9: Bulk Device Import Feature
+
+**Status:** IN PROGRESS
+
+- ✅ Device Import Specification (GitHub Spec Kit)
+- File: `docs/DEVICE_IMPORT_SPEC.md`
+- Detail: Comprehensive spec for bulk import workflow
+- Priority: CRITICAL
+- Status: ✅ DONE
+
+- ✅ Enhanced Device Classifier
+- File: `src/core/discovery/classifier.py`
+- Detail: 25+ patterns, device_class support, smart heuristics
+- Priority: HIGH
+- Status: ✅ DONE
+
+- ✅ CLI Bulk Import Command
+- File: `src/smart_home/cli/commands/bulk_import.py`
+- Detail: Four subcommands: interactive, discover, apply, config
+- Priority: HIGH
+- Status: ✅ DONE
+- Subcommands:
+  - ✅ `interactive` - Select devices/rooms interactively
+  - ✅ `discover` - Paginated device listing
+  - ✅ `apply` - Bulk auto-apply with dry-run
+  - ✅ `config` - Manage import config
+
+- ✅ Minimal FSM Templates
+- File: `src/features/generic_*.yaml` + `src/features/smart_lock.yaml`
+- Detail: 4 new templates for common device types
+- Priority: MEDIUM
+- Status: ✅ DONE
+- Templates:
+  - ✅ `generic_switch.yaml` - Simple on/off devices
+  - ✅ `generic_cover.yaml` - Blinds, garage doors
+  - ✅ `speed_control.yaml` - Variable speed fans
+  - ✅ `smart_lock.yaml` - Smart door locks
+
+- ✅ Web UI for Device Import
+- File: `src/webui/routes_discovery.py`, `src/webui/templates/discovery.html`
+- Detail: Interactive UI for device selection with **room reassignment modal**
+- Priority: MEDIUM
+- Status: ✅ DONE
+- Features:
+  - ✅ Device scanning with pagination
+  - ✅ Filtering (domain/category/search)
+  - ✅ **Interactive room selection modal** (click room name to change)
+  - ✅ Create new rooms on the fly
+  - ✅ Preview selected devices
+  - ✅ Dry-run before applying
+  - ✅ Automatic backup
+
 ## 📌 Phase 9.8: Critical Production Fixes
 
 **Status:** PLANNING

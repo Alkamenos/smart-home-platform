@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -168,18 +168,47 @@ async def get_fsm_diagram(request: Request, entity_id: str) -> Response:
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request) -> HTMLResponse:
-    """Dashboard page with event charts.
+    """Dashboard page with event charts and FSM diagrams.
 
     Args:
         request: FastAPI request object.
 
     Returns:
-        Dashboard HTML page with Chart.js graphs.
+        Dashboard HTML page with Chart.js graphs and FSM diagrams.
     """
+    # Collect all devices from manifest
+    devices = []
+    try:
+        # Try to get container from app state
+        container = request.app.state.container
+        if container and hasattr(container, "manifest") and container.manifest:
+            for room in container.manifest.rooms:
+                for device in room.devices:
+                    devices.append(
+                        {
+                            "id": device.id,
+                            "type": device.type,
+                            "name": device.name,
+                            "room": room.id,
+                            "behaviors": [
+                                {
+                                    "template": b.template,
+                                    "priority": b.priority,
+                                }
+                                for b in (device.behaviors or [])
+                            ],
+                        }
+                    )
+    except Exception as e:
+        logger.warning(f"Could not load devices for dashboard: {e}")
+
     return templates.TemplateResponse(
         request,
         "dashboard.html",
-        {"title": "Dashboard"},
+        {
+            "title": "Dashboard",
+            "devices": devices,
+        },
     )
 
 
@@ -425,3 +454,57 @@ async def respond_to_suggestion(suggestion_id: str, request: Request) -> Any:
     except Exception as e:
         logger.error(f"Failed to respond to suggestion {suggestion_id}: {e}")
         return {"error": str(e)}, 500
+
+
+@router.get("/api/templates")
+async def list_templates() -> dict[str, Any]:
+    """Get all available FSM templates.
+
+    Returns:
+        JSON with list of templates and their parameters.
+    """
+    from .template_loader import get_template_loader
+
+    try:
+        loader = get_template_loader()
+        templates = loader.load_all()
+
+        result = {
+            "templates": [template.to_dict() for template in templates.values()],
+            "count": len(templates),
+        }
+        return result
+    except Exception as e:
+        logger.error(f"Failed to load templates: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/api/templates/{template_name}")
+async def get_template(template_name: str) -> dict[str, Any]:
+    """Get a specific template by name.
+
+    Args:
+        template_name: Name of the template (without .yaml extension).
+
+    Returns:
+        JSON with template metadata and parameters.
+
+    Raises:
+        HTTPException: If template not found or error loading templates.
+    """
+    from .template_loader import get_template_loader
+
+    try:
+        loader = get_template_loader()
+        templates = loader.load_all()
+
+        if template_name not in templates:
+            raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
+
+        template = templates[template_name]
+        return template.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get template {template_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e

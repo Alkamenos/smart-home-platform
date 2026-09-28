@@ -86,6 +86,13 @@
 
     <div class="room-footer">
         <button class="action-btn"
+                hx-get="/devices/{{ room_index }}/add"
+                hx-target="#device-form-container"
+                data-bs-toggle="modal"
+                data-bs-target="#deviceModal">
+            <i class="bi bi-plus-circle"></i> Add Device
+        </button>
+        <button class="action-btn"
                 hx-get="/rooms/{{ room_index }}/edit"
                 hx-target="#edit-modal-content"
                 data-bs-toggle="modal"

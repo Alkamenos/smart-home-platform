@@ -21,13 +21,17 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-from loguru import logger
+
+
+# Use standard logging instead of loguru for consistency with logging_service
+logger = logging.getLogger(__name__)
 
 
 class SimpleHAWebSocketClient:
@@ -262,8 +266,9 @@ class HAAdapter:
     def _generate_trace_id(self) -> str:
         return str(uuid.uuid4())[:8]
 
-    def _get_logger(self, trace_id: str) -> Any:
-        return logger.bind(trace_id=trace_id)
+    def _get_logger(self, trace_id: str) -> logging.LoggerAdapter:
+        """Get a logger with trace_id context."""
+        return logging.LoggerAdapter(logger, {"trace_id": trace_id})
 
     async def on_state_change(
         self,
@@ -424,6 +429,7 @@ class HAAdapter:
         while not self._shutdown_event.is_set():
             try:
                 log = self._get_logger(self._generate_trace_id())
+                logger.info(f"🔌 HAAdapter: attempting WebSocket connection to {self._ws_url}")
                 log.info(f"HAAdapter: connecting to WebSocket {self._ws_url}")
 
                 # Отладочный лог
@@ -448,7 +454,7 @@ class HAAdapter:
                 if not getattr(self._ws_client, "connected", False):
                     raise ConnectionError("WebSocket connect() succeeded but connected=False")
 
-                log.info("HAAdapter: WebSocket connected successfully")
+                logger.info("✅ HAAdapter: WebSocket connected successfully!")
 
                 # Подписываемся на события
                 await self._ws_client.subscribe(
@@ -456,6 +462,7 @@ class HAAdapter:
                     {"type": "state_changed"},
                 )
                 log.info("HAAdapter: subscribed to state_changed events")
+                logger.info("🔔 HAAdapter: listening for HA state changes...")
 
                 reconnect_delay = 1.0
 
@@ -497,6 +504,7 @@ class HAAdapter:
             except Exception as e:
                 trace_id = self._generate_trace_id()
                 log = self._get_logger(trace_id)
+                logger.error(f"❌ HAAdapter connection failed: {type(e).__name__}: {e}")
                 log.error(f"HAAdapter: connection error: {type(e).__name__}: {e}")
 
                 # Логируем состояние для отладки
@@ -508,6 +516,7 @@ class HAAdapter:
                     log.error(f"HAAdapter: _ws_client.ws = {getattr(self._ws_client, 'ws', 'N/A')}")
 
                 if not self._shutdown_event.is_set():
+                    logger.info(f"🔄 HAAdapter: retrying in {reconnect_delay:.1f}s...")
                     log.info(f"HAAdapter: reconnecting in {reconnect_delay:.1f}s")
                     await asyncio.sleep(reconnect_delay)
                     reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
@@ -531,6 +540,7 @@ class HAAdapter:
             old_state = old_state_obj.get("state", "unknown") if old_state_obj else "unknown"
             new_state = new_state_obj.get("state", "unknown") if new_state_obj else "unknown"
 
+            logger.info(f"📡 HA STATE CHANGE: {entity_id}: '{old_state}' -> '{new_state}'")
             log.info(
                 f"HAAdapter: WebSocket state_change for {entity_id}: '{old_state}' -> '{new_state}'"
             )

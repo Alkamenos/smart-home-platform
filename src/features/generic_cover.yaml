@@ -1,0 +1,72 @@
+# Generic Cover Template - ABSTRACT TEMPLATE
+#
+# Template for window covers, blinds, garage doors, etc.
+# Supports open/close/stop positions.
+#
+# EXPECTED PARAMETERS in params (from manifest):
+#   - (none required for minimal mode)
+#
+# EXAMPLE USAGE in manifest.yaml:
+#   devices:
+#     - type: cover
+#       id: cover.garage_door
+#       behaviors:
+#         - template: generic_cover
+#           priority: 10
+#           params: {}
+
+initial_state: "CLOSED"
+debounce_sec: 0.5
+
+states:
+  - "CLOSED"
+  - "OPENING"
+  - "OPEN"
+  - "CLOSING"
+  - "STOPPED"
+  - "MANUAL_OVERRIDE"
+
+transitions:
+  # Opening sequence
+  - from_state: "CLOSED"
+    to_state: "OPENING"
+    trigger: "open"
+    action: "start_opening"
+
+  - from_state: "OPENING"
+    to_state: "OPEN"
+    trigger: "fully_opened"
+    action: "confirm_open"
+    timeout_sec: 60  # Max 60 seconds to open
+
+  # Closing sequence
+  - from_state: "OPEN"
+    to_state: "CLOSING"
+    trigger: "close"
+    action: "start_closing"
+
+  - from_state: "CLOSING"
+    to_state: "CLOSED"
+    trigger: "fully_closed"
+    action: "confirm_closed"
+    timeout_sec: 60  # Max 60 seconds to close
+
+  # Stop from any position
+  - from_state: "*"
+    to_state: "STOPPED"
+    trigger: "stop"
+    action: "stop_cover"
+    priority: 50  # High priority to interrupt other transitions
+
+  # Manual override
+  - from_state: "*"
+    to_state: "MANUAL_OVERRIDE"
+    trigger: "manual_change"
+    action: "record_manual_override"
+
+  # Exit manual override after timeout
+  - from_state: "MANUAL_OVERRIDE"
+    to_state: "CLOSED"
+    trigger: "timeout"
+    action: "close_cover"
+    timeout_sec: 3600  # 1 hour

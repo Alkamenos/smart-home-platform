@@ -1,5 +1,8 @@
 """Pydantic models for device discovery."""
 
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -20,6 +23,7 @@ class DeviceCategory(StrEnum):
     CLIMATE_CONTROL = "climate_control"
     VENTILATION = "ventilation"
     COVER_CONTROL = "cover_control"
+    SECURITY = "security"
     MONITORING_ONLY = "monitoring_only"
 
 
@@ -30,6 +34,10 @@ class BehaviorTemplate(StrEnum):
     NIGHT_LIGHT = "night_light"
     CLIMATE_CONTROL = "climate_control"
     HUMIDITY_VENTILATION = "humidity_ventilation"
+    SPEED_CONTROL = "speed_control"
+    GENERIC_SWITCH = "generic_switch"
+    GENERIC_COVER = "generic_cover"
+    SMART_LOCK = "smart_lock"
 
 
 class DiscoveredDevice(BaseModel):

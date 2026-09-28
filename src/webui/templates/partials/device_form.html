@@ -40,25 +40,79 @@
                        value="{{ device.name if device.name else '' }}">
             </div>
 
+            <!-- NEW: Room Selector Dropdown -->
+            <div class="mb-3">
+                <label for="room_id" class="form-label">Room</label>
+                <select class="form-select" id="room_id" name="room_id">
+                    <option value="">Select room...</option>
+                    {% for room in available_rooms %}
+                        <option value="{{ room.id }}"
+                                {% if room.id == current_room_id %}selected{% endif %}>
+                            {{ room.name }} ({{ room.devices|length }} devices)
+                        </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Select a different room to move device</div>
+            </div>
+
             <h5>Behaviors</h5>
             <div id="behaviors-container">
                 {% if device.behaviors %}
                     {% for behavior in device.behaviors %}
-                    <div class="behavior-item border rounded p-3 mb-2">
+                    <div class="behavior-item border rounded p-3 mb-3" style="background: rgba(255,255,255,0.02);">
                         <div class="row">
-                            <div class="col-md-4">
+                            <!-- Template Dropdown -->
+                            <div class="col-md-5">
                                 <label class="form-label">Template</label>
-                                <input type="text" class="form-control" name="behavior_template_{{ loop.index0 }}"
-                                       value="{{ behavior.template }}" required>
+                                <select class="form-select behavior-template"
+                                        name="behavior_template_{{ loop.index0 }}"
+                                        onchange="loadTemplateParams(this, {{ loop.index0 }})">
+                                    <option value="">Select template...</option>
+                                    {% for template_name in available_templates %}
+                                        <option value="{{ template_name }}"
+                                                {% if template_name == behavior.template %}selected{% endif %}>
+                                            {{ template_name }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text small">Behavior template to apply</div>
                             </div>
+
+                            <!-- Priority -->
                             <div class="col-md-3">
                                 <label class="form-label">Priority</label>
                                 <input type="number" class="form-control" name="behavior_priority_{{ loop.index0 }}"
-                                       value="{{ behavior.priority }}" required>
+                                       value="{{ behavior.priority }}" min="1" max="100" required>
+                                <div class="form-text small">1-100 (higher = priority)</div>
                             </div>
-                            <div class="col-md-5">
-                                <label class="form-label">Params (JSON)</label>
-                                <textarea class="form-control" name="behavior_params_{{ loop.index0 }}">{{ behavior.params | tojson }}</textarea>
+
+                            <!-- Remove Button -->
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button type="button" class="btn btn-sm btn-outline-danger w-100"
+                                        onclick="removeBehavior(this)">
+                                    <i class="bi bi-trash"></i> Remove
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Parameters Section (collapsible) -->
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                <a href="#" onclick="toggleParamsForm(event, {{ loop.index0 }})">
+                                    <i class="bi bi-chevron-down"></i> Show Parameters
+                                </a>
+                            </small>
+                            <div id="params-form-{{ loop.index0 }}" class="params-form mt-2" style="display:none;">
+                                <div class="alert alert-info small mb-2">
+                                    <strong>Current Params:</strong><br/>
+                                    <code style="word-break: break-all;">{{ behavior.params | tojson }}</code>
+                                </div>
+                                <label class="form-label small">Edit as JSON</label>
+                                <textarea class="form-control form-control-sm"
+                                          name="behavior_params_{{ loop.index0 }}"
+                                          rows="4"
+                                          placeholder="{}">{{ behavior.params | tojson }}</textarea>
+                                <div class="form-text small mt-1">Valid JSON object, e.g: {"param1": "value", "param2": 123}</div>
                             </div>
                         </div>
                     </div>
@@ -66,8 +120,8 @@
                 {% endif %}
             </div>
 
-            <button type="button" class="btn btn-sm btn-outline-primary mb-3" onclick="addBehavior()">
-                + Add Behavior
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addBehavior()">
+                <i class="bi bi-plus-circle"></i> Add Behavior
             </button>
 
             <div class="d-flex gap-2">
@@ -82,28 +136,102 @@
 
 <script>
 let behaviorCount = {{ device.behaviors|length if device.behaviors else 0 }};
+const availableTemplates = {{ available_templates | tojson }};
 
 function addBehavior() {
     const container = document.getElementById('behaviors-container');
     const div = document.createElement('div');
-    div.className = 'behavior-item border rounded p-3 mb-2';
+    div.className = 'behavior-item border rounded p-3 mb-3';
+    div.style.background = 'rgba(255,255,255,0.02)';
+
+    // Build template options
+    let templateOptions = '<option value="">Select template...</option>';
+    availableTemplates.forEach(template => {
+        templateOptions += `<option value="${template}">${template}</option>`;
+    });
+
     div.innerHTML = `
         <div class="row">
-            <div class="col-md-4">
+            <div class="col-md-5">
                 <label class="form-label">Template</label>
-                <input type="text" class="form-control" name="behavior_template_${behaviorCount}" required>
+                <select class="form-select behavior-template"
+                        name="behavior_template_${behaviorCount}"
+                        onchange="loadTemplateParams(this, ${behaviorCount})">
+                    ${templateOptions}
+                </select>
+                <div class="form-text small">Behavior template to apply</div>
             </div>
             <div class="col-md-3">
                 <label class="form-label">Priority</label>
-                <input type="number" class="form-control" name="behavior_priority_${behaviorCount}" required>
+                <input type="number" class="form-control" name="behavior_priority_${behaviorCount}"
+                       value="10" min="1" max="100" required>
+                <div class="form-text small">1-100 (higher = priority)</div>
             </div>
-            <div class="col-md-5">
-                <label class="form-label">Params (JSON)</label>
-                <textarea class="form-control" name="behavior_params_${behaviorCount}">{}</textarea>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="button" class="btn btn-sm btn-outline-danger w-100"
+                        onclick="removeBehavior(this)">
+                    <i class="bi bi-trash"></i> Remove
+                </button>
+            </div>
+        </div>
+        <div class="mt-3">
+            <small class="text-muted">
+                <a href="#" onclick="toggleParamsForm(event, ${behaviorCount})">
+                    <i class="bi bi-chevron-down"></i> Show Parameters
+                </a>
+            </small>
+            <div id="params-form-${behaviorCount}" class="params-form mt-2" style="display:none;">
+                <label class="form-label small">Parameters (JSON)</label>
+                <textarea class="form-control form-control-sm"
+                          name="behavior_params_${behaviorCount}"
+                          rows="4"
+                          placeholder="{}">
+{}</textarea>
+                <div class="form-text small mt-1">Valid JSON object, e.g: {"param1": "value", "param2": 123}</div>
             </div>
         </div>
     `;
     container.appendChild(div);
     behaviorCount++;
+}
+
+function removeBehavior(button) {
+    button.closest('.behavior-item').remove();
+}
+
+function toggleParamsForm(event, index) {
+    event.preventDefault();
+    const form = document.getElementById(`params-form-${index}`);
+    if (form) {
+        const isVisible = form.style.display !== 'none';
+        form.style.display = isVisible ? 'none' : 'block';
+
+        // Update chevron icon
+        const link = event.target.closest('a');
+        const icon = link.querySelector('i');
+        if (icon) {
+            icon.className = isVisible ? 'bi bi-chevron-down' : 'bi bi-chevron-up';
+        }
+    }
+}
+
+function loadTemplateParams(selectElement, index) {
+    const templateName = selectElement.value;
+    if (!templateName) return;
+
+    // Fetch template info
+    fetch(`/api/templates/${templateName}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Template not found:', data.error);
+                return;
+            }
+
+            // For now, we'll just log the parameters
+            // In a more advanced UI, we could generate form fields for each parameter
+            console.log('Template parameters:', data.parameters);
+        })
+        .catch(error => console.error('Error loading template:', error));
 }
 </script>
