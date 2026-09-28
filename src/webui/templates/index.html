@@ -8,217 +8,824 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Home Manifest Editor</title>
+    <title>Smart Home - Manifest Editor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js"></script>
     <style>
-        .room-card { margin-bottom: 1rem; }
-        .device-item { border-left: 3px solid #0d6efd; padding-left: 1rem; margin: 0.5rem 0; }
-        .behavior-badge { font-size: 0.8em; margin-right: 0.3em; }
-        .sensor-item { font-family: monospace; font-size: 0.9em; }
-        .unsaved-indicator { display: none; }
-        .has-changes .unsaved-indicator { display: inline; }
+        :root {
+            --primary: #0d6efd;
+            --success: #198754;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --info: #0dcaf0;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --lighting: #ffc107;
+            --climate: #0d6efd;
+            --ventilation: #17a2b8;
+            --sensor: #6c757d;
+            --accent: #00d4ff;
+        }
+
+        * {
+            transition: all 0.2s ease;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            font-size: 14px;
+        }
+
+        .navbar {
+            background: linear-gradient(90deg, #0a0e27 0%, #1a1a2e 100%);
+            border-bottom: 2px solid var(--accent);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.1);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.3rem;
+            background: linear-gradient(90deg, var(--accent), var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .stat-card:hover::before {
+            left: 100%;
+        }
+
+        .stat-card h3 {
+            margin-bottom: 0.5rem;
+            color: var(--accent);
+            font-weight: 700;
+            font-size: 2rem;
+        }
+
+        .stat-card p {
+            color: #999;
+            margin-bottom: 0;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #fff;
+        }
+
+        .section-title i {
+            color: var(--accent);
+            font-size: 1.8rem;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .toolbar-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.03);
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .toolbar-btn:hover {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .search-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: #fff;
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 1rem;
+        }
+
+        .search-box::placeholder {
+            color: #666;
+        }
+
+        .room-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .room-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .room-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent);
+            box-shadow: 0 8px 32px rgba(0, 212, 255, 0.15);
+            transform: translateY(-4px);
+        }
+
+        .room-header {
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(13, 110, 253, 0.1));
+            padding: 1.25rem;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .room-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0;
+        }
+
+        .room-title h3 {
+            margin-bottom: 0;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .room-title .room-id {
+            color: #666;
+            font-size: 0.85rem;
+            font-family: monospace;
+        }
+
+        .room-badge {
+            background: var(--accent);
+            color: #000;
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .room-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.85rem;
+        }
+
+        .action-btn:hover {
+            background: rgba(0, 212, 255, 0.2);
+            color: var(--accent);
+        }
+
+        .action-btn.danger:hover {
+            background: rgba(220, 53, 69, 0.2);
+            color: #dc3545;
+        }
+
+        .device-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            padding: 1.25rem;
+        }
+
+        .device-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .device-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.1);
+        }
+
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .device-name {
+            margin-bottom: 0;
+            font-weight: 600;
+            font-size: 0.95rem;
+            word-break: break-word;
+        }
+
+        .device-type {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent);
+        }
+
+        .device-category {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .cat-lighting { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
+        .cat-climate { background: rgba(13, 110, 253, 0.2); color: #0d6efd; }
+        .cat-ventilation { background: rgba(23, 162, 184, 0.2); color: #17a2b8; }
+        .cat-sensor { background: rgba(108, 117, 125, 0.2); color: #adb5bd; }
+
+        .device-meta {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            font-size: 0.8rem;
+            color: #999;
+        }
+
+        .device-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .device-behaviors {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+
+        .behavior-tag {
+            background: rgba(13, 110, 253, 0.2);
+            color: #0d6efd;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .device-actions {
+            display: flex;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .device-action {
+            flex: 1;
+            padding: 0.4rem;
+            border-radius: 4px;
+            border: none;
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .device-action:hover {
+            background: rgba(0, 212, 255, 0.2);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+            color: var(--accent);
+        }
+
+        .sidebar-panel {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: sticky;
+            top: 1rem;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .sidebar-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .sidebar-section h6 {
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            margin-bottom: 1rem;
+        }
+
+        .sidebar-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar-list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .sidebar-list li:last-child {
+            border-bottom: none;
+        }
+
+        .sidebar-list a {
+            color: #999;
+            text-decoration: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+
+        .sidebar-list a:hover {
+            color: var(--accent);
+            padding-left: 0.5rem;
+        }
+
+        .badge-accent {
+            background: var(--accent);
+            color: #000;
+            font-weight: 600;
+        }
+
+        .unsaved-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            color: #ffc107;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .unsaved-indicator i {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(0, 212, 255, 0.2);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Modal styles */
+        .modal-content {
+            background: #1a1a2e;
+            border: 1px solid rgba(0, 212, 255, 0.2);
+        }
+
+        .modal-header {
+            border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+            background: rgba(0, 212, 255, 0.05);
+        }
+
+        .form-control, .form-select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            color: #fff;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 0.2rem rgba(0, 212, 255, 0.25);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .room-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .device-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .toolbar {
+                flex-direction: column;
+            }
+
+            .search-box {
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .device-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .navbar-brand {
+                font-size: 1.1rem;
+            }
+
+            .section-title {
+                font-size: 1.2rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container-fluid">
-            <span class="navbar-brand mb-0 h1">🏠 Smart Home Manifest Editor</span>
-            <span class="navbar-text">
-                {{ manifest.instance.name }} (v{{ manifest.version }})
-                <span class="badge bg-warning text-dark unsaved-indicator {% if has_unsaved_changes %}has-changes{% endif %}">
-                    ⚠️ Unsaved changes
-                </span>
-            </span>
-        </div>
-        <div class="d-flex gap-2">
-            <a href="/discovery" class="btn btn-outline-success btn-sm">
-                🔍 Device Discovery
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-house-fill"></i> Smart Home
             </a>
-            <button hx-get="/manifest/reload"
-                    hx-target="body"
-                    hx-swap="outerHTML"
-                    class="btn btn-outline-secondary btn-sm">
-                🔄 Revert
-            </button>
-            <button hx-post="/save"
-                    hx-target="#save-message"
-                    class="btn btn-primary btn-sm">
-                💾 Save Manifest
-            </button>
+            <span class="navbar-text ms-auto">
+                <span style="color: #999;">{{ manifest.instance.name }}</span>
+                {% if has_unsaved_changes %}
+                <span class="unsaved-indicator ms-2">
+                    <i class="bi bi-exclamation-circle"></i> Unsaved
+                </span>
+                {% endif %}
+            </span>
         </div>
     </nav>
 
-    <div id="save-message"></div>
+    <main class="container-fluid py-4">
+        <!-- Top Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <h3>{{ manifest.rooms|length }}</h3>
+                <p><i class="bi bi-door-closed"></i> Rooms</p>
+            </div>
+            <div class="stat-card">
+                <h3>{{ total_devices }}</h3>
+                <p><i class="bi bi-lightbulb"></i> Devices</p>
+            </div>
+            <div class="stat-card">
+                <h3>{{ total_behaviors }}</h3>
+                <p><i class="bi bi-gear"></i> Behaviors</p>
+            </div>
+            <div class="stat-card">
+                <h3>v{{ manifest.version }}</h3>
+                <p><i class="bi bi-tag"></i> Version</p>
+            </div>
+        </div>
 
-    <div class="container mt-4">
         <div class="row">
-            <div class="col-md-8">
-                <h2>Rooms & Devices
-                    <button hx-get="/rooms/-1/edit"
+            <!-- Main Content -->
+            <div class="col-lg-9">
+                <!-- Toolbar -->
+                <div class="toolbar">
+                    <input type="text" id="search-box" class="search-box" placeholder="🔍 Search devices, rooms...">
+                    <button class="toolbar-btn" onclick="filterByCategory('all')">
+                        <i class="bi bi-list"></i> All
+                    </button>
+                    <button class="toolbar-btn" onclick="filterByCategory('lighting')">
+                        <i class="bi bi-lightbulb"></i> Lighting
+                    </button>
+                    <button class="toolbar-btn" onclick="filterByCategory('climate')">
+                        <i class="bi bi-thermometer"></i> Climate
+                    </button>
+                    <button class="toolbar-btn" onclick="filterByCategory('ventilation')">
+                        <i class="bi bi-wind"></i> Ventilation
+                    </button>
+                    <button class="toolbar-btn" onclick="filterByCategory('sensor')">
+                        <i class="bi bi-graph-up"></i> Sensors
+                    </button>
+                </div>
+
+                <!-- Rooms Section -->
+                {% if manifest.rooms %}
+                <div class="section-title">
+                    <i class="bi bi-door-closed"></i>
+                    Rooms & Devices
+                    <button class="btn btn-sm btn-outline-light ms-auto" 
+                            hx-get="/rooms/-1/edit"
                             hx-target="#edit-modal-content"
                             data-bs-toggle="modal"
-                            data-bs-target="#editModal"
-                            class="btn btn-sm btn-outline-primary ms-2">
-                        ➕ Add Room
+                            data-bs-target="#editModal">
+                        <i class="bi bi-plus-circle"></i> Add Room
                     </button>
-                </h2>
+                </div>
 
-                <div id="rooms-container">
-                {% if manifest.rooms %}
+                <div class="room-grid" id="rooms-container">
                     {% for room in manifest.rooms %}
                     {% set room_idx = loop.index0 %}
-                    <div class="card room-card" id="room-{{ room_idx }}">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h3 class="mb-0">{{ room.name }} <small class="text-muted">({{ room.id }})</small></h3>
-                            <div>
-                                <span class="badge bg-secondary me-2">{{ room.devices|length }} devices</span>
-                                <button hx-get="/rooms/{{ room_idx }}/edit"
-                                        hx-target="#edit-modal-content"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#editModal"
-                                        class="btn btn-sm btn-outline-primary">
-                                    ✏️ Edit
-                                </button>
-                                <button hx-delete="/rooms/{{ room_idx }}"
-                                        hx-target="#room-{{ room_idx }}"
-                                        hx-swap="outerHTML"
-                                        hx-confirm="Удалить комнату {{ room.name }}?"
-                                        class="btn btn-sm btn-outline-danger ms-1">
-                                    🗑️
-                                </button>
-                            </div>
+                    <div class="room-card" data-room="{{ room.id }}">
+                        <div class="room-header">
+                            <h3 class="room-title">
+                                <i class="bi bi-door-closed"></i>
+                                <div>
+                                    <strong>{{ room.name }}</strong>
+                                    <div class="room-id">{{ room.id }}</div>
+                                </div>
+                            </h3>
                         </div>
-                        <div class="card-body">
-                            {% if room.sensors %}
-                            <h5>📡 Sensors</h5>
-                            <ul class="list-group list-group-flush mb-3">
-                                {% for sensor_type, sensor_id in room.sensors.items() %}
-                                <li class="list-group-item sensor-item">
-                                    <strong>{{ sensor_type }}:</strong> {{ sensor_id }}
-                                </li>
-                                {% endfor %}
-                            </ul>
-                            {% endif %}
 
-                            {% if room.devices %}
-                            <h5>🔌 Devices</h5>
-                            {% for device in room.devices %}
-                            <div class="device-item">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <h6>{{ device.id }} <span class="badge bg-secondary">{{ device.type }}</span></h6>
-                                    <div>
-                                        <button class="btn btn-sm btn-outline-info me-1"
-                                                onclick="openFSMModal('{{ device.id }}')">
-                                            📊 FSM
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-primary"
-                                                hx-get="/devices/{{ room_idx }}/{{ device.id }}/edit"
-                                                hx-target="#device-form-container">
-                                            Edit
-                                        </button>
+                        {% if room.devices or room.sensors %}
+                        <div class="device-grid">
+                            <!-- Sensors -->
+                            {% if room.sensors %}
+                                {% for sensor_type, sensor_id in room.sensors.items() %}
+                                <div class="device-card" data-device="{{ sensor_id }}">
+                                    <div class="device-header">
+                                        <h6 class="device-name">
+                                            <i class="bi bi-thermometer"></i>
+                                            {{ sensor_type|replace('_', ' ')|title }}
+                                        </h6>
+                                        <span class="device-type">Sensor</span>
+                                    </div>
+                                    <div class="device-meta">
+                                        <span class="device-meta-item">
+                                            <i class="bi bi-tag"></i> {{ sensor_id }}
+                                        </span>
                                     </div>
                                 </div>
+                                {% endfor %}
+                            {% endif %}
+
+                            <!-- Devices -->
+                            {% for device in room.devices %}
+                            <div class="device-card" data-device="{{ device.id }}">
+                                <div class="device-header">
+                                    <h6 class="device-name">{{ device.id }}</h6>
+                                    <span class="device-type">{{ device.type }}</span>
+                                </div>
+
                                 {% if device.behaviors %}
-                                <div class="mt-2">
+                                <div class="device-behaviors">
                                     {% for behavior in device.behaviors %}
-                                    <span class="badge bg-primary behavior-badge">
-                                        {{ behavior.template }} (priority: {{ behavior.priority }})
+                                    <span class="behavior-tag">
+                                        {{ behavior.template }} <br>
+                                        <small>P:{{ behavior.priority }}</small>
                                     </span>
                                     {% endfor %}
                                 </div>
                                 {% endif %}
+
+                                <div class="device-meta">
+                                    <span class="device-meta-item">
+                                        <i class="bi bi-folder"></i> {{ room.name }}
+                                    </span>
+                                </div>
+
+                                <div class="device-actions">
+                                    <button class="device-action" onclick="showFSM('{{ device.id }}')">
+                                        <i class="bi bi-diagram-3"></i> FSM
+                                    </button>
+                                    <button class="device-action" 
+                                            hx-get="/devices/{{ room_idx }}/{{ device.id }}/edit"
+                                            hx-target="#device-form-container"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#editModal">
+                                        <i class="bi bi-pencil"></i> Edit
+                                    </button>
+                                </div>
                             </div>
                             {% endfor %}
-                            {% else %}
-                            <p class="text-muted mb-0">No devices configured</p>
-                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="empty-state">
+                            <p style="margin-bottom: 0;">No devices in this room</p>
+                        </div>
+                        {% endif %}
+
+                        <div style="padding: 1rem 1.25rem; border-top: 1px solid rgba(255, 255, 255, 0.05); display: flex; gap: 0.5rem;">
+                            <button class="action-btn" 
+                                    hx-get="/rooms/{{ room_idx }}/edit"
+                                    hx-target="#edit-modal-content"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#editModal">
+                                <i class="bi bi-pencil"></i> Edit Room
+                            </button>
+                            <button class="action-btn danger" 
+                                    hx-delete="/rooms/{{ room_idx }}"
+                                    hx-target="closest .room-card"
+                                    hx-swap="outerHTML swap:1s"
+                                    hx-confirm="Delete room '{{ room.name }}'?">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
                         </div>
                     </div>
                     {% endfor %}
-                {% else %}
-                    <div class="alert alert-warning">
-                        ⚠️ No rooms configured in manifest.
-                    </div>
-                {% endif %}
                 </div>
+                {% else %}
+                <div class="empty-state" style="margin-top: 3rem;">
+                    <i class="bi bi-inbox"></i>
+                    <p>No rooms configured yet</p>
+                    <button class="btn btn-outline-light"
+                            hx-get="/rooms/-1/edit"
+                            hx-target="#edit-modal-content"
+                            data-bs-toggle="modal"
+                            data-bs-target="#editModal">
+                        Create First Room
+                    </button>
+                </div>
+                {% endif %}
             </div>
 
-            <div class="col-md-4">
-                <h2>Instance Info</h2>
-                <div class="card mb-3">
-                    <div class="card-body">
-                        <p><strong>ID:</strong> {{ manifest.instance.id }}</p>
-                        <p><strong>Name:</strong> {{ manifest.instance.name }}</p>
-                        <p><strong>Owner:</strong> {{ manifest.instance.owner }}</p>
-                        <p><strong>Created:</strong> {{ manifest.instance.created_at }}</p>
-                        <p><strong>Version:</strong> {{ manifest.version }}</p>
+            <!-- Sidebar -->
+            <div class="col-lg-3">
+                <div class="sidebar-panel">
+                    <!-- Quick Actions -->
+                    <div class="sidebar-section">
+                        <h6><i class="bi bi-lightning"></i> Actions</h6>
+                        <button class="btn btn-sm btn-outline-light w-100 mb-2"
+                                hx-post="/save"
+                                hx-target="#save-message">
+                            <i class="bi bi-cloud-check"></i> Save Manifest
+                        </button>
+                        <button class="btn btn-sm btn-outline-light w-100 mb-2"
+                                hx-get="/manifest/reload"
+                                hx-target="body"
+                                hx-swap="outerHTML">
+                            <i class="bi bi-arrow-clockwise"></i> Reload
+                        </button>
+                        <a href="/discovery" class="btn btn-sm btn-outline-light w-100">
+                            <i class="bi bi-plus-circle"></i> Add Devices
+                        </a>
+                    </div>
+
+                    <!-- Instance Info -->
+                    <div class="sidebar-section">
+                        <h6><i class="bi bi-info-circle"></i> Instance</h6>
+                        <ul class="sidebar-list">
+                            <li><strong>ID:</strong> <br><small style="font-family: monospace; color: #666;">{{ manifest.instance.id }}</small></li>
+                            <li><strong>Owner:</strong> <br>{{ manifest.instance.owner }}</li>
+                            <li><strong>Created:</strong> <br><small>{{ manifest.instance.created_at|truncate(10, True) }}</small></li>
+                        </ul>
+                    </div>
+
+                    <!-- Automation Rules -->
+                    {% if manifest.automation_rules %}
+                    <div class="sidebar-section">
+                        <h6><i class="bi bi-sliders"></i> Automation</h6>
+                        <ul class="sidebar-list">
+                            <li>
+                                <strong>Global Lockout:</strong> <br>
+                                <small>{{ manifest.automation_rules.global_manual_lockout_min }} min</small>
+                            </li>
+                            {% if manifest.automation_rules.lighting %}
+                            <li>
+                                <strong>Lighting:</strong> <br>
+                                <small>
+                                    Motion: {{ "✓" if manifest.automation_rules.lighting.motion_enabled else "✗" }} |
+                                    Schedule: {{ "✓" if manifest.automation_rules.lighting.schedule_enabled else "✗" }}
+                                </small>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                    <!-- Help -->
+                    <div class="sidebar-section">
+                        <h6><i class="bi bi-question-circle"></i> Help</h6>
+                        <ul class="sidebar-list">
+                            <li><a href="/health"><i class="bi bi-heart-pulse"></i> Health Check</a></li>
+                            <li><a href="/dashboard"><i class="bi bi-graph-up"></i> Dashboard</a></li>
+                        </ul>
                     </div>
                 </div>
-
-                <h4>Quick Stats</h4>
-                <ul class="list-group">
-                    <li class="list-group-item d-flex justify-content-between">
-                        <span>Rooms:</span>
-                        <span class="badge bg-primary">{{ manifest.rooms|length }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <span>Total Devices:</span>
-                        <span class="badge bg-primary">{{ total_devices }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between">
-                        <span>Total Behaviors:</span>
-                        <span class="badge bg-primary">{{ total_behaviors }}</span>
-                    </li>
-                </ul>
-
-                <h4 class="mt-4">Device Form</h4>
-                <div id="device-form-container">
-                    <p class="text-muted">Select a device to edit or add a new one.</p>
-                </div>
-
-                {% if manifest.automation_rules %}
-                <h4 class="mt-4">Automation Rules</h4>
-                <div class="card">
-                    <div class="card-body">
-                        <p><strong>Global Lockout:</strong> {{ manifest.automation_rules.global_manual_lockout_min }} min</p>
-                        {% if manifest.automation_rules.lighting %}
-                        <p><strong>Lighting:</strong> Motion {{ manifest.automation_rules.lighting.motion_enabled }}, Schedule {{ manifest.automation_rules.lighting.schedule_enabled }}</p>
-                        {% endif %}
-                        {% if manifest.automation_rules.climate %}
-                        <p><strong>Climate:</strong> Safety {{ manifest.automation_rules.climate.safety_lockout_enabled }}, Away {{ manifest.automation_rules.climate.away_mode_enabled }}</p>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endif %}
             </div>
         </div>
-    </div>
+    </main>
+
+    <!-- Save Message -->
+    <div id="save-message" style="position: fixed; top: 70px; right: 20px; max-width: 400px; z-index: 1000;"></div>
 
     <!-- Edit Modal -->
     <div class="modal fade" id="editModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div id="edit-modal-content">
-                    <!-- Content loaded via HTMX -->
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="edit-modal-content">
+                        <!-- Content loaded via HTMX -->
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- FSM Diagram Modal -->
+    <!-- FSM Modal -->
     <div class="modal fade" id="fsmModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">FSM Diagram for <span id="fsm-device-id"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title">
+                        <i class="bi bi-diagram-3"></i> FSM Diagram - <span id="fsm-device-id"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" id="fsm-diagram-container">
                     <div class="text-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
+                        <div class="loading-spinner"></div>
                     </div>
                 </div>
             </div>
@@ -228,77 +835,62 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
-        // Close modal after room is added
-        document.body.addEventListener('htmx:afterRequest', function(evt) {
-            if (evt.detail.requestConfig.path.includes('/rooms/add')) {
-                var modalEl = document.getElementById('editModal');
-                var modal = bootstrap.Modal.getInstance(modalEl);
-                if (modal) {
-                    modal.hide();
-                }
-            }
+        // Search functionality
+        document.getElementById('search-box').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            const cards = document.querySelectorAll('.room-card, .device-card');
+            
+            cards.forEach(card => {
+                const text = card.textContent.toLowerCase();
+                card.style.display = text.includes(query) ? '' : 'none';
+            });
         });
 
-        // FSM Modal functions
-        function openFSMModal(deviceId) {
+        // Category filter
+        function filterByCategory(category) {
+            // Implement category filtering
+            console.log('Filter by:', category);
+        }
+
+        // FSM Modal
+        function showFSM(deviceId) {
             const modalEl = document.getElementById('fsmModal');
             const modal = new bootstrap.Modal(modalEl);
-
-            // Set device ID in title
             document.getElementById('fsm-device-id').textContent = deviceId;
-
-            // Show modal
             modal.show();
-
-            // Load diagram
             loadFSMDiagram(deviceId);
-
-            // Clear content when modal is closed
-            modalEl.addEventListener('hidden.bs.modal', function() {
-                document.getElementById('fsm-diagram-container').innerHTML = '';
-            }, { once: true });
         }
 
         function loadFSMDiagram(deviceId) {
             fetch(`/api/fsm/${deviceId}/diagram`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
+                .then(r => r.json())
                 .then(data => {
                     const container = document.getElementById('fsm-diagram-container');
                     if (data.error) {
-                        container.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                        container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
                         return;
                     }
-                    // Render Mermaid diagram - replace newlines with spaces for Mermaid syntax
                     const diagramText = data.diagram.replace(/\\n/g, '\n');
                     container.innerHTML = `<div class="mermaid">${diagramText}</div>`;
-
-                    // Reinitialize Mermaid for the new content
-                    mermaid.initialize({
-                        startOnLoad: false,
-                        theme: 'default',
-                        securityLevel: 'loose'
-                    });
-
-                    // Use requestAnimationFrame to ensure DOM is ready
-                    requestAnimationFrame(() => {
-                        mermaid.run({
-                            nodes: container.querySelectorAll('.mermaid')
-                        });
-                    });
+                    mermaid.initialize({startOnLoad: false, theme: 'dark', securityLevel: 'loose'});
+                    requestAnimationFrame(() => mermaid.run({nodes: container.querySelectorAll('.mermaid')}));
                 })
-                .catch(error => {
-                    console.error('Error loading FSM diagram:', error);
-                    document.getElementById('fsm-diagram-container').innerHTML =
-                        `<div class="alert alert-danger">Error loading diagram: ${error.message}</div>`;
+                .catch(e => {
+                    document.getElementById('fsm-diagram-container').innerHTML = 
+                        `<div class="alert alert-danger">Error: ${e.message}</div>`;
                 });
         }
 
-        // WebSocket connection for real-time updates
+        // Close modal on success
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            if (evt.detail.requestConfig.path.includes('/rooms/add') || evt.detail.requestConfig.path.includes('/devices')) {
+                const modalEl = document.getElementById('editModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+            }
+        });
+
+        // WebSocket for real-time updates
         (function() {
             let socket = null;
             let reconnectDelay = 1000;
@@ -306,101 +898,44 @@
 
             function connect() {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${protocol}//${window.location.host}/ws/live`;
+                socket = new WebSocket(`${protocol}//${window.location.host}/ws/live`);
 
-                socket = new WebSocket(wsUrl);
-
-                socket.onopen = function() {
+                socket.onopen = () => {
                     console.log('WebSocket connected');
-                    reconnectDelay = 1000; // Reset delay on successful connection
+                    reconnectDelay = 1000;
                 };
 
-                socket.onmessage = function(event) {
+                socket.onmessage = (e) => {
                     try {
-                        const data = JSON.parse(event.data);
-                        console.log('WebSocket message received:', data);
-
-                        // Show toast notification
-                        showToast(data.type, data.message || JSON.stringify(data));
-
-                        // Handle specific event types
+                        const data = JSON.parse(e.data);
+                        console.log('Live update:', data);
+                        // Update UI with real-time data
                         if (data.type === 'fsm_transition') {
-                            // Could update device status in real-time
-                            console.log('FSM transition:', data.entity_id, data.new_state);
+                            // Update device status
                         } else if (data.type === 'sensor_event') {
-                            // Could update sensor readings
-                            console.log('Sensor event:', data.sensor_id, data.value);
-                        } else if (data.type === 'manual_override') {
-                            // Could highlight overridden devices
-                            console.log('Manual override:', data.entity_id);
-                        } else if (data.type === 'ai_suggestion') {
-                            // Could show AI suggestions
-                            console.log('AI suggestion:', data.suggestion);
+                            // Update sensor readings
                         }
-                    } catch (e) {
-                        console.error('Failed to parse WebSocket message:', e);
+                    } catch (err) {
+                        console.error('WebSocket parse error:', err);
                     }
                 };
 
-                socket.onclose = function() {
+                socket.onclose = () => {
                     console.log('WebSocket disconnected');
-                    socket = null;
-
-                    // Attempt to reconnect with exponential backoff
-                    setTimeout(function() {
+                    setTimeout(() => {
                         if (reconnectDelay < maxReconnectDelay) {
                             reconnectDelay *= 2;
                         }
-                        console.log(`Attempting to reconnect in ${reconnectDelay}ms`);
                         connect();
                     }, reconnectDelay);
                 };
 
-                socket.onerror = function(error) {
-                    console.error('WebSocket error:', error);
-                    if (socket) {
-                        socket.close();
-                    }
+                socket.onerror = (err) => {
+                    console.error('WebSocket error:', err);
+                    if (socket) socket.close();
                 };
             }
 
-            function showToast(type, message) {
-                // Create or get existing toast container
-                let toastContainer = document.getElementById('toast-container');
-                if (!toastContainer) {
-                    toastContainer = document.createElement('div');
-                    toastContainer.id = 'toast-container';
-                    toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
-                    toastContainer.style.zIndex = '11';
-                    document.body.appendChild(toastContainer);
-                }
-
-                // Create toast element
-                const toastId = 'toast-' + Date.now();
-                const bgClass = type === 'error' ? 'bg-danger' : 'bg-info';
-                const toastHtml = `
-                    <div id="${toastId}" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-                        <div class="toast-header ${bgClass} text-white">
-                            <strong class="me-auto">${type}</strong>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
-                        </div>
-                        <div class="toast-body">${message}</div>
-                    </div>
-                `;
-
-                toastContainer.insertAdjacentHTML('beforeend', toastHtml);
-
-                const toastEl = document.getElementById(toastId);
-                const toast = new bootstrap.Toast(toastEl, { delay: 5000 });
-                toast.show();
-
-                // Remove toast from DOM after it's hidden
-                toastEl.addEventListener('hidden.bs.toast', function() {
-                    toastEl.remove();
-                });
-            }
-
-            // Connect on page load
             connect();
         })();
     </script>
