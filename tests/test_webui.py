@@ -88,3 +88,79 @@ def test_remove_override(client: TestClient):
     """Test removing manual override."""
     response = client.delete("/api/override/light.test")
     assert response.status_code in [200, 404]
+
+
+class TestFSMDiagram:
+    """Tests for the FSM diagram endpoint and the Mermaid it produces."""
+
+    def test_container_registers_fsm_definitions(self, client: TestClient):
+        """Behaviors in the manifest are turned into real FSM definitions.
+
+        Guards against silently registering nothing, which would leave the UI
+        with nothing to draw while every request still returned 200.
+        """
+        definitions = client.app.state.container.fsm._definitions
+
+        assert len(definitions) > 0, "no FSM definitions registered from the manifest"
+
+    def test_diagram_renders_for_device_with_behaviors(self, client: TestClient):
+        """A device with behaviors returns a populated Mermaid diagram."""
+        response = client.get("/api/fsm/light.kitchen/diagram")
+
+        assert response.status_code == 200
+        diagram = response.json()["diagram"]
+        assert diagram.startswith("stateDiagram-v2")
+        assert "OFF" in diagram
+        assert "ON_MOTION" in diagram
+        # Every behavior of the device is represented.
+        assert "light_kitchen_lighting_10" in diagram
+        assert "light_kitchen_night_light_20" in diagram
+
+    def test_diagram_uses_valid_mermaid_state_ids(self, client: TestClient):
+        """State ids are sanitized, so raw dotted entity ids never act as ids."""
+        diagram = client.get("/api/fsm/light.kitchen/diagram").json()["diagram"]
+
+        state_ids = {
+            line.split(":")[0].strip()
+            for line in diagram.splitlines()
+            if line.startswith("light_") or line.startswith("[*]")
+        }
+        assert state_ids, "no state ids parsed from diagram"
+        for state_id in state_ids:
+            assert "." not in state_id, f"illegal Mermaid state id: {state_id}"
+
+    def test_diagram_marks_every_machine_as_initial(self, client: TestClient):
+        """Each state machine gets its own entry transition from the start state."""
+        diagram = client.get("/api/fsm/light.kitchen/diagram").json()["diagram"]
+
+        assert diagram.count("[*] -->") == 2
+        assert "[*] --> light_kitchen_lighting_10" in diagram
+        assert "[*] --> light_kitchen_night_light_20" in diagram
+
+    def test_diagram_does_not_alias_same_label_twice(self, client: TestClient):
+        """A device with several behaviors must not reuse one Mermaid state alias."""
+        diagram = client.get("/api/fsm/light.kitchen/diagram").json()["diagram"]
+
+        assert "state 'light.kitchen' as" not in diagram
+
+    def test_diagram_shows_named_guards(self, client: TestClient):
+        """Guards are labelled with their template name, not an anonymous wrapper."""
+        diagram = client.get("/api/fsm/light.kitchen/diagram").json()["diagram"]
+
+        assert "guard_fn" not in diagram
+        assert "[schedule]" in diagram
+
+    def test_diagram_for_single_behavior_keeps_friendly_label(self, client: TestClient):
+        """A lone state machine may carry the human-readable device name."""
+        diagram = client.get("/api/fsm/fan.bathroom/diagram").json()["diagram"]
+
+        assert "state 'fan.bathroom' as fan_bathroom_humidity_ventilation_5" in diagram
+        assert "idle" in diagram
+        assert "ventilating" in diagram
+
+    def test_diagram_unknown_device_returns_404(self, client: TestClient):
+        """Unknown or behavior-less devices get a clear 404, not an empty diagram."""
+        response = client.get("/api/fsm/light.nonexistent/diagram")
+
+        assert response.status_code == 404
+        assert "error" in response.json()

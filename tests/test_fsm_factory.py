@@ -42,6 +42,66 @@ class TestFSMFactoryInitialization:
 
             assert factory._event_bus is event_bus
 
+    def test_default_features_dir_points_at_package_templates(self):
+        """Without an explicit path, templates resolve to the packaged src/features.
+
+        The default must not depend on the current working directory: the
+        templates ship in src/features, not in a CWD-relative 'features'.
+        """
+        factory = FSMFactory(FSMEngine(), Registry())
+
+        assert factory._features_dir.is_dir()
+        assert (factory._features_dir / "lighting.yaml").is_file()
+        assert factory._features_dir.name == "features"
+
+    def test_default_features_dir_loads_real_templates(self):
+        """Real YAML templates load through the default configuration."""
+        factory = FSMFactory(FSMEngine(), Registry())
+
+        for template in ("lighting", "night_light", "climate_control", "humidity_ventilation"):
+            data = factory._load_template(template)
+
+            assert data["states"], f"template {template} has no states"
+            assert data["transitions"], f"template {template} has no transitions"
+
+    def test_default_features_dir_is_cwd_independent(self, tmp_path, monkeypatch):
+        """Changing the working directory does not change template resolution."""
+        from_root = FSMFactory(FSMEngine(), Registry())._features_dir
+
+        monkeypatch.chdir(tmp_path)
+        from_tmp = FSMFactory(FSMEngine(), Registry())._features_dir
+
+        assert from_root == from_tmp
+        # A relative path would compare equal while still pointing nowhere.
+        assert from_tmp.is_absolute()
+        assert (from_tmp / "lighting.yaml").is_file()
+
+    def test_relative_features_dir_resolved_against_project_root(self, monkeypatch, tmp_path):
+        """A relative override is resolved even when CWD is unrelated."""
+        monkeypatch.chdir(tmp_path)
+
+        factory = FSMFactory(FSMEngine(), Registry(), features_dir="src/features")
+
+        assert factory._features_dir.is_dir()
+        assert (factory._features_dir / "lighting.yaml").is_file()
+
+    def test_absolute_features_dir_is_used_verbatim(self, tmp_path):
+        """An absolute override is trusted as-is, even if it lacks templates."""
+        target = tmp_path / "empty_features"
+        target.mkdir()
+
+        factory = FSMFactory(FSMEngine(), Registry(), features_dir=str(target))
+
+        assert factory._features_dir == target
+
+    def test_missing_features_dir_falls_back_to_package(self, tmp_path, monkeypatch):
+        """An unknown path falls back to the packaged templates instead of crashing."""
+        monkeypatch.chdir(tmp_path)
+
+        factory = FSMFactory(FSMEngine(), Registry(), features_dir="no_such_dir")
+
+        assert (factory._features_dir / "lighting.yaml").is_file()
+
 
 class TestTemplateLoading:
     """Tests for YAML template loading."""
