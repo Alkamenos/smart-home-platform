@@ -10,7 +10,8 @@
     </div>
     <div class="card-body">
         <form hx-post="/devices/save"
-              hx-on::after-request="if(event.detail.successful) { bootstrap.Modal.getInstance(document.getElementById('deviceModal')).hide(); window.location.reload(); }">
+              hx-target="#save-message"
+              hx-on::after-request="if(event.detail.successful) { bootstrap.Modal.getInstance(document.getElementById('deviceModal')).hide(); setTimeout(() => location.reload(), 500); }">
             <input type="hidden" name="room_index" value="{{ room_index }}">
             <input type="hidden" name="device_index" value="{{ device_index }}">
 

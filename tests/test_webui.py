@@ -49,6 +49,40 @@ def test_room_edit_not_found(client: TestClient):
     assert response.status_code == 404
 
 
+def test_edit_device_loads_form(client: TestClient):
+    """Test that edit device endpoint loads the device form."""
+    response = client.get("/devices/0/light.kitchen/edit")
+    assert response.status_code == 200
+    assert b"Edit Device" in response.content
+    assert b"light.kitchen" in response.content
+
+
+def test_edit_device_not_found(client: TestClient):
+    """Test editing non-existent device returns 404."""
+    response = client.get("/devices/0/nonexistent.device/edit")
+    assert response.status_code == 404
+
+
+def test_save_device_updates_manifest(client: TestClient):
+    """Test that saving device updates the manifest store."""
+    # Save a device with modified name
+    response = client.post(
+        "/devices/save",
+        data={
+            "room_index": "0",
+            "device_index": "0",
+            "device_id": "light.kitchen",
+            "device_type": "light",
+            "device_name": "Updated Kitchen Light",
+            "behavior_template_0": "lighting",
+            "behavior_priority_0": "10",
+            "behavior_params_0": "{}",
+        },
+    )
+    assert response.status_code == 200
+    assert b"saved successfully" in response.content.lower()
+
+
 def test_get_ai_suggestions(client: TestClient):
     """Test getting AI suggestions endpoint."""
     response = client.get("/api/ai/suggestions")

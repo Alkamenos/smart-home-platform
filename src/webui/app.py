@@ -493,15 +493,18 @@ def create_app(
             HTML fragment with device edit form.
         """
         try:
-            manifest_data = _load_manifest(manifest_path)
-            if room_id >= len(manifest_data.get("rooms", [])):
+            # Ensure manifest is loaded
+            if manifest_store.current is None:
+                manifest_store.load()
+
+            if room_id >= len(manifest_store.current.rooms):
                 raise HTTPException(status_code=404, detail="Room not found")
 
-            room = manifest_data["rooms"][room_id]
+            room = manifest_store.current.rooms[room_id]
             device = None
             device_index = -1
-            for idx, dev in enumerate(room.get("devices", [])):
-                if dev.get("id") == device_id:
+            for idx, dev in enumerate(room.devices):
+                if dev.id == device_id:
                     device = dev
                     device_index = idx
                     break
@@ -566,12 +569,20 @@ def create_app(
         import json
 
         try:
-            manifest_data = _load_manifest(manifest_path)
+            from .models import BehaviorConfig, DeviceConfig
+
+            # Ensure manifest is loaded
+            if manifest_store.current is None:
+                manifest_store.load()
+
             room_idx = int(room_index)
             dev_idx = int(device_index)
 
-            if room_idx >= len(manifest_data.get("rooms", [])):
+            if room_idx >= len(manifest_store.current.rooms):
                 raise HTTPException(status_code=404, detail="Room not found")
+
+            # Save backup for undo
+            manifest_store.backup = copy.deepcopy(manifest_store.current)
 
             # Build behaviors from form data
             behaviors = []
@@ -581,58 +592,37 @@ def create_app(
                 template_key = f"behavior_template_{idx}"
                 if template_key not in form_data:
                     break
-                behavior = {
-                    "template": form_data[template_key],
-                    "priority": int(form_data[f"behavior_priority_{idx}"]),
-                    "params": json.loads(form_data.get(f"behavior_params_{idx}", "{}")),
-                }
+                behavior = BehaviorConfig(
+                    template=form_data[template_key],
+                    priority=int(form_data[f"behavior_priority_{idx}"]),
+                    params=json.loads(form_data.get(f"behavior_params_{idx}", "{}")),
+                )
                 behaviors.append(behavior)
                 idx += 1
 
-            device = {
-                "id": device_id,
-                "type": device_type,
-                "name": device_name,
-                "behaviors": behaviors,
-            }
+            device = DeviceConfig(
+                id=device_id,
+                type=device_type,
+                name=device_name,
+                behaviors=behaviors,
+            )
 
-            room = manifest_data["rooms"][room_idx]
-            if "devices" not in room:
-                room["devices"] = []
+            room = manifest_store.current.rooms[room_idx]
 
-            if dev_idx >= 0 and dev_idx < len(room["devices"]):
-                room["devices"][dev_idx] = device
+            if dev_idx >= 0 and dev_idx < len(room.devices):
+                room.devices[dev_idx] = device
             else:
-                room["devices"].append(device)
+                room.devices.append(device)
 
-            # Validate
-            ManifestModel(**manifest_data)
-
-            # Save
-            _save_manifest(manifest_path, manifest_data)
-
+            manifest_store.mark_changed()
             logger.info(f"Device {device_id} saved successfully")
 
-            # Return updated room card
-            room_data = room
-            room_card_html = f"""
-            <div class="card room-card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h3 class="mb-0">{room_data.get("name", "Unknown")} <small class="text-muted">({room_data.get("id", "")})</small></h3>
-                    <span class="badge bg-secondary">{len(room_data.get("devices", []))} devices</span>
-                </div>
-                <div class="card-body">
-                    <h5>🔌 Devices</h5>
-                    <p>Device {device_id} saved successfully!</p>
-                    <button class="btn btn-sm btn-primary"
-                            hx-get="/devices/{room_idx}/{device_id}/edit"
-                            hx-target="#device-form-container">
-                        Edit
-                    </button>
-                </div>
-            </div>
-            """
-            return HTMLResponse(content=room_card_html)
+            # Return success response that closes modal and reloads page
+            return templates.TemplateResponse(
+                request,
+                "partials/save_success.html",
+                {"message": f"Device {device_id} saved successfully!"},
+            )
 
         except Exception as e:
             logger.error(f"Failed to save device: {e}")
