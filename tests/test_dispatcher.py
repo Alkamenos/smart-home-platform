@@ -458,5 +458,31 @@ class TestIntegration:
         assert dispatcher.active_intents["light.hallway"].source == "motion_lighting"
 
 
+class TestCleanupRegression:
+    """SC-005: защита от ложных срабатываний cleanup."""
+
+    @pytest.mark.asyncio
+    async def test_intent_without_expiry_survives_cleanup(self, dispatcher, mock_ha_adapter):
+        """
+        Intent with default ttl (1h) must survive several cleanup passes —
+        cleanup only releases EXPIRED intents (no false positives).
+        """
+        intent = CommandIntent(
+            device_id="light.hallway",
+            domain="light",
+            service="turn_on",
+            data={"brightness": 50},
+            priority=20,
+            source="night_light",
+        )
+        assert await dispatcher.submit(intent) is True
+
+        for _ in range(3):
+            assert await dispatcher._cleanup_expired() == 0
+
+        assert "light.hallway" in dispatcher.active_intents
+        assert dispatcher.active_intents["light.hallway"].source == "night_light"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

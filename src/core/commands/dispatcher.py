@@ -11,10 +11,13 @@ lower-priority ones for the same device.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import time
 from typing import Any, Protocol
 
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CommandIntent(BaseModel):
@@ -28,6 +31,9 @@ class CommandIntent(BaseModel):
         data: Additional service data as a dictionary.
         priority: Priority level (higher number = higher priority).
         source: Name of the feature/module that created this intent.
+        last_updated: Timestamp of the last activity (capture or refresh).
+        ttl_seconds: Time-to-live since last activity; 0 means immediate
+            expiry. Must be >= 0.
     """
 
     device_id: str
@@ -36,6 +42,16 @@ class CommandIntent(BaseModel):
     data: dict[str, Any]
     priority: int
     source: str
+    last_updated: float = Field(default_factory=time.time)
+    ttl_seconds: float = Field(default=3600.0, ge=0)
+
+    def refresh(self) -> None:
+        """Extend the intent's life by resetting ``last_updated`` to now."""
+        self.last_updated = time.time()
+
+    def is_expired(self) -> bool:
+        """Return True if time since last activity exceeds ``ttl_seconds``."""
+        return time.time() - self.last_updated > self.ttl_seconds
 
 
 class MiddlewareProtocol(Protocol):
@@ -87,6 +103,7 @@ class CommandDispatcher:
         self,
         ha_adapter: HAAdapterProtocol,
         middlewares: list[MiddlewareProtocol] | None = None,
+        cleanup_interval: float = 300.0,
     ) -> None:
         """
         Initialize CommandDispatcher.
@@ -94,10 +111,14 @@ class CommandDispatcher:
         Args:
             ha_adapter: HAAdapter instance for calling Home Assistant services.
             middlewares: Optional list of middleware instances to process intents.
+            cleanup_interval: Seconds between background TTL cleanup passes.
         """
         self._active_intents: dict[str, CommandIntent] = {}
         self._ha_adapter = ha_adapter
         self._middlewares: list[MiddlewareProtocol] = middlewares or []
+        self._cleanup_interval = cleanup_interval
+        self._lock = asyncio.Lock()
+        self._cleanup_task: asyncio.Task[None] | None = None
 
     @property
     def active_intents(self) -> dict[str, CommandIntent]:
@@ -132,18 +153,35 @@ class CommandDispatcher:
                 processed_intent = result
 
             device_id = processed_intent.device_id
-            existing_intent = self._active_intents.get(device_id)
 
-            # Check if there's an existing intent with strictly higher priority
-            if existing_intent is not None and existing_intent.priority > processed_intent.priority:
-                logger.info(
-                    f"Ignored {processed_intent.source} ({processed_intent.priority}) because "
-                    f"{existing_intent.source} ({existing_intent.priority}) is active"
-                )
-                return False
+            async with self._lock:
+                existing_intent = self._active_intents.get(device_id)
 
-            # Accept the new intent
-            self._active_intents[device_id] = processed_intent
+                # Check if there's an existing intent with strictly higher priority
+                if (
+                    existing_intent is not None
+                    and existing_intent.priority > processed_intent.priority
+                ):
+                    logger.info(
+                        f"Ignored {processed_intent.source} ({processed_intent.priority}) because "
+                        f"{existing_intent.source} ({existing_intent.priority}) is active"
+                    )
+                    return False
+
+                # Preempt log: new intent takes over a lower-priority one
+                if (
+                    existing_intent is not None
+                    and existing_intent.priority < processed_intent.priority
+                ):
+                    logger.info(
+                        f"Preempt: {processed_intent.source} ({processed_intent.priority}) "
+                        f"preempts {existing_intent.source} ({existing_intent.priority}) "
+                        f"on device {device_id}"
+                    )
+
+                # Accept the new intent (first capture or re-capture)
+                self._active_intents[device_id] = processed_intent
+                processed_intent.refresh()
 
             logger.info(
                 f"Accepted intent from {processed_intent.source} (priority={processed_intent.priority}) "
@@ -196,6 +234,51 @@ class CommandDispatcher:
         del self._active_intents[device_id]
         logger.info(f"Released device {device_id} from {source}")
         return True
+
+    async def _cleanup_expired(self) -> int:
+        """Force-release every expired intent under the dispatcher lock.
+
+        Logs a WARNING in the contracts §4 format for each released intent.
+
+        Returns:
+            Number of intents force-released by this pass.
+        """
+        async with self._lock:
+            expired = [
+                device_id
+                for device_id, intent in self._active_intents.items()
+                if intent.is_expired()
+            ]
+            for device_id in expired:
+                intent = self._active_intents.pop(device_id)
+                idle_minutes = (time.time() - intent.last_updated) / 60.0
+                logger.warning(
+                    f"TTL EXPIRED: force-releasing {device_id} "
+                    f"(source={intent.source}, idle {idle_minutes:.0f} min) "
+                    f"— possible missing release() in FSM"
+                )
+            return len(expired)
+
+    async def _cleanup_loop(self) -> None:
+        """Background loop: sleep ``cleanup_interval``, then purge expired intents."""
+        while True:
+            await asyncio.sleep(self._cleanup_interval)
+            await self._cleanup_expired()
+
+    def start(self) -> None:
+        """Start the TTL cleanup loop (idempotent: no-op if already running)."""
+        if self._cleanup_task is not None and not self._cleanup_task.done():
+            return
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+
+    async def stop(self) -> None:
+        """Stop the TTL cleanup loop (idempotent; suppresses CancelledError)."""
+        task = self._cleanup_task
+        self._cleanup_task = None
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     def add_middleware(self, middleware: MiddlewareProtocol) -> None:
         """

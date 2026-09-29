@@ -10,6 +10,7 @@ for better modularity and testability.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -50,6 +51,12 @@ class PlatformContext:
     adapter: Any  # HAAdapter or MockAdapter
     dispatcher: CommandDispatcher
     event_router: EventRouter
+
+    async def shutdown(self) -> None:
+        """Idempotent shutdown: adapter, FSM engine, dispatcher cleanup loop."""
+        await self.adapter.stop()
+        await self.fsm.shutdown()
+        await self.dispatcher.stop()
 
 
 class Container:
@@ -216,6 +223,15 @@ class Container:
         _ = self.event_router  # Depends on manifest, fsm (mapping built here)
         _ = self.adapter  # Depends on fsm, event_router
         _ = self.dispatcher  # Depends on adapter, middleware
+
+        # Start TTL cleanup loop when a running event loop exists
+        # (sync build() in tests runs without a loop — start is skipped)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+            self.dispatcher.start()
 
         # Link adapter to FSM engine
         self.adapter.set_fsm_engine(self.fsm)

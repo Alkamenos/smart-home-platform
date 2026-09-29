@@ -129,9 +129,8 @@ async def run_platform():
     logger.info("✅ Platform is ready and listening on port 8125")
     await server.serve()
 
-    # Очистка ресурсов
-    await ctx.adapter.stop()
-    await ctx.fsm.shutdown()
+    # Очистка ресурсов (идемпотентная цепочка: adapter + FSM + dispatcher TTL-loop)
+    await ctx.shutdown()
 
 
 if __name__ == "__main__":
