@@ -241,7 +241,8 @@
             <span class="navbar-brand">
                 <i class="bi bi-plus-circle"></i> Добавление устройств
             </span>
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 align-items-center">
+                <small id="source-info" class="text-muted"></small>
                 <a href="/" class="btn btn-outline-secondary btn-sm">← Назад</a>
             </div>
         </div>
@@ -408,20 +409,30 @@
 
         async function loadDiscoveryData() {
             if (!sourceId) {
-                showStatus('error', 'Не указан source_id');
+                showStatus('error', 'Не указан source_id. Пожалуйста, откройте страницу с параметром ?source_id=UUID');
                 return;
             }
 
             try {
-                const response = await fetch(`/api/v1/devices/sources/${sourceId}/discovery-data`);
+                console.log('Загружаю данные для source_id:', sourceId);
+                const url = `/api/v1/devices/sources/${sourceId}/discovery-data`;
+                console.log('Запрос к:', url);
+
+                const response = await fetch(url);
+
+                console.log('Ответ статус:', response.status);
+
                 if (!response.ok) {
-                    throw new Error('Ошибка загрузки данных из Home Assistant');
+                    const errorText = await response.text();
+                    console.error('Ошибка ответа:', errorText);
+                    throw new Error(`Статус ${response.status}: ${errorText}`);
                 }
 
                 discoveryData = await response.json();
                 console.log('Discovery data loaded:', discoveryData);
                 return discoveryData;
             } catch (error) {
+                console.error('Full error:', error);
                 showStatus('error', `Ошибка загрузки: ${error.message}`);
                 return null;
             }
@@ -436,27 +447,34 @@
                 // Load discovery data from HA
                 const haData = await loadDiscoveryData();
                 if (!haData) {
-                    throw new Error('Не удалось загрузить данные из Home Assistant');
+                    throw new Error('Не удалось загрузить данные из Home Assistant. Проверьте консоль для деталей.');
                 }
 
+                console.log('Преобразую данные для отображения...');
+
                 // Transform available_devices to the expected format
-                allDevices = haData.available_devices.map(device => ({
-                    entity_id: device.entity_id,
-                    friendly_name: device.friendly_name,
-                    name: device.friendly_name,
-                    device_type: device.device_type,
-                    domain: device.device_type,
-                    category: device.device_type === 'light' ? 'lighting' :
-                              device.device_type === 'climate' ? 'climate' :
-                              device.device_type === 'sensor' ? 'sensors' :
-                              'other',
-                    state: device.state,
-                    area_id: device.area_id,
-                    area_name: device.area_name,
-                    icon: device.icon,
-                    auto_apply: true,
-                    suggested_behavior: suggestBehavior(device.device_type)
-                }));
+                allDevices = (haData.available_devices || []).map(device => {
+                    const domain = device.device_type || 'unknown';
+                    return {
+                        entity_id: device.entity_id,
+                        friendly_name: device.friendly_name,
+                        name: device.friendly_name,
+                        device_type: domain,
+                        domain: domain,
+                        category: domain === 'light' ? 'lighting' :
+                                  domain === 'climate' ? 'climate' :
+                                  domain === 'sensor' ? 'sensors' :
+                                  'other',
+                        state: device.state || 'unknown',
+                        area_id: device.area_id,
+                        area_name: device.area_name,
+                        icon: device.icon,
+                        auto_apply: true,
+                        suggested_behavior: suggestBehavior(domain)
+                    };
+                });
+
+                console.log('Загружено устройств:', allDevices.length);
 
                 totalPages = Math.ceil(allDevices.length / 25);
                 currentPage = 1;
@@ -476,9 +494,12 @@
                 renderDevices(allDevices.slice(0, 25));
                 renderPagination();
 
+                showStatus('success', `✅ Загружено ${allDevices.length} устройств`);
+
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
             } catch (error) {
+                console.error('startScan error:', error);
                 showStatus('error', `Ошибка сканирования: ${error.message}`);
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
@@ -916,7 +937,15 @@
 
          // Auto-load on page load
          window.addEventListener('load', () => {
-             startScan();
+             // Display source ID info
+             const sourceInfo = document.getElementById('source-info');
+             if (!sourceId) {
+                 sourceInfo.innerHTML = '⚠️ Нет source_id в URL';
+                 showStatus('error', 'Пожалуйста, откройте страницу с параметром: ?source_id=YOUR_UUID');
+             } else {
+                 sourceInfo.innerHTML = `📋 Source: <code>${sourceId.substring(0, 8)}...</code>`;
+                 startScan();
+             }
          });
     </script>
 </body>

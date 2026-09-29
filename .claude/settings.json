@@ -1,5 +1,5 @@
 {
-    "maxTokens": 4096,
-    "terseMode": true,
-    "autoApproveReads": true
+  "maxTokens": 4096,
+  "terseMode": true,
+  "autoApproveReads": true
 }

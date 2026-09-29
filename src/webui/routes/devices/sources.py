@@ -199,23 +199,31 @@ async def get_discovery_data(source_id: UUID) -> DiscoveryData:
     source = _sources_store.get(str(source_id))
 
     if not source:
+        logger.warning(f"Источник {source_id} не найден. Доступные: {list(_sources_store.keys())}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Источник {source_id} не найден"
+            detail=f"Источник {source_id} не найден. Убедитесь, что источник существует и source_id верен."
         )
 
     try:
         from src.adapters.home_assistant.rest_client import HARestClient
 
         # Получаем данные из HA
+        logger.info(f"Подключаюсь к HA: {source['url']}")
+
         async with HARestClient(source["url"], source["token"]) as client:
             # Подключаемся к HA
+            logger.info(f"Проверяю подключение к HA...")
             connected = await client.connect_to_ha()
             if not connected:
-                raise Exception("Не удалось подключиться к Home Assistant")
+                raise Exception("Не удалось подключиться к Home Assistant. Проверьте URL и токен.")
+
+            logger.info(f"Подключение успешно. Загружаю области...")
 
             # Получаем области (комнаты)
             areas_data = await client.fetch_areas()
+            logger.info(f"Загружено {len(areas_data)} областей")
+
             areas_map = {
                 area.get("id", ""): AreaInfo(
                     id=area.get("id", ""),
@@ -227,9 +235,13 @@ async def get_discovery_data(source_id: UUID) -> DiscoveryData:
             }
             areas = list(areas_map.values())
 
+            logger.info(f"Загружаю сущности и реестр устройств...")
+
             # Получаем устройства и их области
             devices_data = await client.fetch_devices()
             device_registry = await client.fetch_device_registry()
+
+            logger.info(f"Получено {len(devices_data)} сущностей, {len(device_registry)} устройств в реестре")
 
             # Создаем map device_id -> area_id из реестра
             device_to_area = {}
@@ -289,8 +301,10 @@ async def get_discovery_data(source_id: UUID) -> DiscoveryData:
                 available_device_count=len(available_devices),
             )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Ошибка при получении данных для добавления устройства: {e}")
+        logger.error(f"Ошибка при получении данных для добавления устройства: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Ошибка при подключении к Home Assistant: {str(e)}"

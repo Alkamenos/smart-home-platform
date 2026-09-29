@@ -1,0 +1,123 @@
+"""
+ИНТЕГРАЦИЯ ФАЗА 1-3: СТАТУС И СЛЕДУЮЩИЕ ШАГИ
+==============================================
+
+Дата: 2026-09-29
+Статус: ЗАВЕРШЕНО (31 из 82 задач, 38%)
+
+📊 ЧТО СДЕЛАНО:
+
+✅ Фаза 1: Настройка (T001-T004)
+   - Структура папок
+   - Зависимость cryptography добавлена
+   - Модуль шифрования реализован
+   - Импорты настроены
+
+✅ Фаза 2: Фундаментальная инфраструктура (T005-T015 - КРИТИЧНО)
+   - Модели (HASource, Device, Events)
+   - Сервисы (DeviceService с инжекцией)
+   - Адаптеры (HARestClient, HAWebSocketClient, ConnectionManager)
+   - Персистентность (HASourcePersistence, DevicePersistence)
+
+✅ Фаза 3: История пользователя 1 (US1) - Синхронизация устройств
+   - Контрактные тесты: tests/contract/ (T016-T019)
+   - Интеграционные тесты: tests/integration/ (T020)
+   - API маршруты: src/webui/routes/devices/ (T025-T028)
+   - Методы в сервисах: parse_devices() и вспомогательные
+
+⚠️ ЧТО ТРЕБУЕТ ЗАВЕРШЕНИЯ:
+
+1. ИНТЕГРАЦИЯ МАРШРУТОВ В APP.PY (СРОЧНО)
+   Файл: src/webui/app.py
+   Добавить:
+   ```python
+   from src.webui.routes.devices.sources import router as sources_router
+   from src.webui.routes.devices.devices import router as devices_router
+
+   app.include_router(sources_router)
+   app.include_router(devices_router)
+   ```
+
+2. РЕАЛИЗАЦИЯ ПОЛНОГО ПОТОКА СИНХРОНИЗАЦИИ (T021-T024)
+   - HARestClient.connect_to_ha() нужно использовать ConnectionManager
+   - DeviceService.sync_devices_from_source() требует полной логики
+   - Интеграция с EventBus для публикации событий
+
+3. ЗАКОНЧИТЬ Т029-Т031:
+   - T029: Логирование в SyncEvent
+   - T030: Обработка ошибок с информированием
+   - T031: Сохранение конфигурации при перезагрузке
+
+4. ТЕСТИРОВАНИЕ:
+   - Запустить pytest tests/contract/ - тесты должны падать
+   - После реализации T021-T024 - должны проходить
+   - Запустить интеграционные тесты после завершения
+
+🔗 КЛЮЧЕВЫЕ ФАЙЛЫ:
+
+Документация:
+  - INTEGRATION_SUMMARY.md - полный обзор реализации
+  - /specs/001-device-integration/tasks.md - требования
+
+Инфраструктура:
+  - src/core/security/encryption.py - TokenEncryptor
+  - src/core/persistence/sources.py - HASourcePersistence
+  - src/core/persistence/devices.py - DevicePersistence
+
+Адаптеры:
+  - src/adapters/home_assistant/rest_client.py - HARestClient
+  - src/adapters/home_assistant/websocket_client.py - HAWebSocketClient
+  - src/adapters/home_assistant/connection_manager.py - ConnectionManager
+
+Сервисы:
+  - src/services/device_service.py - DeviceService
+
+API:
+  - src/webui/routes/devices/sources.py - POST/GET sources, POST sync
+  - src/webui/routes/devices/devices.py - GET devices, PUT config, POST command
+
+Тесты:
+  - tests/contract/test_sources_api.py - контрактные тесты
+  - tests/contract/test_devices_api.py - контрактные тесты
+  - tests/integration/test_device_sync.py - интеграционные тесты
+
+📋 СТРУКТУРА ДАННЫХ:
+
+Источники сохраняются в: data/sources.json
+Устройства сохраняются в: data/devices.json
+
+Формат:
+{
+  "uuid": {
+    "id": "uuid",
+    "name": "...",
+    "url": "...",
+    "token": "[ENCRYPTED_TOKEN]",  ← зашифровано
+    "status": "disconnected|connecting|connected|error",
+    "created_at": "ISO 8601",
+    "updated_at": "ISO 8601"
+  }
+}
+
+🚀 БЫСТРЫЙ СТАРТ СЛЕДУЮЩЕЙ ФАЗЫ:
+
+1. Запушить изменения: git commit
+2. Интегрировать маршруты в app.py
+3. Запустить: python -m pytest tests/contract/
+4. Реализовать T021-T024 для прохождения тестов
+5. Запустить: python -m pytest tests/integration/
+
+⏭️ ФАЗА 4 (NEXT): История пользователя 2 - Конфигурирование устройств
+   - Редактирование display_name, description, location, tags
+   - PUT /api/v1/devices/{id}/config
+
+⏭️ ФАЗА 5: История пользователя 3 - Управление состоянием
+   - WebSocket синхронизация в реальном времени
+   - Отправка команд в Home Assistant
+
+⏭️ ФАЗА 6: История пользователя 4 - RBAC
+   - Управление доступом на базе ролей
+
+Версия: 1.0
+Тип документа: Implementation Status
+"""
