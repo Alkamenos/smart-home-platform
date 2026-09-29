@@ -41,6 +41,25 @@ class SourceResponse(BaseModel):
 _sources_store: dict = {}
 
 
+@router.get("", status_code=status.HTTP_200_OK)
+async def list_sources() -> list[SourceResponse]:
+    """Получает список всех источников Home Assistant.
+
+    Returns:
+        Список источников
+    """
+    try:
+        sources = list(_sources_store.values())
+        logger.info(f"Получен список {len(sources)} источников")
+        return [SourceResponse(**source) for source in sources]
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка источников: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка при получении списка источников"
+        ) from e
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_source(request: CreateSourceRequest) -> SourceResponse:
     """Создает новый источник Home Assistant.
