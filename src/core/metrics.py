@@ -7,6 +7,7 @@ This module provides metrics instrumentation for key components:
 - Middleware conflicts
 - Command dispatcher rejections
 - Active FSM instances
+- Device integration metrics (sync duration, commands, errors, device state, cache stats)
 """
 
 from __future__ import annotations
@@ -35,6 +36,30 @@ class MetricsCollector:
         self._middleware_conflicts_total: Counter | None = None
         self._command_rejections_total: Counter | None = None
         self._active_fsm_instances: Gauge | None = None
+
+        # Device integration metrics
+        # Sync duration metrics
+        self._device_sync_duration_seconds: Histogram | None = None
+        self._source_sync_total_seconds: Histogram | None = None
+
+        # Command metrics
+        self._device_commands_total: Counter | None = None
+        self._device_commands_success: Counter | None = None
+        self._device_commands_failed: Counter | None = None
+
+        # Error metrics
+        self._device_connection_errors_total: Counter | None = None
+        self._device_sync_errors_total: Counter | None = None
+
+        # State metrics
+        self._devices_available: Gauge | None = None
+        self._devices_unavailable: Gauge | None = None
+        self._sources_connected: Gauge | None = None
+
+        # Cache metrics
+        self._cache_size: Gauge | None = None
+        self._cache_hits: Counter | None = None
+        self._cache_misses: Counter | None = None
 
     def initialize(self) -> None:
         """Initialize Prometheus metrics collectors.
@@ -102,6 +127,117 @@ class MetricsCollector:
                 "active_fsm_instances",
                 "Number of active FSM instances",
                 ["manifest_name"],
+            )
+
+            # ============ Device Integration Metrics ============
+
+            # 1. SYNC DURATION METRICS
+            # Histogram для отслеживания времени синхронизации на устройство
+            self._device_sync_duration_seconds = Histogram(
+                "device_integration_device_sync_duration_seconds",
+                "Время синхронизации устройства в секундах",
+                ["source_id", "device_type"],
+                buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+                help="Гистограмма времени синхронизации отдельного устройства",
+            )
+
+            # Histogram для общего времени синхронизации источника
+            self._source_sync_total_seconds = Histogram(
+                "device_integration_source_sync_total_seconds",
+                "Общее время синхронизации источника в секундах",
+                ["source_id"],
+                buckets=(0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0),
+                help="Гистограмма общего времени синхронизации источника",
+            )
+
+            # 2. COMMAND METRICS
+            # Counter для всех отправленных команд
+            self._device_commands_total = Counter(
+                "device_integration_device_commands_total",
+                "Всего отправлено команд на устройства",
+                ["source_id", "device_type", "command_type"],
+                help="Счетчик всех команд отправленных на устройства",
+            )
+
+            # Counter для успешных команд
+            self._device_commands_success = Counter(
+                "device_integration_device_commands_success",
+                "Количество успешно выполненных команд",
+                ["source_id", "device_type", "command_type"],
+                help="Счетчик успешно выполненных команд",
+            )
+
+            # Counter для неудачных команд
+            self._device_commands_failed = Counter(
+                "device_integration_device_commands_failed",
+                "Количество неудачных команд",
+                ["source_id", "device_type", "command_type", "error_type"],
+                help="Счетчик неудачных команд с типом ошибки",
+            )
+
+            # 3. ERROR METRICS
+            # Counter для ошибок соединения
+            self._device_connection_errors_total = Counter(
+                "device_integration_device_connection_errors_total",
+                "Всего ошибок соединения с устройствами",
+                ["source_id", "error_type"],
+                help="Счетчик ошибок соединения",
+            )
+
+            # Counter для ошибок синхронизации
+            self._device_sync_errors_total = Counter(
+                "device_integration_device_sync_errors_total",
+                "Всего ошибок синхронизации устройств",
+                ["source_id", "error_type"],
+                help="Счетчик ошибок синхронизации",
+            )
+
+            # 4. DEVICE STATE METRICS
+            # Gauge для количества доступных устройств
+            self._devices_available = Gauge(
+                "device_integration_devices_available",
+                "Количество доступных устройств",
+                ["source_id", "device_type"],
+                help="Текущее количество доступных устройств",
+            )
+
+            # Gauge для количества недоступных устройств
+            self._devices_unavailable = Gauge(
+                "device_integration_devices_unavailable",
+                "Количество недоступных устройств",
+                ["source_id", "device_type"],
+                help="Текущее количество недоступных устройств",
+            )
+
+            # Gauge для количества подключенных источников
+            self._sources_connected = Gauge(
+                "device_integration_sources_connected",
+                "Количество подключенных источников",
+                help="Текущее количество активных источников",
+            )
+
+            # 5. CACHE METRICS
+            # Gauge для размера кэша
+            self._cache_size = Gauge(
+                "device_integration_cache_size",
+                "Размер кэша в байтах",
+                help="Текущий размер кэша устройств",
+            )
+
+            # Counter для попаданий в кэш
+            self._cache_hits = Counter(
+                "device_integration_cache_hits",
+                "Количество попаданий в кэш",
+                ["cache_type"],
+                help="Счетчик успешных обращений к кэшу",
+            )
+
+            # Counter для промахов кэша
+            self._cache_misses = Counter(
+                "device_integration_cache_misses",
+                "Количество промахов кэша",
+                ["cache_type"],
+                help="Счетчик неудачных обращений к кэшу",
             )
 
             self._initialized = True
@@ -211,6 +347,214 @@ class MetricsCollector:
             True if prometheus_client is available and metrics are registered.
         """
         return self._initialized
+
+    # ============ Device Integration Metrics Methods ============
+
+    def record_device_sync_duration(
+        self,
+        source_id: str,
+        device_type: str,
+        duration_seconds: float,
+    ) -> None:
+        """Записывает время синхронизации для отдельного устройства.
+
+        Args:
+            source_id: Идентификатор источника (например, UUID как строка)
+            device_type: Тип устройства (например, "light", "switch", "sensor")
+            duration_seconds: Время синхронизации в секундах
+        """
+        if self._initialized and self._device_sync_duration_seconds:
+            self._device_sync_duration_seconds.labels(
+                source_id=source_id,
+                device_type=device_type,
+            ).observe(duration_seconds)
+
+    def record_source_sync_duration(
+        self,
+        source_id: str,
+        total_duration_seconds: float,
+    ) -> None:
+        """Записывает общее время синхронизации для всех устройств источника.
+
+        Args:
+            source_id: Идентификатор источника
+            total_duration_seconds: Общее время синхронизации в секундах
+        """
+        if self._initialized and self._source_sync_total_seconds:
+            self._source_sync_total_seconds.labels(
+                source_id=source_id,
+            ).observe(total_duration_seconds)
+
+    def record_command_sent(
+        self,
+        source_id: str,
+        device_type: str,
+        command_type: str,
+    ) -> None:
+        """Записывает отправку команды на устройство.
+
+        Args:
+            source_id: Идентификатор источника
+            device_type: Тип устройства
+            command_type: Тип команды (например, "turn_on", "turn_off")
+        """
+        if self._initialized and self._device_commands_total:
+            self._device_commands_total.labels(
+                source_id=source_id,
+                device_type=device_type,
+                command_type=command_type,
+            ).inc()
+
+    def record_command_success(
+        self,
+        source_id: str,
+        device_type: str,
+        command_type: str,
+    ) -> None:
+        """Записывает успешное выполнение команды.
+
+        Args:
+            source_id: Идентификатор источника
+            device_type: Тип устройства
+            command_type: Тип команды
+        """
+        if self._initialized and self._device_commands_success:
+            self._device_commands_success.labels(
+                source_id=source_id,
+                device_type=device_type,
+                command_type=command_type,
+            ).inc()
+
+    def record_command_failed(
+        self,
+        source_id: str,
+        device_type: str,
+        command_type: str,
+        error_type: str,
+    ) -> None:
+        """Записывает ошибку при выполнении команды.
+
+        Args:
+            source_id: Идентификатор источника
+            device_type: Тип устройства
+            command_type: Тип команды
+            error_type: Тип ошибки (например, "timeout", "connection_error")
+        """
+        if self._initialized and self._device_commands_failed:
+            self._device_commands_failed.labels(
+                source_id=source_id,
+                device_type=device_type,
+                command_type=command_type,
+                error_type=error_type,
+            ).inc()
+
+    def record_connection_error(
+        self,
+        source_id: str,
+        error_type: str,
+    ) -> None:
+        """Записывает ошибку соединения с источником.
+
+        Args:
+            source_id: Идентификатор источника
+            error_type: Тип ошибки (например, "timeout", "refused", "dns_failed")
+        """
+        if self._initialized and self._device_connection_errors_total:
+            self._device_connection_errors_total.labels(
+                source_id=source_id,
+                error_type=error_type,
+            ).inc()
+
+    def record_sync_error(
+        self,
+        source_id: str,
+        error_type: str,
+    ) -> None:
+        """Записывает ошибку синхронизации.
+
+        Args:
+            source_id: Идентификатор источника
+            error_type: Тип ошибки (например, "invalid_response", "parse_error")
+        """
+        if self._initialized and self._device_sync_errors_total:
+            self._device_sync_errors_total.labels(
+                source_id=source_id,
+                error_type=error_type,
+            ).inc()
+
+    def set_devices_available(
+        self,
+        source_id: str,
+        device_type: str,
+        count: int,
+    ) -> None:
+        """Устанавливает количество доступных устройств.
+
+        Args:
+            source_id: Идентификатор источника
+            device_type: Тип устройства
+            count: Количество доступных устройств
+        """
+        if self._initialized and self._devices_available:
+            self._devices_available.labels(
+                source_id=source_id,
+                device_type=device_type,
+            ).set(count)
+
+    def set_devices_unavailable(
+        self,
+        source_id: str,
+        device_type: str,
+        count: int,
+    ) -> None:
+        """Устанавливает количество недоступных устройств.
+
+        Args:
+            source_id: Идентификатор источника
+            device_type: Тип устройства
+            count: Количество недоступных устройств
+        """
+        if self._initialized and self._devices_unavailable:
+            self._devices_unavailable.labels(
+                source_id=source_id,
+                device_type=device_type,
+            ).set(count)
+
+    def set_sources_connected_count(self, count: int) -> None:
+        """Устанавливает количество подключенных источников.
+
+        Args:
+            count: Количество подключенных источников
+        """
+        if self._initialized and self._sources_connected:
+            self._sources_connected.set(count)
+
+    def set_cache_size(self, size_bytes: int) -> None:
+        """Устанавливает размер кэша.
+
+        Args:
+            size_bytes: Размер кэша в байтах
+        """
+        if self._initialized and self._cache_size:
+            self._cache_size.set(size_bytes)
+
+    def record_cache_hit(self, cache_type: str) -> None:
+        """Записывает попадание в кэш.
+
+        Args:
+            cache_type: Тип кэша (например, "device", "config")
+        """
+        if self._initialized and self._cache_hits:
+            self._cache_hits.labels(cache_type=cache_type).inc()
+
+    def record_cache_miss(self, cache_type: str) -> None:
+        """Записывает промах кэша.
+
+        Args:
+            cache_type: Тип кэша (например, "device", "config")
+        """
+        if self._initialized and self._cache_misses:
+            self._cache_misses.labels(cache_type=cache_type).inc()
 
 
 # Global singleton instance

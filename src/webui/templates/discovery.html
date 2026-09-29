@@ -403,6 +403,29 @@
             category: null,
             search: ''
         };
+        let discoveryData = null;
+        const sourceId = new URLSearchParams(window.location.search).get('source_id');
+
+        async function loadDiscoveryData() {
+            if (!sourceId) {
+                showStatus('error', 'Не указан source_id');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/devices/sources/${sourceId}/discovery-data`);
+                if (!response.ok) {
+                    throw new Error('Ошибка загрузки данных из Home Assistant');
+                }
+
+                discoveryData = await response.json();
+                console.log('Discovery data loaded:', discoveryData);
+                return discoveryData;
+            } catch (error) {
+                showStatus('error', `Ошибка загрузки: ${error.message}`);
+                return null;
+            }
+        }
 
         async function startScan() {
             const btn = document.getElementById('scan-btn');
@@ -410,22 +433,47 @@
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Сканирование...';
 
             try {
-                const response = await fetch('/discovery/scan', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams({page: '1', page_size: '25'})
-                });
+                // Load discovery data from HA
+                const haData = await loadDiscoveryData();
+                if (!haData) {
+                    throw new Error('Не удалось загрузить данные из Home Assistant');
+                }
 
-                if (!response.ok) throw new Error(await response.text());
+                // Transform available_devices to the expected format
+                allDevices = haData.available_devices.map(device => ({
+                    entity_id: device.entity_id,
+                    friendly_name: device.friendly_name,
+                    name: device.friendly_name,
+                    device_type: device.device_type,
+                    domain: device.device_type,
+                    category: device.device_type === 'light' ? 'lighting' :
+                              device.device_type === 'climate' ? 'climate' :
+                              device.device_type === 'sensor' ? 'sensors' :
+                              'other',
+                    state: device.state,
+                    area_id: device.area_id,
+                    area_name: device.area_name,
+                    icon: device.icon,
+                    auto_apply: true,
+                    suggested_behavior: suggestBehavior(device.device_type)
+                }));
 
-                const data = await response.json();
-                allDevices = data.devices;
-                totalPages = data.total_pages;
+                totalPages = Math.ceil(allDevices.length / 25);
                 currentPage = 1;
 
-                updateStats(data);
-                renderFilterButtons(data);
-                renderDevices(data.devices);
+                const stats = {
+                    total: allDevices.length,
+                    auto_apply_stats: {
+                        auto_apply: allDevices.filter(d => d.auto_apply).length,
+                        manual: allDevices.filter(d => !d.auto_apply).length
+                    },
+                    by_domain: groupBy(allDevices, 'domain'),
+                    by_category: groupBy(allDevices, 'category')
+                };
+
+                updateStats(stats);
+                renderFilterButtons(stats);
+                renderDevices(allDevices.slice(0, 25));
                 renderPagination();
 
                 btn.disabled = false;
@@ -435,6 +483,25 @@
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
             }
+        }
+
+        function suggestBehavior(domain) {
+            const behaviorMap = {
+                'light': 'lighting',
+                'climate': 'climate_control',
+                'switch': 'switch_control',
+                'sensor': 'sensor_monitoring',
+                'binary_sensor': 'binary_sensor_monitoring'
+            };
+            return behaviorMap[domain] || null;
+        }
+
+        function groupBy(arr, key) {
+            return arr.reduce((result, item) => {
+                const groupKey = item[key] || 'unknown';
+                result[groupKey] = (result[groupKey] || 0) + 1;
+                return result;
+            }, {});
         }
 
         function updateStats(data) {
@@ -492,6 +559,10 @@
                     ? '<span class="badge badge-custom badge-auto">✅ Авто</span>'
                     : '<span class="badge badge-custom badge-manual">⚠️ Ручное</span>';
 
+                const areaDisplay = device.area_name
+                    ? `<span class="badge badge-custom">📍 ${device.area_name}</span>`
+                    : '<span class="badge badge-custom" style="opacity: 0.5;">📍 нет комнаты</span>';
+
                 html += `
                     <div class="card device-card ${isSelected ? 'selected' : ''}"
                          onclick="toggleDevice('${device.entity_id}', this)">
@@ -509,7 +580,7 @@
                             <div class="device-meta">
                                 <span class="badge badge-custom">🏷️ ${device.domain}</span>
                                 <span class="badge badge-custom">📁 ${device.category}</span>
-                                ${device.area_id ? `<span class="badge badge-custom">📍 ${device.area_id}</span>` : ''}
+                                ${areaDisplay}
                             </div>
                             ${device.suggested_behavior ? `<div style="margin-top: 0.5rem;"><small>Шаблон: <strong>${device.suggested_behavior}</strong></small></div>` : ''}
                             <div style="margin-top: 0.5rem; color: #777;"><small>Статус: ${device.state}</small></div>
@@ -559,34 +630,36 @@
             if (page < 1 || page > totalPages) return;
 
             currentPage = page;
-            const params = new URLSearchParams({
-                page: page.toString(),
-                page_size: '25',
-                filter_domain: currentFilters.domain || '',
-                filter_category: currentFilters.category || '',
-                filter_area: currentFilters.search || ''
+            const filteredDevices = filterDevices(allDevices);
+            const start = (page - 1) * 25;
+            const end = start + 25;
+
+            renderDevices(filteredDevices.slice(start, end));
+            renderPagination();
+        }
+
+        function filterDevices(devices) {
+            return devices.filter(d => {
+                if (currentFilters.domain && d.domain !== currentFilters.domain) return false;
+                if (currentFilters.category && d.category !== currentFilters.category) return false;
+                if (currentFilters.search) {
+                    const search = currentFilters.search.toLowerCase();
+                    if (!d.entity_id.toLowerCase().includes(search) &&
+                        !d.friendly_name.toLowerCase().includes(search)) {
+                        return false;
+                    }
+                }
+                return true;
             });
-
-            try {
-                const response = await fetch('/discovery/scan', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: params
-                });
-
-                if (!response.ok) throw new Error(await response.text());
-                const data = await response.json();
-                allDevices = data.devices;
-                renderDevices(data.devices);
-                renderPagination();
-            } catch (error) {
-                showStatus('error', `Ошибка загрузки: ${error.message}`);
-            }
         }
 
         function applyFilters() {
             currentFilters.search = document.getElementById('search-box').value;
-            goToPage(1);
+            currentPage = 1;
+            const filteredDevices = filterDevices(allDevices);
+            totalPages = Math.ceil(filteredDevices.length / 25);
+            renderDevices(filteredDevices.slice(0, 25));
+            renderPagination();
         }
 
         function toggleDevice(entityId, element) {
@@ -600,7 +673,8 @@
         }
 
         function selectAll() {
-            allDevices.forEach(d => selectedDevices.add(d.entity_id));
+            const filteredDevices = filterDevices(allDevices);
+            filteredDevices.forEach(d => selectedDevices.add(d.entity_id));
             updatePreview();
             document.querySelectorAll('.device-card').forEach(el => el.classList.add('selected'));
         }
@@ -623,7 +697,7 @@
             });
         }
 
-         let deviceRoomAssignments = {}; // Store room assignments
+         let deviceRoomAssignments = {};
 
          function updatePreview() {
              const container = document.getElementById('preview-list');
@@ -639,6 +713,7 @@
                  const device = allDevices.find(d => d.entity_id === entityId);
                  if (device) {
                      const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
+                     const areaName = device.area_name || 'нет комнаты';
                      html += `
                          <div class="preview-item">
                              <span class="preview-item-remove" onclick="toggleDevice('${entityId}'); updatePreview();">✕</span>
@@ -647,7 +722,7 @@
                              <small style="color: #999;">
                                  Комната:
                                  <a href="#" onclick="openRoomSelector('${entityId}'); return false;" style="cursor: pointer; text-decoration: underline;">
-                                     ${assignedRoom}
+                                     ${assignedRoom === device.area_id ? areaName : assignedRoom}
                                  </a>
                              </small>
                          </div>
@@ -655,23 +730,6 @@
                  }
              });
              container.innerHTML = html;
-         }
-
-         let existingRooms = []; // Cache of existing rooms
-
-         async function loadExistingRooms() {
-             try {
-                 const response = await fetch('/api/rooms', {
-                     method: 'GET'
-                 });
-                 if (response.ok) {
-                     const data = await response.json();
-                     existingRooms = data.rooms || [];
-                 }
-             } catch (error) {
-                 console.warn('Could not load existing rooms:', error);
-                 existingRooms = [];
-             }
          }
 
          function openRoomSelector(entityId) {
@@ -694,28 +752,28 @@
                          </div>
                          <div class="modal-body">
                              <div class="mb-3">
-                                 <label class="form-label">Существующие комнаты:</label>
+                                 <label class="form-label">Доступные комнаты из Home Assistant:</label>
                                  <div id="roomOptions" style="max-height: 200px; overflow-y: auto;">
-                                     ${existingRooms.length > 0
-                                         ? existingRooms.map(room => `
+                                     ${discoveryData && discoveryData.areas && discoveryData.areas.length > 0
+                                         ? discoveryData.areas.map(area => `
                                              <div class="form-check">
-                                                 <input class="form-check-input room-radio" type="radio" name="room" id="room_${room.id}" value="${room.id}"
-                                                     ${currentRoom === room.id ? 'checked' : ''}>
-                                                 <label class="form-check-label" for="room_${room.id}">
-                                                     ${room.name || room.id}
+                                                 <input class="form-check-input room-radio" type="radio" name="room" id="room_${area.id}" value="${area.id}"
+                                                     ${currentRoom === area.id ? 'checked' : ''}>
+                                                 <label class="form-check-label" for="room_${area.id}">
+                                                     ${area.icon ? `<i class="${area.icon}"></i> ` : ''}${area.name}
                                                  </label>
                                              </div>
                                          `).join('')
-                                         : '<p class="text-muted small">Нет существующих комнат</p>'
+                                         : '<p class="text-muted small">Нет доступных комнат в Home Assistant</p>'
                                      }
                                  </div>
                              </div>
                              <hr>
                              <div class="mb-3">
-                                 <label class="form-label">Или создайте новую:</label>
+                                 <label class="form-label">Или указайте вручную:</label>
                                  <input type="text" class="form-control form-control-sm bg-secondary text-white border-secondary"
-                                        id="newRoomName" placeholder="Название комнаты (например: kitchen)">
-                                 <small class="text-muted d-block mt-2">Используйте строчные буквы и подчеркивание (напр. living_room)</small>
+                                        id="newRoomName" placeholder="Код комнаты (например: kitchen)">
+                                 <small class="text-muted d-block mt-2">Используйте строчные буквы и подчеркивание</small>
                              </div>
                          </div>
                          <div class="modal-footer border-secondary">
@@ -741,13 +799,6 @@
                  selectedRoom = selectedRadio.value;
              } else if (newRoomName) {
                  selectedRoom = newRoomName.replace(/\s+/g, '_');
-                 // Add to existing rooms if not present
-                 if (!existingRooms.find(r => r.id === selectedRoom)) {
-                     existingRooms.push({
-                         id: selectedRoom,
-                         name: selectedRoom.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-                     });
-                 }
              }
 
              if (!selectedRoom) {
@@ -776,22 +827,23 @@
                  return {
                      device_entity_id: entityId,
                      target_room: assignedRoom,
-                     behavior_template: device.suggested_behavior
+                     behavior_template: device.suggested_behavior,
+                     ha_area_id: device.area_id
                  };
              });
 
              showStatus('info', 'Проверка...');
 
              try {
-                 const response = await fetch('/discovery/apply-selective', {
+                 const response = await fetch('/api/v1/devices/apply', {
                      method: 'POST',
                      headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({selections, dry_run: true})
+                     body: JSON.stringify({source_id: sourceId, selections, dry_run: true})
                  });
 
                  if (!response.ok) throw new Error(await response.text());
                  const result = await response.json();
-                 showStatus('info', `Будет добавлено устройств: <strong>${result.would_add}</strong>`);
+                 showStatus('info', `Будет добавлено устройств: <strong>${result.devices_count || selectedDevices.size}</strong>`);
              } catch (error) {
                  showStatus('error', `Ошибка: ${error.message}`);
              }
@@ -809,17 +861,18 @@
                  return {
                      device_entity_id: entityId,
                      target_room: assignedRoom,
-                     behavior_template: device.suggested_behavior
+                     behavior_template: device.suggested_behavior,
+                     ha_area_id: device.area_id
                  };
              });
 
              showStatus('info', '<span class="spinner-border spinner-border-sm me-2"></span>Применение...');
 
              try {
-                 const response = await fetch('/discovery/apply-selective', {
+                 const response = await fetch('/api/v1/devices/apply', {
                      method: 'POST',
                      headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({selections, dry_run: false})
+                     body: JSON.stringify({source_id: sourceId, selections, dry_run: false})
                  });
 
                  if (!response.ok) throw new Error(await response.text());
@@ -827,7 +880,7 @@
 
                  if (result.success) {
                      showStatus('success',
-                         `✅ Успешно добавлено: <strong>${result.devices_added}</strong> устройств`);
+                         `✅ Успешно добавлено: <strong>${result.devices_count || selectedDevices.size}</strong> устройств`);
                      selectedDevices.clear();
                      deviceRoomAssignments = {};
                      updatePreview();
@@ -863,7 +916,6 @@
 
          // Auto-load on page load
          window.addEventListener('load', () => {
-             loadExistingRooms();
              startScan();
          });
     </script>

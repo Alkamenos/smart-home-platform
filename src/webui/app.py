@@ -200,6 +200,16 @@ def create_app(
 
     app.include_router(discovery_router)
 
+    # Include device management routes (T051-T057)
+    try:
+        from .routes.devices import devices, sources, websocket
+        app.include_router(devices.router)
+        app.include_router(sources.router)
+        app.include_router(websocket.router)
+        logger.info("Device management routes registered")
+    except ImportError as e:
+        logger.warning(f"Could not import device routes: {e}")
+
     # Default manifest path - resolve relative to project root
     if manifest_path is None:
         manifest_path = str(_get_project_root() / "instances" / "leonids_house" / "manifest.yaml")
@@ -258,6 +268,24 @@ def create_app(
 
     # Expose the platform container to routers that need it (e.g. FSM diagrams)
     app.state.container = _container
+
+    # Initialize device management services (T049-T060)
+    try:
+        from src.services.device_service import DeviceService
+        from src.core.events.event_bus import EventBus
+
+        event_bus = EventBus()
+        device_service = DeviceService(
+            event_bus=event_bus,
+            persistence_module=None,  # TODO: Connect persistence
+            ha_adapter=None,  # TODO: Connect HA adapter
+        )
+
+        app.state.event_bus = event_bus
+        app.state.device_service = device_service
+        logger.info("Device management services initialized")
+    except Exception as e:
+        logger.warning(f"Could not initialize device services: {e}")
 
     # WebSocket connection manager for real-time updates
     class ConnectionManager:

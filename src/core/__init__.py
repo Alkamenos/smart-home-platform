@@ -30,6 +30,11 @@ from core.persistence.state_store import (
     InputTextStateStore,
     MemoryStateStore,
 )
+from core.persistence.websocket_batcher import (
+    WebSocketBatch,
+    WebSocketEvent,
+    WebSocketEventBatcher,
+)
 from core.plugin_interfaces import (
     AdapterPlugin,
     BehaviorPlugin,
@@ -61,6 +66,9 @@ __all__ = [
     "FileStateStore",
     "InputTextStateStore",
     "MemoryStateStore",
+    "WebSocketEventBatcher",
+    "WebSocketEvent",
+    "WebSocketBatch",
     "AutomationRules",
     "ClimateAutomation",
     "LightingAutomation",
