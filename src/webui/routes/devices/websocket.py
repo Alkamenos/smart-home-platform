@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -22,11 +23,17 @@ _active_connections: set[WebSocket] = set()
 
 
 class WebSocketConnectionManager:
-    """Менеджер для управления WebSocket соединениями."""
+    """Менеджер для управления WebSocket соединениями.
+
+    Хранит идентификацию (user_id) и подписки устройств на каждое соединение
+    (ConnectionIdentity из data-model.md) для доставки событий по правам.
+    """
 
     def __init__(self):
         """Инициализация менеджера."""
         self.active_connections: list[WebSocket] = []
+        # ConnectionIdentity: соединение → идентификация и подписки
+        self._identities: dict[WebSocket, dict] = {}
 
     async def connect(self, websocket: WebSocket):
         """Добавляет новое соединение.
@@ -39,13 +46,123 @@ class WebSocketConnectionManager:
         logger.info(f"WebSocket client connected. Total: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
-        """Удаляет соединение.
+        """Удаляет соединение вместе с идентификацией и подписками.
 
         Args:
             websocket: WebSocket соединение
         """
-        self.active_connections.remove(websocket)
+        with contextlib.suppress(ValueError):
+            self.active_connections.remove(websocket)
+        self._identities.pop(websocket, None)
         logger.info(f"WebSocket client disconnected. Total: {len(self.active_connections)}")
+
+    def register_identity(self, websocket: WebSocket, user_id: str) -> None:
+        """Связывает соединение с пользователем (auth-сообщение).
+
+        Args:
+            websocket: WebSocket соединение
+            user_id: ID пользователя
+        """
+        identity = self._identities.setdefault(websocket, {"user_id": None, "devices": set()})
+        identity["user_id"] = user_id
+
+    def is_authenticated(self, websocket: WebSocket) -> bool:
+        """Проверяет, аутентифицировано ли соединение.
+
+        Args:
+            websocket: WebSocket соединение
+
+        Returns:
+            True если есть user_id
+        """
+        identity = self._identities.get(websocket)
+        return bool(identity and identity["user_id"])
+
+    def add_subscription(self, websocket: WebSocket, device_id: str) -> None:
+        """Добавляет подписку соединения на устройство.
+
+        Args:
+            websocket: WebSocket соединение
+            device_id: ID устройства
+        """
+        identity = self._identities.setdefault(websocket, {"user_id": None, "devices": set()})
+        identity["devices"].add(device_id)
+
+    def remove_subscription(self, websocket: WebSocket, device_id: str) -> None:
+        """Удаляет подписку соединения на устройство.
+
+        Args:
+            websocket: WebSocket соединение
+            device_id: ID устройства
+        """
+        identity = self._identities.get(websocket)
+        if identity:
+            identity["devices"].discard(device_id)
+
+    def is_subscribed(self, websocket: WebSocket, device_id: str) -> bool:
+        """Проверяет подписку соединения на устройство.
+
+        Args:
+            websocket: WebSocket соединение
+            device_id: ID устройства
+
+        Returns:
+            True если подписано
+        """
+        identity = self._identities.get(websocket)
+        return bool(identity and device_id in identity["devices"])
+
+    async def _has_access_now(self, connection: WebSocket, device_id: str, user_id: str) -> bool:
+        """Проверяет доступ пользователя к устройству ПРЯМО СЕЙЧАС.
+
+        Проверка выполняется при каждой доставке события (clarify Q1):
+        отзыв доступа действует немедленно. Ошибки → безопасный deny.
+
+        Args:
+            connection: WebSocket соединение
+            device_id: ID устройства (строка)
+            user_id: ID пользователя
+
+        Returns:
+            True если доступ есть (роль viewer и выше)
+        """
+        try:
+            app = connection.scope.get("app")
+            service = getattr(app.state, "device_service", None) if app else None
+            if service is None:
+                return False
+            return await service.check_device_access(UUID(device_id), user_id, "viewer")
+        except Exception as e:
+            logger.warning(f"Access check failed for {user_id} -> {device_id}: {e}")
+            return False
+
+    async def broadcast_device_event(self, device_id: str, message: dict):
+        """Отправляет событие устройства только подписанным соединениям с доступом.
+
+        Проверка доступа выполняется при каждой доставке (FR-008, clarify Q1).
+
+        Args:
+            device_id: ID устройства
+            message: Сообщение для отправки
+        """
+        disconnected_clients = []
+
+        for connection in list(self.active_connections):
+            identity = self._identities.get(connection)
+            if not identity or device_id not in identity["devices"]:
+                continue
+            if not identity["user_id"] or not await self._has_access_now(
+                connection, device_id, identity["user_id"]
+            ):
+                continue
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Error sending message to WebSocket: {e}")
+                disconnected_clients.append(connection)
+
+        for client in disconnected_clients:
+            self.disconnect(client)
 
     async def broadcast(self, message: dict):
         """Отправляет сообщение всем подключенным клиентам.
@@ -105,7 +222,6 @@ async def websocket_endpoint(websocket: WebSocket):
     - {"type": "error", "message": "..."} - ошибка
     """
     await connection_manager.connect(websocket)
-    subscribed_devices = set()
     user_id: str | None = None  # T071: ID пользователя для проверки доступа
 
     try:
@@ -121,6 +237,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 user_id = message.get("user_id")
                 if user_id:
                     logger.info(f"WebSocket client authenticated as {user_id}")
+                    connection_manager.register_identity(websocket, user_id)
                     await connection_manager.send_personal(
                         websocket,
                         {
@@ -154,26 +271,32 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 if device_id:
-                    # Проверяем доступ пользователя к устройству
-                    # (будет реализовано через DeviceService.check_device_access)
-                    # device_service = get_device_service()  # TODO: внедрить через зависимость
-                    # has_access = await device_service.check_device_access(
-                    #     UUID(device_id), user_id, required_role="viewer"
-                    # )
+                    # T071/T016: проверяем доступ пользователя к устройству
+                    # (роль viewer и выше) через DeviceService из app.state
+                    has_access = False
+                    try:
+                        app = websocket.scope.get("app")
+                        service = getattr(app.state, "device_service", None) if app else None
+                        if service is not None:
+                            has_access = await service.check_device_access(
+                                UUID(device_id), user_id, required_role="viewer"
+                            )
+                    except ValueError as e:
+                        logger.warning(f"Invalid device_id for access check: {device_id}: {e}")
 
-                    # if not has_access:
-                    #     await connection_manager.send_personal(
-                    #         websocket,
-                    #         {
-                    #             "type": "error",
-                    #             "device_id": device_id,
-                    #             "message": f"Access denied to device {device_id}",
-                    #         }
-                    #     )
-                    #     logger.warning(f"Access denied: user {user_id} -> device {device_id}")
-                    #     continue
+                    if not has_access:
+                        await connection_manager.send_personal(
+                            websocket,
+                            {
+                                "type": "error",
+                                "device_id": device_id,
+                                "message": f"Access denied to device {device_id}",
+                            },
+                        )
+                        logger.warning(f"Access denied: user {user_id} -> device {device_id}")
+                        continue
 
-                    subscribed_devices.add(device_id)
+                    connection_manager.add_subscription(websocket, device_id)
                     logger.info(f"User {user_id} subscribed to device {device_id}")
 
                     await connection_manager.send_personal(
@@ -188,8 +311,8 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "unsubscribe":
                 # Отписка от устройства
                 device_id = message.get("device_id")
-                if device_id and device_id in subscribed_devices:
-                    subscribed_devices.remove(device_id)
+                if device_id and connection_manager.is_subscribed(websocket, device_id):
+                    connection_manager.remove_subscription(websocket, device_id)
                     logger.info(f"User {user_id} unsubscribed from device {device_id}")
 
                     await connection_manager.send_personal(
@@ -243,7 +366,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def broadcast_state_change(device_id: str, state: dict):
-    """Отправляет изменение состояния всем подключенным клиентам.
+    """Отправляет изменение состояния подписанным соединениям с доступом.
 
     Args:
         device_id: ID устройства
@@ -256,5 +379,5 @@ async def broadcast_state_change(device_id: str, state: dict):
         "timestamp": asyncio.get_event_loop().time(),
     }
 
-    await connection_manager.broadcast(message)
+    await connection_manager.broadcast_device_event(device_id, message)
     logger.debug(f"Broadcasted state change for device {device_id}")

@@ -8,6 +8,10 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel, Field
+
+from src.services.device_service import DeviceService
+from src.webui.routes.devices.deps import get_device_service
 
 
 logger = logging.getLogger(__name__)
@@ -65,13 +69,23 @@ def require_admin(is_admin: bool = Depends(get_is_admin)):
 # T068: Routes для управления доступом
 
 
+class GrantAccessRequest(BaseModel):
+    """Запрос на назначение доступа (contracts §3)."""
+
+    user_id: str = Field(min_length=1, description="ID пользователя")
+    role: str = Field(description="Роль доступа: viewer, controller, admin")
+
+
+_VALID_ROLES = ("viewer", "controller", "admin")
+
+
 @router.post("/{device_id}/access", status_code=201)
 async def grant_device_access(
     device_id: UUID,
-    user_id: str,
-    role: str,
+    request: GrantAccessRequest,
     current_user: str = Depends(get_current_user),
     is_admin: bool = Depends(require_admin),
+    service: DeviceService = Depends(get_device_service),
 ):
     """Предоставляет пользователю доступ к устройству.
 
@@ -79,52 +93,47 @@ async def grant_device_access(
 
     Args:
         device_id: ID устройства
-        user_id: ID пользователя которому предоставляем доступ
-        role: Роль (viewer, controller, admin)
+        request: Данные доступа (user_id, role)
         current_user: Текущий пользователь (администратор)
         is_admin: Проверка что это администратор
+        service: DeviceService приложения (dependency)
 
     Returns:
         Созданная запись доступа
 
     Raises:
-        HTTPException: Если ошибка валидации или нет прав
+        HTTPException: 404 если устройство не найдено, 400 при валидации, 403 без прав
     """
-    # Валидируем роль
-    if role not in ["viewer", "controller", "admin"]:
+    if request.role not in _VALID_ROLES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role: {role}. Must be one of: viewer, controller, admin",
+            detail=f"Invalid role: {request.role}. Must be one of: viewer, controller, admin",
+        )
+    try:
+        access = await service.grant_access(
+            device_id=device_id,
+            user_id=request.user_id,
+            role=request.role,
+            granted_by=current_user,
         )
 
-    try:
-        # Получаем DeviceService из контекста (будет реализовано в bootstrap)
-        # from src.core.container import get_device_service
-        # device_service = get_device_service()
+        if not access:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Device not found",
+            )
 
-        # access = await device_service.grant_access(
-        #     device_id=device_id,
-        #     user_id=user_id,
-        #     role=role,
-        #     granted_by=current_user
-        # )
-
-        # if not access:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_404_NOT_FOUND,
-        #         detail="Device not found"
-        #     )
-
-        # Для теста возвращаем структуру доступа
         return {
-            "id": str(UUID(int=0)),  # Placeholder
-            "device_id": str(device_id),
-            "user_id": user_id,
-            "role": role,
-            "granted_by": current_user,
-            "created_at": "2026-09-29T10:00:00Z",
+            "id": str(access.id),
+            "device_id": str(access.device_id),
+            "user_id": access.user_id,
+            "role": access.role,
+            "granted_by": access.granted_by,
+            "created_at": access.created_at.isoformat(),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Ошибка предоставления доступа: {e}")
         raise HTTPException(
@@ -138,6 +147,7 @@ async def revoke_device_access(
     access_id: UUID,
     current_user: str = Depends(get_current_user),
     is_admin: bool = Depends(require_admin),
+    service: DeviceService = Depends(get_device_service),
 ):
     """Отзывает доступ пользователя к устройству.
 
@@ -148,23 +158,27 @@ async def revoke_device_access(
         access_id: ID записи доступа для удаления
         current_user: Текущий пользователь (администратор)
         is_admin: Проверка что это администратор
+        service: DeviceService приложения (dependency)
 
     Raises:
-        HTTPException: Если ошибка или нет прав
+        HTTPException: 404 если запись не существует или относится к другому устройству
     """
     try:
-        # Получаем DeviceService из контекста (будет реализовано в bootstrap)
-        # from src.core.container import get_device_service
-        # device_service = get_device_service()
+        # Запись должна существовать и относиться к этому устройству
+        accesses = await service.get_device_accesses(device_id)
+        record_exists = any(str(access.id) == str(access_id) for access in accesses)
+        if not record_exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Access record not found",
+            )
 
-        # result = await device_service.revoke_access(access_id)
-
-        # if not result:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_404_NOT_FOUND,
-        #         detail="Access record not found"
-        #     )
-
+        result = await service.revoke_access(access_id)
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Access record not found",
+            )
         return None
 
     except HTTPException:
@@ -181,6 +195,7 @@ async def get_device_access_list(
     device_id: UUID,
     current_user: str = Depends(get_current_user),
     is_admin: bool = Depends(require_admin),
+    service: DeviceService = Depends(get_device_service),
 ):
     """Получает список всех доступов к устройству.
 
@@ -190,28 +205,28 @@ async def get_device_access_list(
         device_id: ID устройства
         current_user: Текущий пользователь (администратор)
         is_admin: Проверка что это администратор
+        service: DeviceService приложения (dependency)
 
     Returns:
         Список записей доступа
 
     Raises:
-        HTTPException: Если ошибка или нет прав
+        HTTPException: 404 если устройство не найдено
     """
     try:
-        # Получаем DeviceService из контекста (будет реализовано в bootstrap)
-        # from src.core.container import get_device_service
-        # device_service = get_device_service()
+        accesses = await service.get_device_accesses(device_id)
 
-        # accesses = await device_service.get_device_accesses(device_id)
-
-        # if accesses is None:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_404_NOT_FOUND,
-        #         detail="Device not found"
-        #     )
-
-        # Для теста возвращаем пустой список
-        return []
+        return [
+            {
+                "id": str(access.id),
+                "device_id": str(access.device_id),
+                "user_id": access.user_id,
+                "role": access.role,
+                "granted_by": access.granted_by,
+                "created_at": access.created_at.isoformat(),
+            }
+            for access in accesses
+        ]
 
     except HTTPException:
         raise

@@ -12,11 +12,15 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client():
-    """Фикстура для тестирования API."""
+    """Фикстура для тестирования API.
+
+    US4 (spec 004): device-endpoints требуют идентификацию (middleware) —
+    клиент по умолчанию действует как администратор (X-User-ID/X-Is-Admin).
+    """
     from src.webui.app import create_app
 
     app = create_app()
-    return TestClient(app)
+    return TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
 
 
 class TestSourcesAPI:

@@ -423,11 +423,11 @@ Phase 4 (US2: Config) ← MVP часть 2
 - [x] T064 [US4] Создать модель `DeviceAccess` в `src/core/models/device_access.py` с полями: id, device_id, user_id, role (viewer, controller, admin), granted_by, created_at
 - [x] T065 [US4] Добавить методы сохранения/загрузки DeviceAccess в слой персистентности
 - [x] T066 [US4] Реализовать функцию проверки прав доступа `check_device_access()` в `DeviceService` (зависит от T064)
-- [ ] T067 [US4] Добавить middleware проверки прав доступа для всех endpoints устройств в `src/webui/routes/devices/` (зависит от T066)
-- [x] T068 [US4] Создать FastAPI routes для управления доступом в `src/webui/routes/devices/access_control.py`: POST (назначить доступ), DELETE (отозвать), GET (список доступа) (зависит от T066)
-- [ ] T069 [US4] Реализовать фильтрацию устройств по доступу в `GET /api/v1/devices` (пользователь видит только доступные устройства) (зависит от T066)
-- [ ] T070 [US4] Создать SyncEvent запись для каждого изменения прав доступа (ТР-010)
-- [ ] T071 [US4] Добавить проверку доступа для WebSocket подписок (зависит от T067)
+- [x] T067 [US4] Добавить middleware проверки прав доступа для всех endpoints устройств в `src/webui/routes/devices/` (зависит от T066) — реализовано в specs/004: DeviceAccessMiddleware зарегистрирован в create_app
+- [x] T068 [US4] Создать FastAPI routes для управления доступом в `src/webui/routes/devices/access_control.py`: POST (назначить доступ), DELETE (отозвать), GET (список доступа) (зависит от T066) — доработано в specs/004: body-схемы, реальная логика (заглушки удалены), регистрация router'а
+- [x] T069 [US4] Реализовать фильтрацию устройств по доступу в `GET /api/v1/devices` (пользователь видит только доступные устройства) (зависит от T066) — реализовано в specs/004 через get_user_accessible_devices
+- [x] T070 [US4] Создать SyncEvent запись для каждого изменения прав доступа (ТР-010) — DeviceAccessChangedEvent публикуется в grant/revoke (specs/004 верифицировал)
+- [x] T071 [US4] Добавить проверку доступа для WebSocket подписок (зависит от T067) — реализовано в specs/004: проверка при подписке И при каждой доставке события
 
 **Контрольная точка**: Все истории пользователя (1-4) работают независимо. Система обеспечивает безопасность доступа.
 

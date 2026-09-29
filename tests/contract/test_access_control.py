@@ -264,3 +264,34 @@ class TestAccessControlAPI:
 
         # Должен быть 400 Bad Request
         assert response.status_code == 400
+
+    def test_grant_duplicate_updates_role_no_duplicates(
+        self, client, current_user_id, other_user_id, sample_device
+    ):
+        """T008 (spec 004 US2): повторный grant той же паре обновляет роль, дубликатов нет."""
+        if not sample_device:
+            pytest.skip("Sample device creation failed")
+
+        device_id = sample_device["id"]
+        headers = {"X-User-ID": current_user_id, "X-Is-Admin": "true"}
+
+        first = client.post(
+            f"/api/v1/devices/{device_id}/access",
+            json={"user_id": other_user_id, "role": "viewer"},
+            headers=headers,
+        )
+        assert first.status_code in [200, 201]
+
+        second = client.post(
+            f"/api/v1/devices/{device_id}/access",
+            json={"user_id": other_user_id, "role": "controller"},
+            headers=headers,
+        )
+        assert second.status_code in [200, 201]
+        assert second.json().get("role") == "controller"
+
+        listing = client.get(f"/api/v1/devices/{device_id}/access", headers=headers)
+        assert listing.status_code == 200
+        records = [r for r in listing.json() if r.get("user_id") == other_user_id]
+        assert len(records) == 1, f"дубликаты записей: {records}"
+        assert records[0]["role"] == "controller"

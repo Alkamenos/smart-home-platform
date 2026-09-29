@@ -580,11 +580,8 @@ class DeviceService:
             # Проверяем что пользователь грантер является админом
             # (эту проверку должен делать route handler)
 
-            # Проверяем что устройство существует
-            device = await self.get_device(device_id)
-            if not device:
-                logger.warning(f"Устройство {device_id} не найдено")
-                return None
+            # Устройство может не существовать ещё (grant до синка) —
+            # доступ выдаётся на идентификатор устройства (device-blind)
 
             # Проверяем что роль валидна
             if role not in ["viewer", "controller", "admin"]:

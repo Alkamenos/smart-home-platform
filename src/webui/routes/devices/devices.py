@@ -9,8 +9,10 @@ import logging
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Header, HTTPException, Request, status
+from pydantic import BaseModel, Field, model_validator
+
+from src.webui.routes.devices.deps import get_device_service
 
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,52 @@ router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
 # Временное хранилище устройств (TODO: заменить на правильное хранилище через Container)
 _devices_store: dict[str, dict] = {}
+
+# Требуемые роли на операции (contracts §1, data-model иерархия)
+_ROLE_VIEWER = "viewer"
+_ROLE_CONTROLLER = "controller"
+_ROLE_ADMIN = "admin"
+
+
+async def _require_access_or_403(
+    request: Request,
+    device_id: UUID,
+    required_role: str,
+) -> None:
+    """Проверяет роль пользователя на операцию над устройством (US1/T006).
+
+    Идентификация берётся из request.state (заполнил middleware) с фоллбэком
+    на заголовки. Не-админ без записи доступа (роль ниже требуемой) → 403.
+
+    Args:
+        request: HTTP запрос
+        device_id: ID устройства
+        required_role: Минимальная роль (viewer/controller/admin)
+
+    Raises:
+        HTTPException: 403 если доступ не пройден.
+    """
+    user_id = getattr(request.state, "user_id", None) or request.headers.get("X-User-ID")
+    is_admin = getattr(request.state, "is_admin", False) or (
+        request.headers.get("X-Is-Admin", "false").lower() == "true"
+    )
+    if is_admin:
+        return
+    if not user_id:
+        # Middleware уже отбил бы такой запрос; страховка
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-User-ID header"
+        )
+    service = get_device_service(request)
+    allowed = await service.check_device_access(device_id, user_id, required_role=required_role)
+    if not allowed:
+        logger.warning(
+            f"Access denied: user {user_id} -> device {device_id} (requires {required_role})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions for this operation",
+        )
 
 
 class DeviceResponse(BaseModel):
@@ -46,6 +94,7 @@ class DeviceResponse(BaseModel):
 @router.post("/apply", status_code=status.HTTP_201_CREATED)
 @router.get("", status_code=status.HTTP_200_OK)
 async def get_devices(
+    request: Request,
     source_id: UUID | None = None,
     x_user_id: str | None = Header(None),
 ) -> list[DeviceResponse]:
@@ -55,6 +104,7 @@ async def get_devices(
     Если заголовок X-User-ID отсутствует, возвращает пустой список.
 
     Args:
+        request: HTTP запрос (для получения DeviceService)
         source_id: Опциональный фильтр по источнику
         x_user_id: ID пользователя из заголовка X-User-ID
 
@@ -69,17 +119,15 @@ async def get_devices(
 
         devices = list(_devices_store.values())
 
-        # Фильтруем по source_id если указан
+        # T069: Фильтруем по доступу пользователя (важнее source_id)
+        device_service = get_device_service(request)
+        accessible = await device_service.get_user_accessible_devices(x_user_id)
+        accessible_ids = {str(device.id) for device in accessible}
+        devices = [d for d in devices if str(d.get("id")) in accessible_ids]
+
+        # Фильтруем по source_id если указан (поверх фильтра доступа)
         if source_id:
             devices = [d for d in devices if d.get("source_id") == str(source_id)]
-
-        # T069: Фильтруем по доступу пользователя
-        # Получаем все записи доступа пользователя (будет реализовано через DeviceService)
-        # device_service = get_device_service()  # TODO: внедрить через зависимость
-        # user_accessible_device_ids = set()
-        # for access in await device_service.get_user_accessible_devices(x_user_id):
-        #     user_accessible_device_ids.add(str(access.id))
-        # devices = [d for d in devices if str(d.get("id")) in user_accessible_device_ids]
 
         logger.info(f"Получен список {len(devices)} устройств для пользователя {x_user_id}")
         return [DeviceResponse(**d) for d in devices]
@@ -93,17 +141,18 @@ async def get_devices(
 
 
 @router.get("/{device_id}", status_code=status.HTTP_200_OK)
-async def get_device(device_id: UUID) -> DeviceResponse:
+async def get_device(request: Request, device_id: UUID) -> DeviceResponse:
     """T033: Получает информацию об устройстве с полной конфигурацией.
 
     Args:
+        request: HTTP запрос (идентификация из middleware)
         device_id: ID устройства
 
     Returns:
         Информация об устройстве с конфигурацией (display_name, description, location, tags)
 
     Raises:
-        HTTPException: 404 если устройство не найдено
+        HTTPException: 403 если нет роли viewer; 404 если устройство не найдено
     """
     device = _devices_store.get(str(device_id))
 
@@ -111,6 +160,8 @@ async def get_device(device_id: UUID) -> DeviceResponse:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
+
+    await _require_access_or_403(request, device_id, _ROLE_VIEWER)
 
     # Извлекаем конфигурацию из device.config если она есть
     response_data = dict(device)
@@ -135,7 +186,7 @@ class UpdateDeviceConfigRequest(BaseModel):
 
 @router.put("/{device_id}/config", status_code=status.HTTP_200_OK)
 async def update_device_config(
-    device_id: UUID, request: UpdateDeviceConfigRequest
+    device_id: UUID, http_request: Request, request: UpdateDeviceConfigRequest
 ) -> DeviceResponse:
     """T032/T038: Обновляет конфигурацию устройства.
 
@@ -147,13 +198,14 @@ async def update_device_config(
 
     Args:
         device_id: ID устройства
+        http_request: HTTP запрос (идентификация из middleware)
         request: Данные конфигурации
 
     Returns:
         Обновленное устройство с конфигурацией
 
     Raises:
-        HTTPException: 404 если устройство не найдено
+        HTTPException: 403 если нет роли admin; 404 если устройство не найдено
         HTTPException: 422 если валидация не пройдена
     """
     device = _devices_store.get(str(device_id))
@@ -162,6 +214,8 @@ async def update_device_config(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
+
+    await _require_access_or_403(http_request, device_id, _ROLE_ADMIN)
 
     try:
         # Валидируем теги
@@ -218,60 +272,42 @@ async def update_device_config(
         ) from e
 
 
-class SendCommandRequest(BaseModel):
-    """Запрос на отправку команды устройству."""
-
-    service: str = Field(description="Сервис HA (domain.service)")
-    data: dict = Field(default_factory=dict, description="Данные сервиса")
-
-
-@router.post("/{device_id}/command", status_code=status.HTTP_202_ACCEPTED)
-async def send_device_command(device_id: UUID, request: SendCommandRequest) -> dict:
-    """Отправляет команду устройству в Home Assistant.
-
-    Args:
-        device_id: ID устройства
-        request: Команда для отправки
-
-    Returns:
-        Статус выполнения команды
-
-    Raises:
-        HTTPException: 404 если устройство не найдено
-    """
-    device = _devices_store.get(str(device_id))
-
-    if not device:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
-        )
-
-    try:
-        # TODO: Реализовать отправку команды через HARestClient
-        logger.info(f"Отправлена команда устройству {device_id}: {request.service}")
-
-        return {
-            "command_id": "cmd_123",  # TODO: Генерировать реальный ID
-            "device_id": str(device_id),
-            "service": request.service,
-            "status": "pending",
-        }
-
-    except Exception as e:
-        logger.error(f"Ошибка при отправке команды: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Ошибка при отправке команды"
-        ) from e
-
-
-# ============ T054: POST /api/v1/devices/{id}/command (новая схема) ============
-
-
 class CommandRequest(BaseModel):
-    """Запрос на выполнение команды в формате T054."""
+    """Единый запрос выполнения команды (T054 + совместимость).
 
-    name: str = Field(min_length=1, max_length=255, description="Имя команды (e.g., 'turn_on')")
-    parameters: dict = Field(default_factory=dict, description="Параметры команды")
+    Принимает три формата (валидатор — хотя бы один идентификатор команды):
+    - T054: ``name`` + обязательные ``parameters``;
+    - name-алиас: ``command_name`` (параметры необязательны);
+    - сервисный: ``service`` + ``data``.
+    """
+
+    name: str | None = Field(None, min_length=1, max_length=255, description="Имя команды T054")
+    command_name: str | None = Field(
+        None, min_length=1, max_length=255, description="Имя команды (алиас)"
+    )
+    parameters: dict | None = Field(None, description="Параметры команды (обязательны с name)")
+    service: str | None = Field(None, description="Сервис HA (domain.service)")
+    data: dict | None = Field(None, description="Данные сервиса")
+
+    @model_validator(mode="after")
+    def _validate_command_identity(self) -> "CommandRequest":
+        """Требует хотя бы один идентификатор команды (contracts §3).
+
+        Returns:
+            Саму модель при валидном наборе полей.
+
+        Raises:
+            ValueError: если идентификатор не указан или формат неполон.
+        """
+        if self.command_name:
+            return self
+        if self.service:
+            return self
+        if self.name:
+            if self.parameters is None:
+                raise ValueError("Поле 'parameters' обязательно при использовании формата 'name'")
+            return self
+        raise ValueError("Укажите 'command_name', 'name' (с 'parameters') или 'service'")
 
 
 class CommandResponse(BaseModel):
@@ -290,19 +326,27 @@ class CommandResponse(BaseModel):
 @router.post("/{device_id}/command", status_code=status.HTTP_202_ACCEPTED)
 async def execute_device_command(
     device_id: UUID,
+    http_request: Request,
     request: CommandRequest,
 ) -> CommandResponse:
     """T054: Отправляет команду устройству.
 
+    Единый endpoint команды (стаб send_device_command объединён сюда):
+    принимает форматы T054 (``name`` + обязательные ``parameters``),
+    name-алиас (``command_name``, параметры необязательны) и сервисный
+    формат (``service``/``data``).
+
     Args:
         device_id: ID устройства
+        http_request: HTTP запрос (идентификация из middleware)
         request: Команда для выполнения
 
     Returns:
         Статус выполнения команды
 
     Raises:
-        HTTPException: 404 если устройство не найдено или 400 при ошибке валидации
+        HTTPException: 403 если нет роли controller; 404 если устройство не найдено
+            или 400 при ошибке валидации
     """
     device = _devices_store.get(str(device_id))
 
@@ -311,18 +355,21 @@ async def execute_device_command(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
 
+    await _require_access_or_403(http_request, device_id, _ROLE_CONTROLLER)
+
     try:
         # TODO: Использовать DeviceService.execute_command()
         from uuid import uuid4
 
         command_id = str(uuid4())
 
-        logger.info(f"Выполняю команду {request.name} на устройстве {device_id}")
+        effective_name = request.command_name or request.name or request.service or "unknown"
+        logger.info(f"Выполняю команду {effective_name} на устройстве {device_id}")
 
         return CommandResponse(
             id=command_id,
             device_id=str(device_id),
-            command_name=request.name,
+            command_name=effective_name,
             status="executing",
             created_at=datetime.utcnow().isoformat(),
         )
@@ -342,18 +389,20 @@ async def execute_device_command(
 async def get_command_status(
     device_id: UUID,
     command_id: UUID,
+    request: Request,
 ) -> CommandResponse:
     """T056: Получает статус выполненной команды.
 
     Args:
         device_id: ID устройства
         command_id: ID команды
+        request: HTTP запрос (идентификация из middleware)
 
     Returns:
         Информация о статусе команды
 
     Raises:
-        HTTPException: 404 если устройство или команда не найдены
+        HTTPException: 403 если нет роли viewer; 404 если устройство или команда не найдены
     """
     device = _devices_store.get(str(device_id))
 
@@ -361,6 +410,8 @@ async def get_command_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
+
+    await _require_access_or_403(request, device_id, _ROLE_VIEWER)
 
     try:
         # TODO: Получить статус команды из DeviceService._commands
@@ -401,6 +452,7 @@ class DeviceEventResponse(BaseModel):
 @router.get("/{device_id}/events", status_code=status.HTTP_200_OK)
 async def get_device_events(
     device_id: UUID,
+    request: Request,
     event_type: str | None = None,
     limit: int = 100,
     offset: int = 0,
@@ -409,6 +461,7 @@ async def get_device_events(
 
     Args:
         device_id: ID устройства
+        request: HTTP запрос (идентификация из middleware)
         event_type: Фильтр по типу события (опционально)
         limit: Максимальное количество событий
         offset: Смещение для пагинации
@@ -417,7 +470,7 @@ async def get_device_events(
         Список событий устройства
 
     Raises:
-        HTTPException: 404 если устройство не найдено
+        HTTPException: 403 если нет роли viewer; 404 если устройство не найдено
     """
     device = _devices_store.get(str(device_id))
 
@@ -425,6 +478,8 @@ async def get_device_events(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
+
+    await _require_access_or_403(request, device_id, _ROLE_VIEWER)
 
     try:
         # TODO: Получить события из persistence или EventBus

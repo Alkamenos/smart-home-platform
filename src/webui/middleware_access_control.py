@@ -7,8 +7,9 @@ Middleware для проверки доступа к устройствам.
 import logging
 from uuid import UUID
 
-from fastapi import HTTPException, Request, status
+from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,11 @@ class DeviceAccessMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """Обрабатывает запрос и проверяет доступ.
 
+        Зона ответственности — идентификация на device-endpoints: запросы
+        без X-User-ID к путям /api/v1/devices/** отклоняются (401),
+        идентификация переносится в request.state. Endpoints вне устройств
+        (healthcheck, dashboard) проверке не подлежат.
+
         Args:
             request: HTTP запрос
             call_next: Следующий middleware/handler
@@ -44,12 +50,18 @@ class DeviceAccessMiddleware(BaseHTTPMiddleware):
         Returns:
             HTTP ответ
         """
+        # Проверяем только пути устройств
+        path = request.url.path
+        is_device_area = path == "/api/v1/devices" or path.startswith("/api/v1/devices/")
+        if not is_device_area:
+            return await call_next(request)
+
         # Пропускаем GET /api/v1/devices (возвращает только доступные)
-        if request.method == "GET" and request.url.path == "/api/v1/devices":
+        if request.method == "GET" and path == "/api/v1/devices":
             return await call_next(request)
 
         # Пропускаем POST /api/v1/devices/sources (требует админ, проверяется в route)
-        if request.method == "POST" and request.url.path == "/api/v1/devices/sources":
+        if request.method == "POST" and path == "/api/v1/devices/sources":
             return await call_next(request)
 
         # Получаем ID пользователя из заголовка
@@ -57,21 +69,22 @@ class DeviceAccessMiddleware(BaseHTTPMiddleware):
         is_admin = request.headers.get("X-Is-Admin", "false").lower() == "true"
 
         if not user_id:
-            # Если нет ID пользователя, считаем это неавторизованным
+            # Если нет ID пользователя, считаем это неавторизованным.
+            # Из BaseHTTPMiddleware исключение не превратится в ответ —
+            # возвращаем JSON-ответ напрямую.
             logger.warning(f"Запрос без X-User-ID: {request.method} {request.url.path}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-User-ID header"
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Missing X-User-ID header"},
             )
 
         # Проверяем доступ к защищенным endpoints
         device_id = self._extract_device_id(request.url.path)
 
-        if device_id:
-            # Это endpoint для конкретного устройства
-            # Проверяем доступ к устройству (будет реализовано через dependency injection)
-            request.state.device_id = device_id
-            request.state.user_id = user_id
-            request.state.is_admin = is_admin
+        # Идентификация доступна маршруту на любой путь области устройств
+        request.state.device_id = device_id
+        request.state.user_id = user_id
+        request.state.is_admin = is_admin
 
         # Продолжаем обработку запроса
         response = await call_next(request)

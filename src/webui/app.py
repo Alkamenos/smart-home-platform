@@ -200,12 +200,20 @@ def create_app(
 
     app.include_router(discovery_router)
 
+    # US4/T004: регистрация middleware контроля доступа (идентификация на
+    # device-endpoints). Регистрируется ДО включения маршрутов — действует
+    # на все пути, но проверяет только область /api/v1/devices/**
+    from src.webui.middleware_access_control import DeviceAccessMiddleware
+
+    app.add_middleware(DeviceAccessMiddleware)
+
     # Include device management routes (T051-T057)
     try:
-        from .routes.devices import devices, sources, websocket
+        from .routes.devices import access_control, devices, sources, websocket
 
         app.include_router(devices.router)
         app.include_router(sources.router)
+        app.include_router(access_control.router)
         app.include_router(websocket.router)
         logger.info("Device management routes registered")
     except ImportError as e:

@@ -279,3 +279,113 @@ class TestAccessControlIntegration:
 
         # Должен быть успешный ответ
         assert response.status_code in [200, 201]
+
+
+class TestDeviceEventDeliveryRights:
+    """Spec 004 US3: доставка событий WS по правам (проверка при каждой доставке)."""
+
+    def test_device_event_delivery_revoked_after_revoke(self, admin_user_id, regular_user_id):
+        """T014: подписка с доступом → событие доставлено; после отзыва → не доставлено."""
+        from src.main import app
+
+        device_id = str(uuid4())
+        headers = {"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+
+        with TestClient(app) as client:
+            # Выдаём viewer-доступ обычному пользователю (grant до синка — device-blind)
+            grant = client.post(
+                f"/api/v1/devices/{device_id}/access",
+                json={"user_id": regular_user_id, "role": "viewer"},
+                headers=headers,
+            )
+            assert grant.status_code in [200, 201]
+
+            # ВАЖНО: импорт из того же модуля, который использует приложение
+            # (main.py импортирует top-level `webui`, а не `src.webui` —
+            # разные имена = разные экземпляры connection_manager)
+            from webui.routes.devices.websocket import broadcast_state_change
+
+            with client.websocket_connect("/api/v1/ws/devices") as ws:
+                ws.send_json({"type": "auth", "user_id": regular_user_id})
+                auth_reply = ws.receive_json()
+                assert auth_reply["type"] == "authenticated"
+
+                ws.send_json({"type": "subscribe", "device_id": device_id})
+                sub_reply = ws.receive_json()
+                assert sub_reply["type"] == "subscribed"
+
+                # Событие доставлено (доступ есть) — broadcast в портале TestClient
+                client.portal.call(broadcast_state_change, device_id, {"state": "on"})
+                delivered = ws.receive_json()
+                assert delivered["type"] == "state_changed"
+                assert delivered["device_id"] == device_id
+
+            # Отзываем доступ
+            access_id = grant.json()["id"]
+            revoke = client.delete(
+                f"/api/v1/devices/{device_id}/access/{access_id}", headers=headers
+            )
+            assert revoke.status_code in [200, 204]
+
+            # Новое соединение (прошлая закрыта context manager'ом)
+            with client.websocket_connect("/api/v1/ws/devices") as ws:
+                ws.send_json({"type": "auth", "user_id": regular_user_id})
+                ws.receive_json()
+
+                ws.send_json({"type": "subscribe", "device_id": device_id})
+                sub_reply = ws.receive_json()
+                # Доступ отозван — подписка отклоняется
+                assert sub_reply["type"] == "error", f"ожидался error: {sub_reply}"
+
+
+class TestAccessPersistenceAcrossRestarts:
+    """Spec 004 US2: доступы переживают перезапуск (FR-010, SC-004)."""
+
+    def test_access_survives_service_restart(self, admin_user_id, regular_user_id):
+        """T019: grant → пересоздать DeviceService → доступ сохранился."""
+        from uuid import UUID
+
+        from src.core.events.event_bus import EventBus
+        from src.core.persistence.manager import PersistenceManager
+        from src.services.device_service import DeviceService
+
+        device_id = uuid4()
+
+        async def flow():
+            svc = DeviceService(
+                event_bus=EventBus(),
+                persistence_module=PersistenceManager(data_dir="data"),
+                ha_adapter=None,
+            )
+            grant = await svc.grant_access(
+                device_id=device_id,
+                user_id=regular_user_id,
+                role="controller",
+                granted_by=admin_user_id,
+            )
+            assert grant is not None, "grant должен создаться"
+
+            # «Перезапуск»: новый экземпляр сервиса с той же персистентностью
+            restarted = DeviceService(
+                event_bus=EventBus(),
+                persistence_module=PersistenceManager(data_dir="data"),
+                ha_adapter=None,
+            )
+            accesses = await restarted.get_device_accesses(device_id)
+            return [a for a in accesses if a.user_id == regular_user_id], restarted, device_id
+
+        import asyncio
+
+        records, restarted_svc, dev_id = asyncio.run(flow())
+
+        assert len(records) == 1, f"ожидалась 1 запись после перезапуска: {records}"
+        assert records[0].role == "controller"
+
+        # Проверка доступа через перезапущенный сервис
+        ok = asyncio.run(
+            restarted_svc.check_device_access(UUID(str(dev_id)), regular_user_id, "viewer")
+        )
+        assert ok is True
+
+        # Убираем за собой
+        asyncio.run(restarted_svc.revoke_access(records[0].id))

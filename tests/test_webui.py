@@ -207,3 +207,17 @@ class TestFSMDiagram:
 
         assert response.status_code == 404
         assert "error" in response.json()
+
+
+def test_access_middleware_requires_user_id_on_device_endpoints(client: TestClient):
+    """T003: DeviceAccessMiddleware зарегистрирован: device-endpoint без X-User-ID → 401."""
+    from uuid import uuid4
+
+    response = client.get(f"/api/v1/devices/{uuid4()}")
+    assert response.status_code == 401
+
+
+def test_access_middleware_does_not_touch_non_device_endpoints(client: TestClient):
+    """T003: middleware не распространяет проверку на endpoints вне устройств."""
+    response = client.get("/health")
+    assert response.status_code == 200

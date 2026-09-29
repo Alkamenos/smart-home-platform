@@ -250,12 +250,7 @@
 
 ### High Priority
 
-1. Завершить US4 Access Control (бэклог из specs/001)
-   - Подключить `DeviceAccessMiddleware` в `src/webui/app.py`
-   - Раскомментировать фильтрацию `GET /api/v1/devices` (`routes/devices/devices.py:79-82`) и проверку доступа в WS (`routes/devices/websocket.py:158-174`)
-   - Вернуть реальный код в grant/revoke/list (`routes/devices/access_control.py:104-206` — сейчас заглушки)
-   - Source: `specs/001-device-integration/tasks.md` → «Бэклог» (RU T067, T068, T069, T071)
-   - Priority: HIGH (безопасность)
+1. ~~Завершить US4 Access Control (бэклог из specs/001)~~ ✅ закрыто 2026-09-29 (specs/004-device-access-control: middleware подключён, фильтрация/roles enforcing, grant/revoke/list реальные, WS-права; детали в tasks.md фичи)
 2. Модель `DeviceSyncEvent` + персистентность (история операций, ТР-010)
    - Files: `src/core/models/`, `src/core/persistence/`
    - Source: RU T041, T070

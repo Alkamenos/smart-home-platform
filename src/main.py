@@ -93,6 +93,11 @@ logging.getLogger("uvicorn.access").addHandler(LoguruHandler())
 logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 
 
+# Module-level app для TestClient-совместимости (tests/contract):
+# create_app() собирает приложение с дефолтным манифестом и сервисами домена.
+app = create_app()
+
+
 async def run_platform():
     # Get project root (parent of src directory)
     project_root = Path(__file__).parent.parent
