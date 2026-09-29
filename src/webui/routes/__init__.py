@@ -26,7 +26,8 @@ if TYPE_CHECKING:
 router = APIRouter()
 
 # Setup templates
-template_dir = Path(__file__).parent / "templates"
+# Шаблоны лежат в src/webui/templates/, а этот модуль — в src/webui/routes/
+template_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(template_dir))
 
 # Initialize EventStore

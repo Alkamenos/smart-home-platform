@@ -71,6 +71,11 @@ class ManifestValidator:
 
         return errors
 
+    @staticmethod
+    def _is_rooms_format(manifest: dict) -> bool:
+        """Текущий канонический формат: секция rooms с вложенными devices."""
+        return "rooms" in manifest
+
     def _validate_structure(self, manifest: dict) -> list[ValidationError]:
         """Проверка обязательных полей"""
         errors = []
@@ -84,6 +89,10 @@ class ManifestValidator:
             errors.append(ValidationError("instance.id", "Отсутствует ID инстанса"))
         elif "name" not in manifest.get("instance", {}):
             errors.append(ValidationError("instance.name", "Отсутствует имя инстанса"))
+
+        if self._is_rooms_format(manifest):
+            # Legacy-секции devices/zones необязательны в формате rooms
+            return errors
 
         if "devices" not in manifest:
             errors.append(ValidationError("devices", "Отсутствует секция devices"))
@@ -112,6 +121,32 @@ class ManifestValidator:
         if instance and not isinstance(instance, dict):
             errors.append(ValidationError("instance", "instance должен быть словарём"))
 
+        if self._is_rooms_format(manifest):
+            rooms = manifest.get("rooms")
+            if not isinstance(rooms, list):
+                errors.append(ValidationError("rooms", "rooms должен быть списком"))
+                return errors
+            for i, room in enumerate(rooms):
+                if not isinstance(room, dict):
+                    errors.append(ValidationError(f"rooms[{i}]", "Комната должна быть словарём"))
+                    continue
+                if not isinstance(room.get("devices", []), list):
+                    errors.append(
+                        ValidationError(
+                            f"rooms[{room.get('id', i)}].devices",
+                            "devices комнаты должен быть списком",
+                        )
+                    )
+                if not isinstance(room.get("sensors", {}), dict):
+                    errors.append(
+                        ValidationError(
+                            f"rooms[{room.get('id', i)}].sensors",
+                            "sensors комнаты должен быть словарём",
+                        )
+                    )
+            return errors
+
+        # Legacy-формат: devices/zones верхнего уровня
         # Проверка devices
         devices = manifest.get("devices")
         if devices and not isinstance(devices, dict):
@@ -127,6 +162,48 @@ class ManifestValidator:
     def _validate_formats(self, manifest: dict) -> list[ValidationError]:
         """Проверка форматов строк"""
         errors = []
+
+        if self._is_rooms_format(manifest):
+            rooms = manifest.get("rooms")
+            if not isinstance(rooms, list):
+                return errors
+            for room in rooms:
+                if not isinstance(room, dict):
+                    continue
+                room_id = room.get("id", "")
+                for device in room.get("devices", []) or []:
+                    if not isinstance(device, dict):
+                        continue
+                    device_id = device.get("id", "")
+                    if not self._is_valid_entity_id(device_id):
+                        errors.append(
+                            ValidationError(
+                                f"rooms[{room_id}].devices[{device_id}].id",
+                                f"Невалидный entity_id: {device_id}",
+                            )
+                        )
+                    for behavior in device.get("behaviors", []) or []:
+                        if not isinstance(behavior, dict):
+                            continue
+                        params = behavior.get("params", {}) or {}
+                        schedule = params.get("schedule")
+                        if schedule is not None and not self._is_valid_schedule(schedule):
+                            errors.append(
+                                ValidationError(
+                                    f"rooms[{room_id}].devices[{device_id}].params.schedule",
+                                    f"Невалидный формат расписания: {schedule}",
+                                )
+                            )
+                        for key in ("motion_sensor", "sensor"):
+                            sensor_id = params.get(key)
+                            if sensor_id is not None and not self._is_valid_entity_id(sensor_id):
+                                errors.append(
+                                    ValidationError(
+                                        f"rooms[{room_id}].devices[{device_id}].params.{key}",
+                                        f"Невалидный entity_id сенсора: {sensor_id}",
+                                    )
+                                )
+            return errors
 
         devices = manifest.get("devices", {})
         if not isinstance(devices, dict):
@@ -203,6 +280,12 @@ class ManifestValidator:
         """Проверка ссылочной целостности"""
         errors = []
 
+        if self._is_rooms_format(manifest):
+            # В формате devices вложены в room — ссылок на zones нет.
+            # Проверяем только ссылки сенсоров комнат на сами сенсоры не нужно:
+            # room.sensors — источник, а не ссылка.
+            return errors
+
         # Собираем все комнаты из zones
         zones = manifest.get("zones", [])
         if not isinstance(zones, list):
@@ -233,6 +316,79 @@ class ManifestValidator:
     def _validate_logic(self, manifest: dict) -> list[ValidationError]:
         """Логические проверки"""
         errors = []
+
+        if self._is_rooms_format(manifest):
+            rooms = manifest.get("rooms")
+            if not isinstance(rooms, list):
+                return errors
+
+            # Уникальность ID комнат
+            seen_room_ids: set[str] = set()
+            seen_device_ids: set[str] = set()
+            for room in rooms:
+                if not isinstance(room, dict):
+                    continue
+                room_id = room.get("id")
+                if room_id:
+                    if room_id in seen_room_ids:
+                        errors.append(
+                            ValidationError(
+                                f"rooms[{room_id}].id",
+                                f"Дубликат ID комнаты: {room_id}",
+                            )
+                        )
+                    seen_room_ids.add(room_id)
+
+                # Уникальность ID устройств (глобально, не только внутри комнаты)
+                for device in room.get("devices", []) or []:
+                    if not isinstance(device, dict):
+                        continue
+                    device_id = device.get("id")
+                    if device_id:
+                        if device_id in seen_device_ids:
+                            errors.append(
+                                ValidationError(
+                                    f"rooms[{room_id}].devices[{device_id}].id",
+                                    f"Дубликат ID устройства: {device_id}",
+                                )
+                            )
+                        seen_device_ids.add(device_id)
+
+                    # Диапазоны параметров behavior
+                    for behavior in device.get("behaviors", []) or []:
+                        if not isinstance(behavior, dict):
+                            continue
+                        params = behavior.get("params", {}) or {}
+
+                        target = params.get("target_temp")
+                        if target is not None and not (10.0 <= target <= 35.0):
+                            errors.append(
+                                ValidationError(
+                                    f"rooms[{room_id}].devices[{device_id}].params.target_temp",
+                                    f"Целевая температура {target} вне диапазона 10-35",
+                                )
+                            )
+
+                        hysteresis = params.get("hysteresis")
+                        if hysteresis is not None and not (0.1 <= hysteresis <= 5.0):
+                            errors.append(
+                                ValidationError(
+                                    f"rooms[{room_id}].devices[{device_id}].params.hysteresis",
+                                    f"Гистерезис {hysteresis} вне диапазона 0.1-5.0",
+                                )
+                            )
+
+                        threshold = params.get("humidity_threshold")
+                        if threshold is not None and not (0 <= threshold <= 100):
+                            errors.append(
+                                ValidationError(
+                                    f"rooms[{room_id}].devices[{device_id}]."
+                                    f"params.humidity_threshold",
+                                    f"Порог влажности {threshold} вне диапазона 0-100",
+                                )
+                            )
+
+            return errors
 
         devices = manifest.get("devices", {})
         if not isinstance(devices, dict):

@@ -794,3 +794,157 @@ class TestManifestValidatorComprehensive:
         assert any("Невалидный entity_id" in e.message for e in errors)
         assert any("не найдена в zones" in e.message for e in errors)
         assert any("Дубликат ID зоны" in e.message for e in errors)
+
+
+class TestRoomsFormat:
+    """Тесты валидации канонического формат rooms (вложенные devices).
+
+    Канонический формат манифеста (с 2026-09-15): секция rooms со вложенными
+    devices/behaviors. Legacy-формат devices/zones поддерживается для совместимости.
+    """
+
+    @pytest.fixture
+    def validator(self):
+        return ManifestValidator()
+
+    @pytest.fixture
+    def rooms_manifest(self):
+        return {
+            "version": 1,
+            "instance": {"id": "test_house", "name": "Test House"},
+            "rooms": [
+                {
+                    "id": "kitchen",
+                    "name": "Kitchen",
+                    "sensors": {"motion": "binary_sensor.kitchen_motion"},
+                    "devices": [
+                        {
+                            "id": "light.kitchen",
+                            "type": "light",
+                            "behaviors": [
+                                {
+                                    "template": "lighting",
+                                    "priority": 10,
+                                    "params": {"brightness": 255, "motion_timeout_sec": 180},
+                                },
+                                {
+                                    "template": "night_light",
+                                    "priority": 20,
+                                    "params": {"brightness": 15, "schedule": "23:00-07:00"},
+                                },
+                            ],
+                        },
+                        {
+                            "id": "climate.kitchen",
+                            "type": "climate",
+                            "behaviors": [
+                                {
+                                    "template": "climate_control",
+                                    "priority": 15,
+                                    "params": {"target_temp": 22.0, "hysteresis": 0.5},
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "id": "bathroom",
+                    "name": "Bathroom",
+                    "sensors": {"humidity": "sensor.bathroom_humidity"},
+                    "devices": [
+                        {
+                            "id": "fan.bathroom",
+                            "type": "ventilation",
+                            "behaviors": [
+                                {
+                                    "template": "humidity_ventilation",
+                                    "priority": 5,
+                                    "params": {"humidity_threshold": 65},
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+
+    def test_valid_rooms_manifest(self, validator, rooms_manifest):
+        """Валидный rooms-манифест не должен давать ошибок"""
+        errors = validator.validate(rooms_manifest)
+        assert errors == []
+
+    def test_rooms_format_does_not_require_devices_zones(self, validator, rooms_manifest):
+        """Секции devices/zones верхнего уровня необязательны в формате rooms"""
+        assert "devices" not in rooms_manifest
+        assert "zones" not in rooms_manifest
+        errors = validator.validate(rooms_manifest)
+        assert not any(e.field in ("devices", "zones") for e in errors)
+
+    def test_real_instance_manifest_valid(self, validator):
+        """Реальный манифест instances/leonids_house должен валидироваться без ошибок"""
+        from pathlib import Path
+
+        import yaml
+
+        path = Path("instances/leonids_house/manifest.yaml")
+        if not path.exists():
+            pytest.skip("instances/leonids_house/manifest.yaml not found")
+        manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
+        errors = validator.validate(manifest)
+        assert errors == [], f"Ложные ошибки: {[str(e) for e in errors]}"
+
+    def test_rooms_must_be_list(self, validator, rooms_manifest):
+        """rooms должен быть списком"""
+        rooms_manifest["rooms"] = "not a list"
+        errors = validator.validate(rooms_manifest)
+        assert any(e.field == "rooms" and "списком" in e.message for e in errors)
+
+    def test_duplicate_room_id(self, validator, rooms_manifest):
+        """Дубликат ID комнаты — ошибка"""
+        rooms_manifest["rooms"].append(dict(rooms_manifest["rooms"][0]))
+        errors = validator.validate(rooms_manifest)
+        assert any("Дубликат ID комнаты" in e.message for e in errors)
+
+    def test_duplicate_device_id_across_rooms(self, validator, rooms_manifest):
+        """Дубликат ID устройства в разных комнатах — ошибка"""
+        rooms_manifest["rooms"][1]["devices"].append(
+            {"id": "light.kitchen", "type": "light", "behaviors": []}
+        )
+        errors = validator.validate(rooms_manifest)
+        assert any("Дубликат ID устройства: light.kitchen" in e.message for e in errors)
+
+    def test_invalid_device_entity_id(self, validator, rooms_manifest):
+        """Невалидный entity_id устройства — ошибка"""
+        rooms_manifest["rooms"][0]["devices"][0]["id"] = "Bad Device ID"
+        errors = validator.validate(rooms_manifest)
+        assert any("Невалидный entity_id" in e.message for e in errors)
+
+    def test_invalid_schedule_in_behavior_params(self, validator, rooms_manifest):
+        """Невалидный формат расписания в params — ошибка"""
+        rooms_manifest["rooms"][0]["devices"][0]["behaviors"][1]["params"]["schedule"] = (
+            "wrong-format"
+        )
+        errors = validator.validate(rooms_manifest)
+        assert any("Невалидный формат расписания" in e.message for e in errors)
+
+    def test_target_temp_out_of_range(self, validator, rooms_manifest):
+        """target_temp вне 10-35 — ошибка"""
+        rooms_manifest["rooms"][0]["devices"][1]["behaviors"][0]["params"]["target_temp"] = 99.0
+        errors = validator.validate(rooms_manifest)
+        assert any("вне диапазона 10-35" in e.message for e in errors)
+
+    def test_humidity_threshold_out_of_range(self, validator, rooms_manifest):
+        """humidity_threshold вне 0-100 — ошибка"""
+        rooms_manifest["rooms"][1]["devices"][0]["behaviors"][0]["params"]["humidity_threshold"] = (
+            250
+        )
+        errors = validator.validate(rooms_manifest)
+        assert any("вне диапазона 0-100" in e.message for e in errors)
+
+    def test_missing_all_content_sections(self, validator):
+        """Нет ни rooms, ни devices/zones — legacy-ошибки структуры"""
+        manifest = {"version": 1, "instance": {"id": "x", "name": "X"}}
+        errors = validator.validate(manifest)
+        error_fields = [e.field for e in errors]
+        assert "devices" in error_fields
+        assert "zones" in error_fields

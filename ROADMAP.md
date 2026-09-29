@@ -104,9 +104,11 @@ gantt
 - Issue: Code exists in both `core/` and `../src/core/`
 - Action: Migrate fully to `src` layout, remove flat structure
 - Impact: All imports, pyproject.toml, cli.py
-- ✅ **CRITICAL** Fix manifest bug: add `motion_sensor` to night_light params
-- File: `instances/leonids_house/manifest.yaml`
-- Issue: `01_PROJECT_STATE.md` → Known Issues #1
+- ✅ **CRITICAL** Fix motion events not reaching lighting/night_light
+- Root cause: `Container.build()` создавал EventRouter ДО регистрации FSM → маппинг sensor→FSM пуст навсегда
+- Fix: регистрация FSM до создания EventRouter в `src/core/container.py::build()` + регресс-тест (2026-09-29)
+- Также: `sensors.motion` добавлен в `living_room`/`bathroom` в `instances/leonids_house/manifest.yaml`
+- Issue: `01_PROJECT_STATE.md` → Known Issues #1 (исправлено)
 - ✅ Clean up legacy tests
 - Remove: `tests/test_legacy_*.py`
 - Add: middleware tests, CLI tests, WebSocket reconnect tests
@@ -145,7 +147,8 @@ gantt
 - ✅ Hot-reload without restart
 - File watcher for manifest changes
 - Graceful FSM migration (unregister old, register new)
-- Files: `services/config_watcher.py`, `tests/test_hot_reload.py`
+- Files: `services/config_watcher.py`, `tests/test_hot_reload_memory.py`
+- ⚠ 2026-09-29: модуль реализован, НО не подключён к bootstrap/main и без тестов самого watcher — см. Known Issues
 - Implementation date: 2026-09-17
 
 ## ✅ Phase 7: Platform Extensions - Quick Wins
@@ -206,11 +209,12 @@ gantt
 - Detail: `.ai/enhancements/08-circuit-breaker.md`
 - Priority: HIGH
 - Effort: 1 day
-- [ ] Secrets Management
-- File: `core/secrets.py`
+- ✅ Secrets Management
+- File: `src/core/secrets.py`, `tests/test_secrets.py`
 - Detail: `.ai/enhancements/09-secrets-management.md`
 - Priority: MEDIUM
 - Effort: 1 day
+- Implementation date: 2026-09-19
 
 ## 🔄 Phase 9.75: Production Deployment Preparation
 
@@ -287,6 +291,7 @@ gantt
 - [ ] Hot-Reloading для Guard/Action функций
 - Files: `services/config_watcher.py`, `core/registry.py`
 - Detail: `.ai/enhancements/14-hot-reloading.md`
+- Note: логика `_on_python_module_changed` в config_watcher.py реализована, но не подключена и не покрыта тестами
 - Priority: LOW
 - Effort: 1-2 days
 - [ ] Event History Persistence (Data Lake)
@@ -312,8 +317,16 @@ gantt
 
 
 ### High Priority
+- Подключить `DeviceAccessMiddleware` в `src/webui/app.py`
+- Раскомментировать фильтрацию `GET /api/v1/devices` (`routes/devices/devices.py:79-82`) и проверку доступа в WS (`routes/devices/websocket.py:158-174`)
+- Вернуть реальный код в grant/revoke/list (`routes/devices/access_control.py:104-206` — сейчас заглушки)
+- Source: `specs/001-device-integration/tasks.md` → «Бэклог» (RU T067, T068, T069, T071)
+- Priority: HIGH (безопасность)
+- Files: `src/core/models/`, `src/core/persistence/`
+- Source: RU T041, T070
 
 ### Medium Priority
+- Source: `specs/001-device-integration/tasks.md` → «Бэклог» (EN T040, T046, T054, T060, T067)
 - File: `adapters/ha_adapter.py`
 - Fix: Add tests with mocked connection failures
 - File: `cli.py`

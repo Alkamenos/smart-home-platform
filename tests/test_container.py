@@ -197,6 +197,27 @@ class TestBuildMethod:
         assert isinstance(context.adapter, MockAdapter)
         assert context.adapter._fsm_engine is context.fsm
 
+    def test_build_event_router_mapping_includes_registered_fsms(self):
+        """Regression: EventRouter must build sensor->FSM mapping after FSM registration.
+
+        EventRouter builds its mapping once in __init__ from
+        engine.get_entities_by_device(). If FSMs are registered after the
+        router is created, the mapping stays empty forever and lighting /
+        night_light never receive motion events.
+        """
+        container = Container(manifest_path="instances/leonids_house/manifest.yaml")
+
+        # Remove HA_TOKEN to use MockAdapter
+        os.environ.pop("HA_TOKEN", None)
+
+        context = container.build()
+
+        kitchen_motion = context.event_router.get_mapping_for_sensor("binary_sensor.kitchen_motion")
+        mapped_entities = {entity_id for entity_id, _event_type in kitchen_motion}
+
+        assert "light.kitchen_lighting_10" in mapped_entities
+        assert "light.kitchen_night_light_20" in mapped_entities
+
 
 class TestResetMethod:
     """Test the reset() method for testing purposes."""

@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client():
-    """Create test client for Web UI app."""
+def client(tmp_path):
+    """Create test client for Web UI app with an isolated manifest copy.
+
+    Web UI сохраняет манифест на диск (/devices/save), поэтому тесты работают
+    с копией в tmp_path, а не с реальным instances/leonids_house/manifest.yaml.
+    """
     from src.webui.app import create_app
 
-    app = create_app(manifest_path="instances/leonids_house/manifest.yaml")
+    manifest_copy = tmp_path / "manifest.yaml"
+    shutil.copy("instances/leonids_house/manifest.yaml", manifest_copy)
+    app = create_app(manifest_path=str(manifest_copy))
     return TestClient(app)
 
 

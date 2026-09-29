@@ -176,7 +176,7 @@ export-fsm:
 		exit 1; \
 	fi
 	@echo "📊 Exporting FSM visualization from $(MANIFEST)..."
-	@smart-home export-fsm $(MANIFEST) \
+	@shp export-fsm $(MANIFEST) \
 		$(if $(DEVICE),--device $(DEVICE),) \
 		$(if $(FORMAT),--format $(FORMAT),--format mermaid) \
 		$(if $(OUTPUT),--output $(OUTPUT),)
@@ -188,7 +188,7 @@ export-fsm-mermaid:
 		exit 1; \
 	fi
 	@echo "🎨 Exporting FSM as Mermaid diagram from $(MANIFEST)..."
-	@smart-home export-fsm $(MANIFEST) \
+	@shp export-fsm $(MANIFEST) \
 		$(if $(DEVICE),--device $(DEVICE),) \
 		--format mermaid \
 		$(if $(OUTPUT),--output $(OUTPUT),)
@@ -200,7 +200,7 @@ export-fsm-graphviz:
 		exit 1; \
 	fi
 	@echo "🔷 Exporting FSM as Graphviz DOT file from $(MANIFEST)..."
-	@smart-home export-fsm $(MANIFEST) \
+	@shp export-fsm $(MANIFEST) \
 		$(if $(DEVICE),--device $(DEVICE),) \
 		--format graphviz \
 		$(if $(OUTPUT),--output $(OUTPUT),)
@@ -215,7 +215,7 @@ visualize-fsm:
 	@mkdir -p visualizations
 	@if [ -n "$(DEVICE)" ]; then \
 		OUTPUT_FILE="visualizations/fsm_diagram_$(DEVICE).mmd"; \
-		smart-home export-fsm $(MANIFEST) --device $(DEVICE) --format mermaid --output $$OUTPUT_FILE; \
+		shp export-fsm $(MANIFEST) --device $(DEVICE) --format mermaid --output $$OUTPUT_FILE; \
 		echo "✅ Diagram saved to $$OUTPUT_FILE"; \
 		echo "🚀 Opening in browser..."; \
 		content=$$(cat $$OUTPUT_FILE); \
@@ -223,7 +223,7 @@ visualize-fsm:
 		python3 -c "import webbrowser; webbrowser.open('$$url')"; \
 	else \
 		OUTPUT_FILE="visualizations/fsm_diagram_all.mmd"; \
-		smart-home export-fsm $(MANIFEST) --format mermaid --output $$OUTPUT_FILE; \
+		shp export-fsm $(MANIFEST) --format mermaid --output $$OUTPUT_FILE; \
 		echo "✅ Diagram saved to $$OUTPUT_FILE"; \
 		echo "🚀 Opening in browser..."; \
 		content=$$(cat $$OUTPUT_FILE); \

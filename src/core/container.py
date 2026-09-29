@@ -206,13 +206,16 @@ class Container:
         _ = self.event_bus  # No dependencies
         _ = self.fsm  # No dependencies
         _ = self.control_tracker  # No dependencies
-        _ = self.event_router  # Depends on manifest, fsm
-        _ = self.adapter  # Depends on fsm, event_router
-        _ = self.dispatcher  # Depends on adapter, middleware
         _ = self.factory  # Depends on fsm, registry, event_bus
 
-        # Create and register FSMs from manifest
+        # Create and register FSMs from manifest BEFORE EventRouter:
+        # EventRouter builds its sensor->FSM mapping once in __init__
+        # from engine.get_entities_by_device(), so FSMs must already exist.
         self.factory.create_and_register(self.manifest)
+
+        _ = self.event_router  # Depends on manifest, fsm (mapping built here)
+        _ = self.adapter  # Depends on fsm, event_router
+        _ = self.dispatcher  # Depends on adapter, middleware
 
         # Link adapter to FSM engine
         self.adapter.set_fsm_engine(self.fsm)
