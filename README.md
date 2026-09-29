@@ -8,6 +8,8 @@
 
 A modern, state-machine based automation platform for smart home systems. This platform provides a robust framework for defining, managing, and executing complex home automation scenarios using finite state machines (FSM). Built with Python 3.10+, it features strict schema validation via Pydantic, declarative configuration support through YAML, structured logging with Loguru, and comprehensive testing capabilities.
 
+> 📚 **Документация:** [docs/README.md](docs/README.md) · 🔧 **Разработка:** [.ai/00_START_HERE.md](.ai/00_START_HERE.md) · 📋 **Конституция:** [CLAUDE.md](CLAUDE.md)
+
 ## 🎉 What's New in v3.0.0
 
 The v3.0.0 release brings major architectural improvements and powerful new features:
