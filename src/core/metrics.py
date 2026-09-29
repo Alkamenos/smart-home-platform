@@ -33,6 +33,7 @@ class MetricsCollector:
         self._fsm_transitions_total: Counter | None = None
         self._event_processing_latency: Histogram | None = None
         self._ha_connection_errors_total: Counter | None = None
+        self._websocket_disconnects_total: Counter | None = None
         self._middleware_conflicts_total: Counter | None = None
         self._command_rejections_total: Counter | None = None
         self._active_fsm_instances: Gauge | None = None
@@ -108,6 +109,12 @@ class MetricsCollector:
                 ["error_type"],
             )
 
+            # WebSocket disconnections requiring reconnect
+            self._websocket_disconnects_total = Counter(
+                "websocket_disconnects_total",
+                "Total number of WebSocket disconnects that triggered reconnect",
+            )
+
             # Middleware conflicts counter
             self._middleware_conflicts_total = Counter(
                 "middleware_conflicts_total",
@@ -138,7 +145,6 @@ class MetricsCollector:
                 "Время синхронизации устройства в секундах",
                 ["source_id", "device_type"],
                 buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
-                help="Гистограмма времени синхронизации отдельного устройства",
             )
 
             # Histogram для общего времени синхронизации источника
@@ -147,7 +153,6 @@ class MetricsCollector:
                 "Общее время синхронизации источника в секундах",
                 ["source_id"],
                 buckets=(0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0),
-                help="Гистограмма общего времени синхронизации источника",
             )
 
             # 2. COMMAND METRICS
@@ -156,7 +161,6 @@ class MetricsCollector:
                 "device_integration_device_commands_total",
                 "Всего отправлено команд на устройства",
                 ["source_id", "device_type", "command_type"],
-                help="Счетчик всех команд отправленных на устройства",
             )
 
             # Counter для успешных команд
@@ -164,7 +168,6 @@ class MetricsCollector:
                 "device_integration_device_commands_success",
                 "Количество успешно выполненных команд",
                 ["source_id", "device_type", "command_type"],
-                help="Счетчик успешно выполненных команд",
             )
 
             # Counter для неудачных команд
@@ -172,7 +175,6 @@ class MetricsCollector:
                 "device_integration_device_commands_failed",
                 "Количество неудачных команд",
                 ["source_id", "device_type", "command_type", "error_type"],
-                help="Счетчик неудачных команд с типом ошибки",
             )
 
             # 3. ERROR METRICS
@@ -181,7 +183,6 @@ class MetricsCollector:
                 "device_integration_device_connection_errors_total",
                 "Всего ошибок соединения с устройствами",
                 ["source_id", "error_type"],
-                help="Счетчик ошибок соединения",
             )
 
             # Counter для ошибок синхронизации
@@ -189,7 +190,6 @@ class MetricsCollector:
                 "device_integration_device_sync_errors_total",
                 "Всего ошибок синхронизации устройств",
                 ["source_id", "error_type"],
-                help="Счетчик ошибок синхронизации",
             )
 
             # 4. DEVICE STATE METRICS
@@ -198,7 +198,6 @@ class MetricsCollector:
                 "device_integration_devices_available",
                 "Количество доступных устройств",
                 ["source_id", "device_type"],
-                help="Текущее количество доступных устройств",
             )
 
             # Gauge для количества недоступных устройств
@@ -206,14 +205,12 @@ class MetricsCollector:
                 "device_integration_devices_unavailable",
                 "Количество недоступных устройств",
                 ["source_id", "device_type"],
-                help="Текущее количество недоступных устройств",
             )
 
             # Gauge для количества подключенных источников
             self._sources_connected = Gauge(
                 "device_integration_sources_connected",
                 "Количество подключенных источников",
-                help="Текущее количество активных источников",
             )
 
             # 5. CACHE METRICS
@@ -221,7 +218,6 @@ class MetricsCollector:
             self._cache_size = Gauge(
                 "device_integration_cache_size",
                 "Размер кэша в байтах",
-                help="Текущий размер кэша устройств",
             )
 
             # Counter для попаданий в кэш
@@ -229,7 +225,6 @@ class MetricsCollector:
                 "device_integration_cache_hits",
                 "Количество попаданий в кэш",
                 ["cache_type"],
-                help="Счетчик успешных обращений к кэшу",
             )
 
             # Counter для промахов кэша
@@ -237,7 +232,6 @@ class MetricsCollector:
                 "device_integration_cache_misses",
                 "Количество промахов кэша",
                 ["cache_type"],
-                help="Счетчик неудачных обращений к кэшу",
             )
 
             self._initialized = True
@@ -295,6 +289,11 @@ class MetricsCollector:
         """
         if self._initialized and self._ha_connection_errors_total:
             self._ha_connection_errors_total.labels(error_type=error_type).inc()
+
+    def record_websocket_disconnect(self) -> None:
+        """Record a WebSocket disconnect that triggered a reconnect attempt."""
+        if self._initialized and self._websocket_disconnects_total:
+            self._websocket_disconnects_total.inc()
 
     def record_middleware_conflict(
         self,

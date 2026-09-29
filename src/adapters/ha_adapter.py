@@ -56,6 +56,12 @@ class SimpleHAWebSocketClient:
         self._listen_task = None
 
     async def connect(self):
+        if self.ws is not None:
+            await self.close()
+            self.ws = None
+        self._msg_id = 0
+        self._handlers.clear()
+        self._event_handler = None
         try:
             import websockets
 
@@ -109,10 +115,11 @@ class SimpleHAWebSocketClient:
                             handler = self._handlers.pop(msg_id)
                             handler(msg)
 
-                except Exception:
-                    pass
-        except Exception:
+                except Exception as e:
+                    logger.warning(f"HAAdapter: error processing WS message: {e}")
+        except Exception as e:
             self.connected = False
+            logger.warning(f"HAAdapter: listen loop terminated: {e}")
 
     async def close(self):
         if self._listen_task:
@@ -245,6 +252,8 @@ class HAAdapter:
         self._session: aiohttp.ClientSession | None = None
         self._shutdown_event = asyncio.Event()
         self._reconnect_task: asyncio.Task | None = None
+        self._reconnect_attempt = 0
+        self._connected_once = False
         self._trace_callbacks: list[
             Callable[[str, str, str, dict[str, Any]], Coroutine[Any, Any, None]]
         ] = []
@@ -421,12 +430,38 @@ class HAAdapter:
             # Launch connection loop as a background task (non-blocking)
             self._reconnect_task = asyncio.create_task(self._connect_websocket())
 
+    def _record_disconnect(self, reason: str, delay: float) -> None:
+        """Зафиксировать потерю соединения: метрика + лог с номером попытки и задержкой.
+
+        Инкрементирует ``websocket_disconnects_total`` и пишет WARNING только
+        при реально установленном ранее соединении (``_connected_once``);
+        неудачные попытки первичного подключения метрикой не считаются.
+        Импорт метрик ленивый: импорт на уровне модуля создаёт цикл
+        ``core.container → ha_adapter → src.core``.
+
+        Args:
+            reason: Причина обрыва (для лога).
+            delay: Задержка перед следующей попыткой восстановления, сек.
+        """
+        from src.core.metrics import get_metrics_collector
+
+        self._reconnect_attempt += 1
+        if not self._connected_once:
+            return
+        self._connected_once = False
+        get_metrics_collector().record_websocket_disconnect()
+        logger.warning(
+            f"HAAdapter: WebSocket lost ({reason}), "
+            f"reconnecting (attempt {self._reconnect_attempt}, delay {delay:.1f}s)..."
+        )
+
     async def _connect_websocket(self) -> None:
         """Establish WebSocket connection with exponential backoff."""
         reconnect_delay = 1.0
         max_reconnect_delay = 60.0
 
         while not self._shutdown_event.is_set():
+            needs_backoff = False
             try:
                 log = self._get_logger(self._generate_trace_id())
                 logger.info(f"🔌 HAAdapter: attempting WebSocket connection to {self._ws_url}")
@@ -465,6 +500,9 @@ class HAAdapter:
                 logger.info("🔔 HAAdapter: listening for HA state changes...")
 
                 reconnect_delay = 1.0
+                self._reconnect_attempt = 0
+                self._connected_once = True
+                logger.info("✅ HAAdapter: WebSocket ready, backoff reset (delay=1.0s)")
 
                 # 🆕 Инициализируем timestamp последнего события
                 self._last_event_time = time.time()
@@ -486,10 +524,14 @@ class HAAdapter:
 
                     # Если listen_task завершился — соединение разорвано извне
                     if listen_task and listen_task in done:
+                        reason = "listen task ended"
                         try:
                             listen_task.result()
                         except Exception as e:
+                            reason = f"listen task failed: {e}"
                             log.warning(f"HAAdapter: listen_task ended unexpectedly: {e}")
+                        self._record_disconnect(reason, reconnect_delay)
+                        needs_backoff = True
                         # Выходим из try блока, чтобы сработал reconnect
                 finally:
                     # Останавливаем heartbeat при любом выходе
@@ -505,6 +547,8 @@ class HAAdapter:
                 trace_id = self._generate_trace_id()
                 log = self._get_logger(trace_id)
                 logger.error(f"❌ HAAdapter connection failed: {type(e).__name__}: {e}")
+                if not isinstance(e, (ConnectionError, OSError, TimeoutError)):
+                    logger.exception("HAAdapter: unexpected connection error")
                 log.error(f"HAAdapter: connection error: {type(e).__name__}: {e}")
 
                 # Логируем состояние для отладки
@@ -515,14 +559,16 @@ class HAAdapter:
                     )
                     log.error(f"HAAdapter: _ws_client.ws = {getattr(self._ws_client, 'ws', 'N/A')}")
 
-                if not self._shutdown_event.is_set():
-                    logger.info(f"🔄 HAAdapter: retrying in {reconnect_delay:.1f}s...")
-                    log.info(f"HAAdapter: reconnecting in {reconnect_delay:.1f}s")
-                    await asyncio.sleep(reconnect_delay)
-                    reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+                self._record_disconnect(f"{type(e).__name__}: {e}", reconnect_delay)
+                needs_backoff = True
 
             finally:
                 await self._cleanup_websocket()
+
+            if needs_backoff and not self._shutdown_event.is_set():
+                logger.info(f"🔄 HAAdapter: retrying in {reconnect_delay:.1f}s...")
+                await asyncio.sleep(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
     async def _handle_ws_state_change(
         self,
