@@ -38,7 +38,7 @@ gantt
     Phase 9.75- Production Deployment Preparation :active, p10, 2026-11-07, 2026-11-12
 
     section Phase 9.8- Critical Production Fixes
-    Phase 9.8- Critical Production Fixes :p11, 2026-11-14, 2026-11-19
+    Phase 9.8- Critical Production Fixes :done, p11, 2026-11-14, 2026-11-19
 
     section Phase 10- Architecture Improvements
     Phase 10- Architecture Improvements :done, p12, 2026-11-21, 2026-11-26
@@ -241,22 +241,25 @@ gantt
 - Effort: 1 day
 - User Stories:
 
-## 📌 Phase 9.8: Critical Production Fixes
+## ✅ Phase 9.8: Critical Production Fixes
 
-**Status:** PLANNING
+**Status:** COMPLETED: 2026-09-29
 
 - Files: deploy/docker/Dockerfile, src/main.py, pyproject.toml
 - Detail: .ai/enhancements/20-docker-entrypoint-fix.md
 - Priority: CRITICAL
 - Effort: 0.5 days
+- Done: 2026-09-29 — specs/003 US1 (T004-T011): healthcheck CLI + JSON /health + Docker E2E (10 мин healthy, 0 рестартов, graceful stop 1с)
 - File: src/adapters/ha_adapter.py
 - Detail: .ai/enhancements/21-websocket-reconnect.md
 - Priority: CRITICAL
 - Effort: 1 day
-- Files: src/core/commands/dispatcher.py, src/core/commands/models.py
+- Done: 2026-09-29 — specs/003 US2 (T012-T016): тесты reconnect, backoff после обрыва, метрика websocket_disconnects_total, логи contracts §4
+- Files: src/core/commands/dispatcher.py
 - Detail: .ai/enhancements/22-intent-ttl-dispatcher.md
 - Priority: HIGH
 - Effort: 1 day
+- Done: 2026-09-29 — specs/003 US3 (T017-T024): TTL полей/методов, asyncio.Lock, cleanup-loop, force-release WARNING, lifecycle start/shutdown
 
 ## ✅ Phase 10: Architecture Improvements
 
@@ -327,8 +330,6 @@ gantt
 
 ### Medium Priority
 - Source: `specs/001-device-integration/tasks.md` → «Бэклог» (EN T040, T046, T054, T060, T067)
-- File: `adapters/ha_adapter.py`
-- Fix: Add tests with mocked connection failures
 - File: `cli.py`
 - Fix: Add end-to-end CLI tests
 

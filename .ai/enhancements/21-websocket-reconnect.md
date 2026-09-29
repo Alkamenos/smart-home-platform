@@ -3,7 +3,8 @@
 **Приоритет:** CRITICAL
 **Оценка:** 1 день
 **Категория:** Production Bugfixes
-**Статус:** PLANNING
+**Статус:** IMPLEMENTED (2026-09-29, specs/003 US2)
+> Базовый reconnect с exponential backoff существовал до фичи 003; надёжность (backoff после обрыва, метрика `websocket_disconnects_total`, логи contracts §4) и тесты — specs/003 US2 (T012–T016).
 
 > Файл — ТЗ для ИИ-реализатора.
 

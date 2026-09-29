@@ -106,11 +106,11 @@ pytest tests/integration -q
 
 ## Карта сценариев → критерии
 
-| Сценарий | SC |
-|---|---|
-| 1. Healthcheck unit | SC-001 (компонент), SC-007 |
-| 2. WS-Reconnect unit | SC-002, SC-003, SC-007 |
-| 3. TTL unit | SC-004, SC-005, SC-007 |
-| 4. Docker E2E | SC-001 |
-| 5. Shutdown E2E | SC-006 |
-| 6. Регресс | SC-007 |
+| Сценарий | SC | Статус (2026-09-29) |
+|---|---|---|
+| 1. Healthcheck unit | SC-001 (компонент), SC-007 | ✅ Пройден: `tests/cli/test_health_check.py` 6 passed + `test_webui.py -k health` 1 passed |
+| 2. WS-Reconnect unit | SC-002, SC-003, SC-007 | ✅ Пройден: `tests/test_ha_adapter_reconnect.py` 6 passed |
+| 3. TTL unit | SC-004, SC-005, SC-007 | ✅ Пройден: `tests/test_dispatcher_ttl.py` 10 passed + `tests/test_dispatcher.py` 13 passed |
+| 4. Docker E2E | SC-001 | ✅ Пройден (T009): образ собран, healthy 16 мин, 0 рестартов, `/health` 200 |
+| 5. Shutdown E2E | SC-006 | ✅ Пройден (T011): останов 1с, 0 `Traceback`/`Unclosed` |
+| 6. Регресс | SC-007 | ✅ Пройден (T025): run_checks exit 0 (покрытие 92.9%); root 78 failed против baseline 79 (−1: исправлен `test_metrics`), contract 6f/27e и integration 4f — идентично baseline, новых падений нет |

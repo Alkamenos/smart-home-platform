@@ -3,7 +3,8 @@
 **Приоритет:** HIGH
 **Оценка:** 1 день
 **Категория:** Production Bugfixes
-**Статус:** PLANNING
+**Статус:** IMPLEMENTED (2026-09-29, specs/003 US3)
+> Реализовано в specs/003 US3 (T017–T024). Отклонение от ТЗ: `src/core/commands/models.py` не существует — `CommandIntent` расширен в `src/core/commands/dispatcher.py` (research R4).
 
 > Файл — ТЗ для ИИ-реализатора.
 

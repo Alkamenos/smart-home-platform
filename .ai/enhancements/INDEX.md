@@ -37,9 +37,9 @@
 | [17](17-enhanced-logging.md) | Enhanced Logging Integration | ✅ Реализовано | HIGH | Production |
 | [18](18-automatic-manifest-generator.md) | Automatic Manifest Generator | ✅ Реализовано | HIGH | Production |
 | [19](19-dashboard-generator.md) | Dashboard Generator for Platform Management | 🔄 Частично³ | MEDIUM | Production |
-| [20](20-docker-entrypoint-fix.md) | Docker Entrypoint & Bootstrap Fix | 📝 Планирование | CRITICAL | Production Bugfixes |
-| [21](21-websocket-reconnect.md) | WebSocket Reconnection Reliability | 📝 Планирование⁴ | CRITICAL | Production Bugfixes |
-| [22](22-intent-ttl-dispatcher.md) | Command Intent TTL & Auto-Release | 📝 Планирование | HIGH | Production Bugfixes |
+| [20](20-docker-entrypoint-fix.md) | Docker Entrypoint & Bootstrap Fix | ✅ Реализовано | CRITICAL | Production Bugfixes |
+| [21](21-websocket-reconnect.md) | WebSocket Reconnection Reliability | ✅ Реализовано | CRITICAL | Production Bugfixes |
+| [22](22-intent-ttl-dispatcher.md) | Command Intent TTL & Auto-Release | ✅ Реализовано | HIGH | Production Bugfixes |
 | [23](23-event-history-persistence.md) | Event History Persistence (Data Lake) | 📝 Планирование | HIGH | AI & Analytics |
 | [24](24-predictive-ai-middleware.md) | Predictive AI Middleware | 📝 Планирование | MEDIUM | AI & Advanced |
 | [25](25-web-ui.md) | Web UI (редактирование манифеста) | ✅ Реализовано | — | Web UI |
@@ -52,7 +52,6 @@
 1. Код (`src/core/secrets.py`) и тесты (`tests/test_secrets.py`) существуют, но чек-бокс в roadmap не отмечен.
 2. `services/config_watcher.py` поддерживает hot-reload Python-модулей с guard/action функциями; roadmap (Phase 11) не отмечен.
 3. `src/dashboard/lovelace_generator.py` и `src/dashboard/dashboard.py` реализованы и протестированы; CLI-команда `generate-dashboard` из описания не реализована.
-4. Базовый reconnect с exponential backoff есть (`adapters/ha_adapter.py`); требуется надёжность + тесты переподключения (см. Technical Debt в roadmap).
 
 ## Связанные документы
 

@@ -3,7 +3,8 @@
 **Приоритет:** CRITICAL
 **Оценка:** 0.5 дня
 **Категория:** Production Bugfixes
-**Статус:** PLANNING
+**Статус:** IMPLEMENTED (2026-09-29, specs/003 US1)
+> Частично выполнялся до фичи 003 (существующие Dockerfile/compose и маршрут `/health`); реализация по факту — specs/003-critical-production-fixes US1 (T004–T011): healthcheck CLI, JSON `/health`, Docker E2E.
 
 > Файл — ТЗ для ИИ-реализатора. Следуй инструкциям точно, сохраняя стиль проекта (loguru, asyncio, DI-контейнер).
 

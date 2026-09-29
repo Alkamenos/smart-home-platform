@@ -179,22 +179,25 @@
     * Run `shp generate-dashboard --output lovelace_platform.yaml`
     * Import generated dashboard into HA
     * Real-time visibility into platform operations
-## Phase 9.8: Critical Production Fixes [PLANNING]
-[ ] CRITICAL Docker Entrypoint & Bootstrap Fix
+## Phase 9.8: Critical Production Fixes [COMPLETED: 2026-09-29]
+[x] CRITICAL Docker Entrypoint & Bootstrap Fix
   - Files: deploy/docker/Dockerfile, src/main.py, pyproject.toml
   - Detail: .ai/enhancements/20-docker-entrypoint-fix.md
   - Priority: CRITICAL
   - Effort: 0.5 days
-[ ] CRITICAL WebSocket Reconnection Reliability
+  - Done: 2026-09-29 — specs/003 US1 (T004-T011): healthcheck CLI + JSON /health + Docker E2E (10 мин healthy, 0 рестартов, graceful stop 1с)
+[x] CRITICAL WebSocket Reconnection Reliability
   - File: src/adapters/ha_adapter.py
   - Detail: .ai/enhancements/21-websocket-reconnect.md
   - Priority: CRITICAL
   - Effort: 1 day
-[ ] Command Intent TTL & Auto-Release
-  - Files: src/core/commands/dispatcher.py, src/core/commands/models.py
+  - Done: 2026-09-29 — specs/003 US2 (T012-T016): тесты reconnect, backoff после обрыва, метрика websocket_disconnects_total, логи contracts §4
+[x] Command Intent TTL & Auto-Release
+  - Files: src/core/commands/dispatcher.py
   - Detail: .ai/enhancements/22-intent-ttl-dispatcher.md
   - Priority: HIGH
   - Effort: 1 day
+  - Done: 2026-09-29 — specs/003 US3 (T017-T024): TTL полей/методов, asyncio.Lock, cleanup-loop, force-release WARNING, lifecycle start/shutdown
 
 ## Phase 10: Architecture Improvements [COMPLETED: 2026-09-19]
 - [x] Domain-Driven Design Refactoring
@@ -260,9 +263,7 @@
 ### Medium Priority
 0. Device integration E2E-тесты отсутствуют (0 из 6: sync/config/commands/access)
    - Source: `specs/001-device-integration/tasks.md` → «Бэклог» (EN T040, T046, T054, T060, T067)
-3. No WebSocket reconnect tests
-   - File: `adapters/ha_adapter.py`
-   - Fix: Add tests with mocked connection failures
+3. ~~No WebSocket reconnect tests~~ ✅ закрыто 2026-09-29 (specs/003 T012: `tests/test_ha_adapter_reconnect.py`, 6 тестов)
 4. CLI commands lack integration tests
    - File: `cli.py`
    - Fix: Add end-to-end CLI tests

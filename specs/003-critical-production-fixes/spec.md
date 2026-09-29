@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-29
 
-**Status**: Draft
+**Status**: Implemented (2026-09-29)
 
 **Input**: User description: "Phase 9.8 Critical Production Fixes из roadmap: (1) Docker Entrypoint & Bootstrap Fix — контейнер должен собираться, запускаться и проходить healthcheck; (2) WebSocket Reconnection Reliability — платформа обязана сама восстанавливать связь с Home Assistant после обрыва; (3) Command Intent TTL & Auto-Release — «забытые» командные интенты не должны навсегда блокировать устройства. Источники: .ai/enhancements/20-docker-entrypoint-fix.md, 21-websocket-reconnect.md, 22-intent-ttl-dispatcher.md"
 
