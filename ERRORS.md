@@ -1,56 +1,52 @@
 # Оставшиеся ошибки mypy
 
-Дата: 2026-09-29
+Дата: 2026-09-29 (обновлено)
 
-## Проблема
+## Статус: ИСПРАВЛЕНО ✅
 
-В файле `src/services/device_service.py` есть 4 ошибки mypy, которые требуют более глубокого рефакторинга:
+4 ошибки `unused-coroutine` в `src/services/device_service.py` устранены
+(вариант 1 из исходного описания: методы сделаны асинхронными).
 
-### Ошибки
+## Что было сделано
 
-1. **Строка 438** - `src/services/device_service.py:438: error: Value of type "Coroutine[Any, Any, None]" must be used [unused-coroutine]`
-   - Метод: `_publish_config_changed_event()`
-   - Проблема: Вызывает `self.event_bus.publish(event)` без `await`
-   - Причина: `publish()` - асинхронная функция, но вызывается в синхронном контексте
+Методы `_publish_*_event()` переведены в `async def` и теперь реально публикуют
+события через `await self.event_bus.publish(...)`:
 
-2. **Строка 475** - `src/services/device_service.py:475: error: Value of type "Coroutine[Any, Any, None]" must be used [unused-coroutine]`
-   - Метод: `_publish_access_changed_event()`
-   - Проблема: Вызывает `self.event_bus.publish(event)` без `await`
+| Метод | Событие |
+|-------|---------|
+| `_publish_config_changed_event()` | `device.config_changed` |
+| `_publish_access_changed_event()` | `device.access_changed` |
+| `_publish_device_loaded_event()` | `device.loaded` |
+| `_publish_state_changed_event()` | `device.state_changed` |
 
-3. **Строка 986** - `src/services/device_service.py:986: error: Value of type "Coroutine[Any, Any, None]" must be used [unused-coroutine]`
-   - Метод: `_publish_device_loaded_event()`
-   - Проблема: Вызывает `self.event_bus.publish(event)` без `await`
+Дополнительно:
 
-4. **Строка 1015** - `src/services/device_service.py:1015: error: Value of type "Coroutine[Any, Any, None]" must be used [unused-coroutine]`
-   - Метод: `_publish_state_changed_event()`
-   - Проблема: Вызывает `self.event_bus.publish(event)` без `await`
+- Имена событий вынесены в константы модуля: `EVENT_DEVICE_LOADED`,
+  `EVENT_DEVICE_CONFIG_CHANGED`, `EVENT_DEVICE_STATE_CHANGED`,
+  `EVENT_DEVICE_ACCESS_CHANGED` (`src/services/device_service.py:34`)
+- Payload публикуются как `dict` в соответствии со схемой
+  `DeviceSyncEvent` из `specs/001-device-integration/data-model.md`
+- Обновлены все 6 мест вызова на `await`
+- Фикстура `event_bus` в тестах переведена на `AsyncMock` для `publish`,
+  тесты публикации теперь проверяют имя события и payload
+- Попутно исправлен блокер сбора тестов: `@validator` → `@field_validator`
+  в `src/core/models/device_command.py` (Pydantic 2.13 падал при импорте)
 
-## Корневая причина
+## Проверки
 
-Методы `_publish_*_event()` синхронные (`def`, не `async def`), но пытаются вызвать асинхронный метод `EventBus.publish()` без `await`.
+```
+mypy src/ --strict --ignore-missing-imports --enable-error-code=unused-coroutine
+→ Success: no issues found in 121 source files
 
-## Решение
-
-Нужно выбрать один из вариантов:
-
-### Вариант 1: Сделать методы асинхронными (рекомендуется)
-Изменить сигнатуру методов на `async def`:
-```python
-async def _publish_config_changed_event(self, ...):
-    event = DeviceConfigChangedEvent(...)
-    await self.event_bus.publish("device.config_changed", event)
+ruff check src/ tests/      → All checks passed!
+ruff format --check src/ tests/ → 197 files already formatted
 ```
 
-Затем обновить все вызовы на `await self._publish_config_changed_event(...)`.
+Регрессий нет: 4 ранее падавших теста публикации событий теперь проходят.
 
-### Вариант 2: Удалить вызовы publish()
-Закомментировать или удалить вызовы, так как события не публикуются.
+## Известная проблема (не связана с этим фиксом)
 
-### Вариант 3: Использовать синхронный способ публикации
-Убедиться, что `EventBus` имеет синхронный метод публикации или создать один.
-
-## Статус
-
-**Не исправлено** - требует рефакторинга в другой задаче.
-
-Все остальные lint ошибки (47 ошибок) исправлены успешно. Эти 4 ошибки mypy требуют архитектурного решения о способе публикации событий.
+Команда `pytest tests/` целиком не собирается: `tests/contract/test_access_control.py`
+и `tests/integration/test_access_control.py` имеют одинаковый basename, а в каталогах
+тестов нет `__init__.py` → `import file mismatch`. Обходится запуском по отдельности
+или добавлением `--import-mode=importlib` в `pyproject.toml`.

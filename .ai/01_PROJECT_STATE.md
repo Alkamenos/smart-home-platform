@@ -79,9 +79,18 @@
    - **Файл:** `core/event_router.py:67`
    - **Статус:** **ИСПРАВЛЕНО** (2026-09-15) — EventRouter теперь использует public API вместо private field access
 
+3. **`pytest tests/` целиком не собирается (import file mismatch)**
+   - **Файлы:** `tests/contract/test_access_control.py` и `tests/integration/test_access_control.py` — одинаковый basename, в каталогах тестов нет `__init__.py`
+   - **Обходной путь:** запускать по отдельности или добавить `--import-mode=importlib` в `pyproject.toml` (требует согласования)
+   - **Статус:** Не исправлено
+
+4. **13 падающих тестов, не связанных с публикацией событий**
+   - **Файлы:** `tests/unit/test_cache.py` (5), `tests/unit/test_models.py` (3), `tests/unit/test_device_service.py::TestEdgeCases::test_handle_state_change_with_malformed_data` (ожидает `RuntimeError`, который сервис намеренно подавляет), `tests/integration/test_commands.py` (2), `tests/integration/test_state_sync.py` (2)
+   - **Статус:** Не исправлено (проверено, что они падали и до правки публикации событий)
+
 ### 🟢 Low
 
-3. **Нет тестов для WebSocket reconnect logic**
+5. **Нет тестов для WebSocket reconnect logic**
    - **Файл:** `adapters/ha_adapter.py`
    - **Статус:** Не исправлено
 
@@ -89,6 +98,7 @@
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-29 | Асинхронная публикация событий устройств (4 ошибки mypy unused-coroutine) + миграция `@validator` → `@field_validator` | `src/services/device_service.py`, `src/core/models/device_command.py`, `tests/unit/test_device_service.py` | ✅ Complete |
 | 2026-09-19 | Room Aggregation & Policies implementation (Phase 8) | `src/core/room_manager.py`, `src/core/models/room.py`, `tests/test_room_aggregation.py` | ✅ Complete |
 | 2026-09-18 | Scene Manager / Flow Engine implementation (Phase 8) | `src/core/scene_manager.py`, `src/core/models/scene.py`, `tests/test_scene_manager.py` | ✅ Complete |
 | 2026-09-18 | Interactive REPL implementation (Phase 7) | `src/smart_home/cli/commands/shell.py`, `tests/test_shell.py` | ✅ Complete |

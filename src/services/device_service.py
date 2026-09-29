@@ -31,6 +31,11 @@ from src.core.persistence.index_manager import IndexManager
 
 logger = logging.getLogger(__name__)
 
+EVENT_DEVICE_LOADED = "device.loaded"
+EVENT_DEVICE_CONFIG_CHANGED = "device.config_changed"
+EVENT_DEVICE_STATE_CHANGED = "device.state_changed"
+EVENT_DEVICE_ACCESS_CHANGED = "device.access_changed"
+
 
 class DeviceService:
     """Сервис для управления устройствами и их синхронизацией."""
@@ -130,7 +135,7 @@ class DeviceService:
 
             # 7. Опубликовать события для каждого устройства
             for device in parsed_devices:
-                self._publish_device_loaded_event(device)
+                await self._publish_device_loaded_event(device)
 
             # 8. Обновить источник с временем последней синхронизации
             source.last_sync = datetime.utcnow()
@@ -389,7 +394,7 @@ class DeviceService:
                 logger.info(f"Конфигурация устройства {device_id} сохранена")
 
             # T040: Публикуем событие DeviceConfigChangedEvent
-            self._publish_config_changed_event(
+            await self._publish_config_changed_event(
                 device_id=device_id,
                 changed_fields=changed_fields,
                 changed_by=updated_by,
@@ -413,7 +418,7 @@ class DeviceService:
             logger.error(f"Ошибка обновления конфигурации устройства {device_id}: {e}")
             raise
 
-    def _publish_config_changed_event(
+    async def _publish_config_changed_event(
         self,
         device_id: UUID,
         changed_fields: dict[str, Any],
@@ -427,22 +432,28 @@ class DeviceService:
             changed_by: Кто сделал изменение
         """
         try:
-            DeviceConfigChangedEvent(
+            event = DeviceConfigChangedEvent(
                 device_id=device_id,
                 changed_fields=changed_fields,
                 changed_by=changed_by or "unknown",
                 timestamp=datetime.utcnow(),
             )
 
-            # Публикуем событие
-            # TODO: Implement async event publishing
-            # await self.event_bus.publish("device.config_changed", event)
+            await self.event_bus.publish(
+                EVENT_DEVICE_CONFIG_CHANGED,
+                {
+                    "device_id": str(event.device_id),
+                    "changes": event.changed_fields,
+                    "changed_by": event.changed_by,
+                    "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                },
+            )
             logger.debug(f"Опубликовано событие изменения конфигурации для устройства {device_id}")
 
         except Exception as e:
             logger.error(f"Ошибка публикации события изменения конфигурации: {e}")
 
-    def _publish_access_changed_event(
+    async def _publish_access_changed_event(
         self,
         device_id: UUID,
         user_id: str,
@@ -462,7 +473,7 @@ class DeviceService:
             granted_by: Администратор который совершил действие
         """
         try:
-            DeviceAccessChangedEvent(
+            event = DeviceAccessChangedEvent(
                 device_id=device_id,
                 user_id=user_id,
                 action=action,
@@ -472,9 +483,18 @@ class DeviceService:
                 timestamp=datetime.utcnow(),
             )
 
-            # Публикуем событие
-            # TODO: Implement async event publishing
-            # await self.event_bus.publish("device.access_changed", event)
+            await self.event_bus.publish(
+                EVENT_DEVICE_ACCESS_CHANGED,
+                {
+                    "device_id": str(event.device_id),
+                    "user_id": event.user_id,
+                    "action": event.action,
+                    "role": event.role,
+                    "previous_role": event.previous_role,
+                    "granted_by": event.granted_by,
+                    "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                },
+            )
             logger.debug(
                 f"Опубликовано событие изменения доступа: {action} для user {user_id} на device {device_id}"
             )
@@ -591,7 +611,7 @@ class DeviceService:
 
             # T070: Публикуем событие изменения доступа
             action = "updated" if previous_role else "granted"
-            self._publish_access_changed_event(
+            await self._publish_access_changed_event(
                 device_id=device_id,
                 user_id=user_id,
                 action=action,
@@ -631,7 +651,7 @@ class DeviceService:
 
             if result and access:
                 # T070: Публикуем событие отзыва доступа
-                self._publish_access_changed_event(
+                await self._publish_access_changed_event(
                     device_id=access.device_id,
                     user_id=access.user_id,
                     action="revoked",
@@ -741,7 +761,7 @@ class DeviceService:
             logger.info(f"Updated state for device {device.id} ({entity_id})")
 
             # T058: Публикуем событие через EventBus
-            self._publish_state_changed_event(
+            await self._publish_state_changed_event(
                 device_id=device.id,
                 old_state=old_state_dict,
                 new_state=device.state,
@@ -776,7 +796,7 @@ class DeviceService:
                 # Обновляем метрики доступности
                 self._update_device_availability_metrics()
                 # Публикуем событие об изменении статуса
-                self._publish_state_changed_event(
+                await self._publish_state_changed_event(
                     device_id=device_id,
                     old_state={"status": "available"},
                     new_state={"status": "unavailable"},
@@ -967,7 +987,7 @@ class DeviceService:
 
     # ============ T058: События ============
 
-    def _publish_device_loaded_event(self, device: Device) -> None:
+    async def _publish_device_loaded_event(self, device: Device) -> None:
         """Публикует событие загрузки устройства через EventBus.
 
         Args:
@@ -976,7 +996,7 @@ class DeviceService:
         try:
             from src.core.events.device_events import DeviceLoadedEvent
 
-            DeviceLoadedEvent(
+            event = DeviceLoadedEvent(
                 device_id=device.id,
                 source_id=device.source_id,
                 ha_entity_id=device.ha_entity_id,
@@ -985,15 +1005,24 @@ class DeviceService:
                 timestamp=datetime.utcnow(),
             )
 
-            # Публикуем событие
-            # TODO: Implement async event publishing
-            # await self.event_bus.publish("device.loaded", event)
+            await self.event_bus.publish(
+                EVENT_DEVICE_LOADED,
+                {
+                    "device_id": str(event.device_id),
+                    "source_id": str(event.source_id),
+                    "ha_entity_id": event.ha_entity_id,
+                    "name": event.name,
+                    "device_type": event.device_type,
+                    "state": device.state,
+                    "timestamp": event.timestamp.isoformat(),
+                },
+            )
             logger.debug(f"Опубликовано событие загрузки устройства: {device.id}")
 
         except Exception as e:
             logger.error(f"Ошибка публикации события загрузки устройства: {e}")
 
-    def _publish_state_changed_event(
+    async def _publish_state_changed_event(
         self,
         device_id: UUID,
         old_state: dict[str, Any] | None,
@@ -1007,7 +1036,7 @@ class DeviceService:
             new_state: Новое состояние
         """
         try:
-            DeviceStateChangedEvent(
+            event = DeviceStateChangedEvent(
                 device_id=device_id,
                 old_state=old_state,
                 new_state=new_state,
@@ -1015,9 +1044,16 @@ class DeviceService:
                 source="ha",
             )
 
-            # Публикуем событие
-            # TODO: Implement async event publishing
-            # await self.event_bus.publish("device.state_changed", event)
+            await self.event_bus.publish(
+                EVENT_DEVICE_STATE_CHANGED,
+                {
+                    "device_id": str(event.device_id),
+                    "old_state": event.old_state,
+                    "new_state": event.new_state,
+                    "source": event.source,
+                    "timestamp": event.timestamp.isoformat(),
+                },
+            )
             logger.debug(f"Published state changed event for device {device_id}")
 
         except Exception as e:

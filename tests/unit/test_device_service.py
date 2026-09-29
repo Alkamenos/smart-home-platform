@@ -22,7 +22,13 @@ from src.core.events.event_bus import EventBus
 from src.core.models.device import Device
 from src.core.models.device_access import DeviceAccess
 from src.core.models.device_config import DeviceConfig
-from src.services.device_service import DeviceService
+from src.services.device_service import (
+    EVENT_DEVICE_ACCESS_CHANGED,
+    EVENT_DEVICE_CONFIG_CHANGED,
+    EVENT_DEVICE_LOADED,
+    EVENT_DEVICE_STATE_CHANGED,
+    DeviceService,
+)
 
 
 # ============================================================================
@@ -34,7 +40,7 @@ from src.services.device_service import DeviceService
 def event_bus():
     """Фикстура: создать mock EventBus."""
     bus = MagicMock(spec=EventBus)
-    bus.publish = MagicMock()
+    bus.publish = AsyncMock()
     return bus
 
 
@@ -529,6 +535,53 @@ class TestSyncDevicesFromSource:
             mock_persistence.devices.save_devices.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_sync_publishes_device_loaded_events(
+        self, device_service, mock_persistence, event_bus
+    ):
+        """Проверяет что синхронизация публикует device.loaded для каждого устройства."""
+        from unittest.mock import AsyncMock, patch
+
+        from src.core.models.ha_source import HASource
+
+        source_id = uuid4()
+        source = HASource(
+            id=source_id,
+            name="Test HA",
+            url="http://localhost:8123",
+            token="test_token",
+        )
+        mock_persistence.sources.load_source.return_value = source
+
+        mock_ha_states = [
+            {
+                "entity_id": "light.kitchen",
+                "state": "on",
+                "attributes": {"friendly_name": "Kitchen Light"},
+            },
+            {
+                "entity_id": "switch.bedroom",
+                "state": "off",
+                "attributes": {"friendly_name": "Bedroom Switch"},
+            },
+        ]
+
+        with patch(
+            "src.adapters.home_assistant.rest_client.HARestClient"
+        ) as mock_rest_client_class:
+            mock_rest_client = AsyncMock()
+            mock_rest_client.connect_to_ha = AsyncMock(return_value=True)
+            mock_rest_client.fetch_devices = AsyncMock(return_value=mock_ha_states)
+            mock_rest_client.__aenter__ = AsyncMock(return_value=mock_rest_client)
+            mock_rest_client.__aexit__ = AsyncMock(return_value=None)
+            mock_rest_client_class.return_value = mock_rest_client
+
+            result = await device_service.sync_devices_from_source(source_id)
+
+        assert event_bus.publish.await_count == len(result)
+        published_types = [call.args[0] for call in event_bus.publish.await_args_list]
+        assert published_types == [EVENT_DEVICE_LOADED] * len(result)
+
+    @pytest.mark.asyncio
     async def test_sync_connection_error(self, device_service, mock_persistence):
         """Проверяет обработку ошибки подключения."""
         from unittest.mock import AsyncMock, patch
@@ -646,7 +699,12 @@ class TestUpdateDeviceConfig:
         )
 
         # Проверяем что событие было опубликовано
-        event_bus.publish.assert_called()
+        event_bus.publish.assert_awaited_once()
+        event_type, payload = event_bus.publish.await_args.args
+        assert event_type == EVENT_DEVICE_CONFIG_CHANGED
+        assert payload["device_id"] == str(sample_device.id)
+        assert payload["changed_by"] == "admin"
+        assert "display_name" in payload["changes"]
 
     @pytest.mark.asyncio
     async def test_update_config_existing_config(
@@ -864,7 +922,12 @@ class TestGrantAccess:
             granted_by="admin",
         )
 
-        event_bus.publish.assert_called()
+        event_bus.publish.assert_awaited_once()
+        event_type, payload = event_bus.publish.await_args.args
+        assert event_type == EVENT_DEVICE_ACCESS_CHANGED
+        assert payload["user_id"] == "user1"
+        assert payload["action"] == "granted"
+        assert payload["role"] == "controller"
 
 
 # ============================================================================
@@ -895,7 +958,11 @@ class TestRevokeAccess:
 
         assert result is True
         mock_persistence.device_access.delete_access.assert_called_once_with(access_id)
-        event_bus.publish.assert_called()
+        event_bus.publish.assert_awaited_once()
+        event_type, payload = event_bus.publish.await_args.args
+        assert event_type == EVENT_DEVICE_ACCESS_CHANGED
+        assert payload["action"] == "revoked"
+        assert payload["device_id"] == str(device_id)
 
     @pytest.mark.asyncio
     async def test_revoke_access_not_found(self, device_service, mock_persistence):
@@ -1004,7 +1071,11 @@ class TestHandleStateChange:
         await device_service.handle_state_change(event_data)
 
         assert device_service._devices[sample_device.id].state["state"] == "off"
-        event_bus.publish.assert_called()
+        event_bus.publish.assert_awaited_once()
+        event_type, payload = event_bus.publish.await_args.args
+        assert event_type == EVENT_DEVICE_STATE_CHANGED
+        assert payload["new_state"]["state"] == "off"
+        assert payload["source"] == "ha"
 
     @pytest.mark.asyncio
     async def test_handle_state_change_missing_entity_id(self, device_service, event_bus):

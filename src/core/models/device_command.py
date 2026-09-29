@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class DeviceCommand(BaseModel):
@@ -44,9 +44,20 @@ class DeviceCommand(BaseModel):
         default_factory=datetime.utcnow, description="Время последнего обновления"
     )
 
-    @validator("execution_timeout")
-    def validate_timeout(self, v):
-        """Валидация таймаута - максимум 300 секунд."""
+    @field_validator("execution_timeout")
+    @classmethod
+    def validate_timeout(cls, v: int) -> int:
+        """Валидация таймаута - максимум 300 секунд.
+
+        Args:
+            v: Значение таймаута в секундах
+
+        Returns:
+            Валидное значение таймаута
+
+        Raises:
+            ValueError: Если таймаут превышает 300 секунд
+        """
         if v > 300:
             raise ValueError("execution_timeout must be <= 300 seconds")
         return v
