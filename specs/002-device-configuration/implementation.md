@@ -1,9 +1,18 @@
 # Фаза 4: История пользователя 2 (US2) - Конфигурирование параметров устройства
 
+> **Роль документа**: implementation-отчёт по US2, **не отдельная фича**.
+> Фича-контейнер без spec/plan/tasks; дублирует US2 (Фазу 4) из
+> [`specs/001-device-integration`](../001-device-integration/spec.md).
+> **Канонический источник**: spec.md, plan.md, tasks.md фичи 001 (RU-секция T032–T042).
+> Сверено с кодом 2026-09-29.
+
 ## Обзор
 Реализована полная поддержка конфигурирования параметров устройств (display_name, description, location, tags) с валидацией, персистентностью и интеграцией с системой событий.
 
 ## Статус реализации
+
+**Итог сверки: 9 из 11 задач (RU T032–T042 из 001) выполнены.**
+Две задачи заявлены здесь как «✓», но фактически не выполнены — см. исправленные разделы T035 и T041 ниже. Актуальные маркеры — в `specs/001-device-integration/tasks.md`.
 
 ### Завершено (✓)
 
@@ -13,19 +22,22 @@
 - ✓ Написаны интеграционные тесты полного потока редактирования
 - ✓ Тесты включают валидацию полей и обработку ошибок
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/tests/contract/test_devices_api.py`
+**Файл:** `tests/contract/test_devices_api.py`
 
-#### T035: Модель DeviceConfig с валидацией
+#### T035: Модель DeviceConfig с валидацией — ⚠ ЧАСТИЧНО (в 001: RU T035 `[ ]`)
 - ✓ Создана модель DeviceConfig в src/core/models/device_config.py
 - ✓ Реализована валидация:
-  - display_name: min 1, max 255 символов (уникальность реализуется на уровне источника)
+  - display_name: min 1, max 255 символов
   - description: max 1000 символов
   - location: max 255 символов
   - tags: max 10 тегов по 50 символов каждый
+- **❌ Уникальность display_name в пределах источника НЕ реализована** —
+  заявлена в data-model.md и в docstring `update_device_config`, но не проверяется кодом
+  (отложено; бэклог RU T035 фичи 001, см. также H3 анализа)
 - ✓ Модель использует Pydantic field_validator для валидации
 - ✓ Включены поля: created_by, updated_by, created_at, updated_at
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/core/models/device_config.py`
+**Файл:** `src/core/models/device_config.py`
 
 #### T036: Метод update_device_config в DeviceService
 - ✓ Реализован метод update_device_config в DeviceService
@@ -35,7 +47,7 @@
 - ✓ Публикует DeviceConfigChangedEvent
 - ✓ Обновляет конфигурацию в Device модели для сохранения при перезагрузке
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/services/device_service.py`
+**Файл:** `src/services/device_service.py`
 
 #### T037: Методы сохранения/загрузки DeviceConfig в персистентности
 - ✓ Добавлены методы в DevicePersistence:
@@ -44,7 +56,7 @@
   - _load_configs_data() - служебный метод загрузки всех конфигураций
 - ✓ Использует JSON файлы для хранения (device_configs.json)
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/core/persistence/devices.py`
+**Файл:** `src/core/persistence/devices.py`
 
 #### T038: REST API маршрут PUT /api/v1/devices/{id}/config
 - ✓ Реализован endpoint PUT /api/v1/devices/{id}/config
@@ -53,7 +65,7 @@
 - ✓ Возвращает обновленное устройство с конфигурацией
 - ✓ Обработка ошибок: 404 для несуществующего устройства, 422 для ошибок валидации
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/webui/routes/devices/devices.py`
+**Файл:** `src/webui/routes/devices/devices.py`
 
 #### T039: Расширение GET /api/v1/devices/{id} для полной информации
 - ✓ Обновлена модель DeviceResponse для включения конфигурационных полей
@@ -64,7 +76,7 @@
   - tags (из config)
 - ✓ Документированы как T033 для полной информации об устройстве
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/webui/routes/devices/devices.py`
+**Файл:** `src/webui/routes/devices/devices.py`
 
 #### T040: События DeviceConfigChangedEvent через EventBus
 - ✓ Импортирован DeviceConfigChangedEvent из device_events.py (уже существовал)
@@ -72,34 +84,36 @@
 - ✓ Публикует событие при каждом изменении конфигурации
 - ✓ Включает информацию о измененных полях и пользователе, сделавшем изменение
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/services/device_service.py`
+**Файл:** `src/services/device_service.py`
 
-#### T041: SyncEvent запись для изменений конфигурации
+#### T041: SyncEvent запись для изменений конфигурации — ⚠ ЧАСТИЧНО (в 001: RU T041 `[ ]`)
 - ✓ Реализована логика сохранения информации о пользователе (updated_by в DeviceConfig)
 - ✓ Событие DeviceConfigChangedEvent включает информацию о changed_by
-- ✓ Интеграция с логированием для отслеживания всех изменений
+- **❌ Модель `DeviceSyncEvent` (запись с before/after, timestamp, user_id, entity_id) НЕ создана** —
+  требование ТР-010 / КУ-007 закрыто лишь частично (метаданные события, но не история изменений)
+  → бэклог RU T041/RU T070, Known Issue / Technical Debt (H1 анализа)
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/services/device_service.py`
+**Файл:** `src/services/device_service.py`
 
 #### T042: Сохранение конфигурации при перезагрузке
 - ✓ DeviceConfig сохраняется в device_configs.json через DevicePersistence
 - ✓ Конфигурация также встраивается в Device.config для быстрого доступа
 - ✓ Оба файла (devices.json и device_configs.json) используются для восстановления
 
-**Файл:** `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/services/device_service.py` (метод update_device_config), `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/core/persistence/devices.py`
+**Файл:** `src/services/device_service.py` (метод update_device_config), `src/core/persistence/devices.py`
 
 ## Файлы, созданные/изменённые
 
 ### Созданные файлы
-1. `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/core/models/device_config.py` - Модель DeviceConfig с валидацией
-2. `/Users/leonidartemev/PycharmProjects/smart-home-platform/tests/integration/test_device_config.py` - Интеграционные тесты
+1. `src/core/models/device_config.py` - Модель DeviceConfig с валидацией
+2. `tests/integration/test_device_config.py` - Интеграционные тесты
 
 ### Изменённые файлы
-1. `/Users/leonidartemev/PycharmProjects/smart-home-platform/tests/contract/test_devices_api.py` - Добавлены контрактные тесты T032-T033
-2. `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/core/models/device.py` - Добавлено поле config
-3. `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/core/persistence/devices.py` - Добавлены методы для DeviceConfig
-4. `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/services/device_service.py` - Добавлены методы update_device_config и _publish_config_changed_event
-5. `/Users/leonidartemev/PycharmProjects/smart-home-platform/src/webui/routes/devices/devices.py` - Расширены endpoints для работы с конфигурацией
+1. `tests/contract/test_devices_api.py` - Добавлены контрактные тесты T032-T033
+2. `src/core/models/device.py` - Добавлено поле config
+3. `src/core/persistence/devices.py` - Добавлены методы для DeviceConfig
+4. `src/services/device_service.py` - Добавлены методы update_device_config и _publish_config_changed_event
+5. `src/webui/routes/devices/devices.py` - Расширены endpoints для работы с конфигурацией
 
 ## Архитектура решения
 
@@ -230,15 +244,16 @@ DeviceConfigChangedEvent публикуется через существующ�
 
 ## Следующие шаги
 
-### Для Фазы 5 (US3) - Управление состоянием устройств
-- Использовать DeviceConfigChangedEvent для отслеживания изменений конфигурации
-- Интегрировать с WebSocket синхронизацией состояния
-- Добавить поддержку команд на основе конфигурации
+Отражены в бэклоге фичи 001 (`specs/001-device-integration/tasks.md`) и Technical Debt roadmap:
 
-### Для Фазы 6 (US4) - Управление доступом
-- Проверка прав доступа перед обновлением конфигурации
-- Логирование изменений конфигурации с информацией о пользователе
-- Ограничение видимости конфигурации в зависимости от прав доступа
+### US3 — Управление состоянием устройств (частично выполнено)
+- WebSocket-синхронизация реализована (RU T043–T052); остаётся: тесты reconnect (H5, Known Issue #5)
+
+### US4 — Управление доступом (маршруты есть, фильтр не подключён)
+- Подключить middleware-фильтр прав доступа (бэклог RU T067, T069–T071, H2/ Known Issue #11)
+
+### Открытые пункты этого отчёта
+- Уникальность display_name (T035, H3) и модель DeviceSyncEvent (T041, ТР-010, H1)
 
 ## Версия
-**Версия:** 1.0 | **Статус:** Завершено | **Дата:** 2026-09-29
+**Версия:** 1.1 | **Статус:** implementation-отчёт US2 (дубль фичи 001), сверено с кодом | **Дата:** 2026-09-29
