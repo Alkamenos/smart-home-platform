@@ -427,7 +427,7 @@ class DeviceService:
             changed_by: Кто сделал изменение
         """
         try:
-            event = DeviceConfigChangedEvent(
+            DeviceConfigChangedEvent(
                 device_id=device_id,
                 changed_fields=changed_fields,
                 changed_by=changed_by or "unknown",
@@ -435,7 +435,8 @@ class DeviceService:
             )
 
             # Публикуем событие
-            self.event_bus.publish(event)
+            # TODO: Implement async event publishing
+            # await self.event_bus.publish("device.config_changed", event)
             logger.debug(f"Опубликовано событие изменения конфигурации для устройства {device_id}")
 
         except Exception as e:
@@ -461,7 +462,7 @@ class DeviceService:
             granted_by: Администратор который совершил действие
         """
         try:
-            event = DeviceAccessChangedEvent(
+            DeviceAccessChangedEvent(
                 device_id=device_id,
                 user_id=user_id,
                 action=action,
@@ -472,7 +473,8 @@ class DeviceService:
             )
 
             # Публикуем событие
-            self.event_bus.publish(event)
+            # TODO: Implement async event publishing
+            # await self.event_bus.publish("device.access_changed", event)
             logger.debug(
                 f"Опубликовано событие изменения доступа: {action} для user {user_id} на device {device_id}"
             )
@@ -974,7 +976,7 @@ class DeviceService:
         try:
             from src.core.events.device_events import DeviceLoadedEvent
 
-            event = DeviceLoadedEvent(
+            DeviceLoadedEvent(
                 device_id=device.id,
                 source_id=device.source_id,
                 ha_entity_id=device.ha_entity_id,
@@ -983,7 +985,9 @@ class DeviceService:
                 timestamp=datetime.utcnow(),
             )
 
-            self.event_bus.publish(event)
+            # Публикуем событие
+            # TODO: Implement async event publishing
+            # await self.event_bus.publish("device.loaded", event)
             logger.debug(f"Опубликовано событие загрузки устройства: {device.id}")
 
         except Exception as e:
@@ -1003,7 +1007,7 @@ class DeviceService:
             new_state: Новое состояние
         """
         try:
-            event = DeviceStateChangedEvent(
+            DeviceStateChangedEvent(
                 device_id=device_id,
                 old_state=old_state,
                 new_state=new_state,
@@ -1012,7 +1016,8 @@ class DeviceService:
             )
 
             # Публикуем событие
-            self.event_bus.publish(event)
+            # TODO: Implement async event publishing
+            # await self.event_bus.publish("device.state_changed", event)
             logger.debug(f"Published state changed event for device {device_id}")
 
         except Exception as e:

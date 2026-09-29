@@ -321,4 +321,3 @@ DeviceAccess (для управления доступом, Phase 2):
 1. **Phase 1**: Создание contracts/ (REST API spec)
 2. **Phase 1**: Создание quickstart.md (валидация сценарий)
 3. **Phase 2**: tasks.md (реализация models и слоев персистентности)
-
