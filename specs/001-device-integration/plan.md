@@ -1,6 +1,6 @@
 # План реализации: Интеграция и конфигурирование устройств из Home Assistant
 
-**Статус**: План и Phase 1 дизайн завершены ✅ | **Дата**: 2026-09-29
+**Статус**: План и Phase 1 дизайн завершены ✅ | Реализация частичная: tasks.md сверено 88/130, анализ требований выполнен 2026-09-29
 
 **Исходные данные**: Спецификация функции из `/specs/001-device-integration/spec.md`
 
@@ -71,16 +71,16 @@
 
 ```text
 specs/001-device-integration/
-├── spec.md                      # ✅ Спецификация функции (v1.1 - уточнена)
+├── spec.md                      # ✅ Спецификация функции (статус: реализовано частично)
 ├── plan.md                      # ✅ Этот файл (план реализации)
-├── research.md                  # ✅ Phase 0 - исследования (завершено)
+├── research.md                  # ✅ Phase 0 - исследования (восстановлено по факту кода 2026-09-29)
 ├── data-model.md                # ✅ Phase 1 - модель данных (завершено)
 ├── contracts/
-│   └── rest-api.md              # ✅ Phase 1 - REST API контракты (завершено)
-├── quickstart.md                # ✅ Phase 1 - руководство валидации (завершено)
+│   └── rest-api.md              # ✅ REST API контракты (восстановлено по факту кода 2026-09-29)
+├── quickstart.md                # ✅ Руководство валидации, 6 сценариев (восстановлено 2026-09-29)
 ├── checklists/
-│   └── requirements.md          # ✅ Контрольный список качества (завершено)
-└── tasks.md                     # 📅 Phase 2 - задачи реализации (создается после /speckit-tasks)
+│   └── requirements.md          # ✅ Контрольный список качества требований (восстановлено 2026-09-29)
+└── tasks.md                     # ✅ Phase 2 - задачи (сверено 2026-09-29: 88/130 выполнено, 42 в бэклоге)
 ```
 
 ### Исходный код (корень репозитория)
@@ -88,40 +88,51 @@ specs/001-device-integration/
 ```text
 src/
 ├── adapters/
-│   ├── home_assistant/          # НОВАЯ: HA адаптер
-│   │   ├── client.py            # REST API клиент
-│   │   ├── websocket_client.py  # WebSocket клиент для синхронизации
-│   │   ├── models.py            # Pydantic модели HA сущностей
-│   │   └── __init__.py
-│   └── (существующие адаптеры...)
+│   └── home_assistant/           # СУЩЕСТВУЕТ: HA адаптер
+│       ├── rest_client.py        # HARestClient - REST API клиент
+│       ├── websocket_client.py   # HAWebSocketClient - WebSocket синхронизация (+ батчер)
+│       ├── connection_manager.py # Переподключение, exponential backoff (1→16 сек)
+│       └── __init__.py
 ├── core/
+│   ├── models/                   # УСТАНОВЛЕНО: Device, DeviceConfig, DeviceCommand, DeviceAccess, HASource
+│   ├── persistence/              # СУЩЕСТВУЕТ: sources.json (TokenEncryptor), DeviceCache, IndexManager
+│   ├── security/encryption.py    # СУЩЕСТВУЕТ: TokenEncryptor
+│   ├── secrets.py                # СУЩЕСТВУЕТ: SecretsResolver (${HA_TOKEN}, запрет plaintext)
+│   ├── manifest_validator.py     # СУЩЕСТВУЕТ: валидация манифеста (rooms/devices)
 │   ├── discovery/                # СУЩЕСТВУЕТ: используется для загрузки устройств
-│   ├── models/                   # НОВОЕ: расширить моделями Device, DeviceConfig
-│   ├── persistence/              # СУЩЕСТВУЕТ: используется для сохранения
-│   ├── fsm/                       # СУЩЕСТВУЕТ: используется для управления состоянием
-│   └── events/                    # СУЩЕСТВУЕТ: для событий интеграции
-├── services/                     # НОВОЕ: сервис управления устройствами
-│   ├── device_service.py         # Логика загрузки и конфигурирования
-│   ├── sync_service.py           # Синхронизация состояния
-│   └── __init__.py
-├── webui/                         # СУЩЕСТВУЕТ: расширить интерфейсом для конфигурирования
-│   ├── routes/
-│   │   ├── devices.py            # НОВОЕ: роуты для устройств
-│   │   └── __init__.py
-│   └── (существующие маршруты...)
-└── cli/
-    └── commands/
-        └── devices.py            # НОВОЕ: CLI команды для управления устройствами
+│   └── events/                   # СУЩЕСТВУЕТ: EventBus для событий интеграции
+├── services/
+│   └── device_service.py         # СУЩЕСТВУЕТ: загрузка/конфигурирование, публикации событий
+│                                  # (sync_service.py НЕ потребовался — логика в device_service)
+├── webui/
+│   └── routes/devices/           # УСТАНОВЛЕНО: пакет роутов
+│       ├── devices.py            # GET/PUT устройства, команды, события, apply
+│       ├── sources.py            # CRUD источников HA + sync + discovery-data
+│       ├── access_control.py     # Права доступа к устройствам (ТР-009)
+│       └── websocket.py          # /api/v1/ws/devices (ТР-006)
+└── cli/                          # (команды devices.py не потребовались - REST API покрывает сценарии)
 
 tests/
+├── contract/
+│   ├── test_devices_api.py       # Контракты устройств
+│   ├── test_sources_api.py       # Контракты источников
+│   ├── test_access_control.py    # Контракты доступа
+│   └── test_websocket.py         # Контракт WebSocket
 ├── integration/
-│   └── test_device_integration.py # Интеграционные тесты
+│   ├── test_device_sync.py       # Синхронизация устройств
+│   ├── test_state_sync.py        # Синхронизация состояний (5 сек - КУ-004)
+│   ├── test_commands.py          # Отправка команд
+│   ├── test_device_config.py     # Конфигурирование
+│   └── test_access_control.py    # Управление доступом
 ├── unit/
-│   ├── test_ha_client.py         # Тесты REST клиента
-│   ├── test_device_sync.py       # Тесты синхронизации
-│   └── test_device_service.py    # Тесты сервиса
-└── contract/
-    └── test_device_contracts.py  # Тесты контрактов
+│   ├── test_device_service.py    # Сервис устройств
+│   ├── test_models.py            # Модели Device/Config/Command
+│   └── test_cache.py             # Кэш персистентности
+├── validation/
+│   └── validate_quickstart.py    # 6 сценариев quickstart.md
+└── security/
+    ├── verify_logging.py         # Трассируемость (КУ-007)
+    └── verify_security.py        # Безопасность токенов
 ```
 
 **Решение по структуре**: Используется существующая структура проекта `src/` с добавлением нового пакета `adapters/home_assistant/` и расширением `services/` и `webui/`. Это соответствует текущей архитектуре и паттернам проекта.
@@ -253,20 +264,26 @@ DeviceSyncEvent (События синхронизации)
 
 ### 2. Контракты интеграции (contracts/)
 
-**REST API контракты**:
-- `POST /api/devices/sources` - добавление источника HA
-- `GET /api/devices/sources` - список источников
-- `GET /api/devices/sources/{id}` - получение источника
-- `POST /api/devices/sources/{id}/sync` - запуск синхронизации
-- `GET /api/devices` - список всех устройств
-- `GET /api/devices/{id}` - получение устройства с полной информацией
-- `PUT /api/devices/{id}/config` - обновление конфигурации
-- `POST /api/devices/{id}/command` - отправка команды
-- `GET /api/devices/{id}/events` - история операций
+**REST API контракты** (актуальные пути `/api/v1`, см. [contracts/rest-api.md](contracts/rest-api.md)):
+- `GET /api/v1/devices/sources` - список источников
+- `POST /api/v1/devices/sources` - добавление источника HA
+- `GET /api/v1/devices/sources/{id}` - получение источника
+- `DELETE /api/v1/devices/sources/{id}` - удаление источника
+- `POST /api/v1/devices/sources/{id}/sync` - запуск синхронизации
+- `GET /api/v1/devices/sources/{id}/discovery-data` - кандидаты для манифеста
+- `GET /api/v1/devices` - список всех устройств
+- `GET /api/v1/devices/{id}` - получение устройства с полной информацией
+- `PUT /api/v1/devices/{id}/config` - обновление конфигурации
+- `POST /api/v1/devices/{id}/command` - отправка команды (202 Accepted)
+- `GET /api/v1/devices/{id}/command/{command_id}` - статус команды
+- `GET /api/v1/devices/{id}/events` - история операций
+- `POST /api/v1/devices/apply` - применение устройств в манифест
+- `POST/GET/DELETE /api/v1/devices/{id}/access[...]` - права доступа (ТР-009)
 
 **WebSocket контракт** (синхронизация состояния):
-- Подписка на изменения: `{"action": "subscribe", "device_ids": [...]}`
-- Событие изменения: `{"type": "device_state_changed", "device_id": "...", "state": {...}, "timestamp": "..."}`
+- Endpoint: `/api/v1/ws/devices`
+- Клиент → сервер: `{"type": "auth", "user_id": ...}`, `{"type": "subscribe", "device_id": ...}`, `{"type": "unsubscribe", ...}`, `{"type": "ping"}`
+- Сервер → клиент: `{"type": "state_changed", "device_id": "...", "state": {...}}`, `authenticated`/`subscribed`/`pong`/`error`
 
 ### 3. Руководство быстрого запуска и валидации (quickstart.md)
 
@@ -313,27 +330,24 @@ DeviceSyncEvent (События синхронизации)
 
 ## Итоги Phase 1
 
-✅ **Phase 1 Design завершена** — все артефакты созданы и готовы к реализации
+✅ **Phase 1 Design завершена** — все артефакты существуют и актуализированы по факту кода
 
 ### Созданные артефакты
 
 | Артефакт | Назначение | Статус |
 |----------|-----------|--------|
-| [research.md](research.md) | Разрешены все неясности из спецификации | ✅ 8/8 решено |
+| [research.md](research.md) | Разрешены все неясности из спецификации | ✅ 8/8 решено (восстановлено по факту кода 2026-09-29) |
 | [data-model.md](data-model.md) | Полная модель данных с 5 сущностями, отношениями, валидацией | ✅ Завершено |
-| [contracts/rest-api.md](contracts/rest-api.md) | REST API спецификация (Sources, Devices, WebSocket) | ✅ Завершено |
-| [quickstart.md](quickstart.md) | 6 сценариев валидации end-to-end (включая error cases) | ✅ Завершено |
+| [contracts/rest-api.md](contracts/rest-api.md) | REST API спецификация (Sources, Devices, Access, WebSocket) | ✅ Восстановлено по факту кода 2026-09-29 (`/api/v1/*`) |
+| [quickstart.md](quickstart.md) | 6 сценариев валидации end-to-end (включая error cases) | ✅ Восстановлено по факту кода 2026-09-29 |
+| [checklists/requirements.md](checklists/requirements.md) | Контрольный список качества требований | ✅ Восстановлено 2026-09-29 |
+
+### Текущее состояние (после анализа 2026-09-29)
+
+- **tasks.md**: сверено, выполнено **88/130**, 42 задачи перенесены в бэклог
+- **Открытые находки анализа**: H1 (DeviceSyncEvent), H2 (access control не подключён), H3 (уникальность display_name), H5 (тесты reconnect), M2 (EN/RU дублирование) — распределены по Technical Debt / бэклогу
 
 ### Что дальше?
 
-**Следующий шаг**: `/speckit-tasks` для генерирования полного списка задач реализации
-
-```bash
-/speckit-tasks
-```
-
-Это создаст `tasks.md` с:
-- ✅ 7 фаз реализации (Setup → Polish)
-- ✅ ~80-100 задач с зависимостями
-- ✅ Параллельные возможности (marked [P])
-- ✅ TDD тесты перед реализацией
+- Быстрые правки анализа (C1, H3, H4, M1) — выполнены 2026-09-29
+- Разбор дубля `specs/002-device-configuration` и открытие новой фичи Phase 9.8 — следующие шаги воркфлоу speckit

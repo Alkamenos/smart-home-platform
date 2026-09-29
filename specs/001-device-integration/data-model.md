@@ -91,7 +91,8 @@ DeviceConfig
 ```
 
 **Constraints**:
-- `display_name` must be unique within `ha_source_id` (не может быть двух устройств с одним именем в источнике)
+- `display_name` should be unique within `ha_source_id` (не может быть двух устройств с одним именем в источнике)
+  - ⚠ **Статус**: ограничение задокументировано, но на уровне API **не валидируется** (отложено; бэклог tasks.md RU T035). Дедупликация фактически идёт по `ha_entity_id` (см. spec.md, «Дедупликация»). См. также docstring `update_device_config`, который заявляет уникальность — расхождение закрыто пометкой отложения.
 - `tags` must be lowercase alphanumeric + dash (regex: `[a-z0-9-]+`)
 - Если Device удалено из HA, DeviceConfig остается с `enabled: false`
 
