@@ -1308,7 +1308,7 @@ class TestEdgeCases:
         }
 
         # Не должно вызвать исключение
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             await device_service.handle_state_change(event_data)
 
     def test_parse_devices_with_special_characters(self, device_service):

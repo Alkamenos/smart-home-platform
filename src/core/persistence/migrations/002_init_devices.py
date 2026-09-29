@@ -178,9 +178,8 @@ class Migration002InitDevices:
                     indices["by_ha_entity_id"][ha_entity_id] = device_id
 
                 # Индекс по статусу
-                if status in indices["by_status"]:
-                    if device_id not in indices["by_status"][status]:
-                        indices["by_status"][status].append(device_id)
+                if status in indices["by_status"] and device_id not in indices["by_status"][status]:
+                    indices["by_status"][status].append(device_id)
 
             self.update_indices(indices)
             logger.info("Индексы devices успешно перестроены")

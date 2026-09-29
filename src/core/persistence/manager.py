@@ -30,6 +30,7 @@ class PersistenceManager:
         try:
             if not encryptor:
                 from src.core.security.encryption import TokenEncryptor
+
                 encryptor = TokenEncryptor()
         except ImportError:
             # Если cryptography не установлен, работаем без шифрования

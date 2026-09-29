@@ -67,7 +67,7 @@ class TestDeviceConfigIntegration:
         # 1. Загружаем устройство
         get_response = client.get(f"/api/v1/devices/{device_id}")
         assert get_response.status_code == 200
-        original_device = get_response.json()
+        get_response.json()
 
         # 2. Редактируем конфигурацию
         config_payload = {

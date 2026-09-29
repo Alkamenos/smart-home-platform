@@ -280,9 +280,12 @@ def create_app(
 
         try:
             from src.core.persistence.manager import PersistenceManager
+
             persistence = PersistenceManager(data_dir="data")
         except ImportError as e:
-            logger.warning(f"Could not initialize PersistenceManager: {e}. Running with limited functionality.")
+            logger.warning(
+                f"Could not initialize PersistenceManager: {e}. Running with limited functionality."
+            )
 
         device_service = DeviceService(
             event_bus=event_bus,

@@ -37,7 +37,7 @@ async def initialize_database(data_dir: Path | str = "data", apply_migrations: b
 
         if apply_migrations:
             logger.info("Применение миграций...")
-            runner = await init_migrations(data_dir)
+            await init_migrations(data_dir)
             logger.info("Миграции успешно применены")
         else:
             logger.info("Проверка статуса миграций...")

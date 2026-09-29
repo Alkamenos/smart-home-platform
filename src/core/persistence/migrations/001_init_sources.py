@@ -157,9 +157,8 @@ class Migration001InitSources:
                         indices["by_name"][name].append(source_id)
 
                 # Индекс по статусу
-                if status in indices["by_status"]:
-                    if source_id not in indices["by_status"][status]:
-                        indices["by_status"][status].append(source_id)
+                if status in indices["by_status"] and source_id not in indices["by_status"][status]:
+                    indices["by_status"][status].append(source_id)
 
             self.update_indices(indices)
             logger.info("Индексы sources успешно перестроены")

@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
+# Временное хранилище устройств (TODO: заменить на правильное хранилище через Container)
+_devices_store: dict[str, dict] = {}
+
 
 class DeviceResponse(BaseModel):
     """Ответ с информацией об устройстве."""

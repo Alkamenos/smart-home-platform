@@ -226,7 +226,6 @@ class TestDeviceCache:
 
     def test_cache_thread_safety(self, device_cache):
         """Тест: thread-safe операции."""
-        results = []
 
         def worker(thread_id):
             for i in range(100):
@@ -474,7 +473,7 @@ class TestIndexManager:
         all_devices = index_manager.get_all_devices()
 
         assert len(all_devices) == len(sample_devices)
-        assert set(d.id for d in all_devices) == set(d.id for d in sample_devices)
+        assert {d.id for d in all_devices} == {d.id for d in sample_devices}
 
     def test_index_stats(self, index_manager, sample_devices):
         """Тест: получение статистики индекса."""

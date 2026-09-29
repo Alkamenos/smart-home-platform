@@ -129,12 +129,13 @@ class SecurityAnalyzer:
                 # Проверяем if ключ похож на чувствительный
                 is_sensitive = any(sp in key_lower for sp in self.SENSITIVE_PATTERNS)
 
-                if is_sensitive and isinstance(value, str) and len(value) > 0:
-                    # Чувствительные поля должны быть либо маскированы, либо быть коротким
-                    if not (masked_pattern.match(value) or len(value) <= 8):
-                        return False, (
-                            f"Чувствительное поле '{key}' не маскировано: '{value[:20]}...'"
-                        )
+                if (
+                    is_sensitive
+                    and isinstance(value, str)
+                    and len(value) > 0
+                    and not (masked_pattern.match(value) or len(value) <= 8)
+                ):
+                    return False, (f"Чувствительное поле '{key}' не маскировано: '{value[:20]}...'")
 
         return True, "Чувствительные поля маскированы правильно"
 
@@ -190,7 +191,9 @@ class SecurityAnalyzer:
         ]
 
         # Статистика
-        error_count = len([l for l in self.logs if l.get("level") == "ERROR"])
+        error_count = len(
+            [log_entry for log_entry in self.logs if log_entry.get("level") == "ERROR"]
+        )
         report_lines.extend(
             [
                 f"Всего логов: {len(self.logs)}",

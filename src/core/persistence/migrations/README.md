@@ -101,6 +101,7 @@
 ```python
 from src.core.persistence.migrations.db_init import initialize_database
 
+
 # При старте приложения
 async def startup():
     success = await initialize_database("data")

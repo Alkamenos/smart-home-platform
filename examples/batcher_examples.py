@@ -121,7 +121,7 @@ async def example_websocket_client():
     # Создание WebSocket клиента с батчингом
     from adapters.home_assistant.websocket_client import HAWebSocketClient
 
-    client = HAWebSocketClient(
+    _ = HAWebSocketClient(
         base_url="http://homeassistant.local:8123",
         token="your_token_here",
         on_state_changed=handle_events,

@@ -112,7 +112,9 @@ class DeviceService:
                 for device in parsed_devices:
                     device.source_id = source_id
 
-                logger.info(f"Преобразовано {len(parsed_devices)} устройств для источника {source_id}")
+                logger.info(
+                    f"Преобразовано {len(parsed_devices)} устройств для источника {source_id}"
+                )
 
                 # 5. Сохранить в persistence
                 if self.persistence and hasattr(self.persistence, "devices"):
@@ -142,8 +144,10 @@ class DeviceService:
             self._metrics.record_source_sync_duration(source_id_str, sync_duration)
             self._update_device_availability_metrics()
 
-            logger.info(f"Синхронизация из источника {source_id} успешно завершена: "
-                       f"загружено {len(parsed_devices)} устройств за {sync_duration:.2f}s")
+            logger.info(
+                f"Синхронизация из источника {source_id} успешно завершена: "
+                f"загружено {len(parsed_devices)} устройств за {sync_duration:.2f}s"
+            )
 
             return parsed_devices
 
@@ -716,7 +720,7 @@ class DeviceService:
                 logger.debug(f"Device not found for entity_id: {entity_id}")
                 return
 
-            old_state = event_data.get("data", {}).get("old_state")
+            event_data.get("data", {}).get("old_state")
             new_state_data = event_data.get("data", {}).get("new_state", {})
 
             # Обновляем состояние устройства
@@ -864,7 +868,7 @@ class DeviceService:
 
                 logger.info(f"Command {command_name} succeeded on device {device_id}: {result}")
 
-            except TimeoutError:
+            except TimeoutError as e:
                 command_record["status"] = "failed"
                 command_record["error"] = f"Command timeout after {timeout} seconds"
                 command_record["completed_at"] = datetime.utcnow()
@@ -876,7 +880,7 @@ class DeviceService:
 
                 logger.error(f"Command {command_name} timeout on device {device_id}")
                 # T059: Публикуем ошибку
-                raise RuntimeError(command_record["error"])
+                raise RuntimeError(command_record["error"]) from e
 
             except Exception as e:
                 command_record["status"] = "failed"
@@ -891,7 +895,7 @@ class DeviceService:
 
                 logger.error(f"Command {command_name} failed on device {device_id}: {e}")
                 # T059: Публикуем ошибку
-                raise RuntimeError(command_record["error"])
+                raise RuntimeError(command_record["error"]) from e
 
             # Возвращаем ответ
             return CommandExecutionResponse(

@@ -16,6 +16,7 @@
 #  SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Callable
@@ -194,10 +195,8 @@ class WebSocketEventBatcher:
         # Отменяем таймер если он активен
         if self._timer_task and not self._timer_task.done():
             self._timer_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._timer_task
-            except asyncio.CancelledError:
-                pass
             self._timer_task = None
 
         # Создаём пакет
@@ -316,10 +315,8 @@ class WebSocketEventBatcher:
             # Отменяем таймер
             if self._timer_task and not self._timer_task.done():
                 self._timer_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await self._timer_task
-                except asyncio.CancelledError:
-                    pass
 
         self._logger.info(f"Батчер остановлен. Статистика: {self.get_statistics()}")
 

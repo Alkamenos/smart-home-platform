@@ -129,7 +129,7 @@ async def grant_device_access(
         logger.error(f"Ошибка предоставления доступа: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to grant access"
-        )
+        ) from e
 
 
 @router.delete("/{device_id}/access/{access_id}", status_code=204)
@@ -173,7 +173,7 @@ async def revoke_device_access(
         logger.error(f"Ошибка отзыва доступа: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to revoke access"
-        )
+        ) from e
 
 
 @router.get("/{device_id}/access", status_code=200)
@@ -219,4 +219,4 @@ async def get_device_access_list(
         logger.error(f"Ошибка получения доступов: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get access list"
-        )
+        ) from e

@@ -144,7 +144,7 @@ class DeviceCache:
             Количество удаленных записей
         """
         with self._lock:
-            keys_to_remove = [k for k in self._cache.keys() if k.startswith(prefix)]
+            keys_to_remove = [k for k in self._cache if k.startswith(prefix)]
             for key in keys_to_remove:
                 del self._cache[key]
                 self.invalidations += 1

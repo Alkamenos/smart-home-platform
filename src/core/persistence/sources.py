@@ -4,6 +4,7 @@
 Обеспечивает сохранение и загрузку конфигурации источников HA из файловой системы.
 """
 
+import contextlib
 import json
 import logging
 from pathlib import Path
@@ -80,11 +81,8 @@ class HASourcePersistence:
 
             # Дешифруем токен
             if self.encryptor:
-                try:
+                with contextlib.suppress(ValueError):
                     source_data["token"] = self.encryptor.decrypt(source_data["token"])
-                except ValueError:
-                    # Если не зашифрован, используем как есть
-                    pass
 
             return HASource(**source_data)
 

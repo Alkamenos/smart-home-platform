@@ -158,19 +158,28 @@ class LogAnalyzer:
             op_type = context.get("operation_type")
 
             # user-initiated операции должны содержать user_id
-            if op_type in ("add_source", "update_config", "send_command", "change_access"):
-                if "user_id" not in context and context.get("result") != "error":
-                    return False, f"Лог {op_type} отсутствует user_id"
+            if (
+                op_type in ("add_source", "update_config", "send_command", "change_access")
+                and "user_id" not in context
+                and context.get("result") != "error"
+            ):
+                return False, f"Лог {op_type} отсутствует user_id"
 
             # Операции с устройствами должны содержать device_id
-            if op_type in ("send_command", "change_access", "sync_devices"):
-                if "device_id" not in context and context.get("result") != "error":
-                    return False, f"Лог {op_type} отсутствует device_id"
+            if (
+                op_type in ("send_command", "change_access", "sync_devices")
+                and "device_id" not in context
+                and context.get("result") != "error"
+            ):
+                return False, f"Лог {op_type} отсутствует device_id"
 
             # Операции с источниками должны содержать source_id
-            if op_type in ("add_source", "remove_source", "sync_devices"):
-                if "source_id" not in context and context.get("result") != "error":
-                    return False, f"Лог {op_type} отсутствует source_id"
+            if (
+                op_type in ("add_source", "remove_source", "sync_devices")
+                and "source_id" not in context
+                and context.get("result") != "error"
+            ):
+                return False, f"Лог {op_type} отсутствует source_id"
 
         return True, "Контекст логов содержит все необходимые поля"
 
@@ -216,8 +225,8 @@ class LogAnalyzer:
         report_lines.extend(
             [
                 f"Всего логов в файле: {len(self.logs)}",
-                f"Логов об операциях: {len([l for l in self.logs if l.get('context', {}).get('operation_type')])}",
-                f"Логов об ошибках: {len([l for l in self.logs if l.get('level') == 'ERROR'])}",
+                f"Логов об операциях: {len([log_entry for log_entry in self.logs if log_entry.get('context', {}).get('operation_type')])}",
+                f"Логов об ошибках: {len([log_entry for log_entry in self.logs if log_entry.get('level') == 'ERROR'])}",
                 "",
             ]
         )

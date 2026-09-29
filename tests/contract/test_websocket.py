@@ -130,11 +130,6 @@ class TestWebSocketContract:
         )
 
         # Проверяем что subscribe_message имеет правильный формат
-        expected_format = {
-            "id": int,
-            "type": "subscribe_events",
-            "event_type": "state_changed",
-        }
 
         # Структура сообщения проверяется в коде
         assert hasattr(client, "_message_id")

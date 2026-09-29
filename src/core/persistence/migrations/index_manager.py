@@ -110,9 +110,8 @@ class IndexManager:
                 indices["by_name"][name].append(source_id)
 
         # Добавляем в индекс по статусу
-        if status in indices["by_status"]:
-            if source_id not in indices["by_status"][status]:
-                indices["by_status"][status].append(source_id)
+        if status in indices["by_status"] and source_id not in indices["by_status"][status]:
+            indices["by_status"][status].append(source_id)
 
         self.save_sources_indices(indices)
 
@@ -137,9 +136,8 @@ class IndexManager:
                 del indices["by_name"][name]
 
         # Удаляем из индекса по статусу
-        if status and status in indices["by_status"]:
-            if source_id in indices["by_status"][status]:
-                indices["by_status"][status].remove(source_id)
+        if status and status in indices["by_status"] and source_id in indices["by_status"][status]:
+            indices["by_status"][status].remove(source_id)
 
         self.save_sources_indices(indices)
 
@@ -177,13 +175,19 @@ class IndexManager:
                 indices["by_name"][new_name].append(source_id)
 
         # Обновляем индекс по статусу
-        if old_status and old_status in indices["by_status"]:
-            if source_id in indices["by_status"][old_status]:
-                indices["by_status"][old_status].remove(source_id)
+        if (
+            old_status
+            and old_status in indices["by_status"]
+            and source_id in indices["by_status"][old_status]
+        ):
+            indices["by_status"][old_status].remove(source_id)
 
-        if new_status and new_status in indices["by_status"]:
-            if source_id not in indices["by_status"][new_status]:
-                indices["by_status"][new_status].append(source_id)
+        if (
+            new_status
+            and new_status in indices["by_status"]
+            and source_id not in indices["by_status"][new_status]
+        ):
+            indices["by_status"][new_status].append(source_id)
 
         self.save_sources_indices(indices)
 
@@ -312,9 +316,8 @@ class IndexManager:
             indices["by_ha_entity_id"][ha_entity_id] = device_id
 
         # Индекс по статусу
-        if status in indices["by_status"]:
-            if device_id not in indices["by_status"][status]:
-                indices["by_status"][status].append(device_id)
+        if status in indices["by_status"] and device_id not in indices["by_status"][status]:
+            indices["by_status"][status].append(device_id)
 
         self.save_devices_indices(indices)
 
@@ -357,9 +360,8 @@ class IndexManager:
             del indices["by_ha_entity_id"][ha_entity_id]
 
         # Удаляем из индекса по статусу
-        if status and status in indices["by_status"]:
-            if device_id in indices["by_status"][status]:
-                indices["by_status"][status].remove(device_id)
+        if status and status in indices["by_status"] and device_id in indices["by_status"][status]:
+            indices["by_status"][status].remove(device_id)
 
         self.save_devices_indices(indices)
 
@@ -425,12 +427,18 @@ class IndexManager:
             indices["by_ha_entity_id"][new_ha_entity_id] = device_id
 
         # Обновляем по статусу
-        if old_status and old_status in indices["by_status"]:
-            if device_id in indices["by_status"][old_status]:
-                indices["by_status"][old_status].remove(device_id)
+        if (
+            old_status
+            and old_status in indices["by_status"]
+            and device_id in indices["by_status"][old_status]
+        ):
+            indices["by_status"][old_status].remove(device_id)
 
-        if new_status and new_status in indices["by_status"]:
-            if device_id not in indices["by_status"][new_status]:
-                indices["by_status"][new_status].append(device_id)
+        if (
+            new_status
+            and new_status in indices["by_status"]
+            and device_id not in indices["by_status"][new_status]
+        ):
+            indices["by_status"][new_status].append(device_id)
 
         self.save_devices_indices(indices)

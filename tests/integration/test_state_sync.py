@@ -5,6 +5,7 @@ T046: Синхронизация состояния через WebSocket (<=5 с
 T047: Отправка команд и обработка ошибок
 """
 
+import contextlib
 from datetime import datetime
 from unittest.mock import AsyncMock
 
@@ -210,12 +211,9 @@ class TestCommandExecutionIntegration:
 
         # Попытка выполнить команду должна обработать ошибку
         if hasattr(service, "execute_command"):
-            try:
+            with contextlib.suppress(Exception):
                 await service.execute_command(
                     device_id=device.id,
                     command_name="turn_on",
                     parameters={},
                 )
-            except Exception:
-                # Ошибка должна быть логирована, но не выброшена
-                pass

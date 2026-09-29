@@ -118,7 +118,7 @@ class TestDeviceSyncIntegration:
         }
 
         source_response = client.post("/api/v1/devices/sources", json=source_payload)
-        source_id = source_response.json()["id"]
+        source_response.json()["id"]
 
         # Получаем список устройств до перезагрузки
         devices_before = client.get("/api/v1/devices").json()

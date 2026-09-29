@@ -391,15 +391,13 @@ class TestWebSocketEventBatcher:
         batcher.on_batch_ready = count_batches
 
         # Добавляем 100 событий (должны создать 4 пакета: 3 по размеру + 1 по таймауту)
-        start_time = time.time()
+        time.time()
         for i in range(100):
             event = WebSocketEvent(device_id=f"light.room{i % 50}", state="ON")
             await batcher.add_event(event)
 
         # Ждём завершения
         await asyncio.sleep(0.2)
-
-        elapsed = time.time() - start_time
 
         # Должны были срабатить батчи
         assert batch_count > 0

@@ -6,6 +6,7 @@ T071: Проверка доступа пользователя к устройс
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 
@@ -227,7 +228,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON received: {e}")
-        try:
+        with contextlib.suppress(Exception):
             await connection_manager.send_personal(
                 websocket,
                 {
@@ -235,8 +236,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     "message": "Invalid JSON format",
                 },
             )
-        except Exception:
-            pass
 
     except Exception as e:
         logger.error(f"WebSocket error: {e}")

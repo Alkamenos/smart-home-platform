@@ -5,11 +5,13 @@
 отслеживание примененных миграций в истории.
 """
 
+import importlib
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,9 @@ logger = logging.getLogger(__name__)
 class MigrationsRunner:
     """Менеджер для выполнения миграций БД."""
 
-    def __init__(self, data_dir: Path | str = "data", migrations_package: str = "migrations") -> None:
+    def __init__(
+        self, data_dir: Path | str = "data", migrations_package: str = "migrations"
+    ) -> None:
         """
         Инициализация менеджера миграций.
 
@@ -30,13 +34,13 @@ class MigrationsRunner:
         self.migrations_history_file = self.data_dir / ".migrations_history.json"
         self.migrations_package = migrations_package
 
-        # Импортируем миграции
-        from src.core.persistence.migrations.001_init_sources import Migration001InitSources
-        from src.core.persistence.migrations.002_init_devices import Migration002InitDevices
+        # Импортируем миграции динамически (модули с именами, начинающимися на цифры)
+        migration_001 = importlib.import_module("src.core.persistence.migrations.001_init_sources")
+        migration_002 = importlib.import_module("src.core.persistence.migrations.002_init_devices")
 
         self.available_migrations = [
-            Migration001InitSources(data_dir),
-            Migration002InitDevices(data_dir),
+            migration_001.Migration001InitSources(data_dir),
+            migration_002.Migration002InitDevices(data_dir),
         ]
 
         self._init_history()
@@ -44,14 +48,14 @@ class MigrationsRunner:
     def _init_history(self) -> None:
         """Инициализировать файл истории миграций."""
         if not self.migrations_history_file.exists():
-            history: Dict[str, Any] = {
+            history: dict[str, Any] = {
                 "applied_migrations": [],
                 "last_migration_time": None,
-                "migrations": {}
+                "migrations": {},
             }
             self._save_history(history)
 
-    def _load_history(self) -> Dict[str, Any]:
+    def _load_history(self) -> dict[str, Any]:
         """
         Загрузить историю примененных миграций.
 
@@ -59,23 +63,15 @@ class MigrationsRunner:
             Словарь с историей
         """
         if not self.migrations_history_file.exists():
-            return {
-                "applied_migrations": [],
-                "last_migration_time": None,
-                "migrations": {}
-            }
+            return {"applied_migrations": [], "last_migration_time": None, "migrations": {}}
 
         try:
-            with open(self.migrations_history_file, "r") as f:
+            with open(self.migrations_history_file) as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
-            return {
-                "applied_migrations": [],
-                "last_migration_time": None,
-                "migrations": {}
-            }
+            return {"applied_migrations": [], "last_migration_time": None, "migrations": {}}
 
-    def _save_history(self, history: Dict[str, Any]) -> None:
+    def _save_history(self, history: dict[str, Any]) -> None:
         """
         Сохранить историю примененных миграций.
 
@@ -85,7 +81,7 @@ class MigrationsRunner:
         with open(self.migrations_history_file, "w") as f:
             json.dump(history, f, indent=2, default=str)
 
-    async def up(self, target_migration: Optional[str] = None) -> None:
+    async def up(self, target_migration: str | None = None) -> None:
         """
         Применить все неприменённые миграции или до определённой миграции.
 
@@ -122,13 +118,13 @@ class MigrationsRunner:
                 history["last_migration_time"] = datetime.utcnow().isoformat()
                 history["migrations"][migration.name] = {
                     "applied_at": datetime.utcnow().isoformat(),
-                    "description": migration.description
+                    "description": migration.description,
                 }
                 self._save_history(history)
 
                 logger.info(f"Миграция {migration.name} успешно применена")
 
-            logger.info(f"Все миграции успешно применены")
+            logger.info("Все миграции успешно применены")
 
         except Exception as e:
             logger.error(f"Ошибка при применении миграций: {e}")
@@ -149,7 +145,9 @@ class MigrationsRunner:
             applied = history.get("applied_migrations", [])
 
             if steps > len(applied):
-                raise ValueError(f"Не можно откатить {steps} миграций, применено только {len(applied)}")
+                raise ValueError(
+                    f"Не можно откатить {steps} миграций, применено только {len(applied)}"
+                )
 
             migrations_to_revert = applied[-steps:]
             logger.info(f"Откат {len(migrations_to_revert)} миграции(й)...")
@@ -172,13 +170,13 @@ class MigrationsRunner:
 
                     logger.info(f"Миграция {migration_name} успешно отката")
 
-            logger.info(f"Откат завершен")
+            logger.info("Откат завершен")
 
         except Exception as e:
             logger.error(f"Ошибка при откате миграций: {e}")
             raise
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         """
         Получить статус всех миграций.
 
@@ -188,20 +186,22 @@ class MigrationsRunner:
         history = self._load_history()
         applied = set(history.get("applied_migrations", []))
 
-        status: Dict[str, Any] = {
+        status: dict[str, Any] = {
             "applied_count": len(applied),
             "pending_count": len(self.available_migrations) - len(applied),
             "last_migration_time": history.get("last_migration_time"),
-            "migrations": []
+            "migrations": [],
         }
 
         for migration in self.available_migrations:
-            status["migrations"].append({
-                "name": migration.name,
-                "description": migration.description,
-                "status": "applied" if migration.name in applied else "pending",
-                "applied_at": history["migrations"].get(migration.name, {}).get("applied_at")
-            })
+            status["migrations"].append(
+                {
+                    "name": migration.name,
+                    "description": migration.description,
+                    "status": "applied" if migration.name in applied else "pending",
+                    "applied_at": history["migrations"].get(migration.name, {}).get("applied_at"),
+                }
+            )
 
         return status
 
@@ -252,7 +252,7 @@ async def init_migrations(data_dir: Path | str = "data") -> MigrationsRunner:
     return runner
 
 
-async def check_migrations_status(data_dir: Path | str = "data") -> Dict[str, Any]:
+async def check_migrations_status(data_dir: Path | str = "data") -> dict[str, Any]:
     """
     Проверить статус миграций.
 

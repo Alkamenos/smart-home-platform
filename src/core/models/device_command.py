@@ -45,7 +45,7 @@ class DeviceCommand(BaseModel):
     )
 
     @validator("execution_timeout")
-    def validate_timeout(cls, v):
+    def validate_timeout(self, v):
         """Валидация таймаута - максимум 300 секунд."""
         if v > 300:
             raise ValueError("execution_timeout must be <= 300 seconds")

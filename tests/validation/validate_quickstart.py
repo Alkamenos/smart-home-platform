@@ -220,7 +220,7 @@ def environment_info():
 # ============================================================================
 
 
-class TestScenario1_BasicIntegration:
+class TestScenario1BasicIntegration:
     """Тест базовой интеграции и загрузки устройств."""
 
     def test_scenario_1_full(self, client, validation_report):
@@ -498,7 +498,7 @@ class TestScenario1_BasicIntegration:
 # ============================================================================
 
 
-class TestScenario2_DeviceConfiguration:
+class TestScenario2DeviceConfiguration:
     """Тест конфигурирования параметров устройства."""
 
     def test_scenario_2_full(self, client, validation_report):
@@ -523,10 +523,7 @@ class TestScenario2_DeviceConfiguration:
                     device_id = devices_response[0].get("id")
                 elif isinstance(devices_response, dict):
                     items = devices_response.get("items", [])
-                    if len(items) > 0:
-                        device_id = items[0].get("id")
-                    else:
-                        device_id = None
+                    device_id = items[0].get("id") if len(items) > 0 else None
                 else:
                     device_id = None
 
@@ -710,7 +707,7 @@ class TestScenario2_DeviceConfiguration:
 # ============================================================================
 
 
-class TestScenario3_RealtimeStateSync:
+class TestScenario3RealtimeStateSync:
     """Тест синхронизации состояния в реальном времени через WebSocket."""
 
     def test_scenario_3_full(self, client, validation_report):
@@ -764,7 +761,7 @@ class TestScenario3_RealtimeStateSync:
                     device = None
 
                 if device:
-                    device_id = device.get("id")
+                    device.get("id")
                     state = device.get("state", {})
 
                     if state:
@@ -849,7 +846,7 @@ class TestScenario3_RealtimeStateSync:
 # ============================================================================
 
 
-class TestScenario4_DeviceCommands:
+class TestScenario4DeviceCommands:
     """Тест отправки команд на устройство."""
 
     def test_scenario_4_full(self, client, validation_report):
@@ -908,7 +905,7 @@ class TestScenario4_DeviceCommands:
                             # Получаем информацию о первой команде
                             first_cmd = commands[0]
                             cmd_name = first_cmd.get("name", "unknown")
-                            cmd_id = first_cmd.get("id", "unknown")
+                            first_cmd.get("id", "unknown")
                             checks.append(
                                 {
                                     "description": "Команда содержит обязательные поля (name, id)",
@@ -1050,7 +1047,7 @@ class TestScenario4_DeviceCommands:
 # ============================================================================
 
 
-class TestScenario5_ErrorHandling:
+class TestScenario5ErrorHandling:
     """Тест обработки ошибок и восстановления соединения."""
 
     def test_scenario_5_full(self, client, validation_report):
@@ -1184,7 +1181,7 @@ class TestScenario5_ErrorHandling:
 # ============================================================================
 
 
-class TestScenario6_EventsAndLogging:
+class TestScenario6EventsAndLogging:
     """Тест истории операций и логирования."""
 
     def test_scenario_6_full(self, client, validation_report):
@@ -1375,27 +1372,27 @@ def test_all_scenarios_with_report(client, validation_report, environment_info):
     # Запускаем все 6 сценариев
     try:
         logger.info("\n[НАЧАЛО] Запуск Сценария 1...")
-        test1 = TestScenario1_BasicIntegration()
+        test1 = TestScenario1BasicIntegration()
         test1.test_scenario_1_full(client, validation_report)
 
         logger.info("\n[НАЧАЛО] Запуск Сценария 2...")
-        test2 = TestScenario2_DeviceConfiguration()
+        test2 = TestScenario2DeviceConfiguration()
         test2.test_scenario_2_full(client, validation_report)
 
         logger.info("\n[НАЧАЛО] Запуск Сценария 3...")
-        test3 = TestScenario3_RealtimeStateSync()
+        test3 = TestScenario3RealtimeStateSync()
         test3.test_scenario_3_full(client, validation_report)
 
         logger.info("\n[НАЧАЛО] Запуск Сценария 4...")
-        test4 = TestScenario4_DeviceCommands()
+        test4 = TestScenario4DeviceCommands()
         test4.test_scenario_4_full(client, validation_report)
 
         logger.info("\n[НАЧАЛО] Запуск Сценария 5...")
-        test5 = TestScenario5_ErrorHandling()
+        test5 = TestScenario5ErrorHandling()
         test5.test_scenario_5_full(client, validation_report)
 
         logger.info("\n[НАЧАЛО] Запуск Сценария 6...")
-        test6 = TestScenario6_EventsAndLogging()
+        test6 = TestScenario6EventsAndLogging()
         test6.test_scenario_6_full(client, validation_report)
     except Exception as e:
         logger.error(f"❌ Ошибка при выполнении сценариев: {e}")

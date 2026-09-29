@@ -5,6 +5,7 @@ T047: Отправка команд, отслеживание статуса и 
 """
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -127,16 +128,13 @@ class TestCommandsIntegration:
 
         # Команда должна иметь таймаут
         if hasattr(service, "execute_command"):
-            try:
-                result = await service.execute_command(
+            with contextlib.suppress(TimeoutError):
+                await service.execute_command(
                     device_id=device.id,
                     command_name="set_temperature",
                     parameters={"temperature": 22},
                     timeout=300,  # Максимум 300 сек
                 )
-            except TimeoutError:
-                # Таймаут - ожидается для длительных операций
-                pass
 
     @pytest.mark.asyncio
     async def test_command_error_propagation(self):
@@ -166,7 +164,7 @@ class TestCommandsIntegration:
 
         if hasattr(service, "execute_command"):
             # Должно быть исключение или отчет об ошибке
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 await service.execute_command(
                     device_id=device.id,
                     command_name="turn_on",

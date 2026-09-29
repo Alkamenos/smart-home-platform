@@ -265,7 +265,9 @@ async def sync_source(
         # Запускаем синхронизацию через DeviceService
         devices = await device_service.sync_devices_from_source(source_id)
 
-        logger.info(f"Синхронизация завершена для источника {source_id}: загружено {len(devices)} устройств")
+        logger.info(
+            f"Синхронизация завершена для источника {source_id}: загружено {len(devices)} устройств"
+        )
 
         return {
             "status": "success",
