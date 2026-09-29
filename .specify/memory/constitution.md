@@ -1,50 +1,230 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Конституция проекта Smart Home Management Platform
 
-## Core Principles
+<!--
+SYNC IMPACT REPORT (временный материал, удалить перед коммитом)
+Версия: 1.0.0 → 3.0.0 (MAJOR)
+Обоснование: Полная переработка на основе практической реализации (Production Readiness Phase). Добавлены принципы, извлеченные из v3.0.0 реализации: Event-Driven FSM архитектура, режимы разработки, система качества.
+Модифицированные принципы: Все переписаны с учетом реальной практики
+Добавленные разделы: Режимы разработки, Система качества, Архитектурные ограничения
+Удаленные разделы: Нет (переработаны)
+TODO: Нет отложенных пунктов
+-->
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+## Основные принципы
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### I. Event-Driven FSM как фундамент (NON-NEGOTIABLE)
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+Система строится на событиях (events) и машинах конечных состояний (FSM). Каждое устройство/поведение — это отдельная FSM, которая реагирует на события и генерирует команды. Это позволяет:
+- Избежать "комбинаторного взрыва" при множестве комбинаций сенсоров
+- Композировать поведения независимо (несколько FSM на одно устройство)
+- Решать конфликты через приоритеты в CommandDispatcher
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**Ограничение:** Структура FSMDefinition, логика debounce и механизм таймаутов изменяются только по явному согласованию.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### II. AI-первый подход с TDD/SDD (NON-NEGOTIABLE)
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Проект развивается с помощью AI-ассистента, используя Test-Driven Development (TDD) и Specification-Driven Development (SDD):
+- **TDD:** Тесты пишутся ДО реализации; Red-Green-Refactor цикл
+- **SDD:** Спецификации требований записываются перед кодом
+- **AI-first:** AI предлагает улучшения на основе исторических данных и состояния датчиков
+- **Low-code:** Минимум вспомогательного кода; максимум конфигурации через интерфейсы
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+**Система качества:**
+- Минимум 80% покрытие тестами для новых файлов
+- 95% для критических модулей (Dispatcher, EventRouter)
+- 100% для Action handlers
+- Pre-commit хуки: ruff lint + format, mypy, pytest
+- Pre-push хуки: полные проверки + run_checks.sh
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+### III. Контроль остается за пользователем
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+User Interface (веб-интерфейс, CLI, HA dashboard, умная колонка) — единственный источник истины для управления. AI параллельно анализирует состояние и предлагает улучшения через диалог, но не может автоматически менять состояние без явного одобрения пользователя. Переопределения пользователя имеют приоритет; автоматика возвращается по истечению срока оверрайда.
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+### IV. Многоуровневая архитектура (NON-NEGOTIABLE)
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+```
+┌─────────────────────┐
+│  CLI / Web / Main   │  ← Может импортировать всё
+├─────────────────────┤
+│    Adapters         │  ← НЕ импортирует Services
+├─────────────────────┤
+│    Services         │  ← НЕ импортирует Core
+├─────────────────────┤
+│      Core           │  ← НЕ импортирует Adapters
+└─────────────────────┘
+```
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+Слои независимы; связь через CommandIntent и протоколы. Core содержит бизнес-логику; Adapters — интеграции с внешними системами; Services — вспомогательные функции.
+
+### V. Манифест — единственный источник конфигурации
+
+Никаких hardcoded значений в коде. Все параметры в `manifest.yaml`, включая:
+- Определения устройств (devices/zones/rooms)
+- Поведения (behaviors) и их параметры
+- Логика переходов FSM (states, transitions, guards)
+- Сенсоры (sensors) и их маппинг на события
+
+**Правило:** Все изменения схемы манифеста версионируются; писать миграции для обратной совместимости.
+
+### VI. Двухрежимное развертывание (Standalone/HA)
+
+Система ДОЛЖНА работать как в автономном режиме (полностью независимая), так и в режиме интеграции с Home Assistant через WebSocket. Архитектура предусматривает условную компиляцию; HA-специфичный код изолирован в adapters/ha_adapter.py. Оба режима проходят идентичные тесты.
+
+### VII. Многоуровневый интерфейс
+
+- **Web UI** (`src/webui/`): конфигурация манифеста, статус, история, отладка
+- **CLI** (`cli.py`): быстрые правки, управление, экспорт FSM
+- **HA Dashboard**: основное управление пользователя (вкл/выкл, настройка интервалов, температур, оверрайдов)
+- **Умная колонка/Диалоги**: голосовое управление и советы от AI
+
+Каждый интерфейс действует независимо через common API; синхронизация через хранилище состояния.
+
+## Система разработки
+
+### Режимы разработки
+
+**Стандартный режим (рекомендуется):**
+```bash
+git commit -m "feat: ..."
+git push
+```
+✅ Статические проверки при коммите, полные проверки при пуше (теперь по умолчанию!)
+
+**Быстрая разработка (только для черновиков):**
+```bash
+git config --unset core.hooksPath
+git commit -m "WIP: ..."
+# ... сделать коммит ...
+git config core.hooksPath .githooks  # Вернуть хуки обратно
+```
+⚠️ Используйте только для промежуточных коммитов; перед пушем вернуть хуки!
+
+**Строгий режим (перед релизом):**
+```bash
+.ai/scripts/run_checks.sh  # Убедиться что всё проходит
+git commit -m "feat: ..."
+git push
+```
+✅ Максимальная гарантия качества
+
+### Требования к коду
+
+Детальные требования документированы в `.ai/04_RULES.md`. Ключевые моменты:
+
+**Type Hints:** Все функции ДОЛЖНЫ иметь type hints для аргументов и возвращаемого значения. Избегать `Any` — использовать конкретные типы или TypeVar. (см. `.ai/04_RULES.md` → Type Hints)
+
+**Docstrings:** Все публичные функции имеют docstring в Google style. Минимум: описание, Args, Returns. (см. `.ai/04_RULES.md` → Docstrings)
+
+**Длина функций:** Максимум 50 строк (без учета docstring и комментариев). Разбивать на вспомогательные методы. (см. `.ai/04_RULES.md` → Длина функций)
+
+**Обработка ошибок:** Всегда логировать через loguru; не использовать bare `except:` — указывать конкретные исключения. (см. `.ai/04_RULES.md` → Обработка ошибок)
+
+**Логирование:** Использовать loguru; включать trace_id для корреляции событий. (см. `.ai/04_RULES.md` → Логирование)
+
+**Импорты:** Следовать правилам организации импортов (stdlib → third-party → local). (см. `.ai/04_RULES.md` → Импорты)
+
+**Константы:** Все magic values должны быть константами. (см. `.ai/04_RULES.md` → Константы)
+
+### Форматирование коммитов
+
+Детальные требования в `.ai/04_RULES.md` → Коммиты.
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+[optional footer]
+```
+
+**Types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
+**Scope:** `core`, `adapters`, `services`, `webui`, `cli`, `tests`, `docs`
+**Размер:** Один коммит = одна логическая задача; максимум 500 строк изменений
+
+**Пример:**
+```
+feat(core): Add EventRouter for sensor-to-FSM mapping
+
+- Build sensor-to-FSM mapping from manifest
+- Route motion_detected/motion_cleared events
+- Add comprehensive unit tests
+
+Closes #42
+```
+
+## Тестирование
+
+**Покрытие:** (см. `.ai/04_RULES.md` → Тестирование)
+- Новые файлы: минимум 80%
+- Критические модули (Dispatcher, EventRouter): 95%
+- Action handlers: 100%
+
+**Типы тестов:**
+| Тип | Назначение | Пример |
+|-----|-----------|--------|
+| Unit | Изолированные, моки всех зависимостей | `test_dispatcher.py` |
+| Integration | Взаимодействие модулей | `test_event_router.py` |
+| E2E | Полные сценарии | `test_composition_scenario.py` |
+
+**Именование:** `test_<что>_should_<поведение>_when_<условие>`
+
+## Архитектурные ограничения (ADR)
+
+### ADR-001: Core не зависит от Adapters
+`core/` не импортирует `adapters/`; связь через `CommandIntent` и протоколы.
+
+### ADR-002: Манифест — единственный источник конфигурации
+Никаких hardcoded значений; все параметры в `manifest.yaml`.
+
+### ADR-003: FSM идентифицируются по схеме `{device}_{template}_{priority}`
+Позволяет одному устройству иметь несколько поведений; EventRouter использует эту схему для роутинга.
+
+### ADR-004: Приоритеты в CommandDispatcher
+- 100+: Ручное управление (User Override)
+- 20+: Критические сценарии (Night Light, Fire Safety)
+- 10: Стандартные автоматизации
+- 1-9: Фоновые сценарии
+
+### ADR-005: Middleware для глобальных правил
+Глобальные правила (Manual Lockout) применяются через цепочку обработчиков, не засоряя логику отдельных FSM.
+
+## Функциональные требования
+
+### Управление домом и садом
+
+- **Дом:** Климат, свет, доступ, безопасность, гигиена сна
+- **Сад:** Оптимальные условия для растений, полив, удобрения, напоминания о мероприятиях
+- **Глобальные режимы:** вечеринка, мы дома, собаки дома, сон/бодрствование, проветривание, охрана
+
+### Безопасность и надежность
+
+- **Пожарная безопасность:** Датчики дыма интегрированы; автозакрытие штор
+- **Контроль доступа:** Распознавание лиц через камеру; управление замками
+- **Охрана:** Мониторинг датчиков и камер; имитация присутствия при отсутствии
+- **Энергетическая оптимизация:** Приточная вентиляция с учетом наружной температуры
+
+### Развертывание и распространение
+
+- Конфигурация ДОЛЖНА быть выполнима за один день на новом объекте
+- Миграция между объектами — экспорт/импорт конфигурации
+- Резервные копии состояния создаются автоматически
+- Функции для гостей — отдельный набор разрешений и ограничений
+
+## Управление конституцией
+
+**Иерархия:** Конституция имеет приоритет над всеми другими практиками и соглашениями.
+
+**Процесс изменений:**
+1. Предложение ДОЛЖНО включать обоснование (почему текущее правило не работает)
+2. Утверждение: Обсуждение в команде, согласие основных контрибьюторов
+3. Миграция: План перехода для затронутого кода или процессов
+
+**Версионирование:**
+- MAJOR: Удаление или переопределение принципов
+- MINOR: Добавление новых принципов или расширение руководства
+- PATCH: Уточнения, опечатки, улучшения читаемости
+
+**Обзор соответствия:** Каждый квартал (или при предложении изменения) провести ревью действующей конституции и кодовой базы на соответствие.
+
+---
+
+**Версия**: 3.0.0 | **Ратифицирована**: 2026-09-29 | **Последнее изменение**: 2026-09-29
