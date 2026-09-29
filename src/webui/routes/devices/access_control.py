@@ -5,10 +5,10 @@ Endpoints для назначения, обновления и отзыва до
 """
 
 import logging
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1/devices", tags=["access-control"])
 
 
 # Dependency для получения текущего пользователя
-def get_current_user(x_user_id: Optional[str] = Header(None)) -> str:
+def get_current_user(x_user_id: str | None = Header(None)) -> str:
     """Получает ID текущего пользователя из заголовка.
 
     Args:
@@ -31,13 +31,12 @@ def get_current_user(x_user_id: Optional[str] = Header(None)) -> str:
     """
     if not x_user_id:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-User-ID header"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-User-ID header"
         )
     return x_user_id
 
 
-def get_is_admin(x_is_admin: Optional[str] = Header(None)) -> bool:
+def get_is_admin(x_is_admin: str | None = Header(None)) -> bool:
     """Проверяет является ли пользователь администратором.
 
     Args:
@@ -59,10 +58,7 @@ def require_admin(is_admin: bool = Depends(get_is_admin)):
         HTTPException: Если пользователь не администратор
     """
     if not is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return is_admin
 
 
@@ -98,7 +94,7 @@ async def grant_device_access(
     if role not in ["viewer", "controller", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role: {role}. Must be one of: viewer, controller, admin"
+            detail=f"Invalid role: {role}. Must be one of: viewer, controller, admin",
         )
 
     try:
@@ -126,14 +122,13 @@ async def grant_device_access(
             "user_id": user_id,
             "role": role,
             "granted_by": current_user,
-            "created_at": "2026-09-29T10:00:00Z"
+            "created_at": "2026-09-29T10:00:00Z",
         }
 
     except Exception as e:
         logger.error(f"Ошибка предоставления доступа: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to grant access"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to grant access"
         )
 
 
@@ -177,8 +172,7 @@ async def revoke_device_access(
     except Exception as e:
         logger.error(f"Ошибка отзыва доступа: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to revoke access"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to revoke access"
         )
 
 
@@ -224,6 +218,5 @@ async def get_device_access_list(
     except Exception as e:
         logger.error(f"Ошибка получения доступов: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get access list"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get access list"
         )

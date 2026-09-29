@@ -15,10 +15,10 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict
-from typing import DefaultDict, Dict, List, Optional, Set
 from uuid import UUID
 
 from src.core.models.device import Device
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +46,13 @@ class IndexManager:
         self._lock = threading.RLock()
 
         # Индексы
-        self._by_source_id: DefaultDict[UUID, Set[UUID]] = defaultdict(set)
-        self._by_device_type: DefaultDict[str, Set[UUID]] = defaultdict(set)
-        self._by_ha_entity_id: Dict[str, UUID] = {}
-        self._by_status: DefaultDict[str, Set[UUID]] = defaultdict(set)
+        self._by_source_id: defaultdict[UUID, set[UUID]] = defaultdict(set)
+        self._by_device_type: defaultdict[str, set[UUID]] = defaultdict(set)
+        self._by_ha_entity_id: dict[str, UUID] = {}
+        self._by_status: defaultdict[str, set[UUID]] = defaultdict(set)
 
         # Быстрый доступ к устройству по ID (кэш)
-        self._devices: Dict[UUID, Device] = {}
+        self._devices: dict[UUID, Device] = {}
 
         # Метрики
         self.index_operations = 0
@@ -155,7 +155,7 @@ class IndexManager:
                 self.index_errors += 1
                 logger.error(f"Ошибка переиндексирования {device.id}: {e}")
 
-    def find_by_source(self, source_id: UUID) -> List[Device]:
+    def find_by_source(self, source_id: UUID) -> list[Device]:
         """
         Найти все устройства от источника.
 
@@ -169,7 +169,7 @@ class IndexManager:
             device_ids = self._by_source_id.get(source_id, set())
             return [self._devices[did] for did in device_ids if did in self._devices]
 
-    def find_by_type(self, device_type: str) -> List[Device]:
+    def find_by_type(self, device_type: str) -> list[Device]:
         """
         Найти все устройства по типу.
 
@@ -183,7 +183,7 @@ class IndexManager:
             device_ids = self._by_device_type.get(device_type, set())
             return [self._devices[did] for did in device_ids if did in self._devices]
 
-    def find_by_ha_entity_id(self, ha_entity_id: str) -> Optional[Device]:
+    def find_by_ha_entity_id(self, ha_entity_id: str) -> Device | None:
         """
         Найти устройство по HA entity ID.
 
@@ -199,7 +199,7 @@ class IndexManager:
                 return self._devices[device_id]
             return None
 
-    def find_by_status(self, status: str) -> List[Device]:
+    def find_by_status(self, status: str) -> list[Device]:
         """
         Найти все устройства по статусу.
 
@@ -213,7 +213,7 @@ class IndexManager:
             device_ids = self._by_status.get(status, set())
             return [self._devices[did] for did in device_ids if did in self._devices]
 
-    def find_by_source_and_type(self, source_id: UUID, device_type: str) -> List[Device]:
+    def find_by_source_and_type(self, source_id: UUID, device_type: str) -> list[Device]:
         """
         Найти устройства по источнику и типу.
 
@@ -230,7 +230,7 @@ class IndexManager:
             common_ids = source_devices & type_devices
             return [self._devices[did] for did in common_ids if did in self._devices]
 
-    def get_device(self, device_id: UUID) -> Optional[Device]:
+    def get_device(self, device_id: UUID) -> Device | None:
         """
         Получить устройство по ID.
 
@@ -253,7 +253,7 @@ class IndexManager:
             self._devices.clear()
             logger.info("Все индексы очищены")
 
-    def rebuild_from_devices(self, devices: List[Device]) -> None:
+    def rebuild_from_devices(self, devices: list[Device]) -> None:
         """
         Пересоздать индексы из списка устройств.
 
@@ -266,7 +266,7 @@ class IndexManager:
                 self.add_device(device)
             logger.info(f"Индексы пересозданы из {len(devices)} устройств")
 
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> dict[str, any]:
         """
         Получить статистику индексов.
 
@@ -285,7 +285,7 @@ class IndexManager:
                 "statuses": {k: len(v) for k, v in self._by_status.items()},
             }
 
-    def get_all_devices(self) -> List[Device]:
+    def get_all_devices(self) -> list[Device]:
         """
         Получить все устройства.
 

@@ -21,12 +21,11 @@
 
 import json
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
-
 from src.core.models.device import Device
 from src.core.models.device_access import DeviceAccess
 from src.core.models.device_command import (
@@ -42,8 +41,9 @@ from src.core.models.ha_source import HASource
 # FIXTURES
 # ============================================================================
 
+
 @pytest.fixture
-def valid_ha_source_data() -> Dict[str, Any]:
+def valid_ha_source_data() -> dict[str, Any]:
     """Валидные данные для HASource."""
     return {
         "name": "Home Assistant Pro",
@@ -54,7 +54,7 @@ def valid_ha_source_data() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_device_data() -> Dict[str, Any]:
+def valid_device_data() -> dict[str, Any]:
     """Валидные данные для Device."""
     return {
         "ha_entity_id": "light.kitchen_light",
@@ -65,7 +65,7 @@ def valid_device_data() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_device_config_data() -> Dict[str, Any]:
+def valid_device_config_data() -> dict[str, Any]:
     """Валидные данные для DeviceConfig."""
     return {
         "device_id": uuid4(),
@@ -77,7 +77,7 @@ def valid_device_config_data() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_device_command_data() -> Dict[str, Any]:
+def valid_device_command_data() -> dict[str, Any]:
     """Валидные данные для DeviceCommand."""
     return {
         "device_id": uuid4(),
@@ -92,7 +92,7 @@ def valid_device_command_data() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_device_access_data() -> Dict[str, Any]:
+def valid_device_access_data() -> dict[str, Any]:
     """Валидные данные для DeviceAccess."""
     return {
         "device_id": uuid4(),
@@ -105,6 +105,7 @@ def valid_device_access_data() -> Dict[str, Any]:
 # ============================================================================
 # ТЕСТЫ HASource
 # ============================================================================
+
 
 class TestHASourceCreation:
     """Тесты создания и валидации HASource."""
@@ -126,7 +127,7 @@ class TestHASourceCreation:
         source = HASource(
             name="HA Instance",
             url="http://localhost:8123",
-            token="long_token_string_at_least_10_chars"
+            token="long_token_string_at_least_10_chars",
         )
 
         assert source.name == "HA Instance"
@@ -138,10 +139,7 @@ class TestHASourceCreation:
         """Создание HASource с явным указанием UUID."""
         test_id = uuid4()
         source = HASource(
-            id=test_id,
-            name="Test",
-            url="http://localhost:8123",
-            token="test_token_123456"
+            id=test_id, name="Test", url="http://localhost:8123", token="test_token_123456"
         )
 
         assert source.id == test_id
@@ -162,20 +160,14 @@ class TestHASourceNameValidation:
 
     def test_имя_минимальной_длины(self):
         """Имя может быть 1 символом."""
-        source = HASource(
-            name="A",
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
-        )
+        source = HASource(name="A", url="http://localhost:8123", token="token_min_10_chars_here")
         assert source.name == "A"
 
     def test_имя_максимальной_длины(self):
         """Имя может быть 255 символами."""
         long_name = "A" * 255
         source = HASource(
-            name=long_name,
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
+            name=long_name, url="http://localhost:8123", token="token_min_10_chars_here"
         )
         assert source.name == long_name
         assert len(source.name) == 255
@@ -186,9 +178,7 @@ class TestHASourceNameValidation:
 
         with pytest.raises(ValidationError) as exc_info:
             HASource(
-                name=too_long_name,
-                url="http://localhost:8123",
-                token="token_min_10_chars_here"
+                name=too_long_name, url="http://localhost:8123", token="token_min_10_chars_here"
             )
 
         assert "String should have at most 255 characters" in str(exc_info.value)
@@ -196,11 +186,7 @@ class TestHASourceNameValidation:
     def test_пустое_имя(self):
         """Пустое имя вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
-            HASource(
-                name="",
-                url="http://localhost:8123",
-                token="token_min_10_chars_here"
-            )
+            HASource(name="", url="http://localhost:8123", token="token_min_10_chars_here")
 
         assert "String should have at least 1 character" in str(exc_info.value)
 
@@ -208,9 +194,7 @@ class TestHASourceNameValidation:
         """Имя может содержать специальные символы."""
         special_name = "Home Assistant Pro (测试) - Тест!"
         source = HASource(
-            name=special_name,
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
+            name=special_name, url="http://localhost:8123", token="token_min_10_chars_here"
         )
         assert source.name == special_name
 
@@ -221,46 +205,32 @@ class TestHASourceURLValidation:
     def test_валидный_url_с_портом(self):
         """Валидный HTTP URL с портом."""
         source = HASource(
-            name="Test",
-            url="http://192.168.1.100:8123",
-            token="token_min_10_chars_here"
+            name="Test", url="http://192.168.1.100:8123", token="token_min_10_chars_here"
         )
         assert "192.168.1.100" in str(source.url)
 
     def test_валидный_https_url(self):
         """Валидный HTTPS URL."""
         source = HASource(
-            name="Test",
-            url="https://home.example.com",
-            token="token_min_10_chars_here"
+            name="Test", url="https://home.example.com", token="token_min_10_chars_here"
         )
         assert "https" in str(source.url)
 
     def test_невалидный_url_без_протокола(self):
         """URL без протокола вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
-            HASource(
-                name="Test",
-                url="localhost:8123",
-                token="token_min_10_chars_here"
-            )
+            HASource(name="Test", url="localhost:8123", token="token_min_10_chars_here")
         assert "Invalid URL" in str(exc_info.value) or "url" in str(exc_info.value).lower()
 
     def test_невалидный_url_пустой(self):
         """Пустой URL вызывает ошибку."""
         with pytest.raises(ValidationError):
-            HASource(
-                name="Test",
-                url="",
-                token="token_min_10_chars_here"
-            )
+            HASource(name="Test", url="", token="token_min_10_chars_here")
 
     def test_url_с_путём(self):
         """URL может содержать путь."""
         source = HASource(
-            name="Test",
-            url="http://localhost:8123/ha",
-            token="token_min_10_chars_here"
+            name="Test", url="http://localhost:8123/ha", token="token_min_10_chars_here"
         )
         assert "/ha" in str(source.url)
 
@@ -270,51 +240,31 @@ class TestHASourceTokenValidation:
 
     def test_валидный_токен_минимальная_длина(self):
         """Токен минимальной длины (10 символов)."""
-        source = HASource(
-            name="Test",
-            url="http://localhost:8123",
-            token="0123456789"
-        )
+        source = HASource(name="Test", url="http://localhost:8123", token="0123456789")
         assert source.token == "0123456789"
 
     def test_валидный_токен_длинный(self):
         """Долгоживущий токен из примера."""
         long_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-        source = HASource(
-            name="Test",
-            url="http://localhost:8123",
-            token=long_token
-        )
+        source = HASource(name="Test", url="http://localhost:8123", token=long_token)
         assert source.token == long_token
 
     def test_токен_менее_10_символов(self):
         """Токен менее 10 символов вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
-            HASource(
-                name="Test",
-                url="http://localhost:8123",
-                token="short"
-            )
+            HASource(name="Test", url="http://localhost:8123", token="short")
 
         assert "String should have at least 10 characters" in str(exc_info.value)
 
     def test_пустой_токен(self):
         """Пустой токен вызывает ошибку."""
         with pytest.raises(ValidationError):
-            HASource(
-                name="Test",
-                url="http://localhost:8123",
-                token=""
-            )
+            HASource(name="Test", url="http://localhost:8123", token="")
 
     def test_токен_с_специальными_символами(self):
         """Токен может содержать специальные символы."""
         special_token = "token_with_!@#$%^&*()_+-=[]{}|;:,.<>?"
-        source = HASource(
-            name="Test",
-            url="http://localhost:8123",
-            token=special_token
-        )
+        source = HASource(name="Test", url="http://localhost:8123", token=special_token)
         assert source.token == special_token
 
 
@@ -327,17 +277,13 @@ class TestHASourceStatusValidation:
             name="Test",
             url="http://localhost:8123",
             token="token_min_10_chars_here",
-            status="connected"
+            status="connected",
         )
         assert source.status == "connected"
 
     def test_статус_disconnected(self):
         """Статус 'disconnected' по умолчанию."""
-        source = HASource(
-            name="Test",
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
-        )
+        source = HASource(name="Test", url="http://localhost:8123", token="token_min_10_chars_here")
         assert source.status == "disconnected"
 
     def test_статус_error(self):
@@ -346,7 +292,7 @@ class TestHASourceStatusValidation:
             name="Test",
             url="http://localhost:8123",
             token="token_min_10_chars_here",
-            status="error"
+            status="error",
         )
         assert source.status == "error"
 
@@ -356,7 +302,7 @@ class TestHASourceStatusValidation:
             name="Test",
             url="http://localhost:8123",
             token="token_min_10_chars_here",
-            status="custom_status"
+            status="custom_status",
         )
         assert source.status == "custom_status"
 
@@ -366,31 +312,20 @@ class TestHASourceOptionalFields:
 
     def test_last_sync_по_умолчанию_none(self):
         """last_sync по умолчанию None."""
-        source = HASource(
-            name="Test",
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
-        )
+        source = HASource(name="Test", url="http://localhost:8123", token="token_min_10_chars_here")
         assert source.last_sync is None
 
     def test_last_sync_с_значением(self):
         """last_sync с явным значением datetime."""
         now = datetime.utcnow()
         source = HASource(
-            name="Test",
-            url="http://localhost:8123",
-            token="token_min_10_chars_here",
-            last_sync=now
+            name="Test", url="http://localhost:8123", token="token_min_10_chars_here", last_sync=now
         )
         assert source.last_sync == now
 
     def test_device_count_по_умолчанию_ноль(self):
         """device_count по умолчанию 0."""
-        source = HASource(
-            name="Test",
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
-        )
+        source = HASource(name="Test", url="http://localhost:8123", token="token_min_10_chars_here")
         assert source.device_count == 0
 
     def test_device_count_с_значением(self):
@@ -399,7 +334,7 @@ class TestHASourceOptionalFields:
             name="Test",
             url="http://localhost:8123",
             token="token_min_10_chars_here",
-            device_count=47
+            device_count=47,
         )
         assert source.device_count == 47
 
@@ -407,6 +342,7 @@ class TestHASourceOptionalFields:
 # ============================================================================
 # ТЕСТЫ Device
 # ============================================================================
+
 
 class TestDeviceCreation:
     """Тесты создания и валидации Device."""
@@ -424,10 +360,7 @@ class TestDeviceCreation:
     def test_создание_с_минимальными_данными(self):
         """Создание Device только с обязательными полями."""
         device = Device(
-            ha_entity_id="light.kitchen",
-            source_id=uuid4(),
-            name="Kitchen",
-            device_type="light"
+            ha_entity_id="light.kitchen", source_id=uuid4(), name="Kitchen", device_type="light"
         )
 
         assert device.ha_entity_id == "light.kitchen"
@@ -451,10 +384,7 @@ class TestDeviceEntityIDValidation:
     def test_валидный_entity_id_простой(self):
         """Валидный entity_id простого формата."""
         device = Device(
-            ha_entity_id="light.kitchen_light",
-            source_id=uuid4(),
-            name="Test",
-            device_type="light"
+            ha_entity_id="light.kitchen_light", source_id=uuid4(), name="Test", device_type="light"
         )
         assert device.ha_entity_id == "light.kitchen_light"
 
@@ -464,7 +394,7 @@ class TestDeviceEntityIDValidation:
             ha_entity_id="light.kitchen_1_light_2",
             source_id=uuid4(),
             name="Test",
-            device_type="light"
+            device_type="light",
         )
         assert device.ha_entity_id == "light.kitchen_1_light_2"
 
@@ -472,10 +402,7 @@ class TestDeviceEntityIDValidation:
         """Entity_id без точки вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
             Device(
-                ha_entity_id="light_kitchen",
-                source_id=uuid4(),
-                name="Test",
-                device_type="light"
+                ha_entity_id="light_kitchen", source_id=uuid4(), name="Test", device_type="light"
             )
         assert "pattern" in str(exc_info.value).lower()
 
@@ -483,10 +410,7 @@ class TestDeviceEntityIDValidation:
         """Entity_id с заглавными буквами вызывает ошибку."""
         with pytest.raises(ValidationError):
             Device(
-                ha_entity_id="Light.Kitchen",
-                source_id=uuid4(),
-                name="Test",
-                device_type="light"
+                ha_entity_id="Light.Kitchen", source_id=uuid4(), name="Test", device_type="light"
             )
 
     def test_невалидный_entity_id_спецсимволы(self):
@@ -496,18 +420,13 @@ class TestDeviceEntityIDValidation:
                 ha_entity_id="light.kitchen@light",
                 source_id=uuid4(),
                 name="Test",
-                device_type="light"
+                device_type="light",
             )
 
     def test_невалидный_entity_id_пустой(self):
         """Пустой entity_id вызывает ошибку."""
         with pytest.raises(ValidationError):
-            Device(
-                ha_entity_id="",
-                source_id=uuid4(),
-                name="Test",
-                device_type="light"
-            )
+            Device(ha_entity_id="", source_id=uuid4(), name="Test", device_type="light")
 
 
 class TestDeviceDeviceTypeValidation:
@@ -516,50 +435,35 @@ class TestDeviceDeviceTypeValidation:
     def test_device_type_light(self):
         """Device type 'light'."""
         device = Device(
-            ha_entity_id="light.kitchen",
-            source_id=uuid4(),
-            name="Test",
-            device_type="light"
+            ha_entity_id="light.kitchen", source_id=uuid4(), name="Test", device_type="light"
         )
         assert device.device_type == "light"
 
     def test_device_type_switch(self):
         """Device type 'switch'."""
         device = Device(
-            ha_entity_id="switch.heater",
-            source_id=uuid4(),
-            name="Test",
-            device_type="switch"
+            ha_entity_id="switch.heater", source_id=uuid4(), name="Test", device_type="switch"
         )
         assert device.device_type == "switch"
 
     def test_device_type_климат(self):
         """Device type 'climate'."""
         device = Device(
-            ha_entity_id="climate.bedroom",
-            source_id=uuid4(),
-            name="Test",
-            device_type="climate"
+            ha_entity_id="climate.bedroom", source_id=uuid4(), name="Test", device_type="climate"
         )
         assert device.device_type == "climate"
 
     def test_device_type_с_датчиком(self):
         """Device type может быть любой строкой."""
         device = Device(
-            ha_entity_id="sensor.temperature",
-            source_id=uuid4(),
-            name="Test",
-            device_type="sensor"
+            ha_entity_id="sensor.temperature", source_id=uuid4(), name="Test", device_type="sensor"
         )
         assert device.device_type == "sensor"
 
     def test_device_type_пустой(self):
         """Пустой device_type допускается."""
         device = Device(
-            ha_entity_id="light.kitchen",
-            source_id=uuid4(),
-            name="Test",
-            device_type=""
+            ha_entity_id="light.kitchen", source_id=uuid4(), name="Test", device_type=""
         )
         assert device.device_type == ""
 
@@ -579,7 +483,7 @@ class TestDeviceStateValidation:
             source_id=uuid4(),
             name="Test",
             device_type="light",
-            state={"state": "on", "brightness": 200}
+            state={"state": "on", "brightness": 200},
         )
         assert device.state["state"] == "on"
         assert device.state["brightness"] == 200
@@ -591,11 +495,7 @@ class TestDeviceStateValidation:
             source_id=uuid4(),
             name="Test",
             device_type="light",
-            state={
-                "state": "on",
-                "brightness": 200,
-                "color": {"h": 180, "s": 100}
-            }
+            state={"state": "on", "brightness": 200, "color": {"h": 180, "s": 100}},
         )
         assert device.state["color"]["h"] == 180
 
@@ -615,7 +515,7 @@ class TestDeviceStatusValidation:
             source_id=uuid4(),
             name="Test",
             device_type="light",
-            status="unavailable"
+            status="unavailable",
         )
         assert device.status == "unavailable"
 
@@ -626,7 +526,7 @@ class TestDeviceStatusValidation:
             source_id=uuid4(),
             name="Test",
             device_type="light",
-            status="removed_from_ha"
+            status="removed_from_ha",
         )
         assert device.status == "removed_from_ha"
 
@@ -637,7 +537,7 @@ class TestDeviceStatusValidation:
             source_id=uuid4(),
             name="Test",
             device_type="light",
-            status="custom_status"
+            status="custom_status",
         )
         assert device.status == "custom_status"
 
@@ -648,10 +548,7 @@ class TestDeviceNameValidation:
     def test_имя_минимальной_длины(self):
         """Имя минимальной длины (1 символ)."""
         device = Device(
-            ha_entity_id="light.kitchen",
-            source_id=uuid4(),
-            name="A",
-            device_type="light"
+            ha_entity_id="light.kitchen", source_id=uuid4(), name="A", device_type="light"
         )
         assert device.name == "A"
 
@@ -659,10 +556,7 @@ class TestDeviceNameValidation:
         """Имя максимальной длины (255 символов)."""
         long_name = "A" * 255
         device = Device(
-            ha_entity_id="light.kitchen",
-            source_id=uuid4(),
-            name=long_name,
-            device_type="light"
+            ha_entity_id="light.kitchen", source_id=uuid4(), name=long_name, device_type="light"
         )
         assert device.name == long_name
 
@@ -675,23 +569,19 @@ class TestDeviceNameValidation:
                 ha_entity_id="light.kitchen",
                 source_id=uuid4(),
                 name=too_long_name,
-                device_type="light"
+                device_type="light",
             )
 
     def test_пустое_имя(self):
         """Пустое имя вызывает ошибку."""
         with pytest.raises(ValidationError):
-            Device(
-                ha_entity_id="light.kitchen",
-                source_id=uuid4(),
-                name="",
-                device_type="light"
-            )
+            Device(ha_entity_id="light.kitchen", source_id=uuid4(), name="", device_type="light")
 
 
 # ============================================================================
 # ТЕСТЫ DeviceConfig
 # ============================================================================
+
 
 class TestDeviceConfigCreation:
     """Тесты создания и валидации DeviceConfig."""
@@ -730,27 +620,18 @@ class TestDeviceConfigDisplayNameValidation:
 
     def test_valid_display_name(self):
         """Валидное display_name."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            display_name="Кухонный свет"
-        )
+        config = DeviceConfig(device_id=uuid4(), display_name="Кухонный свет")
         assert config.display_name == "Кухонный свет"
 
     def test_display_name_минимальной_длины(self):
         """display_name минимальной длины (1 символ)."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            display_name="А"
-        )
+        config = DeviceConfig(device_id=uuid4(), display_name="А")
         assert config.display_name == "А"
 
     def test_display_name_максимальной_длины(self):
         """display_name максимальной длины (255 символов)."""
         long_name = "А" * 255
-        config = DeviceConfig(
-            device_id=uuid4(),
-            display_name=long_name
-        )
+        config = DeviceConfig(device_id=uuid4(), display_name=long_name)
         assert config.display_name == long_name
 
     def test_display_name_превышает_максимум(self):
@@ -758,35 +639,23 @@ class TestDeviceConfigDisplayNameValidation:
         too_long_name = "А" * 256
 
         with pytest.raises(ValidationError):
-            DeviceConfig(
-                device_id=uuid4(),
-                display_name=too_long_name
-            )
+            DeviceConfig(device_id=uuid4(), display_name=too_long_name)
 
     def test_display_name_только_пробелы(self):
         """display_name только из пробелов вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
-            DeviceConfig(
-                device_id=uuid4(),
-                display_name="   "
-            )
+            DeviceConfig(device_id=uuid4(), display_name="   ")
         assert "display_name не может быть пустым" in str(exc_info.value)
 
     def test_display_name_пустой_вызывает_ошибку(self):
         """Пустой display_name вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
-            DeviceConfig(
-                device_id=uuid4(),
-                display_name=""
-            )
+            DeviceConfig(device_id=uuid4(), display_name="")
         assert "display_name не может быть пустым" in str(exc_info.value)
 
     def test_display_name_none(self):
         """display_name может быть None."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            display_name=None
-        )
+        config = DeviceConfig(device_id=uuid4(), display_name=None)
         assert config.display_name is None
 
 
@@ -795,27 +664,18 @@ class TestDeviceConfigTagsValidation:
 
     def test_tags_валидные(self):
         """Валидные теги."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            tags=["lighting", "kitchen"]
-        )
+        config = DeviceConfig(device_id=uuid4(), tags=["lighting", "kitchen"])
         assert config.tags == ["lighting", "kitchen"]
 
     def test_tags_один_тег(self):
         """Один тег."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            tags=["lighting"]
-        )
+        config = DeviceConfig(device_id=uuid4(), tags=["lighting"])
         assert config.tags == ["lighting"]
 
     def test_tags_максимум_10(self):
         """Максимум 10 тегов."""
         tags = [f"tag_{i}" for i in range(10)]
-        config = DeviceConfig(
-            device_id=uuid4(),
-            tags=tags
-        )
+        config = DeviceConfig(device_id=uuid4(), tags=tags)
         assert len(config.tags) == 10
 
     def test_tags_более_10(self):
@@ -823,19 +683,13 @@ class TestDeviceConfigTagsValidation:
         tags = [f"tag_{i}" for i in range(11)]
 
         with pytest.raises(ValidationError) as exc_info:
-            DeviceConfig(
-                device_id=uuid4(),
-                tags=tags
-            )
+            DeviceConfig(device_id=uuid4(), tags=tags)
         assert "Не может быть более 10 тегов" in str(exc_info.value)
 
     def test_tags_длинный_тег(self):
         """Тег максимальной длины (50 символов)."""
         long_tag = "a" * 50
-        config = DeviceConfig(
-            device_id=uuid4(),
-            tags=[long_tag]
-        )
+        config = DeviceConfig(device_id=uuid4(), tags=[long_tag])
         assert config.tags[0] == long_tag
 
     def test_tags_тег_более_50_символов(self):
@@ -843,28 +697,19 @@ class TestDeviceConfigTagsValidation:
         too_long_tag = "a" * 51
 
         with pytest.raises(ValidationError) as exc_info:
-            DeviceConfig(
-                device_id=uuid4(),
-                tags=[too_long_tag]
-            )
+            DeviceConfig(device_id=uuid4(), tags=[too_long_tag])
         assert "слишком длинный" in str(exc_info.value)
 
     def test_tags_пустой_тег(self):
         """Пустой тег вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
-            DeviceConfig(
-                device_id=uuid4(),
-                tags=["valid_tag", ""]
-            )
+            DeviceConfig(device_id=uuid4(), tags=["valid_tag", ""])
         assert "не могут быть пустыми" in str(exc_info.value)
 
     def test_tags_тег_только_пробелы(self):
         """Тег только из пробелов вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
-            DeviceConfig(
-                device_id=uuid4(),
-                tags=["valid_tag", "   "]
-            )
+            DeviceConfig(device_id=uuid4(), tags=["valid_tag", "   "])
         assert "не могут быть пустыми" in str(exc_info.value)
 
     def test_tags_пусто_по_умолчанию(self):
@@ -874,10 +719,7 @@ class TestDeviceConfigTagsValidation:
 
     def test_tags_пустой_список(self):
         """Пустой список тегов допускается."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            tags=[]
-        )
+        config = DeviceConfig(device_id=uuid4(), tags=[])
         assert config.tags == []
 
 
@@ -886,19 +728,13 @@ class TestDeviceConfigLocationValidation:
 
     def test_валидное_location(self):
         """Валидное location."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            location="Кухня"
-        )
+        config = DeviceConfig(device_id=uuid4(), location="Кухня")
         assert config.location == "Кухня"
 
     def test_location_максимальной_длины(self):
         """location максимальной длины (255 символов)."""
         long_location = "А" * 255
-        config = DeviceConfig(
-            device_id=uuid4(),
-            location=long_location
-        )
+        config = DeviceConfig(device_id=uuid4(), location=long_location)
         assert config.location == long_location
 
     def test_location_превышает_максимум(self):
@@ -906,10 +742,7 @@ class TestDeviceConfigLocationValidation:
         too_long_location = "А" * 256
 
         with pytest.raises(ValidationError):
-            DeviceConfig(
-                device_id=uuid4(),
-                location=too_long_location
-            )
+            DeviceConfig(device_id=uuid4(), location=too_long_location)
 
     def test_location_none_по_умолчанию(self):
         """location по умолчанию None."""
@@ -922,19 +755,13 @@ class TestDeviceConfigDescriptionValidation:
 
     def test_валидное_description(self):
         """Валидное description."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            description="Основное освещение кухни"
-        )
+        config = DeviceConfig(device_id=uuid4(), description="Основное освещение кухни")
         assert config.description == "Основное освещение кухни"
 
     def test_description_максимальной_длины(self):
         """description максимальной длины (1000 символов)."""
         long_description = "А" * 1000
-        config = DeviceConfig(
-            device_id=uuid4(),
-            description=long_description
-        )
+        config = DeviceConfig(device_id=uuid4(), description=long_description)
         assert config.description == long_description
 
     def test_description_превышает_максимум(self):
@@ -942,10 +769,7 @@ class TestDeviceConfigDescriptionValidation:
         too_long_description = "А" * 1001
 
         with pytest.raises(ValidationError):
-            DeviceConfig(
-                device_id=uuid4(),
-                description=too_long_description
-            )
+            DeviceConfig(device_id=uuid4(), description=too_long_description)
 
     def test_description_пусто_по_умолчанию(self):
         """description по умолчанию None."""
@@ -956,6 +780,7 @@ class TestDeviceConfigDescriptionValidation:
 # ============================================================================
 # ТЕСТЫ DeviceCommand
 # ============================================================================
+
 
 class TestDeviceCommandCreation:
     """Тесты создания и валидации DeviceCommand."""
@@ -973,11 +798,7 @@ class TestDeviceCommandCreation:
 
     def test_создание_с_минимальными_данными(self):
         """Создание DeviceCommand только с обязательными полями."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="test_command",
-            ha_service="domain.service"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="test_command", ha_service="domain.service")
 
         assert command.device_id is not None
         assert command.name == "test_command"
@@ -1000,30 +821,18 @@ class TestDeviceCommandNameValidation:
 
     def test_валидное_name(self):
         """Валидное name."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="turn_on",
-            ha_service="light.turn_on"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="turn_on", ha_service="light.turn_on")
         assert command.name == "turn_on"
 
     def test_name_минимальной_длины(self):
         """name минимальной длины (1 символ)."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="a",
-            ha_service="light.turn_on"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="a", ha_service="light.turn_on")
         assert command.name == "a"
 
     def test_name_максимальной_длины(self):
         """name максимальной длины (255 символов)."""
         long_name = "a" * 255
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name=long_name,
-            ha_service="light.turn_on"
-        )
+        command = DeviceCommand(device_id=uuid4(), name=long_name, ha_service="light.turn_on")
         assert command.name == long_name
 
     def test_name_превышает_максимум(self):
@@ -1031,20 +840,12 @@ class TestDeviceCommandNameValidation:
         too_long_name = "a" * 256
 
         with pytest.raises(ValidationError):
-            DeviceCommand(
-                device_id=uuid4(),
-                name=too_long_name,
-                ha_service="light.turn_on"
-            )
+            DeviceCommand(device_id=uuid4(), name=too_long_name, ha_service="light.turn_on")
 
     def test_пустое_name(self):
         """Пустое name вызывает ошибку."""
         with pytest.raises(ValidationError):
-            DeviceCommand(
-                device_id=uuid4(),
-                name="",
-                ha_service="light.turn_on"
-            )
+            DeviceCommand(device_id=uuid4(), name="", ha_service="light.turn_on")
 
 
 class TestDeviceCommandHAServiceValidation:
@@ -1052,66 +853,40 @@ class TestDeviceCommandHAServiceValidation:
 
     def test_валидный_ha_service(self):
         """Валидный ha_service."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="test", ha_service="light.turn_on")
         assert command.ha_service == "light.turn_on"
 
     def test_ha_service_switch_toggle(self):
         """ha_service для switch."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="switch.toggle"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="test", ha_service="switch.toggle")
         assert command.ha_service == "switch.toggle"
 
     def test_ha_service_climate_set_temperature(self):
         """ha_service для climate."""
         command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="climate.set_temperature"
+            device_id=uuid4(), name="test", ha_service="climate.set_temperature"
         )
         assert command.ha_service == "climate.set_temperature"
 
     def test_ha_service_с_подчёркиванием(self):
         """ha_service с подчёркиванием."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light_group.turn_on"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="test", ha_service="light_group.turn_on")
         assert command.ha_service == "light_group.turn_on"
 
     def test_невалидный_ha_service_нет_точки(self):
         """ha_service без точки вызывает ошибку."""
         with pytest.raises(ValidationError):
-            DeviceCommand(
-                device_id=uuid4(),
-                name="test",
-                ha_service="light_turn_on"
-            )
+            DeviceCommand(device_id=uuid4(), name="test", ha_service="light_turn_on")
 
     def test_невалидный_ha_service_заглавные_буквы(self):
         """ha_service с заглавными буквами вызывает ошибку."""
         with pytest.raises(ValidationError):
-            DeviceCommand(
-                device_id=uuid4(),
-                name="test",
-                ha_service="Light.TurnOn"
-            )
+            DeviceCommand(device_id=uuid4(), name="test", ha_service="Light.TurnOn")
 
     def test_невалидный_ha_service_спецсимволы(self):
         """ha_service со спецсимволами вызывает ошибку."""
         with pytest.raises(ValidationError):
-            DeviceCommand(
-                device_id=uuid4(),
-                name="test",
-                ha_service="light.turn@on"
-            )
+            DeviceCommand(device_id=uuid4(), name="test", ha_service="light.turn@on")
 
 
 class TestDeviceCommandTimeoutValidation:
@@ -1119,30 +894,20 @@ class TestDeviceCommandTimeoutValidation:
 
     def test_timeout_по_умолчанию_30(self):
         """Timeout по умолчанию 30 секунд."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="test", ha_service="light.turn_on")
         assert command.execution_timeout == 30
 
     def test_timeout_минимум_1(self):
         """Timeout минимум 1 секунда."""
         command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on",
-            execution_timeout=1
+            device_id=uuid4(), name="test", ha_service="light.turn_on", execution_timeout=1
         )
         assert command.execution_timeout == 1
 
     def test_timeout_максимум_300(self):
         """Timeout максимум 300 секунд."""
         command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on",
-            execution_timeout=300
+            device_id=uuid4(), name="test", ha_service="light.turn_on", execution_timeout=300
         )
         assert command.execution_timeout == 300
 
@@ -1150,20 +915,14 @@ class TestDeviceCommandTimeoutValidation:
         """Timeout 0 вызывает ошибку."""
         with pytest.raises(ValidationError):
             DeviceCommand(
-                device_id=uuid4(),
-                name="test",
-                ha_service="light.turn_on",
-                execution_timeout=0
+                device_id=uuid4(), name="test", ha_service="light.turn_on", execution_timeout=0
             )
 
     def test_timeout_более_300_вызывает_ошибку(self):
         """Timeout более 300 вызывает ошибку."""
         with pytest.raises(ValidationError) as exc_info:
             DeviceCommand(
-                device_id=uuid4(),
-                name="test",
-                ha_service="light.turn_on",
-                execution_timeout=301
+                device_id=uuid4(), name="test", ha_service="light.turn_on", execution_timeout=301
             )
         assert "execution_timeout must be <= 300 seconds" in str(exc_info.value)
 
@@ -1173,11 +932,7 @@ class TestDeviceCommandParametersValidation:
 
     def test_parameters_пусто_по_умолчанию(self):
         """parameters по умолчанию пустой dict."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="test", ha_service="light.turn_on")
         assert command.parameters == {}
 
     def test_parameters_с_одним_параметром(self):
@@ -1186,7 +941,7 @@ class TestDeviceCommandParametersValidation:
             device_id=uuid4(),
             name="test",
             ha_service="light.turn_on",
-            parameters={"brightness": {"type": "integer", "min": 0, "max": 255}}
+            parameters={"brightness": {"type": "integer", "min": 0, "max": 255}},
         )
         assert "brightness" in command.parameters
 
@@ -1195,13 +950,10 @@ class TestDeviceCommandParametersValidation:
         params = {
             "brightness": {"type": "integer"},
             "color_temp": {"type": "integer"},
-            "transition": {"type": "float"}
+            "transition": {"type": "float"},
         }
         command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on",
-            parameters=params
+            device_id=uuid4(), name="test", ha_service="light.turn_on", parameters=params
         )
         assert len(command.parameters) == 3
 
@@ -1214,12 +966,9 @@ class TestDeviceCommandParametersValidation:
             parameters={
                 "color": {
                     "type": "object",
-                    "properties": {
-                        "h": {"type": "number"},
-                        "s": {"type": "number"}
-                    }
+                    "properties": {"h": {"type": "number"}, "s": {"type": "number"}},
                 }
-            }
+            },
         )
         assert command.parameters["color"]["type"] == "object"
 
@@ -1229,20 +978,13 @@ class TestDeviceCommandSafetyValidation:
 
     def test_is_safe_по_умолчанию_true(self):
         """is_safe по умолчанию True."""
-        command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on"
-        )
+        command = DeviceCommand(device_id=uuid4(), name="test", ha_service="light.turn_on")
         assert command.is_safe is True
 
     def test_is_safe_false(self):
         """is_safe может быть False."""
         command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on",
-            is_safe=False
+            device_id=uuid4(), name="test", ha_service="light.turn_on", is_safe=False
         )
         assert command.is_safe is False
 
@@ -1250,6 +992,7 @@ class TestDeviceCommandSafetyValidation:
 # ============================================================================
 # ТЕСТЫ DeviceAccess
 # ============================================================================
+
 
 class TestDeviceAccessCreation:
     """Тесты создания и валидации DeviceAccess."""
@@ -1267,10 +1010,7 @@ class TestDeviceAccessCreation:
     def test_создание_с_минимальными_данными(self):
         """Создание DeviceAccess только с обязательными полями."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="viewer",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="viewer", granted_by="admin"
         )
 
         assert access.device_id is not None
@@ -1293,30 +1033,21 @@ class TestDeviceAccessRoleValidation:
     def test_роль_viewer(self):
         """Роль 'viewer'."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="viewer",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="viewer", granted_by="admin"
         )
         assert access.role == "viewer"
 
     def test_роль_controller(self):
         """Роль 'controller'."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="controller",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="controller", granted_by="admin"
         )
         assert access.role == "controller"
 
     def test_роль_admin(self):
         """Роль 'admin'."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="admin",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="admin", granted_by="admin"
         )
         assert access.role == "admin"
 
@@ -1327,7 +1058,7 @@ class TestDeviceAccessRoleValidation:
                 device_id=uuid4(),
                 user_id="user_123",
                 role="invalid_role",  # type: ignore
-                granted_by="admin"
+                granted_by="admin",
             )
         assert "role" in str(exc_info.value).lower()
 
@@ -1338,70 +1069,49 @@ class TestDeviceAccessPermissions:
     def test_viewer_может_просматривать(self):
         """Роль viewer может просматривать."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="viewer",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="viewer", granted_by="admin"
         )
         assert access.can_view() is True
 
     def test_viewer_не_может_управлять(self):
         """Роль viewer не может управлять."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="viewer",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="viewer", granted_by="admin"
         )
         assert access.can_control() is False
 
     def test_viewer_не_может_управлять_доступом(self):
         """Роль viewer не может управлять доступом."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="viewer",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="viewer", granted_by="admin"
         )
         assert access.can_manage_access() is False
 
     def test_controller_может_просматривать(self):
         """Роль controller может просматривать."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="controller",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="controller", granted_by="admin"
         )
         assert access.can_view() is True
 
     def test_controller_может_управлять(self):
         """Роль controller может управлять."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="controller",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="controller", granted_by="admin"
         )
         assert access.can_control() is True
 
     def test_controller_не_может_управлять_доступом(self):
         """Роль controller не может управлять доступом."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="controller",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="controller", granted_by="admin"
         )
         assert access.can_manage_access() is False
 
     def test_admin_может_всё(self):
         """Роль admin может всё."""
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id="user_123",
-            role="admin",
-            granted_by="admin"
+            device_id=uuid4(), user_id="user_123", role="admin", granted_by="admin"
         )
         assert access.can_view() is True
         assert access.can_control() is True
@@ -1411,6 +1121,7 @@ class TestDeviceAccessPermissions:
 # ============================================================================
 # ДОПОЛНИТЕЛЬНЫЕ ИНТЕГРАЦИОННЫЕ ТЕСТЫ
 # ============================================================================
+
 
 class TestModelsJSONDeserialization:
     """Тесты десериализации моделей из JSON."""
@@ -1466,10 +1177,7 @@ class TestCommandExecutionModels:
 
     def test_command_execution_request_создание(self):
         """Создание CommandExecutionRequest."""
-        request = CommandExecutionRequest(
-            name="turn_on",
-            parameters={"brightness": 200}
-        )
+        request = CommandExecutionRequest(name="turn_on", parameters={"brightness": 200})
 
         assert request.name == "turn_on"
         assert request.parameters["brightness"] == 200
@@ -1481,7 +1189,7 @@ class TestCommandExecutionModels:
             device_id=uuid4(),
             command_name="turn_on",
             status="success",
-            result={"state": "on"}
+            result={"state": "on"},
         )
 
         assert response.command_name == "turn_on"
@@ -1495,14 +1203,10 @@ class TestModelsUUIDHandling:
     def test_ha_source_автогенерирует_uuid(self):
         """HASource автогенерирует UUID."""
         source1 = HASource(
-            name="Test1",
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
+            name="Test1", url="http://localhost:8123", token="token_min_10_chars_here"
         )
         source2 = HASource(
-            name="Test2",
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
+            name="Test2", url="http://localhost:8123", token="token_min_10_chars_here"
         )
 
         assert source1.id != source2.id
@@ -1515,7 +1219,7 @@ class TestModelsUUIDHandling:
             ha_entity_id="light.kitchen",
             source_id=uuid4(),
             name="Test",
-            device_type="light"
+            device_type="light",
         )
 
         assert device.id == test_id
@@ -1527,11 +1231,7 @@ class TestModelsTimestamps:
     def test_ha_source_созданы_временные_метки(self):
         """HASource создаёт временные метки."""
         before = datetime.utcnow()
-        source = HASource(
-            name="Test",
-            url="http://localhost:8123",
-            token="token_min_10_chars_here"
-        )
+        source = HASource(name="Test", url="http://localhost:8123", token="token_min_10_chars_here")
         after = datetime.utcnow()
 
         assert before <= source.created_at <= after
@@ -1557,25 +1257,19 @@ class TestEdgeCases:
             source_id=uuid4(),
             name="Test",
             device_type="light",
-            state={}
+            state={},
         )
         assert device.state == {}
 
     def test_device_config_с_пустыми_тегами(self):
         """DeviceConfig с пустым списком тегов."""
-        config = DeviceConfig(
-            device_id=uuid4(),
-            tags=[]
-        )
+        config = DeviceConfig(device_id=uuid4(), tags=[])
         assert config.tags == []
 
     def test_device_command_с_пустыми_параметрами(self):
         """DeviceCommand с пустыми параметрами."""
         command = DeviceCommand(
-            device_id=uuid4(),
-            name="test",
-            ha_service="light.turn_on",
-            parameters={}
+            device_id=uuid4(), name="test", ha_service="light.turn_on", parameters={}
         )
         assert command.parameters == {}
 
@@ -1583,10 +1277,7 @@ class TestEdgeCases:
         """DeviceAccess с длинными идентификаторами."""
         long_user_id = "user_" + "a" * 100
         access = DeviceAccess(
-            device_id=uuid4(),
-            user_id=long_user_id,
-            role="viewer",
-            granted_by="admin"
+            device_id=uuid4(), user_id=long_user_id, role="viewer", granted_by="admin"
         )
         assert access.user_id == long_user_id
 

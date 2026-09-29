@@ -1,8 +1,8 @@
 # Device Import Specification
 
-**Version:** 1.0  
-**Status:** Active  
-**Last Updated:** 2026-09-29  
+**Version:** 1.0
+**Status:** Active
+**Last Updated:** 2026-09-29
 
 ## Overview
 
@@ -145,14 +145,14 @@ def get_room_id(device: DiscoveredDevice) -> str:
     # 1. HA area_id
     if device.area_id:
         return device.area_id
-    
+
     # 2. Extract from entity_id
     parts = device.entity_id.split("_")
     if len(parts) >= 2:
         candidate = parts[-2]  # e.g., "light.kitchen_main" → "kitchen"
         if is_valid_room_name(candidate):
             return candidate
-    
+
     # 3. Default
     return "unassigned"
 ```

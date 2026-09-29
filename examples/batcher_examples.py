@@ -13,12 +13,12 @@ import asyncio
 import logging
 from typing import Any
 
-from core import WebSocketEventBatcher, WebSocketEvent, WebSocketBatch
+from core import WebSocketBatch, WebSocketEvent, WebSocketEventBatcher
+
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # ============================================
 # Пример 1: Прямое использование батчера
 # ============================================
+
 
 async def example_direct_batcher():
     """Пример прямого использования батчера."""
@@ -54,8 +55,8 @@ async def example_direct_batcher():
     # Создание батчера
     batcher = WebSocketEventBatcher(
         batch_timeout_ms=100,  # 100ms таймаут
-        batch_size_limit=5,    # максимум 5 устройств
-        on_batch_ready=handle_batch
+        batch_size_limit=5,  # максимум 5 устройств
+        on_batch_ready=handle_batch,
     )
 
     logger.info("Батчер создан: timeout=100ms, size_limit=5")
@@ -71,9 +72,7 @@ async def example_direct_batcher():
         brightness = (i * 10) % 256
 
         event = WebSocketEvent(
-            device_id=device_id,
-            state=state,
-            attributes={"brightness": brightness}
+            device_id=device_id, state=state, attributes={"brightness": brightness}
         )
 
         await batcher.add_event(event)
@@ -100,6 +99,7 @@ async def example_direct_batcher():
 # Пример 2: Использование через WebSocket клиент
 # ============================================
 
+
 async def example_websocket_client():
     """Пример использования батчера через WebSocket клиент."""
     logger.info("\n" + "=" * 60)
@@ -113,9 +113,7 @@ async def example_websocket_client():
             # Это пакет от батчера
             logger.info(f"\nОбработан пакет #{data['batch_id']}:")
             for event in data.get("events", []):
-                logger.info(
-                    f"  - {event['device_id']}: {event['state']}"
-                )
+                logger.info(f"  - {event['device_id']}: {event['state']}")
         else:
             # Это одиночное событие
             logger.info(f"Событие: {data}")
@@ -127,15 +125,15 @@ async def example_websocket_client():
         base_url="http://homeassistant.local:8123",
         token="your_token_here",
         on_state_changed=handle_events,
-        batch_timeout_ms=100,    # 100ms таймаут батча
-        batch_size_limit=10,     # максимум 10 событий в пакете
-        enable_batching=True     # включить батчинг
+        batch_timeout_ms=100,  # 100ms таймаут батча
+        batch_size_limit=10,  # максимум 10 событий в пакете
+        enable_batching=True,  # включить батчинг
     )
 
     logger.info("WebSocket клиент создан с батчингом")
-    logger.info(f"Параметры батчера:")
-    logger.info(f"  - batch_timeout_ms: 100")
-    logger.info(f"  - batch_size_limit: 10")
+    logger.info("Параметры батчера:")
+    logger.info("  - batch_timeout_ms: 100")
+    logger.info("  - batch_size_limit: 10")
 
     # В реальном приложении:
     # await client.connect()
@@ -151,6 +149,7 @@ async def example_websocket_client():
 # Пример 3: Сценарий частых обновлений
 # ============================================
 
+
 async def example_high_frequency():
     """Пример обработки большого количества частых событий."""
     logger.info("\n" + "=" * 60)
@@ -165,9 +164,7 @@ async def example_high_frequency():
         processed_count += batch.size()
 
     batcher = WebSocketEventBatcher(
-        batch_timeout_ms=100,
-        batch_size_limit=20,
-        on_batch_ready=batch_processor
+        batch_timeout_ms=100, batch_size_limit=20, on_batch_ready=batch_processor
     )
 
     await batcher.start()
@@ -177,9 +174,7 @@ async def example_high_frequency():
     logger.info("Добавляем 100 событий...")
     for i in range(100):
         event = WebSocketEvent(
-            device_id=f"sensor.temp_{i % 10}",
-            state=str(20 + i % 10),
-            attributes={"unit": "C"}
+            device_id=f"sensor.temp_{i % 10}", state=str(20 + i % 10), attributes={"unit": "C"}
         )
         await batcher.add_event(event)
 
@@ -190,8 +185,8 @@ async def example_high_frequency():
     elapsed = asyncio.get_event_loop().time() - start_time
     stats = batcher.get_statistics()
 
-    logger.info(f"\nРезультаты:")
-    logger.info(f"  Добавлено событий: 100")
+    logger.info("\nРезультаты:")
+    logger.info("  Добавлено событий: 100")
     logger.info(f"  Обработано устройств: {processed_count}")
     logger.info(f"  Создано пакетов: {stats['total_batches']}")
     logger.info(f"  Время обработки: {elapsed:.3f}сек")
@@ -199,13 +194,14 @@ async def example_high_frequency():
 
     # Сравнение: без батчинга это заняло бы 100 обработок
     # С батчингом: ~5-6 обработок
-    speedup = 100 / stats['total_batches']
+    speedup = 100 / stats["total_batches"]
     logger.info(f"  Ускорение: {speedup:.1f}x")
 
 
 # ============================================
 # Пример 4: Обработка ошибок и recovery
 # ============================================
+
 
 async def example_error_handling():
     """Пример обработки ошибок в батчере."""
@@ -225,9 +221,7 @@ async def example_error_handling():
         logger.info(f"Успешно обработан пакет {batch.batch_id}")
 
     batcher = WebSocketEventBatcher(
-        batch_timeout_ms=50,
-        batch_size_limit=3,
-        on_batch_ready=risky_handler
+        batch_timeout_ms=50, batch_size_limit=3, on_batch_ready=risky_handler
     )
 
     await batcher.start()
@@ -241,15 +235,16 @@ async def example_error_handling():
     await batcher.stop()
 
     stats = batcher.get_statistics()
-    logger.info(f"\nРезультаты:")
+    logger.info("\nРезультаты:")
     logger.info(f"  Всего батчей: {stats['total_batches']}")
     logger.info(f"  Ошибок: {error_count}")
-    logger.info(f"  Батчер продолжил работу: ✓")
+    logger.info("  Батчер продолжил работу: ✓")
 
 
 # ============================================
 # Главная функция
 # ============================================
+
 
 async def main():
     """Запуск всех примеров."""

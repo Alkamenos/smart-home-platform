@@ -6,7 +6,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Literal
+from typing import Any, Literal
 from uuid import UUID
 
 
@@ -20,7 +20,7 @@ class DeviceLoadedEvent:
     name: str
     device_type: str
     timestamp: datetime
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -29,9 +29,9 @@ class DeviceConfigChangedEvent:
 
     device_id: UUID
     changed_fields: dict[str, Any]
-    changed_by: Optional[str] = None  # Пользователь или система
+    changed_by: str | None = None  # Пользователь или система
     timestamp: datetime = None
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Инициализация с временем события."""
@@ -44,11 +44,11 @@ class DeviceStateChangedEvent:
     """Событие изменения состояния устройства."""
 
     device_id: UUID
-    old_state: Optional[dict[str, Any]]
+    old_state: dict[str, Any] | None
     new_state: dict[str, Any]
     timestamp: datetime
     source: str = "ha"  # 'ha' для Home Assistant или 'local' для локальных изменений
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -58,11 +58,11 @@ class DeviceAccessChangedEvent:
     device_id: UUID
     user_id: str
     action: Literal["granted", "revoked", "updated"]  # Действие: предоставлено, отозвано, обновлено
-    role: Optional[Literal["viewer", "controller", "admin"]] = None  # Новая роль (при granted/updated)
-    previous_role: Optional[Literal["viewer", "controller", "admin"]] = None  # Предыдущая роль
-    granted_by: Optional[str] = None  # Администратор который совершил действие
+    role: Literal["viewer", "controller", "admin"] | None = None  # Новая роль (при granted/updated)
+    previous_role: Literal["viewer", "controller", "admin"] | None = None  # Предыдущая роль
+    granted_by: str | None = None  # Администратор который совершил действие
     timestamp: datetime = None
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Инициализация с временем события."""

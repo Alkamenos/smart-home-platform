@@ -4,15 +4,17 @@
 Тесты проверяют контракт между клиентом и сервером для операций над устройствами.
 """
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
-from uuid import uuid4
 
 
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
     from src.main import app
+
     return TestClient(app)
 
 
@@ -84,7 +86,6 @@ class TestDeviceConfigAPI:
             return None
 
         # Создаем устройство напрямую (в хранилище)
-        from uuid import UUID
         from datetime import datetime
 
         device_id = uuid4()
@@ -104,6 +105,7 @@ class TestDeviceConfigAPI:
 
         # Добавляем в хранилище
         from src.webui.routes.devices.devices import _devices_store
+
         _devices_store[str(device_id)] = device_data
 
         return {"id": str(device_id), **device_data}
@@ -118,7 +120,7 @@ class TestDeviceConfigAPI:
             "display_name": "Updated Light Name",
             "description": "Updated description",
             "location": "Kitchen",
-            "tags": ["important", "lighting"]
+            "tags": ["important", "lighting"],
         }
 
         response = client.put(f"/api/v1/devices/{device_id}/config", json=payload)
@@ -209,7 +211,7 @@ class TestDeviceConfigAPI:
             "display_name": "Kitchen Light",
             "description": "Main kitchen light",
             "location": "Kitchen",
-            "tags": ["lighting", "smart"]
+            "tags": ["lighting", "smart"],
         }
         update_response = client.put(f"/api/v1/devices/{device_id}/config", json=config_payload)
         assert update_response.status_code == 200
@@ -257,10 +259,7 @@ class TestDeviceConfigAPI:
             # Отсутствует обязательный параметр
         }
 
-        response = client.post(
-            f"/api/v1/devices/{device_id}/command",
-            json=payload
-        )
+        response = client.post(f"/api/v1/devices/{device_id}/command", json=payload)
 
         # Должна быть ошибка валидации
         assert response.status_code in [400, 422]
@@ -274,10 +273,7 @@ class TestDeviceConfigAPI:
             "parameters": {},
         }
 
-        response = client.post(
-            f"/api/v1/devices/{device_id}/command",
-            json=payload
-        )
+        response = client.post(f"/api/v1/devices/{device_id}/command", json=payload)
 
         # Должна быть ошибка 404
         assert response.status_code == 404
@@ -306,8 +302,6 @@ class TestDeviceConfigAPI:
         """T045: GET /api/v1/devices/{id}/events с фильтром по типу."""
         device_id = uuid4()
 
-        response = client.get(
-            f"/api/v1/devices/{device_id}/events?event_type=state_changed"
-        )
+        response = client.get(f"/api/v1/devices/{device_id}/events?event_type=state_changed")
 
         assert response.status_code in [200, 404]

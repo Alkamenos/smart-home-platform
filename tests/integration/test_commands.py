@@ -5,9 +5,8 @@ T047: Отправка команд, отслеживание статуса и 
 """
 
 import asyncio
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4, UUID
+from unittest.mock import AsyncMock
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -18,16 +17,15 @@ class TestCommandsIntegration:
     @pytest.mark.asyncio
     async def test_send_command_and_track_status(self):
         """T047: Отправка команды и отслеживание статуса выполнения."""
-        from src.services.device_service import DeviceService
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
+        from src.services.device_service import DeviceService
 
         # Mock HA адаптер
         mock_ha_adapter = AsyncMock()
-        mock_ha_adapter.call_service = AsyncMock(return_value={
-            "success": True,
-            "response": "Command executed"
-        })
+        mock_ha_adapter.call_service = AsyncMock(
+            return_value={"success": True, "response": "Command executed"}
+        )
 
         event_bus = EventBus()
         service = DeviceService(
@@ -61,9 +59,9 @@ class TestCommandsIntegration:
     @pytest.mark.asyncio
     async def test_command_with_parameters(self):
         """T047: Команда с параметрами передается в HA корректно."""
-        from src.services.device_service import DeviceService
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
+        from src.services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
         mock_ha_adapter.call_service = AsyncMock()
@@ -98,9 +96,9 @@ class TestCommandsIntegration:
     @pytest.mark.asyncio
     async def test_command_execution_with_timeout(self):
         """T047: Команда имеет таймаут выполнения (макс 300 сек)."""
-        from src.services.device_service import DeviceService
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
+        from src.services.device_service import DeviceService
 
         # Mock адаптер с задержкой
         mock_ha_adapter = AsyncMock()
@@ -136,21 +134,19 @@ class TestCommandsIntegration:
                     parameters={"temperature": 22},
                     timeout=300,  # Максимум 300 сек
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Таймаут - ожидается для длительных операций
                 pass
 
     @pytest.mark.asyncio
     async def test_command_error_propagation(self):
         """T047: Ошибки при выполнении команды правильно обработаны."""
-        from src.services.device_service import DeviceService
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
+        from src.services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
-        mock_ha_adapter.call_service = AsyncMock(
-            side_effect=RuntimeError("Service call failed")
-        )
+        mock_ha_adapter.call_service = AsyncMock(side_effect=RuntimeError("Service call failed"))
 
         event_bus = EventBus()
         service = DeviceService(
@@ -180,9 +176,9 @@ class TestCommandsIntegration:
     @pytest.mark.asyncio
     async def test_get_command_status(self):
         """T056: Получение статуса выполненной команды."""
-        from src.services.device_service import DeviceService
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
+        from src.services.device_service import DeviceService
 
         event_bus = EventBus()
         service = DeviceService(

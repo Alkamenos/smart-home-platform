@@ -9,20 +9,25 @@
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Literal
+from datetime import datetime
+from typing import Any, Literal
 from uuid import UUID
 
+from src.core.events.device_events import (
+    DeviceAccessChangedEvent,
+    DeviceConfigChangedEvent,
+    DeviceStateChangedEvent,
+)
 from src.core.events.event_bus import EventBus
+from src.core.metrics import get_metrics_collector
 from src.core.models.device import Device
-from src.core.models.device_config import DeviceConfig
 from src.core.models.device_access import DeviceAccess
 from src.core.models.device_command import CommandExecutionResponse
+from src.core.models.device_config import DeviceConfig
 from src.core.models.ha_source import HASource
-from src.core.events.device_events import DeviceStateChangedEvent, DeviceConfigChangedEvent, DeviceAccessChangedEvent
-from src.core.metrics import get_metrics_collector
 from src.core.persistence.cache import DeviceCache
 from src.core.persistence.index_manager import IndexManager
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +38,8 @@ class DeviceService:
     def __init__(
         self,
         event_bus: EventBus,
-        persistence_module: Optional[object] = None,
-        ha_adapter: Optional[object] = None,
+        persistence_module: object | None = None,
+        ha_adapter: object | None = None,
         cache_max_size: int = 1000,
         cache_ttl_seconds: int = 300,
     ) -> None:
@@ -52,8 +57,10 @@ class DeviceService:
         self.ha_adapter = ha_adapter
         self._devices: dict[UUID, Device] = {}
         self._sources: dict[UUID, HASource] = {}
-        self._commands: dict[UUID, Dict[str, Any]] = {}  # Хранилище статусов команд
-        self._unavailable_timers: dict[UUID, asyncio.Task] = {}  # Таймеры для отслеживания unavailable
+        self._commands: dict[UUID, dict[str, Any]] = {}  # Хранилище статусов команд
+        self._unavailable_timers: dict[
+            UUID, asyncio.Task
+        ] = {}  # Таймеры для отслеживания unavailable
         self._metrics = get_metrics_collector()  # Получить единый экземпляр метрик
 
         # Инициализация кэша и индекса
@@ -77,30 +84,88 @@ class DeviceService:
         sync_start_time = time.time()
 
         try:
-            # TODO: Реализовать получение устройств через HAAdapter
             # 1. Получить источник из persistence
-            # 2. Подключиться к HA через ha_adapter
-            # 3. Получить список устройств
-            # 4. Преобразовать их в модели Device
-            # 5. Сохранить в persistence
-            # 6. Опубликовать события
+            if not self.persistence or not hasattr(self.persistence, "sources"):
+                raise ValueError("Persistence модуль не имеет sources")
 
-            logger.info(f"Синхронизация из источника {source_id} завершена")
+            source = await self.persistence.sources.load_source(source_id)
+            if not source:
+                raise ValueError(f"Источник {source_id} не найден")
 
-            # Записываем время синхронизации источника
+            logger.info(f"Источник найден: {source.name} ({source.url})")
+
+            # 2. Подключиться к HA через REST клиент
+            from src.adapters.home_assistant.rest_client import HARestClient
+
+            async with HARestClient(source.url, source.token) as rest_client:
+                # Подключаемся
+                connected = await rest_client.connect_to_ha()
+                if not connected:
+                    raise RuntimeError(f"Не удалось подключиться к HA: {source.url}")
+
+                # 3. Получить список устройств (состояний)
+                ha_states = await rest_client.fetch_devices()
+                logger.info(f"Получено {len(ha_states)} состояний из HA")
+
+                # 4. Преобразовать их в модели Device (устанавливаем source_id)
+                parsed_devices = self.parse_devices(ha_states)
+                for device in parsed_devices:
+                    device.source_id = source_id
+
+                logger.info(f"Преобразовано {len(parsed_devices)} устройств для источника {source_id}")
+
+                # 5. Сохранить в persistence
+                if self.persistence and hasattr(self.persistence, "devices"):
+                    await self.persistence.devices.save_devices(parsed_devices)
+                    logger.info(f"Сохранено {len(parsed_devices)} устройств в persistence")
+
+            # 6. Обновить внутренний _devices словарь и индекс
+            for device in parsed_devices:
+                self._devices[device.id] = device
+                self._index.add_device(device)
+
+            logger.info(f"Обновлен internal index и cache для {len(parsed_devices)} устройств")
+
+            # 7. Опубликовать события для каждого устройства
+            for device in parsed_devices:
+                self._publish_device_loaded_event(device)
+
+            # 8. Обновить источник с временем последней синхронизации
+            source.last_sync = datetime.utcnow()
+            source.last_error = None
+            if self.persistence and hasattr(self.persistence, "sources"):
+                await self.persistence.sources.save_source(source)
+                logger.info(f"Обновлено время синхронизации источника {source_id}")
+
+            # 9. Обновляем метрики
             sync_duration = time.time() - sync_start_time
             self._metrics.record_source_sync_duration(source_id_str, sync_duration)
+            self._update_device_availability_metrics()
 
-            return []
+            logger.info(f"Синхронизация из источника {source_id} успешно завершена: "
+                       f"загружено {len(parsed_devices)} устройств за {sync_duration:.2f}s")
+
+            return parsed_devices
 
         except Exception as e:
             logger.error(f"Ошибка синхронизации источника {source_id}: {e}")
             # Записываем ошибку синхронизации
             error_type = type(e).__name__
             self._metrics.record_sync_error(source_id_str, error_type)
+
+            # Обновляем источник с информацией об ошибке
+            try:
+                if self.persistence and hasattr(self.persistence, "sources"):
+                    source = await self.persistence.sources.load_source(source_id)
+                    if source:
+                        source.last_error = str(e)
+                        await self.persistence.sources.save_source(source)
+            except Exception as e2:
+                logger.warning(f"Не удалось обновить ошибку источника: {e2}")
+
             raise
 
-    async def get_device(self, device_id: UUID) -> Optional[Device]:
+    async def get_device(self, device_id: UUID) -> Device | None:
         """Получает устройство по ID с использованием кэша.
 
         Args:
@@ -153,7 +218,9 @@ class DeviceService:
 
         # Добавляем в кэш
         self._cache.set(cache_key, devices)
-        logger.debug(f"Устройства источника добавлены в кэш: {source_id} (количество: {len(devices)})")
+        logger.debug(
+            f"Устройства источника добавлены в кэш: {source_id} (количество: {len(devices)})"
+        )
 
         return devices
 
@@ -212,7 +279,9 @@ class DeviceService:
                     manufacturer=attributes.get("manufacturer"),
                     state={"state": state_obj.get("state")},
                     attributes=attributes,
-                    status="available" if state_obj.get("state") != "unavailable" else "unavailable",
+                    status="available"
+                    if state_obj.get("state") != "unavailable"
+                    else "unavailable",
                 )
 
                 devices.append(device)
@@ -230,11 +299,11 @@ class DeviceService:
     async def update_device_config(
         self,
         device_id: UUID,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        location: Optional[str] = None,
-        tags: Optional[list[str]] = None,
-        updated_by: Optional[str] = None,
+        display_name: str | None = None,
+        description: str | None = None,
+        location: str | None = None,
+        tags: list[str] | None = None,
+        updated_by: str | None = None,
     ) -> DeviceConfig:
         """T036: Обновляет конфигурацию устройства.
 
@@ -264,7 +333,6 @@ class DeviceService:
 
         try:
             # Загружаем существующую конфигурацию или создаем новую
-            from uuid import uuid4
             config = None
             if self.persistence:
                 config = await self.persistence.load_device_config(device_id)
@@ -333,7 +401,9 @@ class DeviceService:
             return config
 
         except ValueError as e:
-            logger.error(f"Ошибка валидации при обновлении конфигурации устройства {device_id}: {e}")
+            logger.error(
+                f"Ошибка валидации при обновлении конфигурации устройства {device_id}: {e}"
+            )
             raise
         except Exception as e:
             logger.error(f"Ошибка обновления конфигурации устройства {device_id}: {e}")
@@ -342,8 +412,8 @@ class DeviceService:
     def _publish_config_changed_event(
         self,
         device_id: UUID,
-        changed_fields: Dict[str, Any],
-        changed_by: Optional[str] = None,
+        changed_fields: dict[str, Any],
+        changed_by: str | None = None,
     ) -> None:
         """T040: Публикует событие изменения конфигурации через EventBus.
 
@@ -372,9 +442,9 @@ class DeviceService:
         device_id: UUID,
         user_id: str,
         action: str,
-        role: Optional[str] = None,
-        previous_role: Optional[str] = None,
-        granted_by: Optional[str] = None,
+        role: str | None = None,
+        previous_role: str | None = None,
+        granted_by: str | None = None,
     ) -> None:
         """T070: Публикует событие изменения доступа через EventBus.
 
@@ -409,7 +479,10 @@ class DeviceService:
     # T066: Методы проверки и управления доступом
 
     async def check_device_access(
-        self, device_id: UUID, user_id: str, required_role: Literal["viewer", "controller", "admin"] = "viewer"
+        self,
+        device_id: UUID,
+        user_id: str,
+        required_role: Literal["viewer", "controller", "admin"] = "viewer",
     ) -> bool:
         """Проверяет имеет ли пользователь доступ к устройству с требуемой ролью.
 
@@ -456,8 +529,12 @@ class DeviceService:
             return False
 
     async def grant_access(
-        self, device_id: UUID, user_id: str, role: Literal["viewer", "controller", "admin"], granted_by: str
-    ) -> Optional[DeviceAccess]:
+        self,
+        device_id: UUID,
+        user_id: str,
+        role: Literal["viewer", "controller", "admin"],
+        granted_by: str,
+    ) -> DeviceAccess | None:
         """Предоставляет пользователю доступ к устройству.
 
         Args:
@@ -489,7 +566,9 @@ class DeviceService:
                 return None
 
             # Проверяем существует ли уже доступ (для определения действия)
-            previous_access = await self.persistence.device_access.load_access_for_user_device(device_id, user_id)
+            previous_access = await self.persistence.device_access.load_access_for_user_device(
+                device_id, user_id
+            )
             previous_role = previous_access.role if previous_access else None
 
             # Удаляем существующий доступ если есть
@@ -498,10 +577,7 @@ class DeviceService:
 
             # Создаем новую запись доступа
             access = DeviceAccess(
-                device_id=device_id,
-                user_id=user_id,
-                role=role,
-                granted_by=granted_by
+                device_id=device_id, user_id=user_id, role=role, granted_by=granted_by
             )
 
             # Сохраняем в persistence
@@ -617,7 +693,7 @@ class DeviceService:
 
     # ============ T049-T052: WebSocket синхронизация состояния ============
 
-    async def handle_state_change(self, event_data: Dict[str, Any]) -> None:
+    async def handle_state_change(self, event_data: dict[str, Any]) -> None:
         """T050: Обрабатывает изменение состояния устройства из WebSocket.
 
         Args:
@@ -647,7 +723,7 @@ class DeviceService:
             old_state_dict = device.state.copy()
             device.state = {
                 "state": new_state_data.get("state"),
-                **new_state_data.get("attributes", {})
+                **new_state_data.get("attributes", {}),
             }
             device.last_state_update = datetime.utcnow()
 
@@ -709,7 +785,7 @@ class DeviceService:
         self,
         device_id: UUID,
         command_name: str,
-        parameters: Dict[str, Any],
+        parameters: dict[str, Any],
         timeout: int = 30,
     ) -> CommandExecutionResponse:
         """T053: Отправляет команду на выполнение в Home Assistant.
@@ -737,6 +813,7 @@ class DeviceService:
         try:
             command_id = UUID(int=1)  # Будет заполнено уникальным ID
             from uuid import uuid4
+
             command_id = uuid4()
 
             # Устройство для метрик
@@ -785,21 +862,19 @@ class DeviceService:
                 # Записываем успех команды
                 self._metrics.record_command_success(source_id_str, device_type, command_name)
 
-                logger.info(
-                    f"Command {command_name} succeeded on device {device_id}: {result}"
-                )
+                logger.info(f"Command {command_name} succeeded on device {device_id}: {result}")
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 command_record["status"] = "failed"
                 command_record["error"] = f"Command timeout after {timeout} seconds"
                 command_record["completed_at"] = datetime.utcnow()
 
                 # Записываем ошибку команды
-                self._metrics.record_command_failed(source_id_str, device_type, command_name, "timeout")
-
-                logger.error(
-                    f"Command {command_name} timeout on device {device_id}"
+                self._metrics.record_command_failed(
+                    source_id_str, device_type, command_name, "timeout"
                 )
+
+                logger.error(f"Command {command_name} timeout on device {device_id}")
                 # T059: Публикуем ошибку
                 raise RuntimeError(command_record["error"])
 
@@ -810,11 +885,11 @@ class DeviceService:
 
                 # Записываем ошибку команды
                 error_type = type(e).__name__
-                self._metrics.record_command_failed(source_id_str, device_type, command_name, error_type)
-
-                logger.error(
-                    f"Command {command_name} failed on device {device_id}: {e}"
+                self._metrics.record_command_failed(
+                    source_id_str, device_type, command_name, error_type
                 )
+
+                logger.error(f"Command {command_name} failed on device {device_id}: {e}")
                 # T059: Публикуем ошибку
                 raise RuntimeError(command_record["error"])
 
@@ -838,8 +913,8 @@ class DeviceService:
         self,
         device: Device,
         command_name: str,
-        parameters: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        parameters: dict[str, Any],
+    ) -> dict[str, Any]:
         """Вызывает сервис в Home Assistant.
 
         Args:
@@ -859,10 +934,7 @@ class DeviceService:
 
         # Вызываем через адаптер
         result = await self.ha_adapter.call_service(
-            domain=domain,
-            service=service,
-            entity_id=device.ha_entity_id,
-            **parameters
+            domain=domain, service=service, entity_id=device.ha_entity_id, **parameters
         )
 
         return result or {}
@@ -871,7 +943,7 @@ class DeviceService:
         self,
         device_id: UUID,
         command_id: UUID,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """T055/T056: Получает статус выполненной команды.
 
         Args:
@@ -889,11 +961,35 @@ class DeviceService:
 
     # ============ T058: События ============
 
+    def _publish_device_loaded_event(self, device: Device) -> None:
+        """Публикует событие загрузки устройства через EventBus.
+
+        Args:
+            device: Загруженное устройство
+        """
+        try:
+            from src.core.events.device_events import DeviceLoadedEvent
+
+            event = DeviceLoadedEvent(
+                device_id=device.id,
+                source_id=device.source_id,
+                ha_entity_id=device.ha_entity_id,
+                name=device.name,
+                device_type=device.device_type,
+                timestamp=datetime.utcnow(),
+            )
+
+            self.event_bus.publish(event)
+            logger.debug(f"Опубликовано событие загрузки устройства: {device.id}")
+
+        except Exception as e:
+            logger.error(f"Ошибка публикации события загрузки устройства: {e}")
+
     def _publish_state_changed_event(
         self,
         device_id: UUID,
-        old_state: Optional[Dict[str, Any]],
-        new_state: Dict[str, Any],
+        old_state: dict[str, Any] | None,
+        new_state: dict[str, Any],
     ) -> None:
         """T058: Публикует событие изменения состояния через EventBus.
 
@@ -920,7 +1016,7 @@ class DeviceService:
 
     # ============ Методы управления кэшем и индексом ============
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """
         Получить статистику кэша.
 
@@ -929,7 +1025,7 @@ class DeviceService:
         """
         return self._cache.get_stats()
 
-    def get_index_stats(self) -> Dict[str, Any]:
+    def get_index_stats(self) -> dict[str, Any]:
         """
         Получить статистику индекса.
 
@@ -1006,7 +1102,7 @@ class DeviceService:
         """
         return self._index.find_by_type(device_type)
 
-    def find_device_by_ha_entity_id(self, ha_entity_id: str) -> Optional[Device]:
+    def find_device_by_ha_entity_id(self, ha_entity_id: str) -> Device | None:
         """
         Найти устройство по HA entity ID.
 
@@ -1021,7 +1117,6 @@ class DeviceService:
             # Добавить в кэш
             self._cache.set(f"device:{device.id}", device)
         return device
-
 
     # ============ Prometheus Metrics Helper Methods ============
 

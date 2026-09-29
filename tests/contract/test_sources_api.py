@@ -4,15 +4,17 @@
 Тесты проверяют контракт между клиентом и сервером для операций над источниками HA.
 """
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
-from uuid import uuid4
 
 
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
     from src.main import app  # Используем главное приложение
+
     return TestClient(app)
 
 
@@ -32,7 +34,9 @@ class TestSourcesAPI:
 
         response = client.post("/api/v1/devices/sources", json=payload)
 
-        assert response.status_code == 201, f"Expected 201, got {response.status_code}: {response.text}"
+        assert response.status_code == 201, (
+            f"Expected 201, got {response.status_code}: {response.text}"
+        )
         data = response.json()
 
         # Проверяем структуру ответа
@@ -115,7 +119,9 @@ class TestSourcesAPI:
         response = client.post(f"/api/v1/devices/sources/{source_id}/sync")
 
         # Ожидаем либо успешный запуск (202), либо 200
-        assert response.status_code in [200, 202], f"Expected 200 or 202, got {response.status_code}"
+        assert response.status_code in [200, 202], (
+            f"Expected 200 or 202, got {response.status_code}"
+        )
         data = response.json()
         assert "status" in data
 

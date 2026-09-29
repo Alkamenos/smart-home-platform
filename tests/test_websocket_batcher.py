@@ -16,7 +16,6 @@
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -143,7 +142,7 @@ class TestWebSocketEventBatcher:
         # Ждём срабатывания по таймауту
         try:
             await asyncio.wait_for(batch_ready.wait(), timeout=1.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Батч не срабатил по таймауту")
 
         # Проверяем, что батч был создан
@@ -172,7 +171,7 @@ class TestWebSocketEventBatcher:
         # Батч должен срабатить немедленно на 3-м событии
         try:
             await asyncio.wait_for(batch_ready.wait(), timeout=0.5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Батч не срабатил по размеру")
 
         assert captured_batch is not None
@@ -211,7 +210,7 @@ class TestWebSocketEventBatcher:
         # Ждём срабатывания (по таймауту, так как события одного устройства)
         try:
             await asyncio.wait_for(batch_ready.wait(), timeout=1.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Батч не срабатил по таймауту")
 
         # В пакете должно быть только 1 событие (последнее)
@@ -243,7 +242,7 @@ class TestWebSocketEventBatcher:
         # Батч должен срабатить по размеру на 3-м событии
         try:
             await asyncio.wait_for(batch_ready.wait(), timeout=0.5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Батч не срабатил по размеру")
 
         assert captured_batch.size() == 3
@@ -277,9 +276,7 @@ class TestWebSocketEventBatcher:
 
         async def add_events(start_id, count):
             for i in range(count):
-                event = WebSocketEvent(
-                    device_id=f"light.room{start_id}_{i}", state="ON"
-                )
+                event = WebSocketEvent(device_id=f"light.room{start_id}_{i}", state="ON")
                 await batcher.add_event(event)
 
         # Запускаем несколько параллельных потоков добавления
@@ -432,7 +429,7 @@ class TestWebSocketEventBatcher:
         # Ждём таймаута
         try:
             await asyncio.wait_for(batch_ready.wait(), timeout=1.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Батч не срабатил")
 
         # В пакете должно быть ровно 2 события (по одному на каждое устройство)

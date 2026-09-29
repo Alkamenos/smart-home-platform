@@ -6,7 +6,7 @@
 
 import asyncio
 import logging
-from pathlib import Path
+
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +50,12 @@ async def example_index_manager():
 
     # Sources
     print("\nРаботаем с индексами Sources:")
-    manager.add_source_to_indices(
-        "source-1",
-        name="Home Assistant 1",
-        status="connected"
-    )
-    manager.add_source_to_indices(
-        "source-2",
-        name="Home Assistant 2",
-        status="disconnected"
-    )
+    manager.add_source_to_indices("source-1", name="Home Assistant 1", status="connected")
+    manager.add_source_to_indices("source-2", name="Home Assistant 2", status="disconnected")
 
-    print(f"  Sources by name 'Home Assistant 1': {manager.get_sources_by_name('Home Assistant 1')}")
+    print(
+        f"  Sources by name 'Home Assistant 1': {manager.get_sources_by_name('Home Assistant 1')}"
+    )
     print(f"  Sources by status 'connected': {manager.get_sources_by_status('connected')}")
 
     # Devices
@@ -71,38 +65,37 @@ async def example_index_manager():
         source_id="source-1",
         device_type="light",
         ha_entity_id="light.kitchen",
-        status="available"
+        status="available",
     )
     manager.add_device_to_indices(
         device_id="device-2",
         source_id="source-1",
         device_type="switch",
         ha_entity_id="switch.living_room",
-        status="available"
+        status="available",
     )
 
     print(f"  Devices by source_id 'source-1': {manager.get_devices_by_source_id('source-1')}")
     print(f"  Devices by type 'light': {manager.get_devices_by_type('light')}")
-    print(f"  Device by entity_id 'light.kitchen': {manager.get_device_by_ha_entity_id('light.kitchen')}")
+    print(
+        f"  Device by entity_id 'light.kitchen': {manager.get_device_by_ha_entity_id('light.kitchen')}"
+    )
     print(f"  Devices by status 'available': {manager.get_devices_by_status('available')}")
 
     # Обновление
     print("\nОбновление индексов:")
     manager.update_source_in_indices(
-        source_id="source-1",
-        old_status="connected",
-        new_status="error"
+        source_id="source-1", old_status="connected", new_status="error"
     )
-    print(f"  Sources by status 'connected' (после update): {manager.get_sources_by_status('connected')}")
+    print(
+        f"  Sources by status 'connected' (после update): {manager.get_sources_by_status('connected')}"
+    )
     print(f"  Sources by status 'error' (после update): {manager.get_sources_by_status('error')}")
 
     # Удаление
     print("\nУдаление из индексов:")
     manager.remove_device_from_indices(
-        device_id="device-1",
-        device_type="light",
-        ha_entity_id="light.kitchen",
-        status="available"
+        device_id="device-1", device_type="light", ha_entity_id="light.kitchen", status="available"
     )
     print(f"  Devices by type 'light' (после удаления): {manager.get_devices_by_type('light')}")
 
@@ -111,8 +104,8 @@ async def example_db_init():
     """Пример использования инициализации БД."""
     from src.core.persistence.migrations.db_init import (
         initialize_database,
+        print_migration_status,
         verify_migrations,
-        print_migration_status
     )
 
     print("\n=== Пример: Инициализация БД ===")
@@ -134,13 +127,13 @@ async def example_db_init():
 
 async def example_persistence_integration():
     """Пример интеграции с персистентностью."""
-    from src.core.persistence.sources import HASourcePersistence
+    from uuid import uuid4
+
+    from src.core.models.device import Device
+    from src.core.models.ha_source import HASource
     from src.core.persistence.devices import DevicePersistence
     from src.core.persistence.migrations.index_manager import IndexManager
-    from src.core.models.ha_source import HASource
-    from src.core.models.device import Device
-    from datetime import datetime
-    from uuid import uuid4
+    from src.core.persistence.sources import HASourcePersistence
 
     print("\n=== Пример: Интеграция персистентности с индексами ===")
 
@@ -154,19 +147,15 @@ async def example_persistence_integration():
         name="Main Home Assistant",
         url="http://192.168.1.100:8123",
         token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-        status="connected"
+        status="connected",
     )
 
     print(f"\nСохранение источника: {source.name}")
     await sources_persistence.save_source(source)
 
     # Обновляем индекс
-    index_manager.add_source_to_indices(
-        str(source.id),
-        name=source.name,
-        status=source.status
-    )
-    print(f"  Индекс обновлён")
+    index_manager.add_source_to_indices(str(source.id), name=source.name, status=source.status)
+    print("  Индекс обновлён")
 
     # Создаём и сохраняем устройство
     device = Device(
@@ -177,7 +166,7 @@ async def example_persistence_integration():
         device_type="light",
         model="Philips Hue",
         manufacturer="Philips",
-        status="available"
+        status="available",
     )
 
     print(f"\nСохранение устройства: {device.name}")
@@ -189,12 +178,12 @@ async def example_persistence_integration():
         source_id=str(device.source_id),
         device_type=device.device_type,
         ha_entity_id=device.ha_entity_id,
-        status=device.status
+        status=device.status,
     )
-    print(f"  Индекс обновлён")
+    print("  Индекс обновлён")
 
     # Быстрый поиск через индексы
-    print(f"\nБыстрый поиск через индексы:")
+    print("\nБыстрый поиск через индексы:")
     devices = index_manager.get_devices_by_source_id(str(source.id))
     print(f"  Устройства источника {source.name}: {len(devices)}")
 
@@ -205,8 +194,7 @@ async def example_persistence_integration():
 async def main():
     """Главная функция для запуска примеров."""
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     try:
@@ -229,6 +217,7 @@ async def main():
     except Exception as e:
         print(f"\nОшибка: {e}")
         import traceback
+
         traceback.print_exc()
 
 

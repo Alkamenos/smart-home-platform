@@ -14,22 +14,13 @@
 """
 
 import asyncio
-from datetime import datetime
-from typing import Any, Dict, Optional
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
-
 from src.core.events.event_bus import EventBus
-from src.core.events.device_events import (
-    DeviceStateChangedEvent,
-    DeviceConfigChangedEvent,
-    DeviceAccessChangedEvent,
-)
 from src.core.models.device import Device
 from src.core.models.device_access import DeviceAccess
-from src.core.models.device_command import CommandExecutionResponse
 from src.core.models.device_config import DeviceConfig
 from src.services.device_service import DeviceService
 
@@ -53,9 +44,29 @@ def mock_persistence():
     persistence = MagicMock()
     persistence.save_device = AsyncMock()
     persistence.load_device = AsyncMock()
-    persistence.get_devices_by_source = AsyncMock(return_value=[])
+    persistence.save_devices = AsyncMock()
+    persistence.load_all_devices = AsyncMock(return_value=[])
     persistence.save_device_config = AsyncMock()
     persistence.load_device_config = AsyncMock()
+
+    # Mock sources
+    sources_mock = MagicMock()
+    sources_mock.load_source = AsyncMock()
+    sources_mock.save_source = AsyncMock()
+    sources_mock.load_all_sources = AsyncMock(return_value=[])
+    sources_mock.delete_source = AsyncMock(return_value=True)
+    persistence.sources = sources_mock
+
+    # Mock devices
+    devices_mock = MagicMock()
+    devices_mock.save_device = AsyncMock()
+    devices_mock.load_device = AsyncMock()
+    devices_mock.save_devices = AsyncMock()
+    devices_mock.load_all_devices = AsyncMock(return_value=[])
+    devices_mock.load_devices_by_source = AsyncMock(return_value=[])
+    devices_mock.save_device_config = AsyncMock()
+    devices_mock.load_device_config = AsyncMock()
+    persistence.devices = devices_mock
 
     # Mock device_access
     device_access_mock = MagicMock()
@@ -457,27 +468,108 @@ class TestSyncDevicesFromSource:
     """Тесты синхронизации устройств из источника."""
 
     @pytest.mark.asyncio
-    async def test_sync_devices_returns_empty_list(self, device_service):
-        """Проверяет что sync возвращает пустой список (TODO реализация)."""
+    async def test_sync_source_not_found(self, device_service, mock_persistence):
+        """Проверяет ошибку когда источник не найден."""
         source_id = uuid4()
+        mock_persistence.sources.load_source.return_value = None
 
-        result = await device_service.sync_devices_from_source(source_id)
-
-        assert isinstance(result, list)
-        assert result == []
+        with pytest.raises(ValueError, match="не найден"):
+            await device_service.sync_devices_from_source(source_id)
 
     @pytest.mark.asyncio
-    async def test_sync_with_logging(self, device_service, caplog):
+    async def test_sync_successful_with_devices(self, device_service, mock_persistence):
+        """Проверяет успешную синхронизацию с устройствами."""
+        from src.core.models.ha_source import HASource
+        from unittest.mock import patch, AsyncMock
+
+        source_id = uuid4()
+        source = HASource(
+            id=source_id,
+            name="Test HA",
+            url="http://localhost:8123",
+            token="test_token",
+        )
+
+        mock_persistence.sources.load_source.return_value = source
+
+        # Mock HA REST client
+        mock_ha_states = [
+            {
+                "entity_id": "light.kitchen",
+                "state": "on",
+                "attributes": {"friendly_name": "Kitchen Light"},
+            },
+            {
+                "entity_id": "switch.bedroom",
+                "state": "off",
+                "attributes": {"friendly_name": "Bedroom Switch"},
+            },
+        ]
+
+        with patch(
+            "src.adapters.home_assistant.rest_client.HARestClient"
+        ) as mock_rest_client_class:
+            mock_rest_client = AsyncMock()
+            mock_rest_client.connect_to_ha = AsyncMock(return_value=True)
+            mock_rest_client.fetch_devices = AsyncMock(return_value=mock_ha_states)
+            mock_rest_client.__aenter__ = AsyncMock(return_value=mock_rest_client)
+            mock_rest_client.__aexit__ = AsyncMock(return_value=None)
+            mock_rest_client_class.return_value = mock_rest_client
+
+            result = await device_service.sync_devices_from_source(source_id)
+
+            assert isinstance(result, list)
+            assert len(result) == 2
+            assert result[0].ha_entity_id == "light.kitchen"
+            assert result[1].ha_entity_id == "switch.bedroom"
+            # Проверяем что source_id установлен
+            assert all(d.source_id == source_id for d in result)
+            # Проверяем что был вызван save_devices
+            mock_persistence.devices.save_devices.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sync_connection_error(self, device_service, mock_persistence):
+        """Проверяет обработку ошибки подключения."""
+        from src.core.models.ha_source import HASource
+        from unittest.mock import patch, AsyncMock
+
+        source_id = uuid4()
+        source = HASource(
+            id=source_id,
+            name="Test HA",
+            url="http://localhost:8123",
+            token="test_token",
+        )
+
+        mock_persistence.sources.load_source.return_value = source
+
+        with patch(
+            "src.adapters.home_assistant.rest_client.HARestClient"
+        ) as mock_rest_client_class:
+            mock_rest_client = AsyncMock()
+            mock_rest_client.connect_to_ha = AsyncMock(return_value=False)
+            mock_rest_client.__aenter__ = AsyncMock(return_value=mock_rest_client)
+            mock_rest_client.__aexit__ = AsyncMock(return_value=None)
+            mock_rest_client_class.return_value = mock_rest_client
+
+            with pytest.raises(RuntimeError, match="Не удалось подключиться"):
+                await device_service.sync_devices_from_source(source_id)
+
+    @pytest.mark.asyncio
+    async def test_sync_with_logging(self, device_service, mock_persistence, caplog):
         """Проверяет что синхронизация логирует действия."""
         import logging
 
         caplog.set_level(logging.INFO)
         source_id = uuid4()
 
-        await device_service.sync_devices_from_source(source_id)
+        # Убедимся что persistence возвращает None для source_id
+        mock_persistence.sources.load_source.return_value = None
+
+        with pytest.raises(ValueError):
+            await device_service.sync_devices_from_source(source_id)
 
         assert "Начинаю синхронизацию" in caplog.text
-        assert str(source_id) in caplog.text
 
 
 # ============================================================================
@@ -507,9 +599,7 @@ class TestUpdateDeviceConfig:
         mock_persistence.save_device_config.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_update_config_all_fields(
-        self, device_service, sample_device, mock_persistence
-    ):
+    async def test_update_config_all_fields(self, device_service, sample_device, mock_persistence):
         """Проверяет обновление всех полей конфигурации."""
         device_service._devices[sample_device.id] = sample_device
         mock_persistence.load_device_config.return_value = None
@@ -714,9 +804,7 @@ class TestGrantAccess:
             role="viewer",
             granted_by="admin",
         )
-        mock_persistence.device_access.load_access_for_user_device.return_value = (
-            old_access
-        )
+        mock_persistence.device_access.load_access_for_user_device.return_value = old_access
         mock_persistence.device_access.delete_access = AsyncMock()
 
         result = await device_service.grant_access(
@@ -745,9 +833,7 @@ class TestGrantAccess:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_grant_access_invalid_role(
-        self, device_service, sample_device, mock_persistence
-    ):
+    async def test_grant_access_invalid_role(self, device_service, sample_device, mock_persistence):
         """Проверяет отказ при невалидной роли."""
         device_service._devices[sample_device.id] = sample_device
         mock_persistence.device_access.load_access_for_user_device.return_value = None
@@ -919,9 +1005,7 @@ class TestHandleStateChange:
         event_bus.publish.assert_called()
 
     @pytest.mark.asyncio
-    async def test_handle_state_change_missing_entity_id(
-        self, device_service, event_bus
-    ):
+    async def test_handle_state_change_missing_entity_id(self, device_service, event_bus):
         """Проверяет обработку события без entity_id."""
         event_data = {"data": {}}
 
@@ -929,9 +1013,7 @@ class TestHandleStateChange:
         await device_service.handle_state_change(event_data)
 
     @pytest.mark.asyncio
-    async def test_handle_state_change_device_not_found(
-        self, device_service, event_bus
-    ):
+    async def test_handle_state_change_device_not_found(self, device_service, event_bus):
         """Проверяет обработку события для несуществующего устройства."""
         event_data = {
             "data": {
@@ -993,9 +1075,7 @@ class TestExecuteCommand:
         mock_ha_adapter.call_service.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_execute_command_timeout(
-        self, device_service, sample_device, mock_ha_adapter
-    ):
+    async def test_execute_command_timeout(self, device_service, sample_device, mock_ha_adapter):
         """Проверяет таймаут команды."""
         device_service._devices[sample_device.id] = sample_device
 
@@ -1103,9 +1183,7 @@ class TestGetCommandStatus:
         device_service._devices[sample_device.id] = sample_device
         fake_command_id = uuid4()
 
-        result = await device_service.get_command_status(
-            sample_device.id, fake_command_id
-        )
+        result = await device_service.get_command_status(sample_device.id, fake_command_id)
 
         assert result is None
 
@@ -1179,9 +1257,7 @@ class TestIntegration:
         assert access is not None
 
         # 2. Проверяем доступ
-        mock_persistence.device_access.load_access_for_user_device.return_value = (
-            access
-        )
+        mock_persistence.device_access.load_access_for_user_device.return_value = access
         has_access = await device_service.check_device_access(
             sample_device.id, "user1", required_role="viewer"
         )
@@ -1220,9 +1296,7 @@ class TestEdgeCases:
     """Тесты edge cases и обработки ошибок."""
 
     @pytest.mark.asyncio
-    async def test_handle_state_change_with_malformed_data(
-        self, device_service, event_bus
-    ):
+    async def test_handle_state_change_with_malformed_data(self, device_service, event_bus):
         """Проверяет обработку malformed данных в состоянии."""
         event_data = {
             "data": {
@@ -1273,8 +1347,8 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_check_access_with_error(self, device_service, mock_persistence):
         """Проверяет обработку ошибок при проверке доступа."""
-        mock_persistence.device_access.load_access_for_user_device.side_effect = (
-            Exception("Database error")
+        mock_persistence.device_access.load_access_for_user_device.side_effect = Exception(
+            "Database error"
         )
 
         result = await device_service.check_device_access(uuid4(), "user1")

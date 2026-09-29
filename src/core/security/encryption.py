@@ -33,8 +33,11 @@ class TokenEncryptor:
         # Убеждаемся, что ключ в правильном формате
         if isinstance(encryption_key, str):
             try:
-                self._cipher = Fernet(encryption_key.encode() if len(encryption_key) == 44
-                                      else b64encode(encryption_key.encode()))
+                self._cipher = Fernet(
+                    encryption_key.encode()
+                    if len(encryption_key) == 44
+                    else b64encode(encryption_key.encode())
+                )
             except Exception:
                 # Если ключ не в формате Fernet, кодируем его
                 key = b64encode(encryption_key.encode()[:32].ljust(32))

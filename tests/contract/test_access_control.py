@@ -5,15 +5,17 @@
 на основе ролей пользователей.
 """
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
-from uuid import uuid4
 
 
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
     from src.main import app
+
     return TestClient(app)
 
 
@@ -69,10 +71,7 @@ class TestAccessControlAPI:
 
         # Пользователь пытается получить устройство, к которому нет доступа
         # (в реальной реализации это будет проверено middleware)
-        response = client.get(
-            f"/api/v1/devices/{device_id}",
-            headers={"X-User-ID": other_user_id}
-        )
+        response = client.get(f"/api/v1/devices/{device_id}", headers={"X-User-ID": other_user_id})
 
         # Должен быть 403 Forbidden или 404 (не видит устройство)
         assert response.status_code in [403, 404]
@@ -86,8 +85,7 @@ class TestAccessControlAPI:
 
         # Пользователь имеет доступ viewer к устройству
         response = client.get(
-            f"/api/v1/devices/{device_id}",
-            headers={"X-User-ID": current_user_id}
+            f"/api/v1/devices/{device_id}", headers={"X-User-ID": current_user_id}
         )
 
         # Должен быть 200 или 404 (если устройство не синхронизировано)
@@ -103,22 +101,18 @@ class TestAccessControlAPI:
         device_id = sample_device["id"]
 
         # Пользователь пытается отправить команду без прав
-        payload = {
-            "command_name": "turn_on"
-        }
+        payload = {"command_name": "turn_on"}
 
         response = client.post(
             f"/api/v1/devices/{device_id}/command",
             json=payload,
-            headers={"X-User-ID": other_user_id}
+            headers={"X-User-ID": other_user_id},
         )
 
         # Должен быть 403 Forbidden
         assert response.status_code in [403, 404]
 
-    def test_execute_command_with_controller_access(
-        self, client, current_user_id, sample_device
-    ):
+    def test_execute_command_with_controller_access(self, client, current_user_id, sample_device):
         """T061: Пользователь с ролью controller может отправить команду."""
         if not sample_device:
             pytest.skip("Sample device creation failed")
@@ -126,14 +120,12 @@ class TestAccessControlAPI:
         device_id = sample_device["id"]
 
         # Пользователь с доступом controller отправляет команду
-        payload = {
-            "command_name": "turn_on"
-        }
+        payload = {"command_name": "turn_on"}
 
         response = client.post(
             f"/api/v1/devices/{device_id}/command",
             json=payload,
-            headers={"X-User-ID": current_user_id}
+            headers={"X-User-ID": current_user_id},
         )
 
         # Должен быть 200 (успех) или 404 (устройство не найдено)
@@ -151,13 +143,13 @@ class TestAccessControlAPI:
         # Администратор назначает доступ пользователю
         payload = {
             "user_id": other_user_id,
-            "role": "viewer"  # Роли: viewer, controller, admin
+            "role": "viewer",  # Роли: viewer, controller, admin
         }
 
         response = client.post(
             f"/api/v1/devices/{device_id}/access",
             json=payload,
-            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"},
         )
 
         # Должен быть 201 Created или 200 OK
@@ -180,15 +172,12 @@ class TestAccessControlAPI:
         device_id = sample_device["id"]
 
         # Обычный пользователь (не админ) пытается назначить доступ
-        payload = {
-            "user_id": other_user_id,
-            "role": "viewer"
-        }
+        payload = {"user_id": other_user_id, "role": "viewer"}
 
         response = client.post(
             f"/api/v1/devices/{device_id}/access",
             json=payload,
-            headers={"X-User-ID": current_user_id}  # Не админ
+            headers={"X-User-ID": current_user_id},  # Не админ
         )
 
         # Должен быть 403 Forbidden
@@ -205,7 +194,7 @@ class TestAccessControlAPI:
         # Администратор отзывает доступ
         response = client.delete(
             f"/api/v1/devices/{device_id}/access/{access_id}",
-            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"},
         )
 
         # Должен быть 204 No Content или 200 OK или 404 (если запись не найдена)
@@ -221,7 +210,7 @@ class TestAccessControlAPI:
         # Администратор получает список доступа
         response = client.get(
             f"/api/v1/devices/{device_id}/access",
-            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"},
         )
 
         # Должен быть 200 OK
@@ -246,15 +235,12 @@ class TestAccessControlAPI:
 
         # Тестируем все роли
         for role in ["viewer", "controller", "admin"]:
-            payload = {
-                "user_id": other_user_id,
-                "role": role
-            }
+            payload = {"user_id": other_user_id, "role": role}
 
             response = client.post(
                 f"/api/v1/devices/{device_id}/access",
                 json=payload,
-                headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"}
+                headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"},
             )
 
             # Должен быть успешный ответ
@@ -268,15 +254,12 @@ class TestAccessControlAPI:
         device_id = sample_device["id"]
 
         # Пытаемся назначить некорректную роль
-        payload = {
-            "user_id": other_user_id,
-            "role": "invalid_role"
-        }
+        payload = {"user_id": other_user_id, "role": "invalid_role"}
 
         response = client.post(
             f"/api/v1/devices/{device_id}/access",
             json=payload,
-            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"},
         )
 
         # Должен быть 400 Bad Request

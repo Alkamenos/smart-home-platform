@@ -18,8 +18,10 @@
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +107,8 @@ class WebSocketEventBatcher:
         self,
         batch_timeout_ms: int = 100,
         batch_size_limit: int = 10,
-        on_batch_ready: Optional[Callable[[WebSocketBatch], Any]] = None,
-        logger_instance: Optional[logging.Logger] = None,
+        on_batch_ready: Callable[[WebSocketBatch], Any] | None = None,
+        logger_instance: logging.Logger | None = None,
     ) -> None:
         """
         Инициализация батчера.
@@ -129,7 +131,7 @@ class WebSocketEventBatcher:
         self._lock = asyncio.Lock()
 
         # Таймер для срабатывания батча
-        self._timer_task: Optional[asyncio.Task] = None
+        self._timer_task: asyncio.Task | None = None
 
         # Флаг активности батчера
         self._running = False
@@ -167,7 +169,7 @@ class WebSocketEventBatcher:
                 # Если таймер не установлен, запускаем его
                 self._timer_task = asyncio.create_task(self._timeout_handler())
 
-    async def flush(self) -> Optional[WebSocketBatch]:
+    async def flush(self) -> WebSocketBatch | None:
         """
         Принудительная обработка текущего батча.
 
@@ -179,7 +181,7 @@ class WebSocketEventBatcher:
         async with self._lock:
             return await self._flush_batch()
 
-    async def _flush_batch(self) -> Optional[WebSocketBatch]:
+    async def _flush_batch(self) -> WebSocketBatch | None:
         """
         Внутренняя функция для обработки батча (должна вызываться с активным lock).
 
@@ -243,9 +245,7 @@ class WebSocketEventBatcher:
 
             async with self._lock:
                 if self._buffer:
-                    self._logger.debug(
-                        f"Батч срабатывает по таймауту: {len(self._buffer)} событий"
-                    )
+                    self._logger.debug(f"Батч срабатывает по таймауту: {len(self._buffer)} событий")
                     await self._flush_batch()
 
                 # Очищаем таск
@@ -284,9 +284,7 @@ class WebSocketEventBatcher:
             "current_buffer_size": self.get_batch_size(),
             "last_batch_time": self._last_batch_time,
             "avg_events_per_batch": (
-                self._total_events / self._total_batches
-                if self._total_batches > 0
-                else 0
+                self._total_events / self._total_batches if self._total_batches > 0 else 0
             ),
         }
 
@@ -323,9 +321,7 @@ class WebSocketEventBatcher:
                 except asyncio.CancelledError:
                     pass
 
-        self._logger.info(
-            f"Батчер остановлен. Статистика: {self.get_statistics()}"
-        )
+        self._logger.info(f"Батчер остановлен. Статистика: {self.get_statistics()}")
 
     async def reset(self) -> None:
         """Сбросить буфер без обработки (для очистки)."""

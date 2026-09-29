@@ -9,13 +9,11 @@ Unit тесты для DeviceCache и IndexManager.
 - Метрики производительности
 """
 
-import asyncio
-import time
 import threading
-from uuid import UUID, uuid4
+import time
+from uuid import uuid4
 
 import pytest
-
 from src.core.models.device import Device
 from src.core.persistence.cache import DeviceCache
 from src.core.persistence.index_manager import IndexManager
@@ -396,28 +394,32 @@ class TestIndexManager:
             )
             for i in range(3)
         ]
-        devices.extend([
-            Device(
-                ha_entity_id=f"switch_s1_{i}",
-                source_id=source1,
-                name=f"Switch S1 {i}",
-                device_type="switch",
-                state={},
-                status="available",
-            )
-            for i in range(2)
-        ])
-        devices.extend([
-            Device(
-                ha_entity_id=f"light_s2_{i}",
-                source_id=source2,
-                name=f"Light S2 {i}",
-                device_type="light",
-                state={},
-                status="available",
-            )
-            for i in range(2)
-        ])
+        devices.extend(
+            [
+                Device(
+                    ha_entity_id=f"switch_s1_{i}",
+                    source_id=source1,
+                    name=f"Switch S1 {i}",
+                    device_type="switch",
+                    state={},
+                    status="available",
+                )
+                for i in range(2)
+            ]
+        )
+        devices.extend(
+            [
+                Device(
+                    ha_entity_id=f"light_s2_{i}",
+                    source_id=source2,
+                    name=f"Light S2 {i}",
+                    device_type="light",
+                    state={},
+                    status="available",
+                )
+                for i in range(2)
+            ]
+        )
 
         for device in devices:
             index_manager.add_device(device)

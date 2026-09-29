@@ -18,12 +18,8 @@
 """
 
 import json
-import logging
 import re
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Optional
-from uuid import uuid4
+from typing import Any
 
 import pytest
 
@@ -118,10 +114,7 @@ class LogAnalyzer:
         Returns:
             (is_valid, message)
         """
-        operation_logs = [
-            log for log in self.logs
-            if log.get("context", {}).get("operation_type")
-        ]
+        operation_logs = [log for log in self.logs if log.get("context", {}).get("operation_type")]
 
         if not operation_logs:
             return False, "Не найдены логи операций с operation_type"
@@ -158,10 +151,7 @@ class LogAnalyzer:
         Returns:
             (is_valid, message)
         """
-        operation_logs = [
-            log for log in self.logs
-            if log.get("context", {}).get("operation_type")
-        ]
+        operation_logs = [log for log in self.logs if log.get("context", {}).get("operation_type")]
 
         for log in operation_logs:
             context = log.get("context", {})
@@ -223,12 +213,14 @@ class LogAnalyzer:
         ]
 
         # Статистика
-        report_lines.extend([
-            f"Всего логов в файле: {len(self.logs)}",
-            f"Логов об операциях: {len([l for l in self.logs if l.get('context', {}).get('operation_type')])}",
-            f"Логов об ошибках: {len([l for l in self.logs if l.get('level') == 'ERROR'])}",
-            "",
-        ])
+        report_lines.extend(
+            [
+                f"Всего логов в файле: {len(self.logs)}",
+                f"Логов об операциях: {len([l for l in self.logs if l.get('context', {}).get('operation_type')])}",
+                f"Логов об ошибках: {len([l for l in self.logs if l.get('level') == 'ERROR'])}",
+                "",
+            ]
+        )
 
         # Результаты проверок
         checks = [
@@ -250,17 +242,20 @@ class LogAnalyzer:
             if not is_valid:
                 all_passed = False
 
-        report_lines.extend([
-            "",
-            "=" * 80,
-            f"ИТОГО: {'ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ' if all_passed else 'НЕКОТОРЫЕ ПРОВЕРКИ НЕ ПРОЙДЕНЫ'}",
-            "=" * 80,
-        ])
+        report_lines.extend(
+            [
+                "",
+                "=" * 80,
+                f"ИТОГО: {'ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ' if all_passed else 'НЕКОТОРЫЕ ПРОВЕРКИ НЕ ПРОЙДЕНЫ'}",
+                "=" * 80,
+            ]
+        )
 
         return "\n".join(report_lines)
 
 
 # Tests
+
 
 @pytest.fixture
 def sample_logs():

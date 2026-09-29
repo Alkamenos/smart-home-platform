@@ -6,9 +6,9 @@
 
 import asyncio
 import logging
-from typing import Optional
 
 import aiohttp
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class ConnectionManager:
         self.max_retry_delay = max_retry_delay
         self._connected = False
         self._retry_count = 0
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def connect(self) -> bool:
         """Подключается с логикой переподключения.

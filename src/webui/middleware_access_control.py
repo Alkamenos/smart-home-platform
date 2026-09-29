@@ -5,11 +5,11 @@ Middleware для проверки доступа к устройствам.
 """
 
 import logging
-from typing import Optional
 from uuid import UUID
 
-from fastapi import Request, HTTPException, status
+from fastapi import HTTPException, Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
+
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +60,7 @@ class DeviceAccessMiddleware(BaseHTTPMiddleware):
             # Если нет ID пользователя, считаем это неавторизованным
             logger.warning(f"Запрос без X-User-ID: {request.method} {request.url.path}")
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing X-User-ID header"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-User-ID header"
             )
 
         # Проверяем доступ к защищенным endpoints
@@ -78,7 +77,7 @@ class DeviceAccessMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-    def _extract_device_id(self, path: str) -> Optional[UUID]:
+    def _extract_device_id(self, path: str) -> UUID | None:
         """Извлекает ID устройства из пути запроса.
 
         Args:

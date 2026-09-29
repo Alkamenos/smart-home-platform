@@ -1,7 +1,6 @@
 """Модель конфигурации устройства."""
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -19,54 +18,37 @@ class DeviceConfig(BaseModel):
 
     id: UUID = Field(default_factory=uuid4, description="ID конфигурации в платформе")
     device_id: UUID = Field(description="Ссылка на Device")
-    display_name: Optional[str] = Field(
+    display_name: str | None = Field(
         default=None,
         min_length=1,
         max_length=255,
-        description="Пользовательское название устройства"
+        description="Пользовательское название устройства",
     )
-    description: Optional[str] = Field(
-        default=None,
-        max_length=1000,
-        description="Описание устройства"
+    description: str | None = Field(
+        default=None, max_length=1000, description="Описание устройства"
     )
-    location: Optional[str] = Field(
+    location: str | None = Field(
         default=None,
         max_length=255,
-        description="Расположение устройства (e.g., 'Кухня', 'Спальня')"
+        description="Расположение устройства (e.g., 'Кухня', 'Спальня')",
     )
-    tags: Optional[list[str]] = Field(
-        default=None,
-        description="Теги для категоризации устройства (макс 10 тегов)"
+    tags: list[str] | None = Field(
+        default=None, description="Теги для категоризации устройства (макс 10 тегов)"
     )
-    enabled: bool = Field(
-        default=True,
-        description="Включено ли устройство"
-    )
-    custom_settings: dict = Field(
-        default_factory=dict,
-        description="Кастомные настройки (JSON)"
-    )
-    created_by: Optional[str] = Field(
-        default=None,
-        description="Кто создал эту конфигурацию"
-    )
-    updated_by: Optional[str] = Field(
-        default=None,
-        description="Кто последний обновил конфигурацию"
-    )
+    enabled: bool = Field(default=True, description="Включено ли устройство")
+    custom_settings: dict = Field(default_factory=dict, description="Кастомные настройки (JSON)")
+    created_by: str | None = Field(default=None, description="Кто создал эту конфигурацию")
+    updated_by: str | None = Field(default=None, description="Кто последний обновил конфигурацию")
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Время создания конфигурации"
+        default_factory=datetime.utcnow, description="Время создания конфигурации"
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Время последнего обновления конфигурации"
+        default_factory=datetime.utcnow, description="Время последнего обновления конфигурации"
     )
 
     @field_validator("display_name")
     @classmethod
-    def validate_display_name(cls, v: Optional[str]) -> Optional[str]:
+    def validate_display_name(cls, v: str | None) -> str | None:
         """Валидирует display_name - не пустой если указан."""
         if v is not None and v.strip() == "":
             raise ValueError("display_name не может быть пустым")
@@ -74,7 +56,7 @@ class DeviceConfig(BaseModel):
 
     @field_validator("tags")
     @classmethod
-    def validate_tags(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+    def validate_tags(cls, v: list[str] | None) -> list[str] | None:
         """Валидирует теги - не более 10 тегов, каждый не более 50 символов."""
         if v is None:
             return v
@@ -92,6 +74,7 @@ class DeviceConfig(BaseModel):
 
     class Config:
         """Pydantic config."""
+
         json_schema_extra = {
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440002",
@@ -102,6 +85,6 @@ class DeviceConfig(BaseModel):
                 "tags": ["lighting", "kitchen"],
                 "enabled": True,
                 "created_at": "2026-09-29T10:00:00Z",
-                "updated_at": "2026-09-29T10:00:00Z"
+                "updated_at": "2026-09-29T10:00:00Z",
             }
         }

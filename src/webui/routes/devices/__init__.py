@@ -6,4 +6,5 @@ REST API маршруты для управления устройствами.
 
 from . import devices, sources, websocket
 
+
 __all__ = ["devices", "sources", "websocket"]

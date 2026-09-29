@@ -9,7 +9,8 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,9 @@ class Migration002InitDevices:
     """Миграция для инициализации таблицы devices."""
 
     name = "002_init_devices"
-    description = "Инициализация таблицы devices с индексами по source_id, device_type, ha_entity_id"
+    description = (
+        "Инициализация таблицы devices с индексами по source_id, device_type, ha_entity_id"
+    )
 
     def __init__(self, data_dir: Path | str = "data") -> None:
         """
@@ -46,7 +49,7 @@ class Migration002InitDevices:
 
             # Инициализируем индексы
             self._init_indices()
-            logger.info(f"Индексы для devices инициализированы")
+            logger.info("Индексы для devices инициализированы")
 
             logger.info(f"Миграция {self.name} успешно применена")
 
@@ -75,28 +78,28 @@ class Migration002InitDevices:
 
     def _init_devices_file(self) -> None:
         """Инициализировать файл devices.json с пустой структурой."""
-        devices_structure: Dict[str, Any] = {}
+        devices_structure: dict[str, Any] = {}
         with open(self.devices_file, "w") as f:
             json.dump(devices_structure, f, indent=2)
 
     def _init_indices(self) -> None:
         """Инициализировать индексные структуры для оптимизации поиска."""
-        indices: Dict[str, Any] = {
+        indices: dict[str, Any] = {
             "by_source_id": {},  # Индекс: source_id -> список ID устройств
             "by_device_type": {},  # Индекс: device_type -> список ID устройств
             "by_ha_entity_id": {},  # Индекс: ha_entity_id -> ID устройства
             "by_status": {  # Индекс: статус -> список ID устройств
                 "available": [],
                 "unavailable": [],
-                "removed_from_ha": []
+                "removed_from_ha": [],
             },
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.utcnow().isoformat(),
         }
 
         with open(self.indices_file, "w") as f:
             json.dump(indices, f, indent=2, default=str)
 
-    def get_indices(self) -> Dict[str, Any]:
+    def get_indices(self) -> dict[str, Any]:
         """
         Получить текущие индексы devices.
 
@@ -107,22 +110,18 @@ class Migration002InitDevices:
             self._init_indices()
 
         try:
-            with open(self.indices_file, "r") as f:
+            with open(self.indices_file) as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             return {
                 "by_source_id": {},
                 "by_device_type": {},
                 "by_ha_entity_id": {},
-                "by_status": {
-                    "available": [],
-                    "unavailable": [],
-                    "removed_from_ha": []
-                },
-                "last_updated": datetime.utcnow().isoformat()
+                "by_status": {"available": [], "unavailable": [], "removed_from_ha": []},
+                "last_updated": datetime.utcnow().isoformat(),
             }
 
-    def update_indices(self, indices: Dict[str, Any]) -> None:
+    def update_indices(self, indices: dict[str, Any]) -> None:
         """
         Обновить индексные структуры.
 
@@ -142,19 +141,15 @@ class Migration002InitDevices:
                 logger.warning(f"Файл {self.devices_file} не существует")
                 return
 
-            with open(self.devices_file, "r") as f:
+            with open(self.devices_file) as f:
                 devices = json.load(f)
 
             # Инициализируем новые индексы
-            indices: Dict[str, Any] = {
+            indices: dict[str, Any] = {
                 "by_source_id": {},
                 "by_device_type": {},
                 "by_ha_entity_id": {},
-                "by_status": {
-                    "available": [],
-                    "unavailable": [],
-                    "removed_from_ha": []
-                }
+                "by_status": {"available": [], "unavailable": [], "removed_from_ha": []},
             }
 
             # Заполняем индексы

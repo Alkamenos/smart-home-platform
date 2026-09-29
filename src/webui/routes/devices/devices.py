@@ -7,11 +7,11 @@ API маршруты для управления устройствами.
 
 import logging
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status, Header
+from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,16 @@ class DeviceResponse(BaseModel):
 
     id: str
     name: str
-    display_name: Optional[str] = None
+    display_name: str | None = None
     device_type: str
     status: str
     state: dict
     source_id: str
     ha_entity_id: str
-    ha_area_id: Optional[str] = None
-    description: Optional[str] = None
-    location: Optional[str] = None
-    tags: Optional[list[str]] = None
+    ha_area_id: str | None = None
+    description: str | None = None
+    location: str | None = None
+    tags: list[str] | None = None
     created_at: str
     updated_at: str
 
@@ -41,12 +41,10 @@ class DeviceResponse(BaseModel):
 
 
 @router.post("/apply", status_code=status.HTTP_201_CREATED)
-
-
 @router.get("", status_code=status.HTTP_200_OK)
 async def get_devices(
-    source_id: Optional[UUID] = None,
-    x_user_id: Optional[str] = Header(None),
+    source_id: UUID | None = None,
+    x_user_id: str | None = Header(None),
 ) -> list[DeviceResponse]:
     """Получает список всех доступных пользователю устройств.
 
@@ -87,7 +85,7 @@ async def get_devices(
         logger.error(f"Ошибка при получении списка устройств: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при получении списка устройств"
+            detail="Ошибка при получении списка устройств",
         ) from e
 
 
@@ -108,8 +106,7 @@ async def get_device(device_id: UUID) -> DeviceResponse:
 
     if not device:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Устройство {device_id} не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
 
     # Извлекаем конфигурацию из device.config если она есть
@@ -127,10 +124,10 @@ async def get_device(device_id: UUID) -> DeviceResponse:
 class UpdateDeviceConfigRequest(BaseModel):
     """Запрос на обновление конфигурации устройства."""
 
-    display_name: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = Field(None, max_length=1000)
-    location: Optional[str] = Field(None, max_length=255)
-    tags: Optional[list[str]] = Field(None)
+    display_name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=1000)
+    location: str | None = Field(None, max_length=255)
+    tags: list[str] | None = Field(None)
 
 
 @router.put("/{device_id}/config", status_code=status.HTTP_200_OK)
@@ -160,8 +157,7 @@ async def update_device_config(
 
     if not device:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Устройство {device_id} не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
 
     try:
@@ -210,15 +206,12 @@ async def update_device_config(
 
     except ValueError as e:
         logger.error(f"Ошибка валидации при обновлении конфигурации устройства: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e)
-        ) from e
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Ошибка при обновлении конфигурации устройства: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при обновлении конфигурации"
+            detail="Ошибка при обновлении конфигурации",
         ) from e
 
 
@@ -230,9 +223,7 @@ class SendCommandRequest(BaseModel):
 
 
 @router.post("/{device_id}/command", status_code=status.HTTP_202_ACCEPTED)
-async def send_device_command(
-    device_id: UUID, request: SendCommandRequest
-) -> dict:
+async def send_device_command(device_id: UUID, request: SendCommandRequest) -> dict:
     """Отправляет команду устройству в Home Assistant.
 
     Args:
@@ -249,8 +240,7 @@ async def send_device_command(
 
     if not device:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Устройство {device_id} не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
 
     try:
@@ -261,31 +251,24 @@ async def send_device_command(
             "command_id": "cmd_123",  # TODO: Генерировать реальный ID
             "device_id": str(device_id),
             "service": request.service,
-            "status": "pending"
+            "status": "pending",
         }
 
     except Exception as e:
         logger.error(f"Ошибка при отправке команды: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при отправке команды"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Ошибка при отправке команды"
         ) from e
 
 
 # ============ T054: POST /api/v1/devices/{id}/command (новая схема) ============
 
+
 class CommandRequest(BaseModel):
     """Запрос на выполнение команды в формате T054."""
 
-    name: str = Field(
-        min_length=1,
-        max_length=255,
-        description="Имя команды (e.g., 'turn_on')"
-    )
-    parameters: dict = Field(
-        default_factory=dict,
-        description="Параметры команды"
-    )
+    name: str = Field(min_length=1, max_length=255, description="Имя команды (e.g., 'turn_on')")
+    parameters: dict = Field(default_factory=dict, description="Параметры команды")
 
 
 class CommandResponse(BaseModel):
@@ -296,9 +279,9 @@ class CommandResponse(BaseModel):
     command_name: str = Field(description="Имя команды")
     status: str = Field(description="Статус: pending, executing, success, failed")
     created_at: str = Field(description="Время создания")
-    completed_at: Optional[str] = None
-    result: Optional[dict] = None
-    error: Optional[str] = None
+    completed_at: str | None = None
+    result: dict | None = None
+    error: str | None = None
 
 
 @router.post("/{device_id}/command", status_code=status.HTTP_202_ACCEPTED)
@@ -322,18 +305,16 @@ async def execute_device_command(
 
     if not device:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Устройство {device_id} не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
 
     try:
         # TODO: Использовать DeviceService.execute_command()
         from uuid import uuid4
+
         command_id = str(uuid4())
 
-        logger.info(
-            f"Выполняю команду {request.name} на устройстве {device_id}"
-        )
+        logger.info(f"Выполняю команду {request.name} на устройстве {device_id}")
 
         return CommandResponse(
             id=command_id,
@@ -347,11 +328,12 @@ async def execute_device_command(
         logger.error(f"Ошибка при выполнении команды: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при выполнении команды"
+            detail="Ошибка при выполнении команды",
         ) from e
 
 
 # ============ T056: GET /api/v1/devices/{id}/command/{command_id} ============
+
 
 @router.get("/{device_id}/command/{command_id}", status_code=status.HTTP_200_OK)
 async def get_command_status(
@@ -374,8 +356,7 @@ async def get_command_status(
 
     if not device:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Устройство {device_id} не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
 
     try:
@@ -395,11 +376,12 @@ async def get_command_status(
         logger.error(f"Ошибка при получении статуса команды: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при получении статуса команды"
+            detail="Ошибка при получении статуса команды",
         ) from e
 
 
 # ============ T057: GET /api/v1/devices/{id}/events ============
+
 
 class DeviceEventResponse(BaseModel):
     """Событие устройства."""
@@ -416,7 +398,7 @@ class DeviceEventResponse(BaseModel):
 @router.get("/{device_id}/events", status_code=status.HTTP_200_OK)
 async def get_device_events(
     device_id: UUID,
-    event_type: Optional[str] = None,
+    event_type: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[DeviceEventResponse]:
@@ -438,15 +420,13 @@ async def get_device_events(
 
     if not device:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Устройство {device_id} не найдено"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Устройство {device_id} не найдено"
         )
 
     try:
         # TODO: Получить события из persistence или EventBus
         logger.info(
-            f"Получаю события для устройства {device_id}, "
-            f"тип: {event_type}, limit: {limit}"
+            f"Получаю события для устройства {device_id}, тип: {event_type}, limit: {limit}"
         )
 
         # Заглушка - возвращаем пустой список
@@ -455,20 +435,20 @@ async def get_device_events(
     except Exception as e:
         logger.error(f"Ошибка при получении событий устройства: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при получении событий"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Ошибка при получении событий"
         ) from e
 
 
 # ============ Добавление устройств из Home Assistant ============
 
+
 class DeviceSelection(BaseModel):
     """Выбранное устройство для добавления."""
 
     device_entity_id: str = Field(description="Entity ID в Home Assistant")
-    target_room: Optional[str] = Field(None, description="Целевая комната для устройства")
-    behavior_template: Optional[str] = Field(None, description="Рекомендуемый шаблон поведения")
-    ha_area_id: Optional[str] = Field(None, description="ID области в HA")
+    target_room: str | None = Field(None, description="Целевая комната для устройства")
+    behavior_template: str | None = Field(None, description="Рекомендуемый шаблон поведения")
+    ha_area_id: str | None = Field(None, description="ID области в HA")
 
 
 class ApplyDevicesRequest(BaseModel):
@@ -485,7 +465,7 @@ class ApplyDevicesResponse(BaseModel):
     success: bool = Field(description="Успешность операции")
     devices_count: int = Field(description="Количество добавленных устройств")
     devices: list[DeviceResponse] = Field(description="Добавленные устройства")
-    errors: Optional[list[str]] = Field(None, description="Ошибки при добавлении")
+    errors: list[str] | None = Field(None, description="Ошибки при добавлении")
 
 
 @router.post("/apply", status_code=status.HTTP_201_CREATED)
@@ -508,7 +488,7 @@ async def apply_devices(request: ApplyDevicesRequest) -> ApplyDevicesResponse:
         if not request.selections:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Список устройств не может быть пустым"
+                detail="Список устройств не может быть пустым",
             )
 
         added_devices = []
@@ -576,5 +556,5 @@ async def apply_devices(request: ApplyDevicesRequest) -> ApplyDevicesResponse:
         logger.error(f"Ошибка при применении устройств: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при добавлении устройств"
+            detail="Ошибка при добавлении устройств",
         ) from e

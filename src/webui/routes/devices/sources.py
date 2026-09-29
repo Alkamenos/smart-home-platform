@@ -5,11 +5,11 @@ API маршруты для управления источниками Home Ass
 """
 
 import logging
-from typing import Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, HttpUrl
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,8 @@ class SourceResponse(BaseModel):
     name: str
     url: str
     status: str
-    last_sync: Optional[str]
-    last_error: Optional[str]
+    last_sync: str | None
+    last_error: str | None
     created_at: str
     updated_at: str
 
@@ -56,7 +56,7 @@ async def list_sources() -> list[SourceResponse]:
         logger.error(f"Ошибка при получении списка источников: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при получении списка источников"
+            detail="Ошибка при получении списка источников",
         ) from e
 
 
@@ -93,7 +93,7 @@ async def create_source(request: CreateSourceRequest) -> SourceResponse:
         logger.error(f"Ошибка при создании источника: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при создании источника: {str(e)}"
+            detail=f"Ошибка при создании источника: {str(e)}",
         ) from e
 
 
@@ -114,8 +114,7 @@ async def get_source(source_id: UUID) -> SourceResponse:
 
     if not source:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Источник {source_id} не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Источник {source_id} не найден"
         )
 
     return SourceResponse(**source)
@@ -138,8 +137,7 @@ async def sync_source(source_id: UUID) -> dict:
 
     if not source:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Источник {source_id} не найден"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Источник {source_id} не найден"
         )
 
     try:
@@ -155,7 +153,7 @@ async def sync_source(source_id: UUID) -> dict:
 
         return {
             "status": source["status"],
-            "message": f"Синхронизация запущена для источника {source_id}"
+            "message": f"Синхронизация запущена для источника {source_id}",
         }
 
     except Exception as e:
@@ -165,7 +163,7 @@ async def sync_source(source_id: UUID) -> dict:
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при синхронизации: {str(e)}"
+            detail=f"Ошибка при синхронизации: {str(e)}",
         ) from e
 
 
@@ -174,8 +172,8 @@ class AreaInfo(BaseModel):
 
     id: str = Field(description="ID области в HA")
     name: str = Field(description="Название области (комнаты)")
-    icon: Optional[str] = Field(None, description="Иконка области")
-    picture: Optional[str] = Field(None, description="Изображение области")
+    icon: str | None = Field(None, description="Иконка области")
+    picture: str | None = Field(None, description="Изображение области")
 
 
 class AvailableDevice(BaseModel):
@@ -184,10 +182,10 @@ class AvailableDevice(BaseModel):
     entity_id: str = Field(description="Entity ID в Home Assistant")
     friendly_name: str = Field(description="Удобное название устройства")
     device_type: str = Field(description="Тип устройства (домен entity_id)")
-    area_id: Optional[str] = Field(None, description="ID области (комнаты) в HA")
-    area_name: Optional[str] = Field(None, description="Название области (комнаты)")
+    area_id: str | None = Field(None, description="ID области (комнаты) в HA")
+    area_name: str | None = Field(None, description="Название области (комнаты)")
     state: str = Field(description="Текущее состояние")
-    icon: Optional[str] = Field(None, description="Иконка устройства")
+    icon: str | None = Field(None, description="Иконка устройства")
 
 
 class DiscoveryData(BaseModel):
@@ -221,7 +219,7 @@ async def get_discovery_data(source_id: UUID) -> DiscoveryData:
         logger.warning(f"Источник {source_id} не найден. Доступные: {list(_sources_store.keys())}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Источник {source_id} не найден. Убедитесь, что источник существует и source_id верен."
+            detail=f"Источник {source_id} не найден. Убедитесь, что источник существует и source_id верен.",
         )
 
     try:
@@ -232,12 +230,12 @@ async def get_discovery_data(source_id: UUID) -> DiscoveryData:
 
         async with HARestClient(source["url"], source["token"]) as client:
             # Подключаемся к HA
-            logger.info(f"Проверяю подключение к HA...")
+            logger.info("Проверяю подключение к HA...")
             connected = await client.connect_to_ha()
             if not connected:
                 raise Exception("Не удалось подключиться к Home Assistant. Проверьте URL и токен.")
 
-            logger.info(f"Подключение успешно. Загружаю области...")
+            logger.info("Подключение успешно. Загружаю области...")
 
             # Получаем области (комнаты)
             areas_data = await client.fetch_areas()
@@ -254,13 +252,15 @@ async def get_discovery_data(source_id: UUID) -> DiscoveryData:
             }
             areas = list(areas_map.values())
 
-            logger.info(f"Загружаю сущности и реестр устройств...")
+            logger.info("Загружаю сущности и реестр устройств...")
 
             # Получаем устройства и их области
             devices_data = await client.fetch_devices()
             device_registry = await client.fetch_device_registry()
 
-            logger.info(f"Получено {len(devices_data)} сущностей, {len(device_registry)} устройств в реестре")
+            logger.info(
+                f"Получено {len(devices_data)} сущностей, {len(device_registry)} устройств в реестре"
+            )
 
             # Создаем map device_id -> area_id из реестра
             device_to_area = {}
@@ -295,15 +295,17 @@ async def get_discovery_data(source_id: UUID) -> DiscoveryData:
                         if area_id in areas_map:
                             area_name = areas_map[area_id].name
 
-                    available_devices.append(AvailableDevice(
-                        entity_id=entity_id,
-                        friendly_name=friendly_name,
-                        device_type=domain,
-                        area_id=area_id,
-                        area_name=area_name,
-                        state=state_obj.get("state", "unknown"),
-                        icon=attributes.get("icon"),
-                    ))
+                    available_devices.append(
+                        AvailableDevice(
+                            entity_id=entity_id,
+                            friendly_name=friendly_name,
+                            device_type=domain,
+                            area_id=area_id,
+                            area_name=area_name,
+                            state=state_obj.get("state", "unknown"),
+                            icon=attributes.get("icon"),
+                        )
+                    )
                 except Exception as e:
                     logger.warning(f"Ошибка при парсинге устройства {state_obj}: {e}")
                     continue
@@ -326,5 +328,5 @@ async def get_discovery_data(source_id: UUID) -> DiscoveryData:
         logger.error(f"Ошибка при получении данных для добавления устройства: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Ошибка при подключении к Home Assistant: {str(e)}"
+            detail=f"Ошибка при подключении к Home Assistant: {str(e)}",
         ) from e

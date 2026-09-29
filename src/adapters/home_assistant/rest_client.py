@@ -5,10 +5,11 @@ REST клиент для подключения к Home Assistant API.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 from pydantic import HttpUrl
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class HARestClient:
         """
         self.base_url = str(base_url).rstrip("/")
         self.token = token
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
         self._connected = False
 
     async def __aenter__(self) -> "HARestClient":
@@ -137,7 +138,9 @@ class HARestClient:
                     logger.info(f"Получено {len(areas)} областей из Home Assistant")
                     return areas
                 elif resp.status == 404:
-                    logger.warning("Endpoint /api/config/area_registry не найден (может быть, старая версия HA)")
+                    logger.warning(
+                        "Endpoint /api/config/area_registry не найден (может быть, старая версия HA)"
+                    )
                     return []
                 else:
                     logger.error(f"Ошибка получения областей (статус {resp.status})")
@@ -176,7 +179,9 @@ class HARestClient:
                     logger.info(f"Получено {len(devices)} устройств из реестра Home Assistant")
                     return devices
                 elif resp.status == 404:
-                    logger.warning("Endpoint /api/config/device_registry не найден (может быть, старая версия HA)")
+                    logger.warning(
+                        "Endpoint /api/config/device_registry не найден (может быть, старая версия HA)"
+                    )
                     return []
                 else:
                     logger.error(f"Ошибка получения реестра устройств (статус {resp.status})")

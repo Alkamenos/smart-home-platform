@@ -4,15 +4,17 @@
 Тесты проверяют полный сценарий: загрузка → редактирование конфигурации → проверка сохранения.
 """
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
-from uuid import uuid4
 
 
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
     from src.main import app
+
     return TestClient(app)
 
 
@@ -39,6 +41,7 @@ def sample_device(client):
 
     # Добавляем в хранилище
     from src.webui.routes.devices.devices import _devices_store
+
     _devices_store[str(device_id)] = device_data
 
     return device_data
@@ -71,12 +74,9 @@ class TestDeviceConfigIntegration:
             "display_name": "Кухонный свет",
             "description": "Основное освещение кухни",
             "location": "Кухня",
-            "tags": ["lighting", "kitchen", "smart"]
+            "tags": ["lighting", "kitchen", "smart"],
         }
-        update_response = client.put(
-            f"/api/v1/devices/{device_id}/config",
-            json=config_payload
-        )
+        update_response = client.put(f"/api/v1/devices/{device_id}/config", json=config_payload)
 
         assert update_response.status_code == 200
         updated_device = update_response.json()
@@ -107,10 +107,7 @@ class TestDeviceConfigIntegration:
         invalid_payload = {
             "display_name": "x" * 256,  # > 255 символов
         }
-        response = client.put(
-            f"/api/v1/devices/{device_id}/config",
-            json=invalid_payload
-        )
+        response = client.put(f"/api/v1/devices/{device_id}/config", json=invalid_payload)
 
         # Ожидаем ошибку валидации
         assert response.status_code == 422
@@ -125,22 +122,14 @@ class TestDeviceConfigIntegration:
             "display_name": "Test Light",
             "description": "Test Description",
             "location": "Test Location",
-            "tags": ["test"]
+            "tags": ["test"],
         }
-        update_response = client.put(
-            f"/api/v1/devices/{device_id}/config",
-            json=full_config
-        )
+        update_response = client.put(f"/api/v1/devices/{device_id}/config", json=full_config)
         assert update_response.status_code == 200
 
         # Теперь обновляем только display_name
-        partial_update = {
-            "display_name": "Updated Light Name"
-        }
-        partial_response = client.put(
-            f"/api/v1/devices/{device_id}/config",
-            json=partial_update
-        )
+        partial_update = {"display_name": "Updated Light Name"}
+        partial_response = client.put(f"/api/v1/devices/{device_id}/config", json=partial_update)
         assert partial_response.status_code == 200
         updated_device = partial_response.json()
 

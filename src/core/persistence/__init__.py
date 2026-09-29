@@ -12,6 +12,7 @@
 from src.core.persistence.cache import DeviceCache
 from src.core.persistence.index_manager import IndexManager
 
+
 __all__ = [
     "DeviceCache",
     "IndexManager",

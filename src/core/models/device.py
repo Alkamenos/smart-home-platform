@@ -1,15 +1,16 @@
 """Device model for managing HA devices in the platform."""
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+
 # Forward reference to avoid circular imports
 TYPE_CHECKING = False
 if TYPE_CHECKING:
-    from src.core.models.device_config import DeviceConfig
+    pass
 
 
 class Device(BaseModel):
@@ -18,48 +19,46 @@ class Device(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="ID устройства в платформе")
     ha_entity_id: str = Field(
         pattern=r"^[a-z_]+\.[a-z0-9_]+$",
-        description="Идентификатор сущности в HA (e.g., 'light.kitchen_light')"
+        description="Идентификатор сущности в HA (e.g., 'light.kitchen_light')",
     )
     source_id: UUID = Field(description="Ссылка на HASource")
     name: str = Field(
-        min_length=1,
-        max_length=255,
-        description="Исходное название устройства из HA"
+        min_length=1, max_length=255, description="Исходное название устройства из HA"
     )
     device_type: str = Field(
         description="Тип устройства (light, switch, binary_sensor, climate, etc.)"
     )
-    model: Optional[str] = Field(default=None, description="Модель устройства (e.g., 'Philips Hue A19')")
-    manufacturer: Optional[str] = Field(default=None, description="Производитель (e.g., 'Philips')")
-    ha_area_id: Optional[str] = Field(
-        default=None,
-        description="ID области (комнаты) в Home Assistant, если известна (e.g., 'kitchen')"
+    model: str | None = Field(
+        default=None, description="Модель устройства (e.g., 'Philips Hue A19')"
     )
-    state: Dict[str, Any] = Field(default_factory=dict, description="Текущее состояние")
-    attributes: Dict[str, Any] = Field(default_factory=dict, description="Дополнительные атрибуты")
-    config: Optional[Dict[str, Any]] = Field(
+    manufacturer: str | None = Field(default=None, description="Производитель (e.g., 'Philips')")
+    ha_area_id: str | None = Field(
         default=None,
-        description="Конфигурация устройства (display_name, description, location, tags, etc.)"
+        description="ID области (комнаты) в Home Assistant, если известна (e.g., 'kitchen')",
+    )
+    state: dict[str, Any] = Field(default_factory=dict, description="Текущее состояние")
+    attributes: dict[str, Any] = Field(default_factory=dict, description="Дополнительные атрибуты")
+    config: dict[str, Any] | None = Field(
+        default=None,
+        description="Конфигурация устройства (display_name, description, location, tags, etc.)",
     )
     status: str = Field(
         default="available",
-        description="Статус доступности: available, unavailable, removed_from_ha"
+        description="Статус доступности: available, unavailable, removed_from_ha",
     )
     last_state_update: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Время последнего обновления состояния"
+        default_factory=datetime.utcnow, description="Время последнего обновления состояния"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Время добавления в платформу"
+        default_factory=datetime.utcnow, description="Время добавления в платформу"
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Время последнего обновления записи"
+        default_factory=datetime.utcnow, description="Время последнего обновления записи"
     )
 
     class Config:
         """Pydantic config."""
+
         json_schema_extra = {
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440001",
@@ -74,9 +73,9 @@ class Device(BaseModel):
                     "display_name": "Кухонный свет",
                     "description": "Основное освещение кухни",
                     "location": "Кухня",
-                    "tags": ["lighting", "kitchen"]
+                    "tags": ["lighting", "kitchen"],
                 },
                 "status": "available",
-                "created_at": "2026-09-29T10:00:00Z"
+                "created_at": "2026-09-29T10:00:00Z",
             }
         }

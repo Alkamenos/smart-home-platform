@@ -8,17 +8,16 @@ T071: Проверка доступа пользователя к устройс
 import asyncio
 import json
 import logging
-from typing import Set, Optional
-from uuid import UUID
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
 # Хранилище активных WebSocket соединений
-_active_connections: Set[WebSocket] = set()
+_active_connections: set[WebSocket] = set()
 
 
 class WebSocketConnectionManager:
@@ -106,7 +105,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await connection_manager.connect(websocket)
     subscribed_devices = set()
-    user_id: Optional[str] = None  # T071: ID пользователя для проверки доступа
+    user_id: str | None = None  # T071: ID пользователя для проверки доступа
 
     try:
         while True:
@@ -127,7 +126,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "authenticated",
                             "user_id": user_id,
                             "message": f"Successfully authenticated as {user_id}",
-                        }
+                        },
                     )
                 else:
                     await connection_manager.send_personal(
@@ -135,7 +134,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         {
                             "type": "error",
                             "message": "Missing user_id for authentication",
-                        }
+                        },
                     )
 
             elif msg_type == "subscribe":
@@ -149,7 +148,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "error",
                             "device_id": device_id,
                             "message": "Must authenticate first (send 'auth' message)",
-                        }
+                        },
                     )
                     continue
 
@@ -182,7 +181,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "subscribed",
                             "device_id": device_id,
                             "message": f"Successfully subscribed to {device_id}",
-                        }
+                        },
                     )
 
             elif msg_type == "unsubscribe":
@@ -198,7 +197,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "unsubscribed",
                             "device_id": device_id,
                             "message": f"Successfully unsubscribed from {device_id}",
-                        }
+                        },
                     )
 
             elif msg_type == "ping":
@@ -208,7 +207,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     {
                         "type": "pong",
                         "timestamp": asyncio.get_event_loop().time(),
-                    }
+                    },
                 )
 
             else:
@@ -219,7 +218,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     {
                         "type": "error",
                         "message": f"Unknown message type: {msg_type}",
-                    }
+                    },
                 )
 
     except WebSocketDisconnect:
@@ -234,7 +233,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 {
                     "type": "error",
                     "message": "Invalid JSON format",
-                }
+                },
             )
         except Exception:
             pass

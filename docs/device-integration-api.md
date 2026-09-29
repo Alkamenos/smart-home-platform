@@ -860,7 +860,7 @@ def get_devices():
 # Команда отправляется асинхронно
 curl -X POST /api/v1/devices/{id}/command \
   -d '{"service": "light.turn_on", ...}'
-  
+
 # Проверить статус команды
 curl /api/v1/commands/{command_id}
 ```
@@ -872,6 +872,7 @@ curl /api/v1/commands/{command_id}
 ```python
 import asyncio
 
+
 async def sync_with_retry(source_id, max_retries=3):
     for attempt in range(max_retries):
         try:
@@ -879,7 +880,7 @@ async def sync_with_retry(source_id, max_retries=3):
             return True
         except Exception as e:
             if attempt < max_retries - 1:
-                await asyncio.sleep(2 ** attempt)  # 1s, 2s, 4s
+                await asyncio.sleep(2**attempt)  # 1s, 2s, 4s
             else:
                 raise
 ```
@@ -908,11 +909,11 @@ logger.warning(f"Device {device_id} unavailable for {duration}s")
 
 ```bash
 # Плохо
-curl -d '{"token": "eyJ...full_token..."}' 
+curl -d '{"token": "eyJ...full_token..."}'
 
 # Хорошо
 export HA_TOKEN="your_long_token"
-curl -d '{"token": "'${HA_TOKEN}'"}' 
+curl -d '{"token": "'${HA_TOKEN}'"}'
 ```
 
 #### 7. Параллельные запросы
@@ -925,9 +926,7 @@ for device_id in device_ids:
     send_command(device_id)
 
 # Хорошо - параллельно
-await asyncio.gather(
-    *[send_command(device_id) for device_id in device_ids]
-)
+await asyncio.gather(*[send_command(device_id) for device_id in device_ids])
 ```
 
 #### 8. Версионирование API
@@ -1002,38 +1001,40 @@ import asyncio
 import aiohttp
 from datetime import datetime
 
+
 class DeviceMonitor:
     def __init__(self, api_url):
         self.api_url = api_url
-        
+
     async def get_devices(self, source_id=None):
         async with aiohttp.ClientSession() as session:
             params = {"source_id": source_id} if source_id else {}
-            async with session.get(
-                f"{self.api_url}/api/v1/devices", 
-                params=params
-            ) as resp:
+            async with session.get(f"{self.api_url}/api/v1/devices", params=params) as resp:
                 return await resp.json()
-    
+
     async def monitor(self, interval=30):
         while True:
             try:
                 devices = await self.get_devices()
                 available = sum(1 for d in devices if d["status"] == "available")
                 unavailable = sum(1 for d in devices if d["status"] == "unavailable")
-                
-                print(f"[{datetime.now()}] Devices - Available: {available}, "
-                      f"Unavailable: {unavailable}")
-                      
+
+                print(
+                    f"[{datetime.now()}] Devices - Available: {available}, "
+                    f"Unavailable: {unavailable}"
+                )
+
                 await asyncio.sleep(interval)
             except Exception as e:
                 print(f"Error: {e}")
                 await asyncio.sleep(5)
 
+
 # Использование
 async def main():
     monitor = DeviceMonitor("http://localhost:8000")
     await monitor.monitor()
+
 
 asyncio.run(main())
 ```

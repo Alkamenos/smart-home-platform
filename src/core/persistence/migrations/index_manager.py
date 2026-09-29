@@ -8,8 +8,8 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from uuid import UUID
+from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class IndexManager:
 
     # === Индексы для Sources ===
 
-    def load_sources_indices(self) -> Dict[str, Any]:
+    def load_sources_indices(self) -> dict[str, Any]:
         """
         Загрузить индексы sources.
 
@@ -41,12 +41,12 @@ class IndexManager:
             return self._create_default_sources_indices()
 
         try:
-            with open(self.sources_indices_file, "r") as f:
+            with open(self.sources_indices_file) as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             return self._create_default_sources_indices()
 
-    def save_sources_indices(self, indices: Dict[str, Any]) -> None:
+    def save_sources_indices(self, indices: dict[str, Any]) -> None:
         """
         Сохранить индексы sources.
 
@@ -57,19 +57,15 @@ class IndexManager:
         with open(self.sources_indices_file, "w") as f:
             json.dump(indices, f, indent=2, default=str)
 
-    def _create_default_sources_indices(self) -> Dict[str, Any]:
+    def _create_default_sources_indices(self) -> dict[str, Any]:
         """Создать индексы sources по умолчанию."""
         return {
             "by_name": {},
-            "by_status": {
-                "connected": [],
-                "disconnected": [],
-                "error": []
-            },
-            "last_updated": datetime.utcnow().isoformat()
+            "by_status": {"connected": [], "disconnected": [], "error": []},
+            "last_updated": datetime.utcnow().isoformat(),
         }
 
-    def get_sources_by_name(self, name: str) -> List[str]:
+    def get_sources_by_name(self, name: str) -> list[str]:
         """
         Получить ID источников по имени.
 
@@ -82,7 +78,7 @@ class IndexManager:
         indices = self.load_sources_indices()
         return indices.get("by_name", {}).get(name, [])
 
-    def get_sources_by_status(self, status: str) -> List[str]:
+    def get_sources_by_status(self, status: str) -> list[str]:
         """
         Получить ID источников по статусу.
 
@@ -120,7 +116,9 @@ class IndexManager:
 
         self.save_sources_indices(indices)
 
-    def remove_source_from_indices(self, source_id: str, name: Optional[str] = None, status: Optional[str] = None) -> None:
+    def remove_source_from_indices(
+        self, source_id: str, name: str | None = None, status: str | None = None
+    ) -> None:
         """
         Удалить источник из индексов.
 
@@ -148,10 +146,10 @@ class IndexManager:
     def update_source_in_indices(
         self,
         source_id: str,
-        old_name: Optional[str] = None,
-        new_name: Optional[str] = None,
-        old_status: Optional[str] = None,
-        new_status: Optional[str] = None
+        old_name: str | None = None,
+        new_name: str | None = None,
+        old_status: str | None = None,
+        new_status: str | None = None,
     ) -> None:
         """
         Обновить источник в индексах.
@@ -191,7 +189,7 @@ class IndexManager:
 
     # === Индексы для Devices ===
 
-    def load_devices_indices(self) -> Dict[str, Any]:
+    def load_devices_indices(self) -> dict[str, Any]:
         """
         Загрузить индексы devices.
 
@@ -202,12 +200,12 @@ class IndexManager:
             return self._create_default_devices_indices()
 
         try:
-            with open(self.devices_indices_file, "r") as f:
+            with open(self.devices_indices_file) as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             return self._create_default_devices_indices()
 
-    def save_devices_indices(self, indices: Dict[str, Any]) -> None:
+    def save_devices_indices(self, indices: dict[str, Any]) -> None:
         """
         Сохранить индексы devices.
 
@@ -218,21 +216,17 @@ class IndexManager:
         with open(self.devices_indices_file, "w") as f:
             json.dump(indices, f, indent=2, default=str)
 
-    def _create_default_devices_indices(self) -> Dict[str, Any]:
+    def _create_default_devices_indices(self) -> dict[str, Any]:
         """Создать индексы devices по умолчанию."""
         return {
             "by_source_id": {},
             "by_device_type": {},
             "by_ha_entity_id": {},
-            "by_status": {
-                "available": [],
-                "unavailable": [],
-                "removed_from_ha": []
-            },
-            "last_updated": datetime.utcnow().isoformat()
+            "by_status": {"available": [], "unavailable": [], "removed_from_ha": []},
+            "last_updated": datetime.utcnow().isoformat(),
         }
 
-    def get_devices_by_source_id(self, source_id: str) -> List[str]:
+    def get_devices_by_source_id(self, source_id: str) -> list[str]:
         """
         Получить ID устройств по source_id.
 
@@ -245,7 +239,7 @@ class IndexManager:
         indices = self.load_devices_indices()
         return indices.get("by_source_id", {}).get(source_id, [])
 
-    def get_devices_by_type(self, device_type: str) -> List[str]:
+    def get_devices_by_type(self, device_type: str) -> list[str]:
         """
         Получить ID устройств по типу.
 
@@ -258,7 +252,7 @@ class IndexManager:
         indices = self.load_devices_indices()
         return indices.get("by_device_type", {}).get(device_type, [])
 
-    def get_device_by_ha_entity_id(self, ha_entity_id: str) -> Optional[str]:
+    def get_device_by_ha_entity_id(self, ha_entity_id: str) -> str | None:
         """
         Получить ID устройства по ha_entity_id.
 
@@ -271,7 +265,7 @@ class IndexManager:
         indices = self.load_devices_indices()
         return indices.get("by_ha_entity_id", {}).get(ha_entity_id)
 
-    def get_devices_by_status(self, status: str) -> List[str]:
+    def get_devices_by_status(self, status: str) -> list[str]:
         """
         Получить ID устройств по статусу.
 
@@ -285,12 +279,7 @@ class IndexManager:
         return indices.get("by_status", {}).get(status, [])
 
     def add_device_to_indices(
-        self,
-        device_id: str,
-        source_id: str,
-        device_type: str,
-        ha_entity_id: str,
-        status: str
+        self, device_id: str, source_id: str, device_type: str, ha_entity_id: str, status: str
     ) -> None:
         """
         Добавить устройство в индексы.
@@ -332,10 +321,10 @@ class IndexManager:
     def remove_device_from_indices(
         self,
         device_id: str,
-        source_id: Optional[str] = None,
-        device_type: Optional[str] = None,
-        ha_entity_id: Optional[str] = None,
-        status: Optional[str] = None
+        source_id: str | None = None,
+        device_type: str | None = None,
+        ha_entity_id: str | None = None,
+        status: str | None = None,
     ) -> None:
         """
         Удалить устройство из индексов.
@@ -377,14 +366,14 @@ class IndexManager:
     def update_device_in_indices(
         self,
         device_id: str,
-        old_source_id: Optional[str] = None,
-        new_source_id: Optional[str] = None,
-        old_device_type: Optional[str] = None,
-        new_device_type: Optional[str] = None,
-        old_ha_entity_id: Optional[str] = None,
-        new_ha_entity_id: Optional[str] = None,
-        old_status: Optional[str] = None,
-        new_status: Optional[str] = None
+        old_source_id: str | None = None,
+        new_source_id: str | None = None,
+        old_device_type: str | None = None,
+        new_device_type: str | None = None,
+        old_ha_entity_id: str | None = None,
+        new_ha_entity_id: str | None = None,
+        old_status: str | None = None,
+        new_status: str | None = None,
     ) -> None:
         """
         Обновить устройство в индексах.

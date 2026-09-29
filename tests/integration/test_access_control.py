@@ -4,16 +4,18 @@
 Тесты проверяют полный сценарий: назначение прав → проверка доступа → отзыв прав.
 """
 
+from unittest.mock import patch
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
     from src.main import app
+
     return TestClient(app)
 
 
@@ -46,7 +48,7 @@ def sample_source(client, admin_user_id):
     response = client.post(
         "/api/v1/devices/sources",
         json=payload,
-        headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+        headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"},
     )
     return response.json() if response.status_code == 201 else None
 
@@ -79,22 +81,23 @@ class TestAccessControlIntegration:
             {
                 "entity_id": "light.living_room",
                 "state": "on",
-                "attributes": {"friendly_name": "Living Room Light"}
+                "attributes": {"friendly_name": "Living Room Light"},
             }
         ]
 
-        with patch("src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
-                   return_value=mock_devices_response):
+        with patch(
+            "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+            return_value=mock_devices_response,
+        ):
             sync_response = client.post(
                 f"/api/v1/devices/sources/{sample_source['id']}/sync",
-                headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+                headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"},
             )
             assert sync_response.status_code in [200, 202]
 
         # Получаем ID загруженного устройства
         devices_response = client.get(
-            "/api/v1/devices",
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            "/api/v1/devices", headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
         )
         assert devices_response.status_code == 200
         devices = devices_response.json()
@@ -104,8 +107,7 @@ class TestAccessControlIntegration:
 
         # 2. Обычный пользователь не видит устройство (нет доступа)
         user_devices_response = client.get(
-            "/api/v1/devices",
-            headers={"X-User-ID": regular_user_id}
+            "/api/v1/devices", headers={"X-User-ID": regular_user_id}
         )
         assert user_devices_response.status_code == 200
         user_devices = user_devices_response.json()
@@ -117,7 +119,7 @@ class TestAccessControlIntegration:
         grant_response = client.post(
             f"/api/v1/devices/{device_id}/access",
             json={"user_id": regular_user_id, "role": "viewer"},
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"},
         )
         assert grant_response.status_code in [200, 201]
         access_record = grant_response.json()
@@ -126,8 +128,7 @@ class TestAccessControlIntegration:
 
         # 4. Пользователь теперь видит устройство
         user_devices_response = client.get(
-            "/api/v1/devices",
-            headers={"X-User-ID": regular_user_id}
+            "/api/v1/devices", headers={"X-User-ID": regular_user_id}
         )
         assert user_devices_response.status_code == 200
         user_devices = user_devices_response.json()
@@ -136,8 +137,7 @@ class TestAccessControlIntegration:
 
         # Пользователь может получить информацию об устройстве
         device_detail_response = client.get(
-            f"/api/v1/devices/{device_id}",
-            headers={"X-User-ID": regular_user_id}
+            f"/api/v1/devices/{device_id}", headers={"X-User-ID": regular_user_id}
         )
         assert device_detail_response.status_code == 200
 
@@ -145,7 +145,7 @@ class TestAccessControlIntegration:
         command_response = client.post(
             f"/api/v1/devices/{device_id}/command",
             json={"command_name": "turn_off"},
-            headers={"X-User-ID": regular_user_id}
+            headers={"X-User-ID": regular_user_id},
         )
         # Должен быть 403 Forbidden
         assert command_response.status_code == 403
@@ -154,7 +154,7 @@ class TestAccessControlIntegration:
         update_response = client.post(
             f"/api/v1/devices/{device_id}/access",
             json={"user_id": regular_user_id, "role": "controller"},
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"},
         )
         assert update_response.status_code in [200, 201]
         updated_access = update_response.json()
@@ -164,7 +164,7 @@ class TestAccessControlIntegration:
         command_response = client.post(
             f"/api/v1/devices/{device_id}/command",
             json={"command_name": "turn_off"},
-            headers={"X-User-ID": regular_user_id}
+            headers={"X-User-ID": regular_user_id},
         )
         # Должен быть успешный ответ (200 или 202)
         assert command_response.status_code in [200, 202]
@@ -172,14 +172,13 @@ class TestAccessControlIntegration:
         # 8. Администратор отзывает доступ
         revoke_response = client.delete(
             f"/api/v1/devices/{device_id}/access/{access_id}",
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"},
         )
         assert revoke_response.status_code in [200, 204]
 
         # 9. Пользователь больше не видит устройство
         user_devices_response = client.get(
-            "/api/v1/devices",
-            headers={"X-User-ID": regular_user_id}
+            "/api/v1/devices", headers={"X-User-ID": regular_user_id}
         )
         assert user_devices_response.status_code == 200
         user_devices = user_devices_response.json()
@@ -188,8 +187,7 @@ class TestAccessControlIntegration:
 
         # 10. Пользователь не может получить информацию об устройстве
         device_detail_response = client.get(
-            f"/api/v1/devices/{device_id}",
-            headers={"X-User-ID": regular_user_id}
+            f"/api/v1/devices/{device_id}", headers={"X-User-ID": regular_user_id}
         )
         # Должен быть 403 или 404
         assert device_detail_response.status_code in [403, 404]
@@ -204,8 +202,7 @@ class TestAccessControlIntegration:
 
         # Загружаем устройство
         devices_response = client.get(
-            "/api/v1/devices",
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            "/api/v1/devices", headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
         )
         assert devices_response.status_code == 200
         devices = devices_response.json()
@@ -220,21 +217,21 @@ class TestAccessControlIntegration:
         client.post(
             f"/api/v1/devices/{device_id}/access",
             json={"user_id": regular_user_id, "role": "viewer"},
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"},
         )
 
         # Второму пользователю - controller
         client.post(
             f"/api/v1/devices/{device_id}/access",
             json={"user_id": another_user_id, "role": "controller"},
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"},
         )
 
         # Проверяем что первый пользователь не может отправить команду
         response1 = client.post(
             f"/api/v1/devices/{device_id}/command",
             json={"command_name": "turn_on"},
-            headers={"X-User-ID": regular_user_id}
+            headers={"X-User-ID": regular_user_id},
         )
         assert response1.status_code == 403
 
@@ -242,21 +239,18 @@ class TestAccessControlIntegration:
         response2 = client.post(
             f"/api/v1/devices/{device_id}/command",
             json={"command_name": "turn_on"},
-            headers={"X-User-ID": another_user_id}
+            headers={"X-User-ID": another_user_id},
         )
         assert response2.status_code in [200, 202]
 
     @pytest.mark.skip(reason="Зависит от T064-T067 реализации")
-    def test_admin_access_restrictions(
-        self, client, admin_user_id, regular_user_id, sample_source
-    ):
+    def test_admin_access_restrictions(self, client, admin_user_id, regular_user_id, sample_source):
         """T063: Проверка что только админ может управлять доступом."""
         if not sample_source:
             pytest.skip("Source creation failed")
 
         devices_response = client.get(
-            "/api/v1/devices",
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            "/api/v1/devices", headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
         )
         assert devices_response.status_code == 200
         devices = devices_response.json()
@@ -270,7 +264,7 @@ class TestAccessControlIntegration:
         response = client.post(
             f"/api/v1/devices/{device_id}/access",
             json={"user_id": regular_user_id, "role": "viewer"},
-            headers={"X-User-ID": regular_user_id}  # Не админ
+            headers={"X-User-ID": regular_user_id},  # Не админ
         )
 
         # Должен быть 403 Forbidden
@@ -280,7 +274,7 @@ class TestAccessControlIntegration:
         response = client.post(
             f"/api/v1/devices/{device_id}/access",
             json={"user_id": regular_user_id, "role": "viewer"},
-            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"}
+            headers={"X-User-ID": admin_user_id, "X-Is-Admin": "true"},
         )
 
         # Должен быть успешный ответ

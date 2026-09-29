@@ -9,7 +9,8 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class Migration001InitSources:
 
             # Инициализируем индексы
             self._init_indices()
-            logger.info(f"Индексы для sources инициализированы")
+            logger.info("Индексы для sources инициализированы")
 
             logger.info(f"Миграция {self.name} успешно применена")
 
@@ -75,26 +76,26 @@ class Migration001InitSources:
 
     def _init_sources_file(self) -> None:
         """Инициализировать файл sources.json с пустой структурой."""
-        sources_structure: Dict[str, Any] = {}
+        sources_structure: dict[str, Any] = {}
         with open(self.sources_file, "w") as f:
             json.dump(sources_structure, f, indent=2)
 
     def _init_indices(self) -> None:
         """Инициализировать индексные структуры для оптимизации поиска."""
-        indices: Dict[str, Any] = {
+        indices: dict[str, Any] = {
             "by_name": {},  # Индекс: имя -> список ID источников
             "by_status": {  # Индекс: статус -> список ID источников
                 "connected": [],
                 "disconnected": [],
-                "error": []
+                "error": [],
             },
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.utcnow().isoformat(),
         }
 
         with open(self.indices_file, "w") as f:
             json.dump(indices, f, indent=2, default=str)
 
-    def get_indices(self) -> Dict[str, Any]:
+    def get_indices(self) -> dict[str, Any]:
         """
         Получить текущие индексы sources.
 
@@ -105,20 +106,16 @@ class Migration001InitSources:
             self._init_indices()
 
         try:
-            with open(self.indices_file, "r") as f:
+            with open(self.indices_file) as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             return {
                 "by_name": {},
-                "by_status": {
-                    "connected": [],
-                    "disconnected": [],
-                    "error": []
-                },
-                "last_updated": datetime.utcnow().isoformat()
+                "by_status": {"connected": [], "disconnected": [], "error": []},
+                "last_updated": datetime.utcnow().isoformat(),
             }
 
-    def update_indices(self, indices: Dict[str, Any]) -> None:
+    def update_indices(self, indices: dict[str, Any]) -> None:
         """
         Обновить индексные структуры.
 
@@ -138,17 +135,13 @@ class Migration001InitSources:
                 logger.warning(f"Файл {self.sources_file} не существует")
                 return
 
-            with open(self.sources_file, "r") as f:
+            with open(self.sources_file) as f:
                 sources = json.load(f)
 
             # Инициализируем новые индексы
-            indices: Dict[str, Any] = {
+            indices: dict[str, Any] = {
                 "by_name": {},
-                "by_status": {
-                    "connected": [],
-                    "disconnected": [],
-                    "error": []
-                }
+                "by_status": {"connected": [], "disconnected": [], "error": []},
             }
 
             # Заполняем индексы

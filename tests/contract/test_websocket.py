@@ -4,9 +4,8 @@
 T043: Проверяет контракт для WebSocket подписки на события state_changed.
 """
 
-import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiohttp import WSMsgType

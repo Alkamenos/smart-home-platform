@@ -203,6 +203,7 @@ def create_app(
     # Include device management routes (T051-T057)
     try:
         from .routes.devices import devices, sources, websocket
+
         app.include_router(devices.router)
         app.include_router(sources.router)
         app.include_router(websocket.router)
@@ -271,8 +272,8 @@ def create_app(
 
     # Initialize device management services (T049-T060)
     try:
-        from src.services.device_service import DeviceService
         from src.core.events.event_bus import EventBus
+        from src.services.device_service import DeviceService
 
         event_bus = EventBus()
         device_service = DeviceService(

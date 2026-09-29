@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 import threading
 from collections import OrderedDict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class DeviceCache:
         """
         self.max_size = max_size
         self.ttl_seconds = ttl_seconds
-        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._lock = threading.RLock()
 
         # Метрики производительности
@@ -53,7 +53,7 @@ class DeviceCache:
         self.cache_misses = 0
         self.invalidations = 0
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Получить значение из кэша.
 
@@ -73,7 +73,7 @@ class DeviceCache:
 
             # Проверить TTL
             expires_at = entry.get("expires_at")
-            if expires_at and datetime.now(timezone.utc) > expires_at:
+            if expires_at and datetime.now(UTC) > expires_at:
                 del self._cache[key]
                 self.cache_misses += 1
                 self.invalidations += 1
@@ -105,13 +105,15 @@ class DeviceCache:
                 logger.debug(f"LRU вытеснение: {removed_key} (размер кэша: {self.max_size})")
 
             # Добавить новый элемент с TTL
-            expires_at = datetime.now(timezone.utc) + timedelta(seconds=self.ttl_seconds)
+            expires_at = datetime.now(UTC) + timedelta(seconds=self.ttl_seconds)
             self._cache[key] = {
                 "value": value,
                 "expires_at": expires_at,
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
             }
-            logger.debug(f"Элемент добавлен: {key} (TTL: {self.ttl_seconds}s, всего: {len(self._cache)})")
+            logger.debug(
+                f"Элемент добавлен: {key} (TTL: {self.ttl_seconds}s, всего: {len(self._cache)})"
+            )
 
     def invalidate(self, key: str) -> bool:
         """
@@ -165,7 +167,7 @@ class DeviceCache:
         with self._lock:
             return len(self._cache)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Получить статистику кэша.
 
@@ -174,11 +176,7 @@ class DeviceCache:
         """
         with self._lock:
             total_requests = self.cache_hits + self.cache_misses
-            hit_rate = (
-                (self.cache_hits / total_requests * 100)
-                if total_requests > 0
-                else 0
-            )
+            hit_rate = (self.cache_hits / total_requests * 100) if total_requests > 0 else 0
 
             return {
                 "cache_size": len(self._cache),
@@ -199,9 +197,10 @@ class DeviceCache:
             Количество удаленных записей
         """
         with self._lock:
-            current_time = datetime.now(timezone.utc)
+            current_time = datetime.now(UTC)
             keys_to_remove = [
-                k for k, v in self._cache.items()
+                k
+                for k, v in self._cache.items()
                 if v.get("expires_at") and current_time > v["expires_at"]
             ]
 
@@ -233,8 +232,6 @@ class DeviceCache:
                 return False
 
             entry = self._cache[key]
-            entry["expires_at"] = datetime.now(timezone.utc) + timedelta(
-                seconds=additional_seconds
-            )
+            entry["expires_at"] = datetime.now(UTC) + timedelta(seconds=additional_seconds)
             logger.debug(f"TTL продлен: {key} (+{additional_seconds}s)")
             return True

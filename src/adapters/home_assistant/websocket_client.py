@@ -8,12 +8,14 @@ WebSocket клиент для синхронизации состояния ус
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import aiohttp
 from pydantic import HttpUrl
 
 from core.persistence.websocket_batcher import WebSocketEvent, WebSocketEventBatcher
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ class HAWebSocketClient:
         self,
         base_url: HttpUrl | str,
         token: str,
-        on_state_changed: Optional[Callable[[dict[str, Any]], None]] = None,
+        on_state_changed: Callable[[dict[str, Any]], None] | None = None,
         batch_timeout_ms: int = 100,
         batch_size_limit: int = 10,
         enable_batching: bool = True,
@@ -42,14 +44,14 @@ class HAWebSocketClient:
         """
         self.base_url = str(base_url).rstrip("/")
         self.token = token
-        self.ws: Optional[aiohttp.ClientWebSocketResponse] = None
+        self.ws: aiohttp.ClientWebSocketResponse | None = None
         self.on_state_changed = on_state_changed
         self._running = False
         self._message_id = 1
-        self._subscription_id: Optional[int] = None
+        self._subscription_id: int | None = None
 
         # Инициализация батчера
-        self._batcher: Optional[WebSocketEventBatcher] = None
+        self._batcher: WebSocketEventBatcher | None = None
         self._enable_batching = enable_batching
         self._batch_timeout_ms = batch_timeout_ms
         self._batch_size_limit = batch_size_limit
@@ -222,9 +224,7 @@ class HAWebSocketClient:
             batch: WebSocketBatch объект с объединёнными событиями
         """
         try:
-            logger.debug(
-                f"Обработка пакета #{batch.batch_id} с {batch.size()} событиями"
-            )
+            logger.debug(f"Обработка пакета #{batch.batch_id} с {batch.size()} событиями")
 
             # Если есть callback, вызываем его с объединённым пакетом
             if self.on_state_changed:
@@ -235,7 +235,7 @@ class HAWebSocketClient:
         except Exception as e:
             logger.error(f"Ошибка при обработке пакета: {e}", exc_info=True)
 
-    def get_batcher(self) -> Optional[WebSocketEventBatcher]:
+    def get_batcher(self) -> WebSocketEventBatcher | None:
         """
         Получить батчер для доступа к статистике и управлению.
 

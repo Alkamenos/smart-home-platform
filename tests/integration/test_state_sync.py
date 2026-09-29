@@ -5,10 +5,8 @@ T046: Синхронизация состояния через WebSocket (<=5 с
 T047: Отправка команд и обработка ошибок
 """
 
-import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -19,10 +17,11 @@ class TestStateSyncIntegration:
     @pytest.mark.asyncio
     async def test_device_state_syncs_within_5_seconds(self):
         """T046: Состояние устройства синхронизируется за <= 5 секунд."""
-        from src.services.device_service import DeviceService
+        from uuid import UUID
+
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
-        from uuid import UUID
+        from src.services.device_service import DeviceService
 
         event_bus = EventBus()
         service = DeviceService(
@@ -64,10 +63,11 @@ class TestStateSyncIntegration:
     @pytest.mark.asyncio
     async def test_handle_state_change_updates_device(self):
         """T046: handle_state_change обновляет состояние устройства в сервисе."""
-        from src.services.device_service import DeviceService
+        from uuid import UUID
+
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
-        from uuid import UUID
+        from src.services.device_service import DeviceService
 
         event_bus = EventBus()
         service = DeviceService(
@@ -104,10 +104,11 @@ class TestStateSyncIntegration:
     @pytest.mark.asyncio
     async def test_unavailable_device_status_after_timeout(self):
         """T060: Устройство переходит в unavailable после 60 сек без обновлений."""
-        from src.services.device_service import DeviceService
+        from uuid import UUID
+
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
-        from uuid import UUID
+        from src.services.device_service import DeviceService
 
         event_bus = EventBus()
         service = DeviceService(
@@ -118,6 +119,7 @@ class TestStateSyncIntegration:
 
         # Создаем устройство с датой обновления давно
         from datetime import datetime, timedelta
+
         device = Device(
             ha_entity_id="sensor.temperature",
             source_id=UUID(int=0),
@@ -139,10 +141,11 @@ class TestCommandExecutionIntegration:
     @pytest.mark.asyncio
     async def test_execute_command_sends_to_ha(self):
         """T047: Команда успешно отправляется в Home Assistant."""
-        from src.services.device_service import DeviceService
+        from uuid import UUID
+
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
-        from uuid import UUID
+        from src.services.device_service import DeviceService
 
         # Mock HA адаптер
         mock_ha_adapter = AsyncMock()
@@ -179,16 +182,15 @@ class TestCommandExecutionIntegration:
     @pytest.mark.asyncio
     async def test_command_execution_error_handling(self):
         """T047: Ошибки при выполнении команды обрабатываются корректно."""
-        from src.services.device_service import DeviceService
+        from uuid import UUID
+
         from src.core.events.event_bus import EventBus
         from src.core.models.device import Device
-        from uuid import UUID
+        from src.services.device_service import DeviceService
 
         # Mock HA адаптер с ошибкой
         mock_ha_adapter = AsyncMock()
-        mock_ha_adapter.call_service = AsyncMock(
-            side_effect=Exception("HA Service Error")
-        )
+        mock_ha_adapter.call_service = AsyncMock(side_effect=Exception("HA Service Error"))
 
         event_bus = EventBus()
         service = DeviceService(

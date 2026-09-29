@@ -1,327 +1,324 @@
-# Модель данных: Интеграция устройств из Home Assistant
+# Модель данных: Интеграция и конфигурирование устройств
 
-**Дата**: 2026-09-29 | **Функция**: 001-device-integration | **Версия**: 1.0
-
-## Обзор моделей данных
-
-Функция использует следующие основные сущности для управления устройствами из Home Assistant:
+**Дата**: 2026-09-29 | **Статус**: Phase 1 Design | **Базис**: [research.md](research.md)
 
 ---
 
-## Сущность 1: HASource (Источник Home Assistant)
+## Основные сущности
 
-**Назначение**: Конфигурация подключения к экземпляру Home Assistant
+### 1. HASource (Источник Home Assistant)
 
-**Поля**:
+Конфигурация подключения к одному экземпляру Home Assistant.
 
-| Поле | Тип | Обязательное | Описание |
-|------|-----|-------------|---------|
-| `id` | UUID | ✅ | Уникальный идентификатор источника |
-| `name` | str | ✅ | Отображаемое название источника (e.g., "Home Assistant Pro") |
-| `url` | str | ✅ | URL для подключения к HA (e.g., "http://192.168.1.100:8123") |
-| `token` | str | ✅ | Long-lived access token (шифруется при сохранении) |
-| `status` | enum | ✅ | Статус соединения: `connected`, `disconnected`, `error` |
-| `last_sync` | datetime | ❌ | Время последней успешной синхронизации |
-| `last_error` | str | ❌ | Сообщение об ошибке последней попытки подключения |
-| `device_count` | int | ❌ | Количество загруженных устройств из этого источника |
-| `created_at` | datetime | ✅ | Время создания записи |
-| `updated_at` | datetime | ✅ | Время последнего обновления |
-
-**Валидация**:
-- `name`: min_length=1, max_length=255
-- `url`: должен быть валидный HTTP/HTTPS URL
-- `token`: min_length=10 (токены HA обычно длинные)
-- Уникальность: пара (url, name) должна быть уникальной
-
-**Отношения**:
-- 1 HASource → N Device (один источник содержит много устройств)
-- 1 HASource → N SyncLog (история синхронизаций)
-
----
-
-## Сущность 2: Device (Устройство)
-
-**Назначение**: Представляет физическое или виртуальное устройство в Home Assistant
-
-**Поля**:
-
-| Поле | Тип | Обязательное | Описание |
-|------|-----|-------------|---------|
-| `id` | UUID | ✅ | Уникальный идентификатор устройства в платформе |
-| `ha_entity_id` | str | ✅ | Идентификатор сущности в HA (e.g., "light.kitchen_light") |
-| `source_id` | UUID | ✅ | Ссылка на HASource, из которого загружено устройство |
-| `name` | str | ✅ | Исходное название устройства из HA |
-| `device_type` | str | ✅ | Тип устройства (e.g., "light", "switch", "binary_sensor", "climate") |
-| `model` | str | ❌ | Модель устройства (e.g., "Philips Hue A19") |
-| `manufacturer` | str | ❌ | Производитель устройства (e.g., "Philips") |
-| `state` | dict | ✅ | Текущее состояние (значение и атрибуты из HA) |
-| `attributes` | dict | ❌ | Дополнительные атрибуты (brightness, color_temp, etc.) |
-| `status` | enum | ✅ | Статус доступности: `available`, `unavailable`, `removed_from_ha` |
-| `config` | DeviceConfig | ✅ | Конфигурация пользователя для устройства |
-| `last_state_update` | datetime | ✅ | Время последнего обновления состояния |
-| `created_at` | datetime | ✅ | Время добавления в платформу |
-| `updated_at` | datetime | ✅ | Время последнего обновления записи |
-
-**Валидация**:
-- `ha_entity_id`: должен соответствовать формату `domain.object_id` (e.g., `light.kitchen`)
-- `device_type`: должен быть из одобренного списка типов
-- Уникальность: пара (source_id, ha_entity_id) должна быть уникальной
-- `state`: должен содержать поле `state` или `value`
-
-**Отношения**:
-- N Device ← 1 HASource (много устройств от одного источника)
-- 1 Device → 1 DeviceConfig (одна конфигурация на устройство)
-- 1 Device → N DeviceCommand (устройство поддерживает несколько команд)
-- 1 Device → N SyncEvent (логирование операций)
-
----
-
-## Сущность 3: DeviceConfig (Конфигурация устройства)
-
-**Назначение**: Пользовательские параметры конфигурации для устройства
-
-**Поля**:
-
-| Поле | Тип | Обязательное | Описание |
-|------|-----|-------------|---------|
-| `id` | UUID | ✅ | Уникальный идентификатор |
-| `device_id` | UUID | ✅ | Ссылка на Device |
-| `display_name` | str | ✅ | Пользовательское название (может отличаться от HA) |
-| `description` | str | ❌ | Описание устройства и его назначения |
-| `location` | str | ❌ | Расположение (e.g., "kitchen", "bedroom") |
-| `tags` | list[str] | ❌ | Пользовательские теги для группировки (e.g., ["lights", "automatable"]) |
-| `notes` | str | ❌ | Дополнительные заметки администратора |
-| `enabled` | bool | ✅ | Включено ли устройство для использования (default: true) |
-| `custom_settings` | dict | ❌ | Дополнительные пользовательские параметры |
-| `created_by` | UUID | ❌ | ID пользователя, создавшего конфигурацию |
-| `updated_by` | UUID | ❌ | ID пользователя, последним обновившего конфигурацию |
-| `created_at` | datetime | ✅ | Время создания конфигурации |
-| `updated_at` | datetime | ✅ | Время последнего обновления |
-
-**Валидация**:
-- `display_name`: min_length=1, max_length=255
-- `display_name`: должна быть уникальной в пределах одного источника
-- `tags`: каждый тег min_length=1, max_length=50
-- `tags`: макс 10 тегов
-
-**Отношения**:
-- 1 DeviceConfig ← 1 Device
-
----
-
-## Сущность 4: DeviceCommand (Команда устройства)
-
-**Назначение**: Описание команды, которую может выполнить устройство
-
-**Поля**:
-
-| Поле | Тип | Обязательное | Описание |
-|------|-----|-------------|---------|
-| `id` | UUID | ✅ | Уникальный идентификатор команды |
-| `device_id` | UUID | ✅ | Ссылка на Device |
-| `name` | str | ✅ | Название команды (e.g., "turn_on", "set_brightness") |
-| `ha_service` | str | ✅ | Сервис HA для выполнения (e.g., "light.turn_on") |
-| `description` | str | ❌ | Описание что делает команда |
-| `parameters` | dict[str, Parameter] | ❌ | Параметры команды с типами и ограничениями |
-| `return_type` | str | ❌ | Тип результата (void, boolean, dict) |
-| `execution_timeout` | int | ❌ | Таймаут выполнения в секундах (default: 30) |
-| `is_safe` | bool | ✅ | Безопасна ли команда (может ли вызвать проблемы) |
-
-**Пример структуры**:
-```json
-{
-  "id": "...",
-  "device_id": "...",
-  "name": "set_brightness",
-  "ha_service": "light.turn_on",
-  "description": "Set light brightness to specific level",
-  "parameters": {
-    "brightness": {
-      "type": "integer",
-      "min": 0,
-      "max": 255,
-      "required": true,
-      "description": "Brightness level (0-255)"
-    }
-  },
-  "is_safe": true
-}
+```
+HASource
+├── id: UUID (primary key)
+├── name: str (min 1, max 255) — название источника
+├── url: str (valid HTTPS URL) — адрес HA инстанса
+├── token: str (encrypted at-rest) — long-lived token HA
+├── status: enum [connected, disconnected, error] — статус соединения
+├── last_sync: datetime | null — время последней синхронизации
+├── last_error: str | null — последняя ошибка (например "401 Unauthorized")
+├── created_at: datetime
+└── updated_at: datetime
 ```
 
-**Валидация**:
-- `ha_service`: должен соответствовать формату `domain.service`
-- `parameters`: каждый параметр должен иметь тип и описание
-- Уникальность: пара (device_id, name) должна быть уникальной
+**Constraints**:
+- `url` must be valid HTTPS URL (http allowed for localhost testing)
+- `token` automatically encrypted/decrypted by model (see `core/security/encryption.py`)
+- One HASource can contain many Devices (1:N relationship)
+- `name` unique within system (no duplicates)
 
-**Отношения**:
-- N DeviceCommand ← 1 Device
+**Validation rules**:
+- URL format: regex `https?://[a-zA-Z0-9.-]+(:[0-9]+)?`
+- Token length: 30+ characters
+- Status transitions: connected → disconnected → error → connected (only)
 
 ---
 
-## Сущность 5: SyncEvent (События синхронизации)
+### 2. Device (Устройство)
 
-**Назначение**: Логирование всех операций с устройствами для аудита и отладки
+Физическое или виртуальное устройство в Home Assistant, синхронизированное в платформу.
 
-**Поля**:
+```
+Device
+├── id: UUID (primary key платформы)
+├── ha_entity_id: str — unique ID в HA (format: domain.entity_name)
+├── ha_source_id: UUID (foreign key) — ссылка на HASource
+├── device_name: str — название устройства в HA (неизменяемое)
+├── device_type: str — тип устройства (light, switch, sensor, etc)
+├── model: str | null — модель устройства
+├── manufacturer: str | null — производитель
+├── state: dict — текущее состояние (json attrs)
+├── status: enum [available, unavailable, removed_from_ha]
+├── config: DeviceConfig (1:1 relationship)
+├── last_state_update: datetime — когда последнее обновление состояния
+├── created_at: datetime
+└── updated_at: datetime
+```
 
-| Поле | Тип | Обязательное | Описание |
-|------|-----|-------------|---------|
-| `id` | UUID | ✅ | Уникальный идентификатор события |
-| `device_id` | UUID | ✅ | Ссылка на Device |
-| `source_id` | UUID | ❌ | Ссылка на HASource (для событий синхронизации источника) |
-| `event_type` | enum | ✅ | Тип события: `device_loaded`, `device_removed`, `config_changed`, `state_changed`, `command_sent`, `sync_started`, `sync_completed`, `sync_failed` |
-| `details` | dict | ❌ | Подробности события (что именно изменилось) |
-| `user_id` | UUID | ❌ | ID пользователя если действие инициировано пользователем |
-| `status` | enum | ❌ | Статус события: `pending`, `success`, `failed`, `partial` |
-| `error_message` | str | ❌ | Сообщение об ошибке если статус failed |
-| `timestamp` | datetime | ✅ | Время события |
+**Constraints**:
+- `ha_entity_id` + `ha_source_id` = unique key (устройство идентифицируется ha_entity_id внутри источника)
+- `device_name` не редактируется (из HA); редактируется только `config.display_name`
+- `status` transitions: available → unavailable → removed_from_ha (not reversible)
 
-**Примеры деталей**:
-```json
-{
-  "event_type": "config_changed",
-  "details": {
-    "old_value": {"display_name": "Light 1"},
-    "new_value": {"display_name": "Kitchen Light"},
-    "changed_fields": ["display_name"]
+**Validation rules**:
+- `ha_entity_id` format: `[a-z_]+\.[a-z0-9_]+`
+- `device_type` must be known HA domain (light, switch, binary_sensor, etc)
+- `state` is arbitrary dict from HA (no fixed schema)
+
+---
+
+### 3. DeviceConfig (Конфигурация устройства)
+
+Пользовательские параметры и метаданные для Device.
+
+```
+DeviceConfig
+├── id: UUID
+├── device_id: UUID (foreign key) — 1:1 relationship
+├── display_name: str (min 1, max 255) — пользовательское название
+├── description: str (max 1000) | null
+├── location: str (max 255) | null — комната/зона (Кухня, Гостиная)
+├── tags: List[str] (max 10 tags, each max 50 chars)
+├── notes: str (max 2000) | null — пользовательские заметки
+├── enabled: bool = true — может ли пользователь использовать устройство
+├── custom_settings: dict | null — расширяемые пользовательские параметры
+├── created_by: UUID (user_id)
+├── updated_by: UUID | null (user_id)
+├── created_at: datetime
+└── updated_at: datetime
+```
+
+**Constraints**:
+- `display_name` must be unique within `ha_source_id` (не может быть двух устройств с одним именем в источнике)
+- `tags` must be lowercase alphanumeric + dash (regex: `[a-z0-9-]+`)
+- Если Device удалено из HA, DeviceConfig остается с `enabled: false`
+
+**Validation rules**:
+- display_name regex: `^[a-zA-Zа-яА-Я0-9\s\-.,()]*$`
+- description HTML sanitize (remove scripts)
+- location autocomplete по существующим значениям
+
+---
+
+### 4. DeviceCommand (Команда устройства)
+
+Действие, которое можно выполнить на Device (управление).
+
+```
+DeviceCommand
+├── id: UUID
+├── device_id: UUID (foreign key) — Device может иметь много команд (1:N)
+├── name: str (min 1, max 255) — display name (turn_on → "Включить")
+├── ha_service: str (format: domain.service) — HA сервис для вызова
+├── description: str | null
+├── parameters: Dict[str, Parameter] — параметры команды
+├── return_type: str | null — тип возвращаемого значения (if any)
+├── execution_timeout: int (1-300 sec, default 30) — timeout выполнения
+├── is_safe: bool = true — безопасно ли вызывать автоматически
+└── created_at: datetime
+```
+
+**Parameter (вложенная структура)**:
+```
+Parameter
+├── name: str
+├── type: str (string, number, boolean, enum, array)
+├── required: bool
+├── allowed_values: List | null — для enum type
+├── default: Any | null
+└── description: str | null
+```
+
+**Examples**:
+```
+Light device commands:
+- turn_on: light.turn_on (params: brightness, color_temp, effect)
+- turn_off: light.turn_off (no params)
+- toggle: light.toggle (no params)
+
+Switch device commands:
+- turn_on: switch.turn_on
+- turn_off: switch.turn_off
+```
+
+**Constraints**:
+- `name` unique within Device
+- `ha_service` must match HA service registry
+- `execution_timeout` must be 1-300 seconds
+
+---
+
+### 5. DeviceSyncEvent (События синхронизации)
+
+Логирование всех операций с устройствами для audit trail.
+
+```
+DeviceSyncEvent
+├── id: UUID
+├── device_id: UUID (foreign key)
+├── event_type: enum [loaded, config_changed, state_changed, command_sent, command_failed]
+├── details: dict — event-specific data (see below)
+├── user_id: UUID | null — who triggered (null if system event)
+├── timestamp: datetime (UTC)
+└── trace_id: str | null — для корреляции с логами
+```
+
+**Event-specific details**:
+
+```
+event_type: "loaded"
+details: {
+  "ha_entity_id": "light.kitchen",
+  "device_type": "light",
+  "state": {...}
+}
+
+event_type: "config_changed"
+details: {
+  "changes": {
+    "display_name": ["Кухня", "Кухня свет"],
+    "tags": [["old"], ["old", "priority"]]
   }
 }
 
-{
-  "event_type": "state_changed",
-  "details": {
-    "old_state": {"state": "off"},
-    "new_state": {"state": "on", "brightness": 128}
-  }
+event_type: "state_changed"
+details: {
+  "old_state": {"state": "off"},
+  "new_state": {"state": "on", "brightness": 255},
+  "source": "ha"  # or "user"
+}
+
+event_type: "command_sent"
+details: {
+  "command_id": "uuid-xxx",
+  "command_name": "turn_on",
+  "parameters": {"brightness": 100},
+  "service_call": "light.turn_on"
+}
+
+event_type: "command_failed"
+details: {
+  "command_id": "uuid-xxx",
+  "error": "Service not found",
+  "http_status": 404
 }
 ```
 
-**Валидация**:
-- `event_type`: только из допустимого списка
-- `details`: должны быть валидным JSON
-
-**Отношения**:
-- N SyncEvent ← 1 Device
-- N SyncEvent ← 1 HASource
-
----
-
-## Переходы состояния
-
-### Device State Transitions
-
-```
-[available] ---(sync, not in HA)---> [removed_from_ha]
-[available] ---(connection lost)----> [unavailable]
-[unavailable] ---(connection restored)---> [available]
-[removed_from_ha] ---(readded to HA)---> [available]
-```
-
-**Правила**:
-- Устройство считается `available` если оно существует в текущей синхронизации HA
-- Устройство становится `unavailable` если последнее обновление состояния старше 60 секунд
-- Устройство становится `removed_from_ha` если оно не найдено при синхронизации, но остается в БД
-
-### HASource Connection State Transitions
-
-```
-[disconnected] ---(connect attempt)---> [connected]
-[connected] ---(connection lost)-------> [disconnected]
-[connected] ---(error)-----------------> [error]
-[error] ---(retry with backoff)--------> [connected]
-```
+**Constraints**:
+- Events are immutable (no updates, only inserts)
+- Retention: keep for 1 year (configurable)
+- Query optimization: index on `device_id` + `timestamp`
 
 ---
 
 ## Отношения между сущностями
 
 ```
-HASource
-├── id: UUID (PK)
-└── 1 ↔ N
-    └── Device
-        ├── id: UUID (PK)
-        ├── source_id: UUID (FK)
-        ├── 1 ↔ 1
-        │   └── DeviceConfig
-        │       ├── id: UUID (PK)
-        │       └── device_id: UUID (FK)
-        ├── 1 ↔ N
-        │   └── DeviceCommand
-        │       ├── id: UUID (PK)
-        │       └── device_id: UUID (FK)
-        └── 1 ↔ N
-            └── SyncEvent
-                ├── id: UUID (PK)
-                └── device_id: UUID (FK)
+HASource (1)
+    ↓
+    → (1:N) → Device
+                  ↓
+                  → (1:1) → DeviceConfig
+                  ↓
+                  → (1:N) → DeviceCommand
+                  ↓
+                  → (1:N) → DeviceSyncEvent
 
-HASource
-├── id: UUID (PK)
-└── 1 ↔ N
-    └── SyncEvent
-        ├── id: UUID (PK)
-        └── source_id: UUID (FK)
+DeviceAccess (для управления доступом, Phase 2):
+    ↓
+    → (N:1) → Device
+    → (N:1) → User
+    → property: role (viewer, controller, admin)
 ```
 
 ---
 
-## Правила валидации
+## Состояния и переходы
 
-### На уровне сущностей
-
-1. **HASource**:
-   - URL должен быть валидный и доступный при сохранении (проверка соединения)
-   - Token не должен быть пустым или содержать пробелы
-   - Name должна быть уникальной в системе
-
-2. **Device**:
-   - ha_entity_id должен быть уникальным для каждого источника
-   - device_type должен быть из разрешенного списка
-   - Если status=removed_from_ha, то last_state_update >= (now - 24 часов)
-
-3. **DeviceConfig**:
-   - display_name не может совпадать с другим устройством в том же источнике
-   - Если enabled=false, то config.tags должны содержать "disabled"
-
-4. **DeviceCommand**:
-   - ha_service должен соответствовать формату domain.service
-   - execution_timeout должен быть > 0 и <= 300 (макс 5 минут)
-
-5. **SyncEvent**:
-   - Если event_type=sync_failed, то status должен быть failed и error_message заполнен
-   - details должны быть JSON-валидными
-
-### На уровне консистентности данных
-
-1. Удаление HASource должно каскадно удалить все Device этого источника
-2. Изменение Device.status в removed_from_ha не должно удалять config и commands
-3. Каждая изменение Device или DeviceConfig должно создать SyncEvent
-4. Все timestamp поля должны быть UTC и соответствовать логическому порядку
-
----
-
-## Персистентность
-
-**Механизм**: JSON-based persistence через существующий механизм проекта в `src/core/persistence/`
-
-**Сохранение**:
-```python
-# Все сущности сохраняются как JSON в data/
-data/
-├── sources.json         # Все HASource
-├── devices.json         # Все Device с embedded DeviceConfig
-├── commands.json        # Все DeviceCommand
-└── events.json          # Все SyncEvent (архив)
+### Device Status State Machine
+```
+[available] ←→ [unavailable]
+    ↓
+[removed_from_ha]  (необратимо, сохраняется в истории)
 ```
 
-**Шифрование**:
-- Токены в HASource.token шифруются перед сохранением в JSON
-- Другие поля сохраняются в открытом виде
+- `available`: устройство доступно в HA и отвечает
+- `unavailable`: не получали обновлений > 60 сек
+- `removed_from_ha`: устройство удалено из HA источника (остается в системе для истории)
 
-**Восстановление**:
-- При загрузке приложения все JSON файлы десериализуются обратно в Pydantic модели
-- Дешифрование токенов происходит при загрузке HASource
+### HASource Status State Machine
+```
+[connected] ←→ [disconnected] ←→ [error]
+                    ↓               ↓
+                 (retry)         (retry)
+```
+
+- `connected`: WebSocket активен или REST API доступен
+- `disconnected`: потеря соединения (retrying)
+- `error`: ошибка аутентификации или авторизации (требует действия администратора)
 
 ---
 
-**Версия**: 1.0 | **Статус**: Завершено | **Дата**: 2026-09-29
+## Сериализация для API
+
+### JSON Schema для DeviceConfig
+```json
+{
+  "id": "uuid-xxx",
+  "display_name": "Кухня свет",
+  "description": "Основное освещение кухни",
+  "location": "Кухня",
+  "tags": ["main", "kitchen"],
+  "enabled": true
+}
+```
+
+### JSON Schema для DeviceCommand
+```json
+{
+  "id": "uuid-yyy",
+  "name": "Включить",
+  "ha_service": "light.turn_on",
+  "parameters": {
+    "brightness": {
+      "type": "number",
+      "required": false,
+      "default": 255
+    },
+    "effect": {
+      "type": "enum",
+      "required": false,
+      "allowed_values": ["none", "colorloop", "random"]
+    }
+  }
+}
+```
+
+---
+
+## Валидация
+
+### На уровне Pydantic моделей
+
+Все сущности используют Pydantic v2 для валидации:
+- Type checking при создании/обновлении
+- Custom validators для бизнес-логики
+- Автоматическое преобразование типов где возможно
+
+### На уровне приложения
+
+- Уникальность constraints проверяются в слое персистентности
+- Иностранные ключи проверяются перед вставкой
+- Состояния проверяются перед переходами
+
+---
+
+## Следующие шаги
+
+Эта модель данных используется для:
+1. **Phase 1**: Создание contracts/ (REST API spec)
+2. **Phase 1**: Создание quickstart.md (валидация сценарий)
+3. **Phase 2**: tasks.md (реализация models и слоев персистентности)
+

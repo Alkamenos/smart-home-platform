@@ -11,11 +11,9 @@
 
 import json
 import re
-from typing import Any, Optional
-from pathlib import Path
+from typing import Any
 
 import pytest
-
 from src.core.security.encryption import TokenEncryptor
 
 
@@ -135,8 +133,7 @@ class SecurityAnalyzer:
                     # Чувствительные поля должны быть либо маскированы, либо быть коротким
                     if not (masked_pattern.match(value) or len(value) <= 8):
                         return False, (
-                            f"Чувствительное поле '{key}' не маскировано: "
-                            f"'{value[:20]}...'"
+                            f"Чувствительное поле '{key}' не маскировано: '{value[:20]}...'"
                         )
 
         return True, "Чувствительные поля маскированы правильно"
@@ -158,10 +155,7 @@ class SecurityAnalyzer:
             for text in [message, error_message]:
                 tokens = self._find_tokens_in_text(text)
                 if tokens:
-                    return False, (
-                        f"Найдены токены в сообщении об ошибке: "
-                        f"{text[:100]}..."
-                    )
+                    return False, (f"Найдены токены в сообщении об ошибке: {text[:100]}...")
 
         return True, f"Проверено {len(error_logs)} сообщений об ошибках - токены не найдены"
 
@@ -178,10 +172,7 @@ class SecurityAnalyzer:
                 # Проверяем что нет открытых токенов в stacktrace
                 tokens = self._find_tokens_in_text(exception_text)
                 if tokens:
-                    return False, (
-                        f"Найдены токены в исключении: "
-                        f"{exception_text[:100]}..."
-                    )
+                    return False, (f"Найдены токены в исключении: {exception_text[:100]}...")
 
         return True, "Исключения проверены - токены не найдены"
 
@@ -200,11 +191,13 @@ class SecurityAnalyzer:
 
         # Статистика
         error_count = len([l for l in self.logs if l.get("level") == "ERROR"])
-        report_lines.extend([
-            f"Всего логов: {len(self.logs)}",
-            f"Логов об ошибках: {error_count}",
-            "",
-        ])
+        report_lines.extend(
+            [
+                f"Всего логов: {len(self.logs)}",
+                f"Логов об ошибках: {error_count}",
+                "",
+            ]
+        )
 
         # Результаты проверок
         checks = [
@@ -225,17 +218,20 @@ class SecurityAnalyzer:
             if not is_valid:
                 all_passed = False
 
-        report_lines.extend([
-            "",
-            "=" * 80,
-            f"ИТОГО: {'ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ' if all_passed else 'ОБНАРУЖЕНЫ ПРОБЛЕМЫ БЕЗОПАСНОСТИ'}",
-            "=" * 80,
-        ])
+        report_lines.extend(
+            [
+                "",
+                "=" * 80,
+                f"ИТОГО: {'ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ' if all_passed else 'ОБНАРУЖЕНЫ ПРОБЛЕМЫ БЕЗОПАСНОСТИ'}",
+                "=" * 80,
+            ]
+        )
 
         return "\n".join(report_lines)
 
 
 # Tests
+
 
 @pytest.fixture
 def secure_logs():

@@ -24,12 +24,12 @@ class DeviceAccess(BaseModel):
         description="ID пользователя (администратора) который предоставил доступ"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Время создания записи доступа"
+        default_factory=datetime.utcnow, description="Время создания записи доступа"
     )
 
     class Config:
         """Pydantic config."""
+
         json_schema_extra = {
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440001",
@@ -37,7 +37,7 @@ class DeviceAccess(BaseModel):
                 "user_id": "user_123",
                 "role": "controller",
                 "granted_by": "admin_user",
-                "created_at": "2026-09-29T10:00:00Z"
+                "created_at": "2026-09-29T10:00:00Z",
             }
         }
 

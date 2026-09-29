@@ -8,9 +8,13 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
 
-from src.core.persistence.migrations.migrations_runner import MigrationsRunner, init_migrations, check_migrations_status
+from src.core.persistence.migrations.migrations_runner import (
+    MigrationsRunner,
+    check_migrations_status,
+    init_migrations,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +42,9 @@ async def initialize_database(data_dir: Path | str = "data", apply_migrations: b
         else:
             logger.info("Проверка статуса миграций...")
             status = await check_migrations_status(data_dir)
-            logger.info(f"Статус: {status['applied_count']} applied, {status['pending_count']} pending")
+            logger.info(
+                f"Статус: {status['applied_count']} applied, {status['pending_count']} pending"
+            )
 
         return True
 
@@ -61,7 +67,9 @@ async def verify_migrations(data_dir: Path | str = "data") -> bool:
         status = await check_migrations_status(data_dir)
         is_complete = status["pending_count"] == 0
 
-        logger.info(f"Статус миграций: {status['applied_count']} applied, {status['pending_count']} pending")
+        logger.info(
+            f"Статус миграций: {status['applied_count']} applied, {status['pending_count']} pending"
+        )
 
         if not is_complete:
             logger.warning("Есть необученные миграции. Необходимо запустить инициализацию БД.")
@@ -120,7 +128,7 @@ def print_migration_status(data_dir: Path | str = "data") -> None:
         print("=" * 60)
         print(f"Applied:  {status['applied_count']}")
         print(f"Pending:  {status['pending_count']}")
-        if status.get('last_migration_time'):
+        if status.get("last_migration_time"):
             print(f"Last:     {status['last_migration_time']}")
         print("\nМиграции:")
         print("-" * 60)
@@ -142,8 +150,7 @@ if __name__ == "__main__":
     import sys
 
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     # Получаем команду из аргументов

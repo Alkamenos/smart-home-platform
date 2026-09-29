@@ -4,15 +4,17 @@
 Тесты проверяют полный сценарий: создание источника → синхронизация → получение устройств.
 """
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
 
 
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
     from src.main import app
+
     return TestClient(app)
 
 
@@ -50,19 +52,21 @@ class TestDeviceSyncIntegration:
                 "attributes": {
                     "friendly_name": "Kitchen Light",
                     "brightness": 255,
-                }
+                },
             },
             {
                 "entity_id": "switch.bedroom_fan",
                 "state": "off",
                 "attributes": {
                     "friendly_name": "Bedroom Fan",
-                }
+                },
             },
         ]
 
-        with patch("src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
-                   return_value=mock_devices):
+        with patch(
+            "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+            return_value=mock_devices,
+        ):
             sync_response = client.post(f"/api/v1/devices/sources/{source_id}/sync")
             assert sync_response.status_code in [200, 202]
 
@@ -95,8 +99,9 @@ class TestDeviceSyncIntegration:
         source_id = source_response.json()["id"]
 
         # Мокируем ошибку подключения
-        with patch("src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
-                   return_value=False):
+        with patch(
+            "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha", return_value=False
+        ):
             sync_response = client.post(f"/api/v1/devices/sources/{source_id}/sync")
 
             # Ожидаем ошибку
@@ -122,4 +127,6 @@ class TestDeviceSyncIntegration:
         # Этот тест проверяет, что данные сохранены и восстановлены
         devices_after = client.get("/api/v1/devices").json()
 
-        assert len(devices_after) == len(devices_before), "Devices не сохранились после перезагрузки"
+        assert len(devices_after) == len(devices_before), (
+            "Devices не сохранились после перезагрузки"
+        )

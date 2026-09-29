@@ -8,12 +8,12 @@
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 from src.core.models.device import Device
-from src.core.models.device_config import DeviceConfig
 from src.core.models.device_access import DeviceAccess
+from src.core.models.device_config import DeviceConfig
+
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class DevicePersistence:
             logger.error(f"Ошибка сохранения устройств: {e}")
             raise
 
-    async def load_device(self, device_id: UUID) -> Optional[Device]:
+    async def load_device(self, device_id: UUID) -> Device | None:
         """Загружает устройство по ID.
 
         Args:
@@ -203,7 +203,7 @@ class DevicePersistence:
             return {}
 
         try:
-            with open(self.devices_file, "r") as f:
+            with open(self.devices_file) as f:
                 return json.load(f)
         except json.JSONDecodeError:
             logger.warning(f"Файл {self.devices_file} повреждён, начинаю с пустого")
@@ -228,7 +228,7 @@ class DevicePersistence:
             logger.error(f"Ошибка сохранения конфигурации устройства: {e}")
             raise
 
-    async def load_device_config(self, device_id: UUID) -> Optional[DeviceConfig]:
+    async def load_device_config(self, device_id: UUID) -> DeviceConfig | None:
         """Загружает конфигурацию устройства по ID устройства.
 
         Args:
@@ -261,7 +261,7 @@ class DevicePersistence:
             return {}
 
         try:
-            with open(self.configs_file, "r") as f:
+            with open(self.configs_file) as f:
                 return json.load(f)
         except json.JSONDecodeError:
             logger.warning(f"Файл {self.configs_file} повреждён, начинаю с пустого")
@@ -323,7 +323,7 @@ class DeviceAccessPersistence:
             logger.error(f"Ошибка сохранения записей доступа: {e}")
             raise
 
-    async def load_access(self, access_id: UUID) -> Optional[DeviceAccess]:
+    async def load_access(self, access_id: UUID) -> DeviceAccess | None:
         """Загружает запись доступа по ID.
 
         Args:
@@ -389,7 +389,7 @@ class DeviceAccessPersistence:
 
     async def load_access_for_user_device(
         self, device_id: UUID, user_id: str
-    ) -> Optional[DeviceAccess]:
+    ) -> DeviceAccess | None:
         """Загружает запись доступа пользователя к устройству.
 
         Args:
@@ -407,9 +407,7 @@ class DeviceAccessPersistence:
             return None
 
         except Exception as e:
-            logger.error(
-                f"Ошибка загрузки доступа user {user_id} -> device {device_id}: {e}"
-            )
+            logger.error(f"Ошибка загрузки доступа user {user_id} -> device {device_id}: {e}")
             return None
 
     async def load_accesses_for_user(self, user_id: str) -> list[DeviceAccess]:
@@ -505,9 +503,7 @@ class DeviceAccessPersistence:
             return False
 
         except Exception as e:
-            logger.error(
-                f"Ошибка удаления доступа user {user_id} -> device {device_id}: {e}"
-            )
+            logger.error(f"Ошибка удаления доступа user {user_id} -> device {device_id}: {e}")
             return False
 
     async def _load_access_data(self) -> dict:
@@ -520,7 +516,7 @@ class DeviceAccessPersistence:
             return {}
 
         try:
-            with open(self.access_file, "r") as f:
+            with open(self.access_file) as f:
                 return json.load(f)
         except json.JSONDecodeError:
             logger.warning(f"Файл {self.access_file} повреждён, начинаю с пустого")

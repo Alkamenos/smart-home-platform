@@ -7,11 +7,11 @@
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 from src.core.models.ha_source import HASource
 from src.core.security.encryption import TokenEncryptor
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 class HASourcePersistence:
     """Управляет сохранением и загрузкой источников Home Assistant."""
 
-    def __init__(self, data_dir: Path | str = "data", encryptor: Optional[TokenEncryptor] = None) -> None:
+    def __init__(
+        self, data_dir: Path | str = "data", encryptor: TokenEncryptor | None = None
+    ) -> None:
         """Инициализация персистентности.
 
         Args:
@@ -60,7 +62,7 @@ class HASourcePersistence:
             logger.error(f"Ошибка сохранения источника: {e}")
             raise
 
-    async def load_source(self, source_id: UUID) -> Optional[HASource]:
+    async def load_source(self, source_id: UUID) -> HASource | None:
         """Загружает источник по ID.
 
         Args:
@@ -160,7 +162,7 @@ class HASourcePersistence:
             return {}
 
         try:
-            with open(self.sources_file, "r") as f:
+            with open(self.sources_file) as f:
                 return json.load(f)
         except json.JSONDecodeError:
             logger.warning(f"Файл {self.sources_file} повреждён, начинаю с пустого")

@@ -1,103 +1,333 @@
-# Задачи: Интеграция и конфигурирование устройств из Home Assistant
+# Задачи реализации: Интеграция и конфигурирование устройств
 
-**Исходные данные**: Документы проектирования из `/specs/001-device-integration/`
+**Статус**: Сгенерирован `/speckit-tasks` | **Дата**: 2026-09-29
 
-**Предусловия**: plan.md (обязательно), spec.md (обязательно для историй пользователя), research.md, data-model.md, contracts/
+**Базис**: [spec.md](spec.md), [plan.md](plan.md), [data-model.md](data-model.md), [contracts/](contracts/), [research.md](research.md)
 
-**Тесты**: Включены тесты контрактов и интеграционные тесты (рекомендуется использовать TDD подход)
+**Язык кодирования**: Python 3.10+ | **Тестирование**: TDD (тесты перед реализацией)
 
-**Организация**: Задачи сгруппированы по историям пользователя для независимой реализации и тестирования каждой истории
+---
 
-## Формат: `[ID] [P?] [Story] Описание`
+## Обзор фаз реализации
 
-- **[P]**: Может выполняться параллельно (разные файлы, нет зависимостей)
-- **[Story]**: К какой истории пользователя относится задача (например, US1, US2, US3)
-- Включены точные пути файлов в описаниях
+| Фаза | Название | Назначение | Статус |
+|------|----------|-----------|--------|
+| **Phase 1** | Setup | Инициализация проекта и инфраструктура | 📋 |
+| **Phase 2** | Foundational | Blocking prerequisites (модели, персистентность) | 📋 |
+| **Phase 3** | US1 (P1) | Синхронизация устройств из HA | 📋 |
+| **Phase 4** | US2 (P1) | Конфигурирование параметров устройства | 📋 |
+| **Phase 5** | US3 (P2) | Управление состоянием устройств | 📋 |
+| **Phase 6** | US4 (P2) | Управление доступом к устройствам | 📋 |
+| **Phase 7** | Polish | Cross-cutting concerns и финализация | 📋 |
 
-## Конвенции путей
+**MVP Scope**: Phase 1 + Phase 2 + Phase 3 + Phase 4
 
-**Структура проекта** (из plan.md):
+---
+
+## Формат задач
+
 ```
-src/
-├── adapters/home_assistant/     # НОВАЯ: HA адаптер
-├── core/models/                 # НОВОЕ: расширить моделями Device
-├── core/persistence/            # СУЩЕСТВУЕТ: для сохранения
-├── services/                    # НОВОЕ: сервис управления
-├── webui/routes/               # СУЩЕСТВУЕТ: расширить интерфейсом
-└── cli/commands/               # НОВОЕ: CLI команды
-
-tests/
-├── contract/                    # Тесты контрактов
-├── integration/                 # Интеграционные тесты
-└── unit/                       # Юнит тесты
+- [ ] [ID] [P?] [Story?] Описание с путем файла
 ```
 
----
+- **Checkbox**: Всегда `- [ ]` (markdown)
+- **[ID]**: Последовательный номер (T001, T002, ...)
+- **[P]**: Только если задача может выполняться параллельно (разные файлы, нет зависимостей)
+- **[Story]**: ТОЛЬКО для фаз с US (US1, US2, US3, US4) — не нужно для Setup/Foundational/Polish
+- **Описание**: Точное действие с путем файла
 
-## Фаза 1: Настройка (Общая инфраструктура)
-
-**Назначение**: Инициализация проекта и базовая структура
-
-- [ ] T001 Создать структуру проекта согласно плану реализации (`src/adapters/home_assistant/`, `src/services/`, `src/webui/routes/devices/`, `src/cli/commands/devices.py`)
-- [ ] T002 [P] Установить зависимости: aiohttp, websockets, cryptography в `pyproject.toml`
-- [ ] T003 [P] Добавить шифрование для токенов в `src/core/security/encryption.py`
-- [ ] T004 [P] Настроить путь для новых модулей в `src/__init__.py`
-
----
-
-## Фаза 2: Фундаментальная инфраструктура (Блокирующие предусловия)
-
-**Назначение**: Ядро инфраструктуры, которая ДОЛЖНА быть завершена ДО НАЧАЛА любой истории пользователя
-
-**⚠️ КРИТИЧНО**: Работа над историями пользователя не может начаться до завершения этой фазы
-
-- [ ] T005 [P] Создать базовую модель `HASource` в `src/core/models/ha_source.py` с полями: id, name, url, token (зашифрованный), status, last_sync, last_error, created_at, updated_at
-- [ ] T006 [P] Создать базовую модель `Device` в `src/core/models/device.py` с полями: id, ha_entity_id, source_id, name, device_type, model, manufacturer, state, status, config, last_state_update, created_at, updated_at
-- [ ] T007 [P] Создать модель `DeviceConfig` в `src/core/models/device_config.py` с полями: id, device_id, display_name (уникальна в пределах источника), description, location, tags (макс 10), notes, enabled, custom_settings, created_by, updated_by, created_at, updated_at
-- [ ] T008 [P] Создать модели событий в `src/core/events/device_events.py`: DeviceLoadedEvent, DeviceConfigChangedEvent, DeviceStateChangedEvent
-- [ ] T009 Создать базовый `DeviceService` в `src/services/device_service.py` с методами инжекции зависимостей (EventBus, persistence, HAAdapter)
-- [ ] T010 Создать `HARestClient` в `src/adapters/home_assistant/rest_client.py` для подключения к HA REST API
-- [ ] T011 Создать `HAWebSocketClient` в `src/adapters/home_assistant/websocket_client.py` для WebSocket синхронизации состояния
-- [ ] T012 Создать слой персистентности для HASource в `src/core/persistence/sources.py` с методами сохранения/загрузки
-- [ ] T013 Создать слой персистентности для Device в `src/core/persistence/devices.py` с методами сохранения/загрузки
-- [ ] T014 Добавить обработчик ошибок и переподключения с exponential backoff в `src/adapters/home_assistant/connection_manager.py`
-- [ ] T015 Настроить структуру таблиц/JSON файлов для: sources.json, devices.json, events.json
-
-**Контрольная точка**: Инфраструктура готова - реализация историй пользователя может начаться параллельно
+**Примеры**:
+- ✅ `- [ ] T001 Создать структуру проекта`
+- ✅ `- [ ] T005 [P] Создать модель HASource в src/core/models/ha_source.py`
+- ✅ `- [ ] T021 [P] [US1] Написать contract тест в tests/contract/test_sources_api.py`
+- ✅ `- [ ] T024 [US1] Реализовать sync_devices_from_source() в src/services/device_service.py`
+- ❌ `- [ ] T001 [P] Setup` (нет деталей)
 
 ---
 
-## Фаза 3: История пользователя 1 - Синхронизация устройств из Home Assistant (Приоритет: P1) 🎯 MVP
+## Phase 1: Setup (Инициализация проекта)
 
-**Цель**: Администратор может подключиться к Home Assistant, загрузить список устройств и видеть их в системе с корректными параметрами
+**Назначение**: Проектная структура и базовая инфраструктура
 
-**Независимое тестирование**: Задача полностью протестирована если администратор может: (1) добавить источник HA через API, (2) запустить синхронизацию и дождаться загрузки устройств, (3) получить список всех загруженных устройств через REST API с корректными параметрами
+**Контрольная точка**: Setup завершен — готово к реализации основных компонентов
 
-### Тесты для истории пользователя 1 (тесты ОБЯЗАТЕЛЬНЫ - используется TDD подход)
+### Setup Tasks
 
-> **ПРИМЕЧАНИЕ: Написать эти тесты СНАЧАЛА, убедиться что они ПАДАЮТ перед реализацией**
+- [ ] T001 Создать пакет `src/adapters/home_assistant/` с `__init__.py`
+- [ ] T002 Создать пакет `src/services/` с базовыми файлами (`__init__.py`, `__all__`)
+- [ ] T003 [P] Создать пакет `src/core/models/` с `__init__.py` для моделей Device
+- [ ] T004 [P] Создать пакет `src/core/persistence/` с `__init__.py` для хранилища
+- [ ] T005 [P] Создать пакет `tests/unit/adapters/` для тестов адаптера
+- [ ] T006 [P] Создать пакет `tests/integration/` для интеграционных тестов
+- [ ] T007 [P] Создать пакет `tests/contract/` для тестов контрактов
+- [ ] T008 Обновить `pyproject.toml`: добавить зависимости (aiohttp, websockets, если не добавлены)
+- [ ] T009 Создать `.env.example` с примерами переменных (HA_URL, HA_TOKEN, ENCRYPTION_KEY)
 
-- [ ] T016 [P] [US1] Контрактный тест для POST /api/v1/devices/sources в `tests/contract/test_sources_api.py` - проверить создание источника и валидацию URL/токена
-- [ ] T017 [P] [US1] Контрактный тест для GET /api/v1/devices/sources/{id} в `tests/contract/test_sources_api.py` - проверить получение информации об источнике
-- [ ] T018 [P] [US1] Контрактный тест для POST /api/v1/devices/sources/{id}/sync в `tests/contract/test_sources_api.py` - проверить запуск синхронизации
-- [ ] T019 [P] [US1] Контрактный тест для GET /api/v1/devices в `tests/contract/test_devices_api.py` - проверить список загруженных устройств
-- [ ] T020 [US1] Интеграционный тест для полного потока синхронизации в `tests/integration/test_device_sync.py` - подключение к HA, загрузка, проверка сохранения (зависит от T016-T019)
+---
 
-### Реализация истории пользователя 1
+## Phase 2: Foundational (Базовые компоненты - BLOCKING)
 
-- [ ] T021 [US1] Реализовать метод `connect_to_ha()` в `HARestClient` для подключения и валидации токена
-- [ ] T022 [US1] Реализовать метод `fetch_devices()` в `HARestClient` для получения списка устройств из `/api/states` HA
-- [ ] T023 [US1] Реализовать метод `parse_devices()` в `DeviceService` для преобразования ответа HA в модели Device
-- [ ] T024 [US1] Реализовать метод `sync_devices_from_source()` в `DeviceService` для синхронизации (зависит от T021-T023)
-- [ ] T025 [US1] Создать FastAPI route `POST /api/v1/devices/sources` в `src/webui/routes/devices/sources.py` для добавления источника (зависит от T024)
-- [ ] T026 [US1] Создать FastAPI route `GET /api/v1/devices/sources/{id}` в `src/webui/routes/devices/sources.py` для получения информации об источнике
-- [ ] T027 [US1] Создать FastAPI route `POST /api/v1/devices/sources/{id}/sync` в `src/webui/routes/devices/sources.py` для запуска синхронизации (зависит от T024)
-- [ ] T028 [US1] Создать FastAPI route `GET /api/v1/devices` в `src/webui/routes/devices/devices.py` для получения списка устройств
-- [ ] T029 [US1] Добавить логирование операций синхронизации в `DeviceService` с записью в SyncEvent (ТР-010)
-- [ ] T030 [US1] Добавить обработку ошибок соединения с HA и информирование пользователя (ТР-008)
-- [ ] T031 [US1] Реализовать сохранение и восстановление конфигурации источников при перезагрузке приложения (ТР-005)
+**Назначение**: Модели, безопасность, персистентность — БЛОКИРУЮЩИЕ для всех user stories
 
-**Контрольная точка**: История пользователя 1 должна быть полностью функциональной и протестируемой независимо. Администратор может загрузить устройства из HA за < 1 минуты (КУ-001) и видеть их в интерфейсе (КУ-002).
+**Предусловие**: Phase 1 завершена
+
+**⚠️ КРИТИЧЕСКОЕ**: Эта фаза ДОЛЖНА быть завершена перед началом работы над US1-US4
+
+### 2.1 Security (Шифрование)
+
+- [ ] T010 Создать `src/core/security/encryption.py` с функциями шифрования (encrypt/decrypt использовать cryptography.fernet)
+- [ ] T011 Написать unit тесты в `tests/unit/core/test_encryption.py` (TDD: тесты ПАДАЮТ перед реализацией)
+
+### 2.2 Pydantic Models
+
+- [ ] T012 [P] Создать модель HASource в `src/core/models/ha_source.py` (полями: id, name, url, token шифруется, status, last_sync, last_error, created_at, updated_at)
+- [ ] T013 [P] Создать модель Device в `src/core/models/device.py` (полями: id, ha_entity_id, ha_source_id, device_name, device_type, model, manufacturer, state, status, last_state_update, created_at, updated_at)
+- [ ] T014 [P] Создать модель DeviceConfig в `src/core/models/device_config.py` (полями: id, device_id, display_name уникальна в source, description, location, tags, notes, enabled, custom_settings, created_by, updated_by, created_at, updated_at)
+- [ ] T015 [P] Создать модель DeviceCommand в `src/core/models/device_command.py` (полями: id, device_id, name, ha_service, description, parameters, return_type, execution_timeout, is_safe, created_at)
+- [ ] T016 [P] Создать модель DeviceSyncEvent в `src/core/models/device_sync_event.py` (полями: id, device_id, event_type, details, user_id, timestamp, trace_id)
+- [ ] T017 [P] Создать модель DeviceAccess в `src/core/models/device_access.py` (полями: id, device_id, user_id, role, created_at)
+- [ ] T018 Создать `src/core/models/__init__.py` с экспортом всех моделей
+
+### 2.3 Persistence Layer
+
+- [ ] T019 [P] Создать `src/core/persistence/ha_sources.py` с функциями CRUD для HASource (create, get, list, update, delete)
+- [ ] T020 [P] Создать `src/core/persistence/devices.py` с функциями CRUD для Device (create, get, list, update, delete, find_by_entity_id)
+- [ ] T021 [P] Создать `src/core/persistence/device_configs.py` с функциями CRUD для DeviceConfig
+- [ ] T022 [P] Создать `src/core/persistence/device_commands.py` с функциями CRUD для DeviceCommand
+- [ ] T023 [P] Создать `src/core/persistence/device_sync_events.py` для логирования DeviceSyncEvent
+- [ ] T024 [P] Создать `src/core/persistence/device_access.py` для DeviceAccess (Phase 6)
+- [ ] T025 Создать `src/core/persistence/__init__.py` с экспортом функций хранилища
+
+### 2.4 Unit Tests for Models & Persistence
+
+- [ ] T026 [P] Написать unit тесты для всех моделей в `tests/unit/core/models/test_*.py` (TDD: ПАДАЮТ перед реализацией, покрытие >= 100%)
+- [ ] T027 [P] Написать unit тесты для persistence в `tests/unit/core/persistence/test_*.py` (TDD: ПАДАЮТ перед реализацией, покрытие >= 95%)
+
+**Checkpoint**: Фундамент готов — модели, безопасность и персистентность работают
+
+---
+
+## Phase 3: User Story 1 (P1) - Синхронизация устройств из Home Assistant
+
+**Цель**: Администратор может подключить HA, загрузить полный список устройств и видеть их в системе
+
+**Независимое тестирование**: (1) добавить источник HA, (2) запустить синхронизацию, (3) видеть устройства в /api/devices, (4) после перезагрузки устройства остаются
+
+**Предусловие**: Phase 2 завершена
+
+### 3.1 Contract Tests (TDD - тесты сначала!)
+
+- [ ] T028 [P] [US1] Написать contract тесты в `tests/contract/test_device_sources_api.py` (POST create, GET retrieve, POST sync, validation)
+- [ ] T029 [P] [US1] Написать contract тесты в `tests/contract/test_device_sync_api.py` (GET /api/devices, GET /api/devices/{id})
+
+### 3.2 Home Assistant Adapter
+
+- [ ] T030 [US1] Создать `src/adapters/home_assistant/rest_client.py` с HARestClient (get_states, get_config, error handling)
+- [ ] T031 [P] [US1] Создать `src/adapters/home_assistant/websocket_client.py` с HAWebSocketClient (connect, subscribe, get_events, disconnect)
+- [ ] T032 [P] [US1] Создать `src/adapters/home_assistant/connection_manager.py` для управления подключением и reconnection logic
+- [ ] T033 [P] [US1] Создать `src/adapters/home_assistant/models.py` с Pydantic моделями для HA entities (HAState, HADevice)
+- [ ] T034 [US1] Создать `src/adapters/home_assistant/__init__.py` с экспортом клиентов
+
+### 3.3 Device Service
+
+- [ ] T035 [US1] Создать `src/services/device_service.py` с методом load_devices_from_ha(source) и sync_source(source_id)
+- [ ] T036 [P] [US1] Создать события в `src/core/events/device_events.py` (DeviceLoadedEvent, DeviceSyncStartedEvent, DeviceSyncCompletedEvent)
+
+### 3.4 WebUI Routes
+
+- [ ] T037 [US1] Создать `src/webui/routes/devices/sources.py` с endpoints: POST /api/devices/sources, GET /api/devices/sources, GET /api/devices/sources/{id}, PUT, DELETE, POST /api/devices/sources/{id}/sync
+- [ ] T038 [P] [US1] Создать `src/webui/routes/devices/devices.py` с endpoints: GET /api/devices, GET /api/devices/{id}
+
+### 3.5 Integration Tests
+
+- [ ] T039 [P] [US1] Написать integration тесты в `tests/integration/test_device_sync.py` (load_devices_from_ha, sync_source, event publishing)
+- [ ] T040 [P] [US1] Написать E2E тесты в `tests/integration/test_device_sync_e2e.py` (полные сценарии загрузки)
+
+**Checkpoint**: US1 complete — администратор может загружать устройства из HA
+
+---
+
+## Phase 4: User Story 2 (P1) - Конфигурирование параметров устройства
+
+**Цель**: Администратор может редактировать параметры устройства (название, описание, теги, местоположение)
+
+**Независимое тестирование**: (1) получить конфигурацию, (2) обновить параметры, (3) проверить сохранение, (4) после перезагрузки параметры остались
+
+**Предусловие**: Phase 2 + Phase 3 завершены
+
+### 4.1 Contract Tests
+
+- [ ] T041 [P] [US2] Написать contract тесты в `tests/contract/test_device_config_api.py` (GET config, PUT update, validation, uniqueness)
+
+### 4.2 DeviceConfig Service
+
+- [ ] T042 [US2] Расширить `src/services/device_service.py` методом update_device_config(device_id, user_id, config_update)
+
+### 4.3 WebUI Routes
+
+- [ ] T043 [US2] Расширить `src/webui/routes/devices/devices.py` endpoints для config: GET /api/devices/{id}, PUT /api/devices/{id}/config
+
+### 4.4 Events
+
+- [ ] T044 [US2] Расширить `src/core/events/device_events.py` событием DeviceConfigChangedEvent
+
+### 4.5 Integration & E2E Tests
+
+- [ ] T045 [P] [US2] Написать integration тесты в `tests/integration/test_device_config.py` (update, uniqueness, persistence)
+- [ ] T046 [P] [US2] Написать E2E тесты в `tests/integration/test_device_config_e2e.py` (полные сценарии конфигурирования)
+
+**Checkpoint**: US2 complete — конфигурирование работает для всех параметров
+
+---
+
+## Phase 5: User Story 3 (P2) - Управление состоянием устройств
+
+**Цель**: Пользователи видят текущее состояние устройств (синхронизировано <= 5 сек) и могут отправлять команды
+
+**Независимое тестирование**: (1) состояние синхронизируется из HA, (2) пользователь отправляет команду, (3) команда выполняется в HA
+
+**Предусловие**: Phase 2 + Phase 3 + Phase 4 завершены
+
+### 5.1 WebSocket Sync Service
+
+- [ ] T047 [US3] Создать `src/services/sync_service.py` с DeviceSyncService (start, subscribe_to_source, on_state_changed)
+- [ ] T048 [P] [US3] Расширить DeviceService методом send_command(device_id, user_id, command, params)
+
+### 5.2 Contract Tests
+
+- [ ] T049 [P] [US3] Написать contract тесты в `tests/contract/test_device_state_api.py` (GET state, POST command, GET events)
+
+### 5.3 WebUI Routes
+
+- [ ] T050 [US3] Расширить `src/webui/routes/devices/devices.py` endpoints для команд: POST /api/devices/{id}/command
+- [ ] T051 [P] [US3] Создать `src/webui/routes/devices/events.py` с GET /api/devices/{id}/events
+
+### 5.4 Events
+
+- [ ] T052 [US3] Расширить `src/core/events/device_events.py` событиями DeviceStateChangedEvent, DeviceCommandSentEvent, DeviceCommandFailedEvent
+
+### 5.5 Integration Tests
+
+- [ ] T053 [P] [US3] Написать integration тесты в `tests/integration/test_device_state_sync.py` (sync, command execution, error handling)
+- [ ] T054 [P] [US3] Написать E2E тесты в `tests/integration/test_device_commands_e2e.py` (полные сценарии команд)
+
+**Checkpoint**: US3 complete — состояние синхронизируется и команды работают
+
+---
+
+## Phase 6: User Story 4 (P2) - Управление доступом к устройствам
+
+**Цель**: Администратор может назначать доступ к устройствам (viewer, controller, admin)
+
+**Независимое тестирование**: (1) назначить доступ, (2) пользователь видит устройство, (3) viewer не может выполнять команды, (4) controller может
+
+**Предусловие**: Phase 2 + Phase 3 + Phase 4 + Phase 5 завершены
+
+### 6.1 DeviceAccess Service
+
+- [ ] T055 [US4] Расширить `src/services/device_service.py` методами grant_access, revoke_access, get_user_devices, check_access
+
+### 6.2 Middleware
+
+- [ ] T056 [US4] Создать `src/webui/middleware_device_access.py` для проверки доступа к Device endpoints
+
+### 6.3 Contract Tests
+
+- [ ] T057 [P] [US4] Написать contract тесты в `tests/contract/test_device_access_api.py` (grant, revoke, role validation)
+
+### 6.4 WebUI Routes
+
+- [ ] T058 [US4] Создать `src/webui/routes/devices/access.py` с POST grant, DELETE revoke, GET list (admin only)
+
+### 6.5 Integration Tests
+
+- [ ] T059 [P] [US4] Написать integration тесты в `tests/integration/test_device_access.py` (grant, revoke, get_user_devices)
+- [ ] T060 [P] [US4] Написать E2E тесты в `tests/integration/test_device_access_e2e.py` (полные сценарии доступа)
+
+**Checkpoint**: US4 complete — доступ контролируется
+
+---
+
+## Phase 7: Polish & Cross-Cutting Concerns
+
+**Назначение**: Улучшения, которые затрагивают несколько US
+
+**Предусловие**: All US completed (Phase 3-6)
+
+### 7.1 Documentation
+
+- [ ] T061 Обновить README.md с разделом Device Integration (quick start, API docs)
+- [ ] T062 Создать `docs/device-integration-guide.md` с руководством администратора
+- [ ] T063 [P] Обновить docstrings всех публичных функций (Google style)
+
+### 7.2 Testing & Coverage
+
+- [ ] T064 Запустить pytest с --cov (проверить >= 85% для adapters, >= 90% для services, >= 100% для models)
+- [ ] T065 [P] Добавить недостающие unit тесты для edge cases
+- [ ] T066 [P] Запустить все integration тесты (должны пройти)
+- [ ] T067 [P] Запустить все E2E тесты (должны пройти, validate quickstart.md scenarios)
+
+### 7.3 Code Quality
+
+- [ ] T068 Запустить ruff lint и fix (ruff check --fix src/ tests/)
+- [ ] T069 Запустить ruff format (ruff format src/ tests/)
+- [ ] T070 Запустить mypy для type checking (mypy src/ --strict)
+- [ ] T071 [P] Запустить pre-commit хуки (.ai/scripts/setup_hooks.sh)
+
+### 7.4 Performance & Security
+
+- [ ] T072 Написать load test для Device sync (100-500 устройств < 1 min)
+- [ ] T073 [P] Профайлировать key functions (load_devices_from_ha, send_command, update_device_config)
+- [ ] T074 Security audit (tokens не логируются, все API endpoints валидируют permissions, input санитизирован)
+- [ ] T075 [P] Проверить ENCRYPTION_KEY (32+ chars, только env, .env.example содержит placeholder)
+
+### 7.5 Finalization
+
+- [ ] T076 Обновить `specs/001-device-integration/tasks.md` (пометить все [x])
+- [ ] T077 Запустить `.ai/scripts/run_checks.sh` (все проверки должны пройти)
+- [ ] T078 Создать финальный commit с feat(device-integration): complete implementation message
+- [ ] T079 [P] Запустить все quickstart.md сценарии (Scenario 1-4 все ✅)
+
+**Checkpoint**: Вся фича завершена, протестирована, и готова к продакшену
+
+---
+
+## Зависимости и порядок выполнения
+
+### Обязательный порядок
+
+```
+Phase 1 (Setup)
+    ↓
+Phase 2 (Foundational) ← БЛОКИРУЕТ всё остальное
+    ↓
+Phase 3 (US1: Sync) ← MVP часть 1
+    ↓
+Phase 4 (US2: Config) ← MVP часть 2
+    ├→ Phase 5 (US3: State) (параллельно если ресурсы)
+    │   └→ Phase 6 (US4: Access)
+    └→ (параллельно Phase 5)
+        └→ Phase 7 (Polish)
+```
+
+### Параллельные возможности
+
+- **Phase 1**: Все Setup задачи [P] параллельно
+- **Phase 2**: Все [P] задачи параллельно (Models, Persistence независимы)
+- **Phase 3-4**: Могут быть параллельны (разные файлы)
+- **Phase 5-6**: Могут быть параллельны (разные endpoints и services)
+
+---
+
+## MVP Scope & Delivery
+
+**MVP** = Phase 1 + Phase 2 + Phase 3 + Phase 4 (готово к демонстрации)
+
+**Post-MVP** = Phase 5 + Phase 6 (дополнительные функции)
+
+---
+
+**Версия**: 1.0.0 | **Дата генерации**: 2026-09-29 | **Статус**: Ready for Implementation
 
 ---
 

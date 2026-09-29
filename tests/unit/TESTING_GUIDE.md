@@ -163,7 +163,7 @@ pytest tests/unit/test_models.py::TestHASourceCreation::test_创建_с_вали�
 
    class TestNewFeature:
        \"\"\"Тесты новой функции.\"\"\"
-       
+
        def test_пример(self):
            \"\"\"Описание теста.\"\"\"
            assert True
