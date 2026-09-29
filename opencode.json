@@ -17,7 +17,8 @@
           "claude-haiku-4-5-20251001": {},
           "free-claude-haiku-4.5": {},
           "claude-haiku-4-5": {},
-          "gemini-3.5-flash": {}
+          "gemini-3.5-flash": {},
+          "glm-5.3-flash": {}
       }
     }
   },
