@@ -1,6 +1,6 @@
 # Project State
 
-*Последнее обновление: 2026-09-19*
+*Последнее обновление: 2026-09-29*
 
 ## 📌 Как использовать этот файл
 
@@ -88,16 +88,28 @@
    - **Файлы:** `tests/unit/test_cache.py` (5), `tests/unit/test_models.py` (3), `tests/unit/test_device_service.py::TestEdgeCases::test_handle_state_change_with_malformed_data` (ожидает `RuntimeError`, который сервис намеренно подавляет), `tests/integration/test_commands.py` (2), `tests/integration/test_state_sync.py` (2)
    - **Статус:** Не исправлено (проверено, что они падали и до правки публикации событий)
 
+6. **`validate_manifest()` несовместим с текущим форматом манифеста** *(найдено 2026-09-29 при чистке документации)*
+   - **Файл:** `src/core/manifest_validator.py` (`_validate_structure`)
+   - **Проблема:** валидатор ожидает секции `devices`/`zones` верхнего уровня, а текущий формат манифеста использует `rooms:` с вложенными устройствами — на валидном `instances/leonids_house/manifest.yaml` возвращает 2 ложные ошибки
+   - **Статус:** Не исправлено
+
 ### 🟢 Low
 
 5. **Нет тестов для WebSocket reconnect logic**
    - **Файл:** `adapters/ha_adapter.py`
    - **Статус:** Не исправлено
 
+7. **Makefile-таргеты `export-fsm*` вызывают несуществующую команду `smart-home`** *(найдено 2026-09-29 при чистке документации)*
+   - **Файл:** `Makefile` (строки ~172-191)
+   - **Проблема:** в `pyproject.toml` entry point называется `shp`, поэтому `make export-fsm`, `make export-fsm-mermaid`, `make export-fsm-graphviz` падают с `command not found`
+   - **Обходной путь:** `shp export-fsm <manifest>` работает
+   - **Статус:** Не исправлено (Makefile в списке защищённых файлов — требуется согласование)
+
 ## Последние значимые изменения
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-29 | Реорганизация документации: README сокращён 1105 → 189 строк, гайды перенесены в `docs/guides/` (10 шт.), API — в `docs/api/`, удалены 6 отчётов-однодневок из корня, добавлен `.ai/enhancements/INDEX.md` | `README.md`, `docs/`, `.ai/enhancements/INDEX.md`, `.ai/CONTEXT.md`, `CLAUDE.md` | ✅ Complete |
 | 2026-09-29 | Асинхронная публикация событий устройств (4 ошибки mypy unused-coroutine) + миграция `@validator` → `@field_validator` | `src/services/device_service.py`, `src/core/models/device_command.py`, `tests/unit/test_device_service.py` | ✅ Complete |
 | 2026-09-19 | Room Aggregation & Policies implementation (Phase 8) | `src/core/room_manager.py`, `src/core/models/room.py`, `tests/test_room_aggregation.py` | ✅ Complete |
 | 2026-09-18 | Scene Manager / Flow Engine implementation (Phase 8) | `src/core/scene_manager.py`, `src/core/models/scene.py`, `tests/test_scene_manager.py` | ✅ Complete |

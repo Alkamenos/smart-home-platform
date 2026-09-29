@@ -1,5 +1,4 @@
-"""
-Инструкция по запуску unit тестов для DeviceService
+# Инструкция по запуску unit тестов для DeviceService
 
 Для запуска всех тестов:
     pytest tests/unit/test_device_service.py -v
@@ -24,4 +23,3 @@
 
 Установка зависимостей:
     pip install pytest pytest-asyncio pydantic loguru
-"""

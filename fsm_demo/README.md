@@ -5,7 +5,7 @@
 Минимальный рабочий пример платформы, демонстрирующий полный цикл работы:
 
 ```bash
-python examples/kitchen_demo.py
+python fsm_demo/kitchen_demo.py
 ```
 
 ### Что демонстрирует demo:
@@ -49,33 +49,21 @@ python examples/kitchen_demo.py
 # Все тесты
 pytest tests/ -v
 
+# Сценарные тесты FSM
+pytest tests/test_fsm.py tests/test_manual_override_scenario.py -v
+
 # Только интеграционные тесты
-pytest tests/test_integration.py -v
-
-# Только тесты освещения
-pytest tests/test_lighting.py -v
+pytest tests/integration/ -v
 ```
-
-## 📋 Интеграционные тесты
-
-Файл `tests/test_integration.py` содержит end-to-end тесты:
-
-- `test_motion_turns_on_light_via_dispatcher` — HA событие → FSM → Action
-- `test_motion_timeout_turns_off_light` — таймаут → FSM → Action
-- `test_manual_override_stops_automation` — MANUAL блокирует автоматы
-- `test_full_lifecycle` — полный цикл: OFF → ON_MOTION → OFF → MANUAL
 
 ## 🔍 Отладка
 
-Для отладки используйте CLI:
+Для отладки используйте интерактивный CLI `shp`:
 
 ```bash
-# Показать статус всех автоматов
-python cli.py status
+# Интерактивная оболочка с предзагруженной платформой
+shp shell
 
-# Показать детали конкретного автомата
-python cli.py debug light.kitchen --state
-
-# Вывод в JSON формате
-python cli.py status --json
+# С конкретным манифестом
+shp shell --manifest instances/leonids_house/manifest.yaml
 ```

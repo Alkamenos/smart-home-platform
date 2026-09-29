@@ -1,6 +1,6 @@
 # Справочник API - Быстрый поиск
 
-**Файл полной документации:** `docs/device-integration-api.md`
+**Файл полной документации:** `docs/api/device-integration-api.md`
 
 ## Краткое описание endpoints
 
@@ -101,4 +101,4 @@ curl -X PUT http://localhost:8000/api/v1/devices/{device_id}/config \
 
 ---
 
-Полная документация с примерами, описаниями всех параметров и best practices находится в `docs/device-integration-api.md`
+Полная документация с примерами, описаниями всех параметров и best practices находится в `docs/api/device-integration-api.md`

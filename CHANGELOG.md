@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Documentation reorganization (2026-09-29)**
+- 10 guides extracted from README into `docs/guides/` (quickstart, FSM visualization, manifest examples, adding behaviors, trace IDs, migration, local development, HA adapter modes, advanced features, monitoring)
+- API docs consolidated under `docs/api/` (kebab-case naming)
+- `docs/README.md` rewritten as a full documentation index
+- `.ai/enhancements/INDEX.md` — status catalog for all 28 enhancement proposals
+
 **FSM Visualization (Phase 7)**
 - FSMVisualizer class for generating visual diagrams from FSM definitions
 - Support for Mermaid format (web-based diagram rendering)
@@ -21,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - reorganize project structure with proper entry points
+- README.md slimmed down from 1105 to 189 lines (showcase with links to guides); project structure section updated to match the real `src/` layout
+- Fixed broken documentation links and stale commands (`docs/MIGRATION_GUIDE.md`, `python cli.py validate/health`, `python -m smart_home.webui`, `examples/kitchen_demo.py`, `black` → `ruff format`)
+- `.ai/00_CONTEXT.md` renamed to `.ai/CONTEXT.md` (removed conflicting duplicate `00_` prefix)
+- `tests/unit/*.md` converted from pseudo-Python docstrings to valid Markdown
+
+### Removed
+
+- One-off status reports from the repository root: `BATCHER_SUMMARY.py`, `COMPLETE_REPORT.py`, `FINAL_REPORT_ALL_PHASES.txt`, `PHASE5_IMPLEMENTATION.txt`, `PHASE_1_3_STATUS.txt`, `ERRORS.md` (history preserved in git)
 
 ## [3.0.0] - 2024-09-14
 
@@ -117,7 +131,7 @@ For users migrating from v2.x to v3.0.0:
 - Priority values should be assigned to behaviors (default: 10)
 - Middleware configuration moved to `automation_rules` section
 
-See MIGRATION_GUIDE.md for detailed migration instructions.
+See [Migration Guide](docs/guides/migration-v2-to-v3.md) for detailed migration instructions.
 
 ---
 

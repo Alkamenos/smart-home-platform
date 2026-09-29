@@ -28,13 +28,18 @@
 │   └── webui/                # Web интерфейс
 ├── tests/                    # Тесты (unit, integration, E2E)
 ├── instances/                # Примеры конфигураций
+├── docs/                     # Документация (единый вход — docs/README.md)
+│   ├── guides/               # Гайды (вырезаны из README)
+│   └── api/                  # REST API и спецификации
+├── specs/                    # Спецификации фич (Spec Kit)
 ├── .ai/                      # Документация для ИИ-ассистента
+│   ├── CONTEXT.md            # Индекс AI-контекста
 │   ├── 00_START_HERE.md      # ← НАЧНИ ОТСЮДА ПЕРЕД КАЖДОЙ ЗАДАЧЕЙ
 │   ├── 01_PROJECT_STATE.md   # Текущее состояние + Known Issues
 │   ├── 02_ARCHITECTURE.md    # Архитектурные решения
 │   ├── 03_ROADMAP.md         # План задач
 │   ├── 04_RULES.md           # Жесткие ограничения
-│   └── enhancements/         # Детальные описания фич
+│   └── enhancements/         # Описания фич + INDEX.md (статусы)
 ├── .specify/                 # Spec Kit для управления спецификациями
 │   └── memory/
 │       └── constitution.md   # ← Конституция проекта v3.0.0
@@ -45,6 +50,7 @@
 ## 🎯 Что делать если...
 
 - **Не знаешь с чего начать?** → Открыть `.ai/00_START_HERE.md`
+- **Нужен гайд или API?** → Открыть `docs/README.md` (индекс документации)
 - **Нашел баг?** → Добавить в `.ai/01_PROJECT_STATE.md` → Known Issues
 - **Нужно изменить код?** → Проверить `.ai/04_RULES.md` → не трогать без разрешения
 - **Завершил задачу?** → Обновить `.ai/01_PROJECT_STATE.md` и запустить `python3 .ai/scripts/sync_roadmap.py --auto-update`

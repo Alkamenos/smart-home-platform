@@ -429,8 +429,8 @@ Phase 4 (US2: Config) ← MVP часть 2
 
 **Назначение**: Улучшения, влияющие на несколько историй пользователя
 
-- [ ] T072 [P] Обновить документацию API в docs/device-integration-api.md
-- [ ] T073 [P] Добавить примеры использования в docs/device-integration-examples.md
+- [ ] T072 [P] Обновить документацию API в docs/api/device-integration-api.md
+- [ ] T073 [P] Добавить примеры использования в docs/api/device-integration-examples.md
 - [ ] T074 [P] Создать миграцию/скрипт инициализации БД для таблиц источников и устройств в `src/core/persistence/migrations/`
 - [ ] T075 [P] Добавить unit тесты для всех сервис методов в `tests/unit/test_device_service.py`
 - [ ] T076 [P] Добавить unit тесты для всех моделей валидации в `tests/unit/test_models.py`

@@ -1,6 +1,4 @@
-"""
-ПРАКТИЧЕСКОЕ РУКОВОДСТВО ПО UNIT ТЕСТАМ МОДЕЛЕЙ
-=================================================
+# ПРАКТИЧЕСКОЕ РУКОВОДСТВО ПО UNIT ТЕСТАМ МОДЕЛЕЙ
 
 Файл: tests/unit/test_models.py
 Язык: Python 3.10+
@@ -9,7 +7,6 @@
 
 
 БЫСТРЫЙ СТАРТ
-==============
 
 1. Установка зависимостей (если ещё не установлены):
    pip install -e ".[dev]"
@@ -25,7 +22,6 @@
 
 
 ПРИМЕРЫ КОМАНД
-===============
 
 # Запуск конкретного класса тестов
 pytest tests/unit/test_models.py::TestHASourceCreation -v
@@ -59,7 +55,6 @@ pytest tests/unit/test_models.py -v -n auto
 
 
 СТРУКТУРА ТЕСТОВ
-==================
 
 тесты организованы в следующем порядке:
 
@@ -108,7 +103,6 @@ pytest tests/unit/test_models.py -v -n auto
 
 
 ПРОВЕРКА КОДА
-==============
 
 # Проверка типов (mypy)
 mypy tests/unit/test_models.py
@@ -124,7 +118,6 @@ ruff check tests/unit/test_models.py && mypy tests/unit/test_models.py
 
 
 ИНТЕГРАЦИЯ С CI/CD
-===================
 
 Для GitHub Actions добавьте в .github/workflows/tests.yml:
 
@@ -139,7 +132,6 @@ ruff check tests/unit/test_models.py && mypy tests/unit/test_models.py
 
 
 ОТЛАДКА ТЕСТОВ
-================
 
 # Запуск с выводом print() и logging
 pytest tests/unit/test_models.py -v -s
@@ -155,7 +147,6 @@ pytest tests/unit/test_models.py::TestHASourceCreation::test_创建_с_вали�
 
 
 РАСШИРЕНИЕ ТЕСТОВ
-==================
 
 Если нужно добавить новые тесты:
 
@@ -185,7 +176,6 @@ pytest tests/unit/test_models.py::TestHASourceCreation::test_创建_с_вали�
 
 
 ЧАСТЫЕ ВОПРОСЫ
-==============
 
 Q: Как запустить только тесты валидации?
 A: pytest tests/unit/test_models.py -k "Validation" -v
@@ -211,7 +201,6 @@ A: Используйте @pytest.mark.xfail(reason="...") над методом
 
 
 ОЖИДАЕМОЕ ВРЕМЯ ВЫПОЛНЕНИЯ
-=============================
 
 Общее время: 2-5 секунд
 - HASource тесты: ~0.5 сек
@@ -224,7 +213,6 @@ A: Используйте @pytest.mark.xfail(reason="...") над методом
 
 
 ПОДДЕРЖИВАЕМЫЕ ПЛАТФОРМЫ
-=========================
 
 ✓ Linux (Ubuntu, Debian)
 ✓ macOS (Intel и Apple Silicon)
@@ -238,10 +226,8 @@ A: Используйте @pytest.mark.xfail(reason="...") над методом
 
 
 ЛИЦЕНЗИЯ И ПРАВОВАЯ ИНФОРМАЦИЯ
-================================
 
 Copyright 2026 Leonid Artemev
 SPDX-License-Identifier: Apache-2.0
 
 Все тесты и документация распространяются под лицензией Apache 2.0
-"""
