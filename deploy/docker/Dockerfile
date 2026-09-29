@@ -10,7 +10,9 @@ ENV PYTHONUNBUFFERED=1 \
     BUILD_ENV=${BUILD_ENV} \
     CONFIG_PATH=/config/instances/leonids_house \
     DATA_PATH=/data/behavioral_platform \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10
 
 # Рабочая директория
 WORKDIR /app
@@ -27,9 +29,11 @@ RUN apt-get update && \
 COPY pyproject.toml .
 COPY README.md .
 
-# СЛОЙ 2: Устанавливаем зависимости
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir .
+# СЛОЙ 2: Устанавливаем только зависимости проекта из pyproject.toml
+# (не сам проект: src/ копируется ниже — слой зависимостей остаётся кэшируемым;
+#  апгрейд pip убран — лишняя загрузка по нестабильной сети)
+RUN pip install --no-cache-dir \
+    $(python -c "import tomllib; print(' '.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))")
 
 # СЛОЙ 3: Копируем исходный код (изменяется часто)
 COPY src/ ./src/

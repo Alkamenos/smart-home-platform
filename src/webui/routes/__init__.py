@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
@@ -34,21 +34,20 @@ templates = Jinja2Templates(directory=str(template_dir))
 event_store = EventStore()
 
 
-@router.get("/health", response_class=HTMLResponse)
-async def health_check(request: Request) -> HTMLResponse:
-    """Health check endpoint.
+@router.get("/health", response_class=JSONResponse)
+async def health_check(request: Request) -> JSONResponse:
+    """Health check endpoint (FR-002 спецификации 003).
+
+    Возвращает JSON-контракт готовности сервиса, который используется
+    Docker healthcheck-ом через ``python -m src.cli.health_check``.
 
     Args:
-        request: FastAPI request object.
+        request: Входящий HTTP-запрос.
 
     Returns:
-        Simple HTML response indicating service health.
+        JSON ``{"status": "ok"}`` со статусом 200.
     """
-    return templates.TemplateResponse(
-        request,
-        "health.html",
-        {"status": "healthy"},
-    )
+    return JSONResponse({"status": "ok"})
 
 
 def _mermaid_state_id(raw: str) -> str:

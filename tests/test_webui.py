@@ -36,10 +36,11 @@ def test_index_page_loads(client: TestClient):
 
 
 def test_health_endpoint(client: TestClient):
-    """Test health check endpoint."""
+    """Health endpoint возвращает JSON-контракт готовности (FR-002, spec 003)."""
     response = client.get("/health")
     assert response.status_code == 200
-    assert b"healthy" in response.content
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"status": "ok"}
 
 
 def test_save_manifest_invalid_data(client: TestClient):
