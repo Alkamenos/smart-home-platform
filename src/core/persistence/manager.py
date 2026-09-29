@@ -4,9 +4,8 @@
 
 from pathlib import Path
 
-from src.core.persistence.devices import DevicePersistence, DeviceAccessPersistence
+from src.core.persistence.devices import DeviceAccessPersistence, DevicePersistence
 from src.core.persistence.sources import HASourcePersistence
-from src.core.security.encryption import TokenEncryptor
 
 
 class PersistenceManager:
@@ -15,7 +14,7 @@ class PersistenceManager:
     def __init__(
         self,
         data_dir: Path | str = "data",
-        encryptor: TokenEncryptor | None = None,
+        encryptor: object | None = None,
     ) -> None:
         """Инициализация менеджера.
 
@@ -27,6 +26,15 @@ class PersistenceManager:
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Инициализируем компоненты
+        # Пытаемся использовать encryptor если он передан или доступен
+        try:
+            if not encryptor:
+                from src.core.security.encryption import TokenEncryptor
+                encryptor = TokenEncryptor()
+        except ImportError:
+            # Если cryptography не установлен, работаем без шифрования
+            encryptor = None
+
         self.sources = HASourcePersistence(data_dir=self.data_dir, encryptor=encryptor)
         self.devices = DevicePersistence(data_dir=self.data_dir)
         self.device_access = DeviceAccessPersistence(data_dir=self.data_dir)

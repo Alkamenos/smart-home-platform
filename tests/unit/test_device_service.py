@@ -479,8 +479,9 @@ class TestSyncDevicesFromSource:
     @pytest.mark.asyncio
     async def test_sync_successful_with_devices(self, device_service, mock_persistence):
         """Проверяет успешную синхронизацию с устройствами."""
+        from unittest.mock import AsyncMock, patch
+
         from src.core.models.ha_source import HASource
-        from unittest.mock import patch, AsyncMock
 
         source_id = uuid4()
         source = HASource(
@@ -530,8 +531,9 @@ class TestSyncDevicesFromSource:
     @pytest.mark.asyncio
     async def test_sync_connection_error(self, device_service, mock_persistence):
         """Проверяет обработку ошибки подключения."""
+        from unittest.mock import AsyncMock, patch
+
         from src.core.models.ha_source import HASource
-        from unittest.mock import patch, AsyncMock
 
         source_id = uuid4()
         source = HASource(

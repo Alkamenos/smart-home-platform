@@ -276,13 +276,22 @@ def create_app(
         from src.services.device_service import DeviceService
 
         event_bus = EventBus()
+        persistence = None
+
+        try:
+            from src.core.persistence.manager import PersistenceManager
+            persistence = PersistenceManager(data_dir="data")
+        except ImportError as e:
+            logger.warning(f"Could not initialize PersistenceManager: {e}. Running with limited functionality.")
+
         device_service = DeviceService(
             event_bus=event_bus,
-            persistence_module=None,  # TODO: Connect persistence
+            persistence_module=persistence,
             ha_adapter=None,  # TODO: Connect HA adapter
         )
 
         app.state.event_bus = event_bus
+        app.state.persistence = persistence
         app.state.device_service = device_service
         logger.info("Device management services initialized")
     except Exception as e:

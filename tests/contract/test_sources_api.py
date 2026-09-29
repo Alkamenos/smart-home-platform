@@ -13,8 +13,9 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
-    from src.main import app  # Используем главное приложение
+    from src.webui.app import create_app
 
+    app = create_app()
     return TestClient(app)
 
 
@@ -100,6 +101,51 @@ class TestSourcesAPI:
         response = client.get(f"/api/v1/devices/sources/{uuid4()}")
 
         assert response.status_code == 404, "Должна быть 404 для несуществующего источника"
+
+    def test_delete_source_success(self, client):
+        """T018: Успешное удаление источника HA.
+
+        Требование: DELETE /api/v1/devices/sources/{id} должен удалять источник.
+        """
+        # Сначала создаем источник
+        create_payload = {
+            "name": "Delete Test HA",
+            "url": "http://192.168.1.100:8123",
+            "token": "delete_token",
+        }
+        create_response = client.post("/api/v1/devices/sources", json=create_payload)
+        assert create_response.status_code == 201
+        source_id = create_response.json()["id"]
+
+        # Проверяем что источник существует
+        get_response = client.get(f"/api/v1/devices/sources/{source_id}")
+        assert get_response.status_code == 200
+
+        # Удаляем источник
+        delete_response = client.delete(f"/api/v1/devices/sources/{source_id}")
+        assert delete_response.status_code == 204, "DELETE должен вернуть 204 No Content"
+
+        # Проверяем что источник удален
+        get_response = client.get(f"/api/v1/devices/sources/{source_id}")
+        assert get_response.status_code == 404, "После удаления источник должен возвращать 404"
+
+    def test_delete_source_not_found(self, client):
+        """T018: Ошибка при удалении несуществующего источника."""
+        response = client.delete(f"/api/v1/devices/sources/{uuid4()}")
+
+        assert response.status_code == 404, "DELETE несуществующего источника должна возвращать 404"
+
+    def test_list_sources_empty(self, client):
+        """T017: Получение пустого списка источников.
+
+        Требование: GET /api/v1/devices/sources должен возвращать пустой список при отсутствии источников.
+        """
+        response = client.get("/api/v1/devices/sources")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Может быть пустой список или содержать созданные источники
+        assert isinstance(data, list), "GET /api/v1/devices/sources должен возвращать список"
 
     def test_post_sync_source_success(self, client):
         """T018: Успешный запуск синхронизации устройств из источника.

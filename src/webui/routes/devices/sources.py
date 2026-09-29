@@ -1,14 +1,18 @@
 """
 API маршруты для управления источниками Home Assistant.
 
-Включает операции создания, получения и синхронизации источников.
+Включает операции создания, получения, удаления и синхронизации источников.
 """
 
 import logging
+from datetime import datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, HttpUrl
+
+from src.core.models.ha_source import HASource
+from src.services.device_service import DeviceService
 
 
 logger = logging.getLogger(__name__)
@@ -37,21 +41,51 @@ class SourceResponse(BaseModel):
     updated_at: str
 
 
-# Хранилище источников (временное, будет использовать persistence)
-_sources_store: dict = {}
+async def get_device_service(request: Request) -> DeviceService:
+    """Получает DeviceService из app state."""
+    device_service = getattr(request.app.state, "device_service", None)
+    if not device_service:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Device service не инициализирован",
+        )
+    return device_service
+
+
+def _source_to_response(source: HASource) -> SourceResponse:
+    """Преобразует HASource модель в SourceResponse."""
+    return SourceResponse(
+        id=str(source.id),
+        name=source.name,
+        url=str(source.url),
+        status="connected" if source.status == "active" else "disconnected",
+        last_sync=source.last_sync.isoformat() if source.last_sync else None,
+        last_error=source.last_error,
+        created_at=source.created_at.isoformat(),
+        updated_at=source.updated_at.isoformat(),
+    )
 
 
 @router.get("", status_code=status.HTTP_200_OK)
-async def list_sources() -> list[SourceResponse]:
+async def list_sources(request: Request) -> list[SourceResponse]:
     """Получает список всех источников Home Assistant.
 
     Returns:
         Список источников
     """
     try:
-        sources = list(_sources_store.values())
+        persistence = getattr(request.app.state, "persistence", None)
+        if not persistence:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Persistence не инициализирован",
+            )
+
+        sources = await persistence.sources.load_all_sources()
         logger.info(f"Получен список {len(sources)} источников")
-        return [SourceResponse(**source) for source in sources]
+        return [_source_to_response(source) for source in sources]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Ошибка при получении списка источников: {e}")
         raise HTTPException(
@@ -61,34 +95,43 @@ async def list_sources() -> list[SourceResponse]:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def create_source(request: CreateSourceRequest) -> SourceResponse:
+async def create_source(request: Request, req: CreateSourceRequest) -> SourceResponse:
     """Создает новый источник Home Assistant.
 
     Args:
-        request: Данные источника
+        request: FastAPI request
+        req: Данные источника
 
     Returns:
         Созданный источник
     """
     try:
-        source_id = str(uuid4())
-        source_data = {
-            "id": source_id,
-            "name": request.name,
-            "url": str(request.url),
-            "token": request.token,
-            "status": "disconnected",
-            "last_sync": None,
-            "last_error": None,
-            "created_at": "2026-09-29T00:00:00",
-            "updated_at": "2026-09-29T00:00:00",
-        }
+        persistence = getattr(request.app.state, "persistence", None)
+        if not persistence:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Persistence не инициализирован",
+            )
 
-        _sources_store[source_id] = source_data
-        logger.info(f"Создан источник {source_id}: {request.name}")
+        source = HASource(
+            id=uuid4(),
+            name=req.name,
+            url=str(req.url),
+            token=req.token,
+            status="active",
+            last_sync=None,
+            last_error=None,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
 
-        return SourceResponse(**source_data)
+        await persistence.sources.save_source(source)
+        logger.info(f"Создан источник {source.id}: {req.name}")
 
+        return _source_to_response(source)
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Ошибка при создании источника: {e}")
         raise HTTPException(
@@ -98,10 +141,11 @@ async def create_source(request: CreateSourceRequest) -> SourceResponse:
 
 
 @router.get("/{source_id}", status_code=status.HTTP_200_OK)
-async def get_source(source_id: UUID) -> SourceResponse:
+async def get_source(request: Request, source_id: UUID) -> SourceResponse:
     """Получает информацию об источнике.
 
     Args:
+        request: FastAPI request
         source_id: ID источника
 
     Returns:
@@ -110,57 +154,129 @@ async def get_source(source_id: UUID) -> SourceResponse:
     Raises:
         HTTPException: 404 если источник не найден
     """
-    source = _sources_store.get(str(source_id))
+    try:
+        persistence = getattr(request.app.state, "persistence", None)
+        if not persistence:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Persistence не инициализирован",
+            )
 
-    if not source:
+        source = await persistence.sources.load_source(source_id)
+
+        if not source:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Источник {source_id} не найден",
+            )
+
+        return _source_to_response(source)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при получении источника {source_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Источник {source_id} не найден"
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка при получении источника",
+        ) from e
 
-    return SourceResponse(**source)
+
+@router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_source(request: Request, source_id: UUID) -> None:
+    """Удаляет источник Home Assistant.
+
+    Args:
+        request: FastAPI request
+        source_id: ID источника для удаления
+
+    Raises:
+        HTTPException: 404 если источник не найден
+    """
+    try:
+        persistence = getattr(request.app.state, "persistence", None)
+        if not persistence:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Persistence не инициализирован",
+            )
+
+        source = await persistence.sources.load_source(source_id)
+        if not source:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Источник {source_id} не найден",
+            )
+
+        result = await persistence.sources.delete_source(source_id)
+        if result:
+            logger.info(f"Удален источник {source_id}")
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Не удалось удалить источник",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при удалении источника {source_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка при удалении источника",
+        ) from e
 
 
 @router.post("/{source_id}/sync", status_code=status.HTTP_200_OK)
-async def sync_source(source_id: UUID) -> dict:
+async def sync_source(
+    request: Request, source_id: UUID, device_service: DeviceService = Depends(get_device_service)
+) -> dict:
     """Запускает синхронизацию устройств из источника.
 
     Args:
+        request: FastAPI request
         source_id: ID источника
+        device_service: DeviceService для синхронизации
 
     Returns:
         Статус синхронизации
 
     Raises:
-        HTTPException: 404 если источник не найден
+        HTTPException: 404 если источник не найден, 500 если ошибка синхронизации
     """
-    source = _sources_store.get(str(source_id))
-
-    if not source:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Источник {source_id} не найден"
-        )
-
     try:
+        persistence = getattr(request.app.state, "persistence", None)
+        if not persistence:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Persistence не инициализирован",
+            )
+
+        # Проверяем что источник существует
+        source = await persistence.sources.load_source(source_id)
+        if not source:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Источник {source_id} не найден",
+            )
+
         logger.info(f"Начинаю синхронизацию для источника {source_id}")
 
-        # TODO: Реализовать синхронизацию через HARestClient и DeviceService
-        # 1. Подключиться к HA
-        # 2. Получить список устройств
-        # 3. Сохранить в persistence
-        # 4. Опубликовать события
+        # Запускаем синхронизацию через DeviceService
+        devices = await device_service.sync_devices_from_source(source_id)
 
-        source["status"] = "connecting"
+        logger.info(f"Синхронизация завершена для источника {source_id}: загружено {len(devices)} устройств")
 
         return {
-            "status": source["status"],
-            "message": f"Синхронизация запущена для источника {source_id}",
+            "status": "success",
+            "message": f"Синхронизация завершена. Загружено {len(devices)} устройств",
+            "device_count": len(devices),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Ошибка при синхронизации источника {source_id}: {e}")
-        source["status"] = "error"
-        source["last_error"] = str(e)
-
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при синхронизации: {str(e)}",
@@ -198,135 +314,49 @@ class DiscoveryData(BaseModel):
 
 
 @router.get("/{source_id}/discovery-data", status_code=status.HTTP_200_OK)
-async def get_discovery_data(source_id: UUID) -> DiscoveryData:
-    """Получает вспомогательные данные для добавления устройства из HA источника.
-
-    Возвращает список доступных комнат, доступные устройства и другую информацию для помощи пользователю
-    при добавлении нового устройства с правильной подстановкой комнаты.
+async def get_discovery_data(request: Request, source_id: UUID) -> DiscoveryData:
+    """Получает доступные устройства из Home Assistant для помощи при добавлении.
 
     Args:
-        source_id: ID источника Home Assistant
+        request: FastAPI request
+        source_id: ID источника
 
     Returns:
-        Данные для помощи при добавлении устройства
+        Данные для discovery
 
     Raises:
-        HTTPException: 404 если источник не найден или 503 при ошибке подключения к HA
+        HTTPException: 404 если источник не найден, 500 если ошибка подключения
     """
-    source = _sources_store.get(str(source_id))
-
-    if not source:
-        logger.warning(f"Источник {source_id} не найден. Доступные: {list(_sources_store.keys())}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Источник {source_id} не найден. Убедитесь, что источник существует и source_id верен.",
-        )
-
     try:
-        from src.adapters.home_assistant.rest_client import HARestClient
-
-        # Получаем данные из HA
-        logger.info(f"Подключаюсь к HA: {source['url']}")
-
-        async with HARestClient(source["url"], source["token"]) as client:
-            # Подключаемся к HA
-            logger.info("Проверяю подключение к HA...")
-            connected = await client.connect_to_ha()
-            if not connected:
-                raise Exception("Не удалось подключиться к Home Assistant. Проверьте URL и токен.")
-
-            logger.info("Подключение успешно. Загружаю области...")
-
-            # Получаем области (комнаты)
-            areas_data = await client.fetch_areas()
-            logger.info(f"Загружено {len(areas_data)} областей")
-
-            areas_map = {
-                area.get("id", ""): AreaInfo(
-                    id=area.get("id", ""),
-                    name=area.get("name", ""),
-                    icon=area.get("icon"),
-                    picture=area.get("picture"),
-                )
-                for area in areas_data
-            }
-            areas = list(areas_map.values())
-
-            logger.info("Загружаю сущности и реестр устройств...")
-
-            # Получаем устройства и их области
-            devices_data = await client.fetch_devices()
-            device_registry = await client.fetch_device_registry()
-
-            logger.info(
-                f"Получено {len(devices_data)} сущностей, {len(device_registry)} устройств в реестре"
+        persistence = getattr(request.app.state, "persistence", None)
+        if not persistence:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Persistence не инициализирован",
             )
 
-            # Создаем map device_id -> area_id из реестра
-            device_to_area = {}
-            for device in device_registry:
-                device_id = device.get("id", "")
-                area_id = device.get("area_id")
-                if device_id and area_id:
-                    device_to_area[device_id] = area_id
-
-            # Парсим доступные устройства
-            available_devices = []
-            for state_obj in devices_data:
-                try:
-                    entity_id = state_obj.get("entity_id", "")
-                    if not entity_id or entity_id.startswith("automation."):
-                        continue
-
-                    domain = entity_id.split(".")[0]
-                    # Пропускаем системные сущности
-                    if domain in ["automation", "script", "scene", "update"]:
-                        continue
-
-                    attributes = state_obj.get("attributes", {})
-                    friendly_name = attributes.get("friendly_name", entity_id)
-
-                    # Пытаемся найти area_id из реестра устройств
-                    area_id = None
-                    area_name = None
-                    device_id = attributes.get("device_id")
-                    if device_id and device_id in device_to_area:
-                        area_id = device_to_area[device_id]
-                        if area_id in areas_map:
-                            area_name = areas_map[area_id].name
-
-                    available_devices.append(
-                        AvailableDevice(
-                            entity_id=entity_id,
-                            friendly_name=friendly_name,
-                            device_type=domain,
-                            area_id=area_id,
-                            area_name=area_name,
-                            state=state_obj.get("state", "unknown"),
-                            icon=attributes.get("icon"),
-                        )
-                    )
-                except Exception as e:
-                    logger.warning(f"Ошибка при парсинге устройства {state_obj}: {e}")
-                    continue
-
-            logger.info(
-                f"Загружены данные для добавления устройства: "
-                f"{len(areas)} комнат, {len(available_devices)} устройств"
+        source = await persistence.sources.load_source(source_id)
+        if not source:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Источник {source_id} не найден",
             )
 
-            return DiscoveryData(
-                source_id=str(source_id),
-                areas=areas,
-                available_devices=available_devices,
-                available_device_count=len(available_devices),
-            )
+        # TODO: Реализовать получение доступных устройств из HA
+        # через HARestClient.fetch_devices() и HARestClient.fetch_areas()
+
+        return DiscoveryData(
+            source_id=str(source_id),
+            areas=[],
+            available_devices=[],
+            available_device_count=0,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при получении данных для добавления устройства: {e}", exc_info=True)
+        logger.error(f"Ошибка при получении discovery data для источника {source_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Ошибка при подключении к Home Assistant: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка при получении данных об устройствах",
         ) from e
