@@ -85,7 +85,7 @@
    - **Статус:** Не исправлено
 
 4. **Падающие тесты (сверено с baseline HEAD через worktree — 2026-09-29)**
-   - **root+unit: 15** — `tests/unit/test_cache.py` (5), `tests/unit/test_models.py` (3), `tests/unit/test_device_service.py` (1: `test_handle_state_change_with_malformed_data`), `tests/test_websocket_batcher.py` (3), `tests/test_discovery_classifier.py` (2), `tests/test_metrics.py` (1)
+   - **root+unit: 15** — `tests/unit/test_cache.py` (5), `tests/unit/test_models.py` (3), `tests/unit/test_device_service.py` (1: `test_handle_state_change_with_malformed_data`), `tests/test_websocket_batcher.py` (3), `tests/test_discovery_classifier.py` (2), `tests/test_metrics.py` (1 — ✅ исправлено 2026-09-29: невалидный kwarg `help=` в `MetricsCollector.initialize()`)
    - **contract: 6 failed + 27 errors** (запускать отдельно от integration)
    - **integration: 4 failed** (`test_commands.py` 2, `test_state_sync.py` 2)
    - **playwright: 14** — `RuntimeError: Runner.run() cannot be called from a running event loop` (конфликт event loop)
@@ -101,7 +101,7 @@
 
 5. **Нет тестов для WebSocket reconnect logic**
    - **Файл:** `adapters/ha_adapter.py`
-   - **Статус:** Не исправлено
+   - **Статус:** ✅ **ИСПРАВЛЕНО** (2026-09-29) — `tests/test_ha_adapter_reconnect.py` (6 тестов: обрыв listen-задачи, исключение listen, backoff 1→2→4…≤60с, shutdown без висящих задач, метрика `websocket_disconnects_total`, WARNING/INFO contracts §4)
 
 7. **Makefile-таргеты `export-fsm*` вызывают несуществующую команду `smart-home`** *(найдено 2026-09-29 при чистке документации)*
    - **Файл:** `Makefile` (строки ~172-191)
@@ -133,10 +133,16 @@
     - **Проблема:** `set_event_router()` сохраняет роутер в `_event_router`, поле больше нигде не используется → в mock-режиме (без HA_TOKEN) motion-события не доставляются FSM
     - **Статус:** Не исправлено (влияет только на демо/mock-сценарии)
 
+12. **`Task was destroyed but it is pending` при остановке контейнера** *(найдено 2026-09-29 при T011)*
+    - **Файл:** контейнер `behavioral-platform`, uvicorn `Server.shutdown()` (Task-169)
+    - **Проблема:** при `docker compose stop` event loop закрывается с pending-задачей self-shutdown uvicorn; критерии T011 (`Traceback`/`Unclosed client session`, останов ≤30с) при этом выполняются (останов 1с, 0 ошибок)
+    - **Статус:** Не исправлено (низкий приоритет, косметика graceful shutdown)
+
 ## Последние значимые изменения
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-29 | Specs 003 US1+US2: healthcheck CLI+`/health` JSON, Docker E2E (10 мин healthy, 0 рестартов, stop 1с/без Traceback), WebSocket reconnect (backoff после обрыва, метрика `websocket_disconnects_total`, логи contracts §4), reconnect-тесты (6), фикс `MetricsCollector.initialize()` (13× `help=` → TypeError → все метрики были no-op) | `src/cli/health_check.py`, `src/webui/routes/__init__.py`, `src/adapters/ha_adapter.py`, `src/core/metrics.py`, `tests/test_ha_adapter_reconnect.py`, `tests/cli/`, `deploy/docker/Dockerfile`, `specs/003-critical-production-fixes/tasks.md` | ✅ Complete |
 | 2026-09-29 | Устранение расхождений документации и кода: (1) motion-баг — EventRouter строил маппинг до регистрации FSM (порядок в `Container.build()`, регресс-тест, `sensors.motion` в living_room/bathroom); (2) `specs/001/tasks.md` — честная сверка 88/130 с бэклогом; (3) валидатор принимает `rooms`; (4) Makefile `shp`; (5) roadmap: secrets/hot-reload/цифры команд; (6) WebUI: путь шаблонов `routes/__init__.py` (`/health`, `/dashboard` отдавали 500 — TemplateNotFound) + изоляция тестов от реального манифеста (`test_webui.py` перезаписывал `instances/leonids_house/manifest.yaml` через `/devices/save`) | `src/core/container.py`, `tests/test_container.py`, `instances/leonids_house/manifest.yaml`, `specs/001-device-integration/tasks.md`, `src/core/manifest_validator.py`, `tests/test_manifest_validator.py`, `src/webui/routes/__init__.py`, `tests/test_webui.py`, `Makefile`, `.ai/03_ROADMAP.md` | ✅ Complete |
 | 2026-09-29 | Реорганизация документации: README сокращён 1105 → 189 строк, гайды перенесены в `docs/guides/` (10 шт.), API — в `docs/api/`, удалены 6 отчётов-однодневок из корня, добавлен `.ai/enhancements/INDEX.md` | `README.md`, `docs/`, `.ai/enhancements/INDEX.md`, `.ai/CONTEXT.md`, `CLAUDE.md` | ✅ Complete |
 | 2026-09-29 | Асинхронная публикация событий устройств (4 ошибки mypy unused-coroutine) + миграция `@validator` → `@field_validator` | `src/services/device_service.py`, `src/core/models/device_command.py`, `tests/unit/test_device_service.py` | ✅ Complete |

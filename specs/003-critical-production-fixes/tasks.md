@@ -19,8 +19,8 @@
 
 **Purpose**: общая подготовка перед фиксами
 
-- [ ] T001 Подготовить пакет тестов `tests/cli/`: создать `tests/cli/__init__.py` (по конвенции `tests/unit/__init__.py`) и убедиться, что `pytest tests/cli` собирается
-- [ ] T002 [P] Убедиться, что Docker-окружение готово для верификации: `docker info` OK, каталог `deploy/docker/` содержит `Dockerfile` и `docker-compose.prod.yml` (результат — заметка для задач US1; ничего не коммитить)
+- [X] T001 Подготовить пакет тестов `tests/cli/`: создать `tests/cli/__init__.py` (по конвенции `tests/unit/__init__.py`) и убедиться, что `pytest tests/cli` собирается
+- [X] T002 [P] Убедиться, что Docker-окружение готово для верификации: `docker info` OK, каталог `deploy/docker/` содержит `Dockerfile` и `docker-compose.prod.yml` (результат — заметка для задач US1; ничего не коммитить)
 
 ---
 
@@ -30,7 +30,9 @@
 
 **⚠️ CRITICAL**: без baseline все последующие «регрессии» будут неотличимы от pre-existing падений
 
-- [ ] T003 Запустить `.ai/scripts/run_checks.sh` и порознь `pytest tests/ --ignore=tests/contract --ignore=tests/integration -q`, `pytest tests/contract -q`, `pytest tests/integration -q`; зафиксировать текущие результаты (покрытие, число падений) в заметках — сравнение пойдёт в Phase 6
+- [X] T003 Запустить `.ai/scripts/run_checks.sh` и порознь `pytest tests/ --ignore=tests/contract --ignore=tests/integration -q`, `pytest tests/contract -q`, `pytest tests/integration -q`; зафиксировать текущие результаты (покрытие, число падений) в заметках — сравнение пойдёт в Phase 6
+
+> **Baseline 2026-09-29**: `run_checks.sh` exit 0 (покрытие 92.8%); root+unit: **79 failed / 1207 passed** (из них 51 `unit/test_device_service` — межтестовая поллюция: изолированно 1f/62p; 14 `test_webui_playwright` — pre-existing; 5 cache, 3 models, 3 batcher, 2 discovery, 1 metrics); `tests/contract`: 6 failed / 8 passed / 27 errors; `tests/integration`: 4 failed / 6 passed / 9 skipped. Полные списки: `/tmp/shp-baseline/root.txt`.
 
 ---
 
@@ -42,20 +44,25 @@
 
 ### Тесты (TDD — сначала падающие)
 
-- [ ] T004 [US1] Написать тесты healthcheck-модуля в `tests/cli/test_health_check.py`: (а) проба к живому серверу с `/health` → exit 0; (б) недоступный порт → exit 1; (в) таймаут → exit 1; (г) не-200 → exit 1; (д) порт из `WEBUI_PORT`, дефолт 8125. Ожидаемо: падают, модуля нет
-- [ ] T005 [US1] Обновить тест маршрута в `tests/test_webui.py`: `GET /health` → 200 и JSON `{"status": "ok"}` (Content-Type `application/json`). Ожидаемо: падает (сейчас HTML)
+- [X] T004 [US1] Написать тесты healthcheck-модуля в `tests/cli/test_health_check.py`: (а) проба к живому серверу с `/health` → exit 0; (б) недоступный порт → exit 1; (в) таймаут → exit 1; (г) не-200 → exit 1; (д) порт из `WEBUI_PORT`, дефолт 8125. Ожидаемо: падают, модуля нет
+- [X] T005 [US1] Обновить тест маршрута в `tests/test_webui.py`: `GET /health` → 200 и JSON `{"status": "ok"}` (Content-Type `application/json`). Ожидаемо: падает (сейчас HTML)
 
 ### Реализация
 
-- [ ] T006 [US1] Создать `src/cli/health_check.py` по контракту contracts/operational-contracts.md §1: HTTP-проба `http://127.0.0.1:{WEBUI_PORT|8125}/health`, таймаут ≤5с, exit 0 при 200 / exit 1 иначе, одна строка диагностики в stdout, без цикла
-- [ ] T007 [US1] Изменить маршрут `/health` в `src/webui/routes/__init__.py:37`: JSON-ответ `{"status": "ok"}`, статус 200 (заменить HTML-контент, путь не менять)
-- [ ] T008 [US1] Прогнать `pytest tests/cli/test_health_check.py tests/test_webui.py -k "health or Health" -v` — все зелёные
+- [X] T006 [US1] Создать `src/cli/health_check.py` по контракту contracts/operational-contracts.md §1: HTTP-проба `http://127.0.0.1:{WEBUI_PORT|8125}/health`, таймаут ≤5с, exit 0 при 200 / exit 1 иначе, одна строка диагностики в stdout, без цикла
+- [X] T007 [US1] Изменить маршрут `/health` в `src/webui/routes/__init__.py:37`: JSON-ответ `{"status": "ok"}`, статус 200 (заменить HTML-контент, путь не менять)
+- [X] T008 [US1] Прогнать `pytest tests/cli/test_health_check.py tests/test_webui.py -k "health or Health" -v` — все зелёные
 
 ### E2E-верификация (сценарии 4–5 quickstart)
 
-- [ ] T009 [US1] Выполнить quickstart сценарий 4: `docker build -f deploy/docker/Dockerfile -t smart-home-platform:003 .` → `docker compose -f deploy/docker/docker-compose.prod.yml up -d` → `ps` (ожидаем healthy) → `curl -fsS http://localhost:8125/health` → наблюдение 10 мин без перезапусков. Результат зафиксировать в заметках задачи
-- [ ] T010 [US1] Если шаг T009 упал на сборке/запуске — исправить `deploy/docker/Dockerfile`/`src/main.py` строго по фактической ошибке (фиксировать только наблюдаемое; enhancement 20 частично устарел — не вносить его гипотезы заранее)
-- [ ] T011 [US1] Выполнить quickstart сценарий 5: `docker compose ... stop` → в логах нет `Traceback`/`Unclosed client session`, останов ≤30с; при нарушении — дофиксировать graceful shutdown в `src/main.py`
+- [X] T009 [US1] Выполнить quickstart сценарий 4: `docker build -f deploy/docker/Dockerfile -t smart-home-platform:003 .` → `docker compose -f deploy/docker/docker-compose.prod.yml up -d` → `ps` (ожидаем healthy) → `curl -fsS http://localhost:8125/health` → наблюдение 10 мин без перезапусков. Результат зафиксировать в заметках задачи
+- [X] T010 [US1] Если шаг T009 упал на сборке/запуске — исправить `deploy/docker/Dockerfile`/`src/main.py` строго по фактической ошибке (фиксировать только наблюдаемое; enhancement 20 частично устарел — не вносить его гипотезы заранее)
+- [X] T011 [US1] Выполнить quickstart сценарий 5: `docker compose ... stop` → в логах нет `Traceback`/`Unclosed client session`, останов ≤30с; при нарушении — дофиксировать graceful shutdown в `src/main.py`
+
+> **Результаты E2E (2026-09-29)**:
+> - T009: сборка OK (образ `smart-home-platform:003`), `behavioral-platform` Up **16 мин**, `healthy`, **0 рестартов**, `GET /health` → 200, в логах 0 `Traceback`/`Unclosed` — 10-минутное наблюдение пройдено.
+> - T010: не понадобился — T009 прошёл без ошибок сборки/запуска.
+> - T011: `docker compose stop` — останов **1с** (≤30с ✓), `Traceback`/`Unclosed client session` — 0 ✓. Наблюдение: uvicorn вывел `Task was destroyed but it is pending` (Task-169 `Server.shutdown()` при закрытии event loop) — критерии не нарушает, вынесено в Known Issues (низкий приоритет).
 
 ---
 
@@ -67,14 +74,22 @@
 
 ### Тесты (TDD)
 
-- [ ] T012 [US2] Написать `tests/test_ha_adapter_reconnect.py` (4 сценария research R6): (1) mock-клиент с завершающимся `_listen_task` → повторный `connect()` адаптера; (2) порядок backoff 1→2→4→…≤60с и сброс до 1с после успеха (monkeypatch времени/ожидания); (3) shutdown во время задержки → мгновенный выход, после прогона `asyncio.all_tasks()` не содержит «висящих» задач адаптера; (4) `connected=False` + завершённый listen_task = новая попытка. Ожидаемо: часть падает (не всё покрыто), часть — фиксирует существующее поведение
+- [X] T012 [US2] Написать `tests/test_ha_adapter_reconnect.py` (4 сценария research R6): (1) mock-клиент с завершающимся `_listen_task` → повторный `connect()` адаптера; (2) порядок backoff 1→2→4→…≤60с и сброс до 1с после успеха (monkeypatch времени/ожидания); (3) shutdown во время задержки → мгновенный выход, после прогона `asyncio.all_tasks()` не содержит «висящих» задач адаптера; (4) `connected=False` + завершённый listen_task = новая попытка. Ожидаемо: часть падает (не всё покрыто), часть — фиксирует существующее поведение
+
+> T012 выполнен: 6 тестов (4 сценария R6 + метрика + логирование). До реализации падали 3 (backoff-фильтрация, метрика, лог), 3 фиксировали существующее поведение; после T013–T015 — все зелёные.
 
 ### Реализация остатка
 
-- [ ] T013 [US2] Доработать `src/adapters/ha_adapter.py` по результатам T012: при reconnect закрывать старую сессию/клиент и сбрасывать их ресурсы (п.2 enhancement 21), убедиться, что `_listen_loop` в `SimpleHAWebSocketClient` не глушит ошибки молча (при ошибке: `connected=False`, warning, выход — детект обрыва)
-- [ ] T014 [US2] Добавить метрику `websocket_disconnects_total` (Counter, prometheus_client через инфраструктуру `src/services/metrics_server.py`): ленивая регистрация + инкремент на каждой потере соединения в `src/adapters/ha_adapter.py` (ветка «WebSocket lost»/начало попытки); путь правок: `src/adapters/ha_adapter.py`, `src/services/metrics_server.py`
-- [ ] T015 [US2] Проверить логирование по contracts §4: WARNING об обрыве с номером попытки и задержкой, INFO об успехе со сбросом backoff — при отсутствии добавить в `src/adapters/ha_adapter.py`
-- [ ] T016 [US2] Прогнать `pytest tests/test_ha_adapter_reconnect.py tests/test_ha_adapter.py -v` — все зелёные, утечек задач нет
+- [X] T013 [US2] Доработать `src/adapters/ha_adapter.py` по результатам T012: при reconnect закрывать старую сессию/клиент и сбрасывать их ресурсы (п.2 enhancement 21), убедиться, что `_listen_loop` в `SimpleHAWebSocketClient` не глушит ошибки молча (при ошибке: `connected=False`, warning, выход — детект обрыва)
+- [X] T014 [US2] Добавить метрику `websocket_disconnects_total` (Counter, prometheus_client через инфраструктуру `src/services/metrics_server.py`): ленивая регистрация + инкремент на каждой потере соединения в `src/adapters/ha_adapter.py` (ветка «WebSocket lost»/начало попытки); путь правок: `src/adapters/ha_adapter.py`, `src/services/metrics_server.py`
+- [X] T015 [US2] Проверить логирование по contracts §4: WARNING об обрыве с номером попытки и задержкой, INFO об успехе со сбросом backoff — при отсутствии добавить в `src/adapters/ha_adapter.py`
+- [X] T016 [US2] Прогнать `pytest tests/test_ha_adapter_reconnect.py tests/test_ha_adapter.py -v` — все зелёные, утечек задач нет
+
+> **Заметки US2 (2026-09-29)**:
+> - T013: закрытие сессии/клиента при реконнекте уже обеспечивалось `_cleanup_websocket()` в `finally`; добавлены гвард повторного `connect()` (закрытие старого ws, сброс `_msg_id`/`_handlers`/`_event_handler`) и незамалчивание ошибок в `_listen_loop` (warning на обрыв цикла и на ошибку обработки сообщения).
+> - T014: фактический путь правок — `src/core/metrics.py` (счётчик и `record_websocket_disconnect()` в `MetricsCollector` — та самая инфраструктура, которую использует `metrics_server.py`; отдельные правки `metrics_server.py` не потребовались) + инкремент из `ha_adapter._record_disconnect` по факту потери (не при ошибках первичного подключения). Импорт метрик в `ha_adapter` ленивый — модульный импорт создавал цикл `core.container → ha_adapter → src.core`. Попутно исправлен pre-existing баг `initialize()` в `src/core/metrics.py`: 13× `help=` (невалидный kwarg для prometheus_client → `TypeError` до `_initialized = True`, все метрики были no-op); `tests/test_metrics.py` теперь 17 passed (baseline: 1 failed).
+> - T015: после обрыва — единый backoff-слой (задержка 1→2→4…≤60с после cleanup, вариант A): WARNING `WebSocket lost (...), reconnecting (attempt N, delay X.Xs)` + INFO `... backoff reset` после успеха; для не-сетевых исключений добавлен `logger.exception` (contracts §4).
+> - T016: `pytest tests/test_ha_adapter_reconnect.py tests/test_ha_adapter.py tests/test_metrics.py tests/test_prometheus_metrics.py` → **78 passed, 0 failed**; утечек задач нет (см. `test_stop_during_backoff_is_immediate_and_leaves_no_hanging_tasks`).
 
 ---
 
