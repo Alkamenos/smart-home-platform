@@ -76,10 +76,12 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# importlib: коллизия имён тестовых модулей с одинаковыми basename
+# (contract/test_access_control.py == integration/test_access_control.py) — Known Issue #3
 # test_webui_playwright.py исключён: playwright sync API держит running event loop
 # на весь прогон и ломает последующие async-тесты (Known Issue #13).
 # Запускать отдельно: pytest tests/test_webui_playwright.py
-addopts = "-v --cov=src --ignore=tests/test_webui_playwright.py"
+addopts = "-v --cov=src --import-mode=importlib --ignore=tests/test_webui_playwright.py"
 timeout = 30
 
 [tool.hatch.build.targets.wheel]

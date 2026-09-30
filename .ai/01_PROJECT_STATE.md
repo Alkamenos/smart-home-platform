@@ -79,14 +79,13 @@
    - **Файл:** `core/event_router.py:67`
    - **Статус:** **ИСПРАВЛЕНО** (2026-09-15) — EventRouter теперь использует public API вместо private field access
 
-3. **`pytest tests/` целиком не собирается (import file mismatch)**
+3. **`pytest tests/` целиком не собирался (import file mismatch)**
    - **Файлы:** `tests/contract/test_access_control.py` и `tests/integration/test_access_control.py` — одинаковый basename, в каталогах тестов нет `__init__.py`
-   - **Обходной путь:** запускать по отдельности или добавить `--import-mode=importlib` в `pyproject.toml` (требует согласования)
-   - **Статус:** Не исправлено
+   - **Статус:** ✅ **ИСПРАВЛЕНО** (2026-09-30, Q2 из BACKLOG) — `--import-mode=importlib` в `[tool.pytest.ini_options] addopts` (`pyproject.toml`); полный `pytest tests/` собирается и работает: **29 failed / 1354 passed / 9 skipped** (= сумма baseline-групп 15+10+4), группы отдельно — цифры baseline не изменились
 
 4. **Падающие тесты (сверено с baseline HEAD через worktree — 2026-09-29)**
    - **root+unit: 15** — `tests/unit/test_cache.py` (5), `tests/unit/test_models.py` (3), `tests/unit/test_device_service.py` (1: `test_handle_state_change_with_malformed_data`), `tests/test_websocket_batcher.py` (3), `tests/test_discovery_classifier.py` (2), `tests/test_metrics.py` (1 — ✅ исправлено 2026-09-29: невалидный kwarg `help=` в `MetricsCollector.initialize()`)
-   - **contract: 6 failed + 27 errors** (запускать отдельно от integration)
+   - **contract: 10 failed + 40 passed** (запуск совместно с integration теперь можно — Known Issue #3 закрыт 2026-09-30)
    - **integration: 4 failed** (`test_commands.py` 2, `test_state_sync.py` 2)
    - **playwright: 14** — `RuntimeError: Runner.run() cannot be called from a running event loop` (конфликт event loop → см. Known Issue #13: файл заражает loop'ом последующие async-тесты)
    - Все перечисленные падают и на baseline (HEAD `d1918d8`) — не регрессии
@@ -150,6 +149,7 @@
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-30 | Q2 (BACKLOG): убран import file mismatch — `--import-mode=importlib` в pytest addopts (коллизия basename `test_access_control.py` в contract/integration); полный `pytest tests/` теперь собирается и работает: 29 failed / 1354 passed / 9 skipped (= сумма baseline-групп), группы отдельно без изменений; Known Issue #3 закрыт | `pyproject.toml` | ✅ Complete |
 | 2026-09-30 | Q1 (BACKLOG): устранено loop-заражение playwright-файла — 14 E2E-тестов переведены на sync playwright API (были `async def` → конфликт с sync session-фикстурой, держащей running loop), файл исключён из общего прогона (`--ignore` в addopts), запуск отдельно; root-прогон: было 87 failed → **15 failed / 1301 passed = baseline**; Known Issue #13 закрыт (остаток — Q6: teardown-зависание отдельного прогона) | `tests/test_webui_playwright.py`, `pyproject.toml` | ✅ Complete |
 | 2026-09-30 | Specs 005 device-audit-log: модель `DeviceSyncEvent` + `DeviceSyncEventPersistence` (append-only JSON `data/device_sync_events.json`), чтение `GET /api/v1/devices/{id}/events` из персистентности вместо заглушки, синхронная запись в webui-хендлерах (config_changed с before/after только запрашиваемых полей, access_granted/updated/revoked, command_executed с содержимым команды), helper `record_sync_event`/`get_sync_history` в deps; ТР-010 (Tech Debt High #2) закрыт; quickstart 6/6; регресс: contract/integration без новых падений, root без новых падений (9 падений unit — pre-existing заражение playwright, см. Known Issue #13) | `src/core/models/device_sync_event.py`, `src/core/persistence/{devices,manager}.py`, `src/webui/routes/devices/{deps,devices,access_control}.py`, `tests/unit/test_device_sync_{event,persistence}.py`, `tests/contract/test_device_events_api.py`, `tests/integration/test_device_audit_log.py`, `specs/005-device-audit-log/` | ✅ Complete |
 | 2026-09-29 | Specs 004 US4 Access Control: DeviceAccessMiddleware зарегистрирован в create_app (+`access_control.router` не был включён — 404 на все access-endpoints), module-level `app` в main.py (TestClient-совместимость), фильтрация `GET /api/v1/devices` по доступу, grant/revoke/list на body-схемах с реальной логикой (grant device-blind), union-схема POST /command (стаб `cmd_123` удалён), WS: подписка с `check_device_access` + доставка по правам при каждой доставке; access contract 11 passed, integration 2 passed; регресс без новых падений | `src/webui/app.py`, `src/webui/middleware_access_control.py`, `src/webui/routes/devices/{devices,access_control,websocket,__init__}.py`, `src/webui/routes/devices/deps.py`, `src/services/device_service.py`, `src/main.py`, `tests/contract/test_access_control.py`, `tests/integration/test_access_control.py`, `tests/contract/{test_devices_api,test_sources_api}.py` | ✅ Complete |
