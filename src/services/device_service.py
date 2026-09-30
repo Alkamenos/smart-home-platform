@@ -35,6 +35,10 @@ EVENT_DEVICE_LOADED = "device.loaded"
 EVENT_DEVICE_CONFIG_CHANGED = "device.config_changed"
 EVENT_DEVICE_STATE_CHANGED = "device.state_changed"
 EVENT_DEVICE_ACCESS_CHANGED = "device.access_changed"
+EVENT_DEVICE_REMOVED = "device.removed"
+
+# Пользователь, которому выдаётся доступ на устройства, найденные синхронизацией
+SYNC_ACCESS_USER = "admin_user"
 
 
 class DeviceService:
@@ -47,6 +51,8 @@ class DeviceService:
         ha_adapter: object | None = None,
         cache_max_size: int = 1000,
         cache_ttl_seconds: int = 300,
+        engine: object | None = None,
+        event_router: object | None = None,
     ) -> None:
         """Инициализация сервиса с зависимостями.
 
@@ -56,10 +62,15 @@ class DeviceService:
             ha_adapter: Адаптер Home Assistant для подключения и получения данных
             cache_max_size: Максимальный размер кэша (по умолчанию 1000)
             cache_ttl_seconds: TTL кэша в секундах (по умолчанию 300)
+            engine: Движок машин состояний — нужен, чтобы снимать автоматику
+                устройств, исчезнувших из Home Assistant (spec 006, FR-016).
+            event_router: Маршрутизатор событий — перестраивается после снятия.
         """
         self.event_bus = event_bus
         self.persistence = persistence_module
         self.ha_adapter = ha_adapter
+        self._engine = engine
+        self._event_router = event_router
         self._devices: dict[UUID, Device] = {}
         self._sources: dict[UUID, HASource] = {}
         self._commands: dict[UUID, dict[str, Any]] = {}  # Хранилище статусов команд
@@ -71,6 +82,137 @@ class DeviceService:
         # Инициализация кэша и индекса
         self._cache = DeviceCache(max_size=cache_max_size, ttl_seconds=cache_ttl_seconds)
         self._index = IndexManager()
+
+    async def _merge_synced_devices(
+        self, source_id: UUID, parsed_devices: list[Device]
+    ) -> tuple[list[Device], list[Device]]:
+        """Сводит устройства из источника с уже известными.
+
+        Существующие записи обновляются на месте (сохраняются идентификатор и
+        выданные права), новые создаются, а пропавшие из Home Assistant
+        помечаются статусом ``removed_from_ha`` — молча их не теряем.
+
+        Args:
+            source_id: Идентификатор источника.
+            parsed_devices: Устройства, прочитанные из источника.
+
+        Returns:
+            Пара: актуальный список устройств источника и список исчезнувших.
+        """
+        known = await self._load_source_devices(source_id)
+        by_entity = {device.ha_entity_id: device for device in known}
+
+        seen: set[str] = set()
+        merged: list[Device] = []
+        for fresh in parsed_devices:
+            existing = by_entity.get(fresh.ha_entity_id)
+            if existing is None:
+                fresh.status = "available" if fresh.status != "unavailable" else "unavailable"
+                await self._grant_sync_access(fresh)
+                merged.append(fresh)
+                seen.add(fresh.ha_entity_id)
+                continue
+
+            existing.name = fresh.name
+            existing.device_type = fresh.device_type
+            existing.state = fresh.state
+            existing.attributes = fresh.attributes
+            existing.ha_area_id = fresh.ha_area_id
+            existing.model = fresh.model
+            existing.manufacturer = fresh.manufacturer
+            existing.status = fresh.status
+            existing.updated_at = datetime.utcnow()
+            merged.append(existing)
+            seen.add(existing.ha_entity_id)
+
+        removed: list[Device] = []
+        for device in known:
+            if device.ha_entity_id in seen or device.status == "removed_from_ha":
+                continue
+            device.status = "removed_from_ha"
+            device.updated_at = datetime.utcnow()
+            removed.append(device)
+
+        logger.info(
+            f"Сведение синхронизации источника {source_id}: новых — "
+            f"{sum(1 for d in merged if d not in known)}, исчезнувших — {len(removed)}"
+        )
+        return merged, removed
+
+    async def _load_source_devices(self, source_id: UUID) -> list[Device]:
+        """Загружает известные устройства источника из кэша и хранилища.
+
+        Args:
+            source_id: Идентификатор источника.
+
+        Returns:
+            Список устройств источника.
+        """
+        known: dict[UUID, Device] = {
+            device_id: device
+            for device_id, device in self._devices.items()
+            if device.source_id == source_id
+        }
+
+        if self.persistence and hasattr(self.persistence, "devices"):
+            try:
+                stored = await self.persistence.devices.load_devices_by_source(source_id)
+            except Exception as e:
+                logger.warning(f"Не удалось загрузить устройства источника {source_id}: {e}")
+                stored = []
+            for device in stored:
+                known.setdefault(device.id, device)
+
+        return list(known.values())
+
+    async def _grant_sync_access(self, device: Device) -> None:
+        """Выдаёт права на новое устройство владельцу инсталляции.
+
+        Без этого устройство не попало бы в список: список отдаёт только
+        устройства, доступные пользователю (spec 006, FR-015).
+
+        Args:
+            device: Новое устройство источника.
+        """
+        if self.persistence is None or not hasattr(self.persistence, "device_access"):
+            return
+        try:
+            await self.grant_access(
+                device_id=device.id,
+                user_id=SYNC_ACCESS_USER,
+                role="admin",
+                granted_by=SYNC_ACCESS_USER,
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось выдать права на {device.ha_entity_id}: {e}")
+
+    async def _deactivate_removed_devices(self, removed: list[Device]) -> None:
+        """Снимает машины состояний устройств, исчезнувших из Home Assistant.
+
+        Args:
+            removed: Устройства, помеченные как removed_from_ha.
+        """
+        if not removed or self._engine is None:
+            return
+
+        unregistered = 0
+        for device in removed:
+            try:
+                entities = self._engine.get_entities_by_device(device.ha_entity_id)
+            except Exception as e:
+                logger.warning(f"Не удалось найти автоматику {device.ha_entity_id}: {e}")
+                continue
+            for entity_id in entities:
+                self._engine.unregister(entity_id)
+                unregistered += 1
+
+        if unregistered and self._event_router is not None:
+            try:
+                self._event_router.rebuild()
+            except Exception as e:
+                logger.warning(f"Не удалось перестроить маршрутизацию: {e}")
+
+        logger.info(f"Снято машин состояний для исчезнувших устройств: {unregistered}")
 
     async def sync_devices_from_source(self, source_id: UUID) -> list[Device]:
         """Синхронизирует устройства из указанного источника Home Assistant.
@@ -121,40 +263,58 @@ class DeviceService:
                     f"Преобразовано {len(parsed_devices)} устройств для источника {source_id}"
                 )
 
-                # 5. Сохранить в persistence
-                if self.persistence and hasattr(self.persistence, "devices"):
-                    await self.persistence.devices.save_devices(parsed_devices)
-                    logger.info(f"Сохранено {len(parsed_devices)} устройств в persistence")
+            # 5. Свести результат с единым хранилищем: обновить известные
+            # устройства, создать новые, пометить исчезнувшие. Раньше каждая
+            # синхронизация порождала новые записи с новыми id (дубли), а
+            # исчезнувшие устройства навсегда оставались обычными (spec 006).
+            merged, removed = await self._merge_synced_devices(source_id, parsed_devices)
 
-            # 6. Обновить внутренний _devices словарь и индекс
-            for device in parsed_devices:
+            # 6. Сохранить в persistence
+            if self.persistence and hasattr(self.persistence, "devices"):
+                await self.persistence.devices.save_devices(merged)
+                logger.info(f"Сохранено {len(merged)} устройств в persistence")
+
+            # 7. Обновить внутреннее хранилище и индекс
+            for device in merged:
                 self._devices[device.id] = device
                 self._index.add_device(device)
+            for device in removed:
+                self._devices[device.id] = device
+                self._index.update_device(device)
 
-            logger.info(f"Обновлен internal index и cache для {len(parsed_devices)} устройств")
+            logger.info(
+                f"Обновлены внутренние хранилища: записей — {len(merged)}, "
+                f"исчезнувших — {len(removed)}"
+            )
 
-            # 7. Опубликовать события для каждого устройства
-            for device in parsed_devices:
+            # 8. Снять автоматику исчезнувших устройств
+            await self._deactivate_removed_devices(removed)
+
+            # 9. Опубликовать события для каждого устройства
+            for device in merged:
                 await self._publish_device_loaded_event(device)
+            for device in removed:
+                await self._publish_device_removed_event(device)
 
-            # 8. Обновить источник с временем последней синхронизации
+            # 10. Обновить источник с временем последней синхронизации
             source.last_sync = datetime.utcnow()
             source.last_error = None
             if self.persistence and hasattr(self.persistence, "sources"):
                 await self.persistence.sources.save_source(source)
                 logger.info(f"Обновлено время синхронизации источника {source_id}")
 
-            # 9. Обновляем метрики
+            # 11. Обновляем метрики
             sync_duration = time.time() - sync_start_time
             self._metrics.record_source_sync_duration(source_id_str, sync_duration)
             self._update_device_availability_metrics()
 
             logger.info(
                 f"Синхронизация из источника {source_id} успешно завершена: "
-                f"загружено {len(parsed_devices)} устройств за {sync_duration:.2f}s"
+                f"устройств в источнике — {len(merged)}, исчезнувших — {len(removed)}, "
+                f"время — {sync_duration:.2f}s"
             )
 
-            return parsed_devices
+            return merged
 
         except Exception as e:
             logger.error(f"Ошибка синхронизации источника {source_id}: {e}")
@@ -1170,6 +1330,28 @@ class DeviceService:
 
         except Exception as e:
             logger.error(f"Ошибка публикации события загрузки устройства: {e}")
+
+    async def _publish_device_removed_event(self, device: Device) -> None:
+        """Публикует событие исчезновения устройства из Home Assistant.
+
+        Args:
+            device: Устройство, помеченное как removed_from_ha.
+        """
+        try:
+            await self.event_bus.publish(
+                EVENT_DEVICE_REMOVED,
+                {
+                    "device_id": str(device.id),
+                    "source_id": str(device.source_id),
+                    "ha_entity_id": device.ha_entity_id,
+                    "name": device.name,
+                    "status": device.status,
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
+            )
+            logger.debug(f"Опубликовано событие исчезновения устройства: {device.ha_entity_id}")
+        except Exception as e:
+            logger.error(f"Ошибка публикации события исчезновения устройства: {e}")
 
     async def _publish_state_changed_event(
         self,

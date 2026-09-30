@@ -370,6 +370,8 @@ def create_app(
             event_bus=event_bus,
             persistence_module=persistence,
             ha_adapter=_container.adapter if _container is not None else None,
+            engine=_container.fsm if _container is not None else None,
+            event_router=_container.event_router if _container is not None else None,
         )
 
         # Гидратация из постоянного хранилища: без неё список устройств был

@@ -26,6 +26,7 @@ from src.services.device_service import (
     EVENT_DEVICE_ACCESS_CHANGED,
     EVENT_DEVICE_CONFIG_CHANGED,
     EVENT_DEVICE_LOADED,
+    EVENT_DEVICE_REMOVED,
     EVENT_DEVICE_STATE_CHANGED,
     DeviceService,
 )
@@ -577,9 +578,14 @@ class TestSyncDevicesFromSource:
 
             result = await device_service.sync_devices_from_source(source_id)
 
-        assert event_bus.publish.await_count == len(result)
+        # Синхронизация публикует device.loaded для каждого устройства источника.
+        # Дополнительно выдаются права (device.access_changed), поэтому считаем
+        # именно загрузки, а не общее число публикаций (spec 006, US3).
         published_types = [call.args[0] for call in event_bus.publish.await_args_list]
-        assert published_types == [EVENT_DEVICE_LOADED] * len(result)
+        assert published_types.count(EVENT_DEVICE_LOADED) == len(result)
+        assert not [
+            event_type for event_type in published_types if event_type == EVENT_DEVICE_REMOVED
+        ], "Исчезнувших устройств в этом сценарии нет"
 
     @pytest.mark.asyncio
     async def test_sync_connection_error(self, device_service, mock_persistence):
