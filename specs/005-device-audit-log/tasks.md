@@ -128,7 +128,7 @@ Single project: `src/`, `tests/` at repository root (structure decision в plan.
   - Вывод: новых падений от фичи нет; заражение вынесено в Known Issue (см. `.ai/01_PROJECT_STATE.md`)
 - [X] T020 [P] Документация: `.ai/01_PROJECT_STATE.md` — changelog + закрыть связанные пункты (CHK013/бэклог ТР-010), `.ai/03_ROADMAP.md` — Tech Debt #2 закрыт, `specs/001-device-integration/tasks.md` — RU T041 отметить `[x]`, `specs/001/checklists/requirements.md` — CHK013, `python3 .ai/scripts/sync_roadmap.py --auto-update` — выполнено + добавлен Known Issue #13 (playwright loop-заражение, найдено при T019)
 - [X] T021 Статусы фичи: `specs/005-device-audit-log/spec.md` → Implemented (2026-09-30), `checklists/requirements.md` — 16/16, quickstart-карта — 6/6 ✅
-- [ ] T022 Коммит: `run_checks.sh` exit 0 → `feat(...)` по формату конституции (после ревью пользователем)
+- [X] T022 Коммит: `run_checks.sh` exit 0 → `feat(...)` по формату конституции (после ревью пользователем) — `c6efd3e`, push 2026-09-30
 
 ---
 

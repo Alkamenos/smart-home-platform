@@ -11,7 +11,7 @@
 ---
 
 **Версия:** v3.0.0 (Production Readiness)
-**Последний коммит:** 16a54f0 (2026-09-30) — feat(webui): подключить Access Control middleware, фильтрацию прав и WS-доставку по ролям (spec 004 US4)
+**Последний коммит:** c6efd3e (2026-09-30) — feat(devices): история операций — модель DeviceSyncEvent, JSON-персистентность и запись config/access/command (spec 005)
 
 ### ✅ Полностью реализовано и протестировано
 
