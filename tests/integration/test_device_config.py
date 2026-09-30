@@ -4,8 +4,6 @@
 Тесты проверяют полный сценарий: загрузка → редактирование конфигурации → проверка сохранения.
 """
 
-from uuid import uuid4
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,32 +18,17 @@ def client():
 
 @pytest.fixture
 def sample_device(client):
-    """Фикстура для создания тестового устройства."""
-    # Создаем устройство напрямую (в хранилище)
-    from datetime import datetime
+    """Устройство, посеянное в единый источник (DeviceService) — spec 006."""
+    from tests.helpers.device_factory import make_device, seed_device_in_service
 
-    device_id = uuid4()
-    device_data = {
-        "id": str(device_id),
-        "ha_entity_id": "light.test_light",
-        "source_id": str(uuid4()),
-        "name": "Test Light",
-        "device_type": "light",
-        "model": "Test Model",
-        "manufacturer": "Test Manufacturer",
-        "state": {"state": "on"},
-        "status": "available",
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+    device = make_device(ha_entity_id="light.test_light", name="Test Light")
+    seed_device_in_service(client.app.state.device_service, device)
+    return {
+        "id": str(device.id),
+        "ha_entity_id": device.ha_entity_id,
+        "name": device.name,
+        "device_type": device.device_type,
     }
-
-    # Добавляем в хранилище
-    # Импорт без префикса src: тот же экземпляр модуля, что использует приложение
-    from webui.routes.devices.devices import _devices_store
-
-    _devices_store[str(device_id)] = device_data
-
-    return device_data
 
 
 @pytest.mark.asyncio

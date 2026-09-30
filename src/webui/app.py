@@ -20,6 +20,63 @@ from .models import ManifestModel
 
 if TYPE_CHECKING:
     from src.core.container import Container
+    from src.services.device_service import DeviceService
+
+
+DEFAULT_USER_ID = "admin_user"
+"""Идентификатор пользователя по умолчанию для запросов интерфейса."""
+
+DEFAULT_USER_IS_ADMIN = "true"
+"""Права администратора по умолчанию для запросов интерфейса."""
+
+
+def _resolve_default_user() -> tuple[str, bool]:
+    """Определяет идентичность пользователя по умолчанию из окружения.
+
+    В WebUI нет аутентификации (spec 006, D-008), поэтому идентичность,
+    с которой интерфейс обращается к защищённым адресам, задаётся окружением
+    и настраивается при развёртывании.
+
+    Returns:
+        Пара ``(user_id, is_admin)``.
+    """
+    import os
+
+    user_id = os.getenv("WEBUI_DEFAULT_USER_ID", DEFAULT_USER_ID)
+    is_admin = os.getenv("WEBUI_DEFAULT_USER_ADMIN", DEFAULT_USER_IS_ADMIN).lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    return user_id, is_admin
+
+
+def _run_device_service_hydration(device_service: DeviceService) -> int:
+    """Синхронно выполняет асинхронную гидратацию устройств.
+
+    ``create_app`` — синхронная фабрика, а гидратация асинхронная. Если
+    вызывающий код уже работает в event loop, корутина выполняется в
+    отдельном потоке со своим циклом (spec 006, FR-004).
+
+    Args:
+        device_service: Сервис устройств.
+
+    Returns:
+        Количество загруженных устройств.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    coroutine = device_service.hydrate_from_persistence()
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coroutine)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, coroutine).result()
 
 
 class LogStore:
@@ -300,13 +357,51 @@ def create_app(
         device_service = DeviceService(
             event_bus=event_bus,
             persistence_module=persistence,
-            ha_adapter=None,  # TODO: Connect HA adapter
+            ha_adapter=_container.adapter if _container is not None else None,
         )
+
+        # Гидратация из постоянного хранилища: без неё список устройств был
+        # пуст до первой синхронизации, а добавленные устройства исчезали
+        # после перезапуска (spec 006, FR-004)
+        try:
+            hydrated = _run_device_service_hydration(device_service)
+        except Exception as e:
+            logger.warning(f"Device hydration skipped: {e}")
+            hydrated = 0
+        if hydrated:
+            logger.info(f"Restored {hydrated} device(s) from persistence")
+
+        # Сервис жизненного цикла: единственная точка, выполняющая операцию
+        # «манифест → хранилище → машины состояний → маршрутизация» (spec 006).
+        # Работает с ядерным манифестом из контейнера — тем же объектом, на
+        # котором построены фабрика FSM и карта маршрутизации.
+        lifecycle_service = None
+        if _container is not None:
+            try:
+                from src.services.device_lifecycle import DeviceLifecycleService
+
+                lifecycle_service = DeviceLifecycleService(
+                    manifest=_container.manifest,
+                    device_service=device_service,
+                    factory=_container.factory,
+                    engine=_container.fsm,
+                    event_router=_container.event_router,
+                    persistence=persistence,
+                )
+            except Exception as e:
+                logger.warning(f"Device lifecycle service unavailable: {e}")
 
         app.state.event_bus = event_bus
         app.state.persistence = persistence
         app.state.device_service = device_service
-        logger.info("Device management services initialized")
+        app.state.lifecycle_service = lifecycle_service
+        default_user_id, default_user_is_admin = _resolve_default_user()
+        app.state.default_user_id = default_user_id
+        app.state.default_user_is_admin = default_user_is_admin
+        logger.info(
+            f"Device management services initialized (default user: {default_user_id}, "
+            f"admin: {default_user_is_admin})"
+        )
     except Exception as e:
         logger.warning(f"Could not initialize device services: {e}")
 

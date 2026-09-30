@@ -33,25 +33,13 @@ def viewer_user_id():
 
 
 @pytest.fixture
-def sample_device():
-    """Устройство, добавленное напрямую в хранилище (паттерн test_devices_api)."""
-    from datetime import datetime as dt
+def sample_device(client):
+    """Устройство, посеянное в единый источник (DeviceService) — spec 006."""
+    from tests.helpers.device_factory import make_device, seed_device_in_service
 
-    from webui.routes.devices.devices import _devices_store
-
-    device_id = str(uuid4())
-    _devices_store[device_id] = {
-        "id": device_id,
-        "ha_entity_id": "light.test_events",
-        "source_id": str(uuid4()),
-        "name": "Events Test Device",
-        "device_type": "light",
-        "state": {"state": "on"},
-        "status": "available",
-        "created_at": dt.utcnow().isoformat(),
-        "updated_at": dt.utcnow().isoformat(),
-    }
-    return device_id
+    device = make_device(ha_entity_id="light.test_events", name="Events Test Device")
+    seed_device_in_service(client.app.state.device_service, device)
+    return str(device.id)
 
 
 @pytest.fixture

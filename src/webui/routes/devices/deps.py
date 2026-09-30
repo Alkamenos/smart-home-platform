@@ -9,6 +9,7 @@ FastAPI dependencies для маршрутов устройств.
 #  SPDX-License-Identifier: Apache-2.0
 
 import logging
+from typing import Any
 
 from fastapi import HTTPException, Request, status
 
@@ -37,6 +38,27 @@ def get_device_service(request: Request) -> DeviceService:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Device service is not available",
+        )
+    return service
+
+
+def get_lifecycle_service(request: Request) -> Any:
+    """Возвращает сервис жизненного цикла устройств (app.state, создаётся в create_app).
+
+    Args:
+        request: HTTP запрос.
+
+    Returns:
+        DeviceLifecycleService приложения.
+
+    Raises:
+        HTTPException: 503 если сервис недоступен.
+    """
+    service = getattr(request.app.state, "lifecycle_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Device lifecycle service is not available",
         )
     return service
 

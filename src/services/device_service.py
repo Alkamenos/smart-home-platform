@@ -202,6 +202,153 @@ class DeviceService:
 
         return device
 
+    async def get_all_devices(self) -> list[Device]:
+        """Возвращает все известные устройства (единый источник, FR-003).
+
+        Returns:
+            Список устройств, зарегистрированных в сервисе.
+        """
+        return list(self._devices.values())
+
+    async def list_devices(self, source_id: UUID | None = None) -> list[Device]:
+        """Возвращает список устройств с необязательной фильтрацией по источнику.
+
+        Args:
+            source_id: Идентификатор источника; None — все устройства.
+
+        Returns:
+            Список устройств.
+        """
+        devices = await self.get_all_devices()
+        if source_id is None:
+            return devices
+        return [device for device in devices if device.source_id == source_id]
+
+    async def hydrate_from_persistence(self) -> int:
+        """Загружает устройства из постоянного хранилища в память сервиса.
+
+        Вызывается один раз при создании приложения: без этого список устройств
+        был пуст до первой синхронизации, а добавленные устройства исчезали
+        после перезапуска (FR-004, D-002).
+
+        Returns:
+            Количество загруженных устройств.
+        """
+        if self.persistence is None or not hasattr(self.persistence, "devices"):
+            logger.warning("Persistence недоступен: гидратация устройств пропущена")
+            return 0
+
+        try:
+            devices = await self.persistence.devices.load_all_devices()
+        except Exception as e:
+            logger.error(f"Не удалось загрузить устройства из хранилища: {e}")
+            return 0
+
+        for device in devices:
+            self._devices[device.id] = device
+            self._index.add_device(device)
+            self._cache.set(f"device:{device.id}", device)
+
+        if devices:
+            logger.info(f"Гидратировано устройств из хранилища: {len(devices)}")
+        return len(devices)
+
+    def _find_by_entity_id(self, ha_entity_id: str, source_id: UUID) -> Device | None:
+        """Ищет устройство по идентификатору сущности в пределах источника.
+
+        Args:
+            ha_entity_id: Идентификатор сущности Home Assistant.
+            source_id: Идентификатор источника.
+
+        Returns:
+            Найденное устройство или None.
+        """
+        found = self._index.find_by_ha_entity_id(ha_entity_id)
+        if found is not None and found.source_id == source_id:
+            return found
+        for device in self._devices.values():
+            if device.ha_entity_id == ha_entity_id and device.source_id == source_id:
+                return device
+        return None
+
+    async def add_device(self, device: Device) -> Device:
+        """Добавляет устройство в постоянное хранилище и в память сервиса.
+
+        Повторное добавление устройства с тем же идентификатором сущности в
+        пределах источника обновляет существующую запись (сохраняются её id и
+        время создания) вместо создания дубликата (FR-008).
+
+        Args:
+            device: Устройство для добавления.
+
+        Returns:
+            Сохранённое устройство.
+
+        Raises:
+            RuntimeError: Если постоянное хранилище недоступно.
+        """
+        if self.persistence is None or not hasattr(self.persistence, "devices"):
+            msg = "Persistence недоступен: устройство не может быть сохранено"
+            raise RuntimeError(msg)
+
+        existing = self._devices.get(device.id) or self._find_by_entity_id(
+            device.ha_entity_id, device.source_id
+        )
+        if existing is not None and existing.id != device.id:
+            device = device.model_copy(
+                update={"id": existing.id, "created_at": existing.created_at}
+            )
+
+        await self.persistence.devices.save_device(device)
+
+        if device.id in self._devices:
+            self._index.update_device(device)
+        else:
+            self._index.add_device(device)
+        self._devices[device.id] = device
+        self._cache.set(f"device:{device.id}", device)
+        self._invalidate_source_cache(device.source_id)
+
+        logger.info(f"Устройство сохранено: {device.ha_entity_id} (источник {device.source_id})")
+        return device
+
+    async def remove_device(self, device_id: UUID) -> bool:
+        """Удаляет устройство из постоянного хранилища, индекса и кэша.
+
+        Идемпотентно: удаление отсутствующего устройства возвращает False
+        (FR-025, FR-027). Снятие машин состояний выполняет сервис жизненного
+        цикла — здесь только данные и индексы.
+
+        Args:
+            device_id: Идентификатор устройства.
+
+        Returns:
+            True, если устройство было удалено; False, если его не было.
+        """
+        device = self._devices.get(device_id) or self._index.get_device(device_id)
+        if device is None:
+            return False
+
+        if self.persistence is not None and hasattr(self.persistence, "devices"):
+            await self.persistence.devices.delete_device(device_id)
+
+        self._index.remove_device(device_id)
+        self._devices.pop(device_id, None)
+        self._cache.invalidate(f"device:{device_id}")
+        self._invalidate_source_cache(device.source_id)
+
+        logger.info(f"Устройство удалено: {device.ha_entity_id}")
+        return True
+
+    def _invalidate_source_cache(self, source_id: UUID) -> None:
+        """Сбрасывает кэш выборки источника после изменения состава устройств.
+
+        Args:
+            source_id: Идентификатор источника.
+        """
+        if self.persistence is not None and hasattr(self.persistence, "sources"):
+            self.invalidate_source_cache(source_id)
+
     async def get_devices_by_source(self, source_id: UUID) -> list[Device]:
         """Получает все устройства из указанного источника с использованием индекса.
 

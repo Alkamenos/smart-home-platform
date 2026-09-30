@@ -7,14 +7,18 @@ API маршруты для управления устройствами.
 
 import logging
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
 
+from src.core.models.device import Device
 from src.core.models.device_sync_event import DeviceSyncEvent
+from src.core.models.manifest import BehaviorConfig
 from src.webui.routes.devices.deps import (
     get_device_service,
+    get_lifecycle_service,
     get_sync_history,
     record_sync_event,
 )
@@ -23,9 +27,6 @@ from src.webui.routes.devices.deps import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
-
-# Временное хранилище устройств (TODO: заменить на правильное хранилище через Container)
-_devices_store: dict[str, dict] = {}
 
 # Требуемые роли на операции (contracts §1, data-model иерархия)
 _ROLE_VIEWER = "viewer"
@@ -96,7 +97,6 @@ class DeviceResponse(BaseModel):
 # ============ T033-T057: Управление устройствами (полная реализация) ============
 
 
-@router.post("/apply", status_code=status.HTTP_201_CREATED)
 @router.get("", status_code=status.HTTP_200_OK)
 async def get_devices(
     request: Request,
@@ -107,6 +107,10 @@ async def get_devices(
 
     Возвращает только те устройства, к которым пользователь имеет доступ (T069).
     Если заголовок X-User-ID отсутствует, возвращает пустой список.
+
+    Список берётся из единого источника — DeviceService (spec 006, FR-003):
+    раньше роут читал временный словарь, который был пуст после перезапуска
+    и не содержал устройств, загруженных синхронизацией.
 
     Args:
         request: HTTP запрос (для получения DeviceService)
@@ -122,27 +126,58 @@ async def get_devices(
             logger.debug("Запрос GET /api/v1/devices без X-User-ID - возвращаю пустой список")
             return []
 
-        devices = list(_devices_store.values())
-
-        # T069: Фильтруем по доступу пользователя (важнее source_id)
         device_service = get_device_service(request)
-        accessible = await device_service.get_user_accessible_devices(x_user_id)
-        accessible_ids = {str(device.id) for device in accessible}
-        devices = [d for d in devices if str(d.get("id")) in accessible_ids]
+
+        # T069: фильтруем по доступу пользователя (важнее source_id)
+        devices = await device_service.get_user_accessible_devices(x_user_id)
 
         # Фильтруем по source_id если указан (поверх фильтра доступа)
         if source_id:
-            devices = [d for d in devices if d.get("source_id") == str(source_id)]
+            devices = [device for device in devices if device.source_id == source_id]
 
         logger.info(f"Получен список {len(devices)} устройств для пользователя {x_user_id}")
-        return [DeviceResponse(**d) for d in devices]
+        return [_to_device_response(device) for device in devices]
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Ошибка при получении списка устройств: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ошибка при получении списка устройств",
         ) from e
+
+
+def _to_device_response(device: Any) -> DeviceResponse:
+    """Собирает ответ API из модели устройства.
+
+    Поля конфигурации (``display_name``, ``description``, ``location``,
+    ``tags``) берутся из ``device.config`` — в модели устройства отдельных
+    полей для них нет (spec 006, contracts/device-lifecycle-api.md).
+
+    Args:
+        device: Модель устройства.
+
+    Returns:
+        Ответ API с устройством.
+    """
+    config = device.config or {}
+    return DeviceResponse(
+        id=str(device.id),
+        name=device.name,
+        display_name=config.get("display_name"),
+        device_type=device.device_type,
+        status=device.status,
+        state=device.state or {},
+        source_id=str(device.source_id),
+        ha_entity_id=device.ha_entity_id,
+        ha_area_id=device.ha_area_id,
+        description=config.get("description"),
+        location=config.get("location"),
+        tags=config.get("tags"),
+        created_at=device.created_at.isoformat(),
+        updated_at=device.updated_at.isoformat(),
+    )
 
 
 @router.get("/{device_id}", status_code=status.HTTP_200_OK)
@@ -159,7 +194,8 @@ async def get_device(request: Request, device_id: UUID) -> DeviceResponse:
     Raises:
         HTTPException: 403 если нет роли viewer; 404 если устройство не найдено
     """
-    device = _devices_store.get(str(device_id))
+    device_service = get_device_service(request)
+    device = await device_service.get_device(device_id)
 
     if not device:
         raise HTTPException(
@@ -168,16 +204,7 @@ async def get_device(request: Request, device_id: UUID) -> DeviceResponse:
 
     await _require_access_or_403(request, device_id, _ROLE_VIEWER)
 
-    # Извлекаем конфигурацию из device.config если она есть
-    response_data = dict(device)
-    if device.get("config"):
-        config = device["config"]
-        response_data["display_name"] = config.get("display_name")
-        response_data["description"] = config.get("description")
-        response_data["location"] = config.get("location")
-        response_data["tags"] = config.get("tags")
-
-    return DeviceResponse(**response_data)
+    return _to_device_response(device)
 
 
 class UpdateDeviceConfigRequest(BaseModel):
@@ -213,7 +240,8 @@ async def update_device_config(
         HTTPException: 403 если нет роли admin; 404 если устройство не найдено
         HTTPException: 422 если валидация не пройдена
     """
-    device = _devices_store.get(str(device_id))
+    device_service = get_device_service(http_request)
+    device = await device_service.get_device(device_id)
 
     if not device:
         raise HTTPException(
@@ -231,14 +259,11 @@ async def update_device_config(
                 if len(tag) > 50:
                     raise ValueError(f"Тег '{tag}' слишком длинный (макс 50 символов)")
 
-        # Инициализируем конфигурацию если её нет
-        if "config" not in device:
-            device["config"] = {
-                "id": str(UUID(int=1)),
-                "device_id": str(device_id),
-            }
-
-        config = device["config"]
+        # Инициализируем конфигурацию, если её ещё нет (модель устройства,
+        # а не словарь — устройство приходит из единого источника, spec 006)
+        config = dict(device.config or {})
+        if not config:
+            config = {"id": str(UUID(int=1)), "device_id": str(device_id)}
 
         # Снимок изменяемых полей ДО обновления (ТР-010, spec 005)
         updated_fields = [
@@ -262,6 +287,8 @@ async def update_device_config(
             config["tags"] = request.tags
 
         config["updated_at"] = datetime.utcnow().isoformat()
+        device.config = config
+        await device_service.add_device(device)
 
         logger.info(f"Обновлена конфигурация устройства {device_id}")
 
@@ -274,14 +301,7 @@ async def update_device_config(
             after=after_snapshot,
         )
 
-        # Создаем ответ с полной информацией
-        response_data = dict(device)
-        response_data["display_name"] = config.get("display_name")
-        response_data["description"] = config.get("description")
-        response_data["location"] = config.get("location")
-        response_data["tags"] = config.get("tags")
-
-        return DeviceResponse(**response_data)
+        return _to_device_response(device)
 
     except ValueError as e:
         logger.error(f"Ошибка валидации при обновлении конфигурации устройства: {e}")
@@ -370,7 +390,8 @@ async def execute_device_command(
         HTTPException: 403 если нет роли controller; 404 если устройство не найдено
             или 400 при ошибке валидации
     """
-    device = _devices_store.get(str(device_id))
+    device_service = get_device_service(http_request)
+    device = await device_service.get_device(device_id)
 
     if not device:
         raise HTTPException(
@@ -438,7 +459,8 @@ async def get_command_status(
     Raises:
         HTTPException: 403 если нет роли viewer; 404 если устройство или команда не найдены
     """
-    device = _devices_store.get(str(device_id))
+    device_service = get_device_service(request)
+    device = await device_service.get_device(device_id)
 
     if not device:
         raise HTTPException(
@@ -528,7 +550,8 @@ async def get_device_events(
     Raises:
         HTTPException: 403 если нет роли viewer; 404 если устройство не найдено
     """
-    device = _devices_store.get(str(device_id))
+    device_service = get_device_service(request)
+    device = await device_service.get_device(device_id)
 
     if not device:
         raise HTTPException(
@@ -556,13 +579,28 @@ async def get_device_events(
 # ============ Добавление устройств из Home Assistant ============
 
 
+class BehaviorSelection(BaseModel):
+    """Поведение устройства, выбранное пользователем."""
+
+    template: str = Field(description="Шаблон автоматизации")
+    priority: int = Field(default=10, ge=1, description="Приоритет: меньше — выше")
+    params: dict[str, Any] = Field(default_factory=dict, description="Параметры шаблона")
+
+
 class DeviceSelection(BaseModel):
     """Выбранное устройство для добавления."""
 
     device_entity_id: str = Field(description="Entity ID в Home Assistant")
+    device_type: str | None = Field(
+        None, description="Тип устройства; по умолчанию — домен из entity_id"
+    )
+    name: str | None = Field(None, description="Имя устройства; по умолчанию — entity_id")
     target_room: str | None = Field(None, description="Целевая комната для устройства")
     behavior_template: str | None = Field(None, description="Рекомендуемый шаблон поведения")
     ha_area_id: str | None = Field(None, description="ID области в HA")
+    behaviors: list[BehaviorSelection] | None = Field(
+        None, description="Поведения устройства; при отсутствии — рекомендованный шаблон"
+    )
 
 
 class ApplyDevicesRequest(BaseModel):
@@ -573,102 +611,201 @@ class ApplyDevicesRequest(BaseModel):
     dry_run: bool = Field(default=False, description="Если True, только проверяет, не добавляет")
 
 
-class ApplyDevicesResponse(BaseModel):
-    """Ответ при добавлении устройств."""
+class FailedDevice(BaseModel):
+    """Устройство, которое не удалось применить."""
 
-    success: bool = Field(description="Успешность операции")
-    devices_count: int = Field(description="Количество добавленных устройств")
-    devices: list[DeviceResponse] = Field(description="Добавленные устройства")
-    errors: list[str] | None = Field(None, description="Ошибки при добавлении")
+    ha_entity_id: str = Field(description="Entity ID устройства")
+    reason: str = Field(description="Причина отказа")
+
+
+class ApplyDevicesResponse(BaseModel):
+    """Ответ при добавлении устройств (contracts/device-lifecycle-api.md)."""
+
+    success: bool = Field(description="Ошибок не было")
+    devices_count: int = Field(description="Количество применённых устройств")
+    devices: list[DeviceResponse] = Field(
+        default_factory=list, description="Применённые устройства"
+    )
+    devices_added: int = Field(default=0, description="Добавлено новых устройств")
+    devices_updated: int = Field(default=0, description="Обновлено существующих")
+    failed: int = Field(default=0, description="Количество неудачных применений")
+    failed_devices: list[FailedDevice] = Field(
+        default_factory=list, description="Устройства, которые не удалось применить"
+    )
+    dry_run: bool = Field(default=False, description="Был ли это тестовый запуск")
+    would_add: int | None = Field(None, description="Сколько устройств было бы добавлено")
+    errors: list[str] | None = Field(None, description="Человекочитаемые ошибки")
 
 
 @router.post("/apply", status_code=status.HTTP_201_CREATED)
-async def apply_devices(request: ApplyDevicesRequest) -> ApplyDevicesResponse:
-    """Добавляет выбранные устройства из Home Assistant.
+async def apply_devices(request: Request, body: ApplyDevicesRequest) -> ApplyDevicesResponse:
+    """Применяет выбранные устройства из Home Assistant.
 
-    Позволяет пользователю выбрать устройства из HA и добавить их в платформу
-    с автоматической подстановкой комнат и поведения.
+    Единственная точка применения набора устройств (FR-005). Обработчик
+    идемпотентен по ``device_entity_id``: повторное применение тех же данных
+    обновляет устройство, а не создаёт дубль (FR-008). При ``dry_run``
+    ни манифест, ни хранилище не меняются.
 
     Args:
-        request: Запрос с выбранными устройствами
+        request: HTTP запрос (для получения сервисов и идентификации).
+        body: Запрос с выбранными устройствами.
 
     Returns:
-        Информация о добавленных устройствах
+        Результат применения с перечнем добавленных и неудачных устройств.
 
     Raises:
-        HTTPException: 400 при неверных данных или 500 при ошибке сервера
+        HTTPException: 401 без идентификации, 403 без роли администратора,
+            404 если источник не найден, 500 при внутренней ошибке.
     """
-    try:
-        if not request.selections:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Список устройств не может быть пустым",
-            )
-
-        added_devices = []
-        errors = []
-
-        # Обрабатываем каждое выбранное устройство
-        for selection in request.selections:
-            try:
-                from uuid import uuid4
-
-                # Создаем новое устройство
-                device_id = str(uuid4())
-                device = {
-                    "id": device_id,
-                    "name": selection.device_entity_id.replace(".", "_"),
-                    "device_type": selection.device_entity_id.split(".")[0],
-                    "status": "available",
-                    "state": {},
-                    "source_id": str(request.source_id),
-                    "ha_entity_id": selection.device_entity_id,
-                    "ha_area_id": selection.ha_area_id,
-                    "config": {
-                        "id": str(uuid4()),
-                        "device_id": device_id,
-                        "location": selection.target_room,
-                        "created_by": "discovery",
-                    },
-                    "created_at": datetime.utcnow().isoformat(),
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-
-                _devices_store[device_id] = device
-                added_devices.append(DeviceResponse(**device))
-
-                logger.info(
-                    f"Добавлено устройство {selection.device_entity_id} "
-                    f"в комнату {selection.target_room or 'неизвестная'}"
-                )
-
-            except Exception as e:
-                error_msg = f"Ошибка при добавлении {selection.device_entity_id}: {str(e)}"
-                logger.error(error_msg)
-                errors.append(error_msg)
-
-        # Если это тестовый запуск, не сохраняем устройства
-        if request.dry_run:
-            # Откатываем добавленные устройства
-            for device in added_devices:
-                if device.id in _devices_store:
-                    del _devices_store[device.id]
-            added_devices.clear()
-
-            logger.info(f"Тестовый запуск: было бы добавлено {len(request.selections)} устройств")
-
-        return ApplyDevicesResponse(
-            success=len(errors) == 0,
-            devices_count=len(added_devices),
-            devices=added_devices,
-            errors=errors if errors else None,
+    if not body.selections:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Список устройств не может быть пустым",
         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при применении устройств: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при добавлении устройств",
-        ) from e
+    lifecycle = get_lifecycle_service(request)
+    user_id = _current_user_id(request)
+
+    if body.dry_run:
+        room_ids = {selection.target_room for selection in body.selections if selection.target_room}
+        missing = [room for room in room_ids if _find_room(lifecycle.manifest, room) is None]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Комнаты не найдены в манифесте: {', '.join(sorted(missing))}",
+            )
+        logger.info(
+            f"Тестовый запуск применения: {len(body.selections)} устройств, "
+            f"комнаты: {', '.join(sorted(room_ids)) or 'по умолчанию'}"
+        )
+        return ApplyDevicesResponse(
+            success=True,
+            devices_count=0,
+            dry_run=True,
+            would_add=len(body.selections),
+        )
+
+    applied: list[DeviceResponse] = []
+    failed: list[FailedDevice] = []
+    added = 0
+    updated = 0
+
+    for selection in body.selections:
+        try:
+            device = _build_device_from_selection(selection, body.source_id)
+            behaviors = _build_behaviors(selection)
+            room_id = selection.target_room or _default_room_id(lifecycle.manifest)
+
+            device, saved = await lifecycle.add_device(
+                device, room_id=room_id, behaviors=behaviors, user_id=user_id
+            )
+            if saved:
+                added += 1
+            else:
+                updated += 1
+            applied.append(_to_device_response(device))
+        except Exception as e:
+            reason = str(e)
+            logger.error(f"Не удалось применить {selection.device_entity_id}: {reason}")
+            failed.append(FailedDevice(ha_entity_id=selection.device_entity_id, reason=reason))
+
+    logger.info(
+        f"Применение завершено: добавлено {added}, обновлено {updated}, ошибок {len(failed)}"
+    )
+    return ApplyDevicesResponse(
+        success=not failed,
+        devices_count=len(applied),
+        devices=applied,
+        devices_added=added,
+        devices_updated=updated,
+        failed=len(failed),
+        failed_devices=failed,
+        errors=[f"{item.ha_entity_id}: {item.reason}" for item in failed] or None,
+    )
+
+
+def _current_user_id(request: Request) -> str:
+    """Определяет инициатора операции по идентификации запроса.
+
+    Args:
+        request: HTTP запрос.
+
+    Returns:
+        Идентификатор пользователя или 'system', если идентификация не задана.
+    """
+    user_id = getattr(request.state, "user_id", None) or request.headers.get("X-User-ID")
+    return user_id or "system"
+
+
+def _find_room(manifest: Any, room_id: str) -> Any:
+    """Ищет комнату в манифесте.
+
+    Args:
+        manifest: Модель манифеста.
+        room_id: Идентификатор комнаты.
+
+    Returns:
+        Модель комнаты или None.
+    """
+    return next((room for room in manifest.rooms if room.id == room_id), None)
+
+
+def _default_room_id(manifest: Any) -> str:
+    """Возвращает комнату по умолчанию.
+
+    Args:
+        manifest: Модель манифеста.
+
+    Returns:
+        Идентификатор первой комнаты.
+
+    Raises:
+        ValueError: Если в манифесте нет ни одной комнаты.
+    """
+    if not manifest.rooms:
+        msg = "В манифесте нет комнат: добавьте комнату перед добавлением устройств"
+        raise ValueError(msg)
+    return manifest.rooms[0].id
+
+
+def _build_device_from_selection(selection: DeviceSelection, source_id: UUID) -> Any:
+    """Собирает модель устройства из выбора пользователя.
+
+    Args:
+        selection: Выбранное устройство.
+        source_id: Источник устройства.
+
+    Returns:
+        Модель устройства.
+    """
+    domain = selection.device_entity_id.split(".")[0]
+    return Device(
+        ha_entity_id=selection.device_entity_id,
+        source_id=source_id,
+        name=selection.name or selection.device_entity_id,
+        device_type=selection.device_type or domain,
+        ha_area_id=selection.ha_area_id,
+        state={},
+        status="available",
+    )
+
+
+def _build_behaviors(selection: DeviceSelection) -> list[BehaviorConfig]:
+    """Собирает список поведений устройства из выбора пользователя.
+
+    Args:
+        selection: Выбранное устройство.
+
+    Returns:
+        Список поведений (пустой, если шаблон не задан).
+    """
+    if selection.behaviors:
+        return [
+            BehaviorConfig(
+                template=behavior.template, priority=behavior.priority, params=behavior.params
+            )
+            for behavior in selection.behaviors
+        ]
+    if selection.behavior_template:
+        return [BehaviorConfig(template=selection.behavior_template, priority=10)]
+    return []

@@ -21,9 +21,9 @@ description: "Список задач для фичи Device Lifecycle (жизн
 
 **Purpose**: инфраструктура, общая для историй — пакет тестовых помощников и типы событий аудита.
 
-- [ ] T001 Создать пакет тестовых помощников `tests/helpers/__init__.py`
-- [ ] T002 [P] Добавить фабрики тестовых данных и посев через постоянное хранилище в `tests/helpers/device_factory.py` (устройство, источник, комната; заполнители для `mock_persistence` и реального `PersistenceManager` с временным `data_dir`)
-- [ ] T003 [P] Добавить типы событий жизненного цикла в `src/core/models/device_sync_event.py`: `device_added`, `device_updated`, `device_deleted`, `device_archived`, `device_restored`, `devices_applied` (существующие не менять)
+- [x] T001 Создать пакет тестовых помощников `tests/helpers/__init__.py`
+- [x] T002 [P] Добавить фабрики тестовых данных и посев через постоянное хранилище в `tests/helpers/device_factory.py` (устройство, источник, комната; заполнители для `mock_persistence` и реального `PersistenceManager` с временным `data_dir`)
+- [x] T003 [P] Добавить типы событий жизненного цикла в `src/core/models/device_sync_event.py`: `device_added`, `device_updated`, `device_deleted`, `device_archived`, `device_restored`, `devices_applied` (существующие не менять)
 
 ---
 
@@ -33,14 +33,14 @@ description: "Список задач для фичи Device Lifecycle (жизн
 
 **⚠️ CRITICAL**: работа над историями не начинается до завершения этой фазы.
 
-- [ ] T004 [P] Добавить прокси-методы в `src/core/persistence/manager.py`: `save_devices`, `load_devices_by_source`, `delete_device`, `delete_accesses_for_device` (сейчас доступны только через `persistence.devices.*`, прокси нет)
-- [ ] T005 [P] Добавить публичные `list_devices()` и `get_all_devices()` в `src/services/device_service.py` (метода «получить все устройства» нет; источник — `_devices`/индекс, не кэш выборки источника)
-- [ ] T006 [P] Добавить `hydrate_from_persistence()` в `src/services/device_service.py`: загрузка всех устройств в `_devices`/индекс/кэш при старте (сейчас не вызывается нигде → список пуст после перезапуска)
-- [ ] T007 [P] Добавить публичный `rebuild(manifest)` в `src/core/events/event_router.py`: очистка `_sensor_to_fsms` и пересчёт из переданного манифеста (сейчас маппинг строится один раз в конструкторе, удалить его нечем)
-- [ ] T008 [P] Добавить `unsubscribe_with_filter()` и научить `unsubscribe()` обслуживать отфильтрованные подписки в `src/core/events/event_bus.py` (сейчас отписаться от них невозможно → дубли обработчиков при повторном создании FSM с `motion_sensor`)
-- [ ] T009 Добавить примитивы `add_device()` и `remove_device()` в `src/services/device_service.py` (запись/удаление в постоянное хранилище, индекс, кэш; без работы с FSM — она в US1)
-- [ ] T010 Вызвать `hydrate_from_persistence()` при создании приложения в `src/webui/app.py` (сразу после создания persistence и `DeviceService`, до первого запроса) и задать идентичность по умолчанию из `WEBUI_DEFAULT_USER_ID` / `WEBUI_DEFAULT_USER_ADMIN` в `app.state` и разметку шаблонов
-- [ ] T011 [P] Написать тесты фундамента: `rebuild()` в `tests/unit/test_event_router.py`, отписка от отфильтрованных подписок в `tests/unit/test_event_bus.py`, гидратация/список/примитивы в `tests/unit/test_device_service.py` — сначала падающие, затем зелёные
+- [x] T004 [P] Добавить прокси-методы в `src/core/persistence/manager.py`: `save_devices`, `load_devices_by_source`, `delete_device`, `delete_accesses_for_device` (сейчас доступны только через `persistence.devices.*`, прокси нет)
+- [x] T005 [P] Добавить публичные `list_devices()` и `get_all_devices()` в `src/services/device_service.py` (метода «получить все устройства» нет; источник — `_devices`/индекс, не кэш выборки источника)
+- [x] T006 [P] Добавить `hydrate_from_persistence()` в `src/services/device_service.py`: загрузка всех устройств в `_devices`/индекс/кэш при старте (сейчас не вызывается нигде → список пуст после перезапуска)
+- [x] T007 [P] Добавить публичный `rebuild(manifest)` в `src/core/events/event_router.py`: очистка `_sensor_to_fsms` и пересчёт из переданного манифеста (сейчас маппинг строится один раз в конструкторе, удалить его нечем)
+- [x] T008 [P] Добавить `unsubscribe_with_filter()` и научить `unsubscribe()` обслуживать отфильтрованные подписки в `src/core/events/event_bus.py` (сейчас отписаться от них невозможно → дубли обработчиков при повторном создании FSM с `motion_sensor`)
+- [x] T009 Добавить примитивы `add_device()` и `remove_device()` в `src/services/device_service.py` (запись/удаление в постоянное хранилище, индекс, кэш; без работы с FSM — она в US1)
+- [x] T010 Вызвать `hydrate_from_persistence()` при создании приложения в `src/webui/app.py` (сразу после создания persistence и `DeviceService`, до первого запроса) и задать идентичность по умолчанию из `WEBUI_DEFAULT_USER_ID` / `WEBUI_DEFAULT_USER_ADMIN` в `app.state` и разметку шаблонов
+- [x] T011 [P] Написать тесты фундамента: `rebuild()` в `tests/unit/test_event_router.py`, отписка от отфильтрованных подписок в `tests/unit/test_event_bus.py`, гидратация/список/примитивы в `tests/unit/test_device_service.py` — сначала падающие, затем зелёные
 
 **Checkpoint**: фундамент готов — хранилище едино, маршрутизация перестраивается, подписки снимаются, идентичность доступна шаблонам.
 
@@ -56,14 +56,14 @@ description: "Список задач для фичи Device Lifecycle (жизн
 
 - [ ] T012 [P] [US1] Контрактные тесты чтения/применения в `tests/contract/test_devices_api.py`: список из единого источника, устройство после применения, идемпотентность повторного применения, отсутствие дубля маршрута применения, `dry_run` без изменений
 - [ ] T013 [P] [US1] Интеграционный тест сквозного пути в `tests/integration/test_device_lifecycle_flow.py`: добавление → видимость в списке → создание машины состояний → реакция на событие датчика → переживание перезапуска
-- [ ] T014 [P] [US1] Юнит-тесты транзакции в `tests/unit/test_device_lifecycle.py`: порядок шагов, компенсация при сбое записи в хранилище, снятие и пересоздание машин состояний, перестроение маршрутизации
+- [x] T014 [P] [US1] Юнит-тесты транзакции в `tests/unit/test_device_lifecycle.py`: порядок шагов, компенсация при сбое записи в хранилище, снятие и пересоздание машин состояний, перестроение маршрутизации
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Создать `src/services/device_lifecycle.py`: транзакция добавления/изменения устройства с порядком «манифест → постоянное хранилище → runtime → машины состояний → маршрутизация → аудит» и компенсацией (откат манифеста при сбое записи; частичный успех фиксируется событием, данные не теряются)
-- [ ] T016 [US1] Реализовать создание и снятие машин состояний устройства в `src/services/device_lifecycle.py` через публичный API движка: `FSMFactory.create_from_behavior()` + `engine.unregister()` перед `engine.register_definition(..., restore_state=False)`; снятие всех машин устройства при удалении или переводе в `removed_from_ha`. Не менять `FSMDefinition`, логику дебаунса и механизм таймаутов
-- [ ] T017 [US1] Перестроить чтение устройств в `src/webui/routes/devices/devices.py`: убрать использование `_devices_store`, получать устройства и список из `DeviceService`, собрать ответ из модели `Device` (включая `display_name`, `description`, `location`, `tags` из `device.config`)
-- [ ] T018 [US1] Удалить дублирующийся `@router.post("/apply")` в `src/webui/routes/devices/devices.py:99` и перевести единственную реализацию применения на `DeviceLifecycleService` (идемпотентно по `ha_entity_id`, поддержка `dry_run`, отчёт `devices_added`/`devices_updated`/`failed`/`failed_devices`)
+- [x] T015 [US1] Создать `src/services/device_lifecycle.py`: транзакция добавления/изменения устройства с порядком «манифест → постоянное хранилище → runtime → машины состояний → маршрутизация → аудит» и компенсацией (откат манифеста при сбое записи; частичный успех фиксируется событием, данные не теряются)
+- [x] T016 [US1] Реализовать создание и снятие машин состояний устройства в `src/services/device_lifecycle.py` через публичный API движка: `FSMFactory.create_from_behavior()` + `engine.unregister()` перед `engine.register_definition(..., restore_state=False)`; снятие всех машин устройства при удалении или переводе в `removed_from_ha`. Не менять `FSMDefinition`, логику дебаунса и механизм таймаутов
+- [x] T017 [US1] Перестроить чтение устройств в `src/webui/routes/devices/devices.py`: убрать использование `_devices_store`, получать устройства и список из `DeviceService`, собрать ответ из модели `Device` (включая `display_name`, `description`, `location`, `tags` из `device.config`)
+- [x] T018 [US1] Удалить дублирующийся `@router.post("/apply")` в `src/webui/routes/devices/devices.py:99` и перевести единственную реализацию применения на `DeviceLifecycleService` (идемпотентно по `ha_entity_id`, поддержка `dry_run`, отчёт `devices_added`/`devices_updated`/`failed`/`failed_devices`)
 - [ ] T019 [US1] Перевести сохранение формы устройства `/devices/save` в `src/webui/app.py` на `DeviceLifecycleService` (вместо прямой записи в манифест) и добавить в форму обязательный выбор источника
 - [ ] T020 [US1] Добавить выбор источника в форму устройства в `src/webui/templates/partials/device_form.html` (список из `GET /api/v1/devices/sources`, пустой выбор — отказ с понятным сообщением)
 - [ ] T021 [US1] Передать общий адаптер в `DeviceService` в `src/webui/app.py` вместо `ha_adapter=None` (снимает TODO и чинит отказу на отправку команд из веб-интерфейса)

@@ -59,18 +59,36 @@ class TestDeviceSyncEventModel:
             "access_granted",
             "access_revoked",
             "access_updated",
+            "device_added",
+            "device_updated",
+            "device_deleted",
+            "device_archived",
+            "device_restored",
+            "devices_applied",
         ],
     )
     def test_valid_actions(self, action: str) -> None:
-        """Все пять типов операций валидны (data-model.md)."""
-        event = DeviceSyncEvent(device_id=uuid4(), action=action)
+        """Все типы операций валидны (data-model.md, spec 005 + spec 006)."""
+        device_id = None if action == "devices_applied" else uuid4()
+        event = DeviceSyncEvent(device_id=device_id, action=action)
 
         assert event.action == action
 
     def test_invalid_action_rejected(self) -> None:
-        """Невалидный тип операции отклоняется (Literal)."""
+        """Неизвестный тип операции отклоняется (Literal)."""
         with pytest.raises(ValidationError):
-            DeviceSyncEvent(device_id=uuid4(), action="device_deleted")
+            DeviceSyncEvent(device_id=uuid4(), action="device_exploded")
+
+    def test_device_id_required_for_device_level_actions(self) -> None:
+        """Для действий уровня устройства device_id обязателен (data-model.md)."""
+        with pytest.raises(ValidationError):
+            DeviceSyncEvent(device_id=None, action="device_deleted")
+
+    def test_device_id_optional_for_source_level_actions(self) -> None:
+        """Для действия уровня источника device_id может быть пустым."""
+        event = DeviceSyncEvent(device_id=None, action="devices_applied")
+
+        assert event.device_id is None
 
     def test_before_after_optional(self) -> None:
         """До/после опциональны — для команд остаются None (clarify Q1)."""

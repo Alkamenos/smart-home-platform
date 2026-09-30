@@ -85,37 +85,32 @@ class TestDeviceConfigAPI:
 
     @pytest.fixture
     def sample_device(self, client, sample_source):
-        """Фикстура для создания тестового устройства."""
+        """Фикстура для создания тестового устройства.
+
+        spec 006: устройство кладётся в единый источник — DeviceService,
+        который читают роуты (временный словарь роутов удалён).
+        """
         if not sample_source:
             return None
 
-        # Создаем устройство напрямую (в хранилище)
-        from datetime import datetime
+        from tests.helpers.device_factory import make_device, seed_device_in_service
 
-        device_id = uuid4()
-        device_data = {
-            "id": str(device_id),
-            "ha_entity_id": "light.test_light",
-            "source_id": sample_source["id"],
-            "name": "Test Light",
-            "device_type": "light",
-            "model": "Test Model",
-            "manufacturer": "Test Manufacturer",
-            "state": {"state": "on"},
-            "status": "available",
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+        device = make_device(
+            ha_entity_id="light.test_light",
+            source_id=uuid4(),
+            name="Test Light",
+            device_type="light",
+        )
+        seed_device_in_service(client.app.state.device_service, device)
+
+        return {
+            "id": str(device.id),
+            "ha_entity_id": device.ha_entity_id,
+            "name": device.name,
+            "device_type": device.device_type,
+            "state": device.state,
+            "status": device.status,
         }
-
-        # Добавляем в хранилище
-        # Импорт без префикса src: приложение (src.main → webui.app) использует модуль
-        # webui.routes.devices.devices, и только в нём общий _devices_store
-        # (Known Issue #4: два экземпляра модуля приводят к 404)
-        from webui.routes.devices.devices import _devices_store
-
-        _devices_store[str(device_id)] = device_data
-
-        return {"id": str(device_id), **device_data}
 
     def test_update_device_config_success(self, client, sample_device):
         """T032: Успешное обновление конфигурации устройства."""

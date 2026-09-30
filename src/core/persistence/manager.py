@@ -64,3 +64,44 @@ class PersistenceManager:
     async def load_all_devices(self):
         """Загружает все устройства."""
         return await self.devices.load_all_devices()
+
+    async def save_devices(self, devices):
+        """Сохраняет список устройств (полностью перезаписывает хранилище)."""
+        return await self.devices.save_devices(devices)
+
+    async def load_devices_by_source(self, source_id):
+        """Загружает устройства источника."""
+        return await self.devices.load_devices_by_source(source_id)
+
+    async def delete_device(self, device_id):
+        """Удаляет устройство из постоянного хранилища.
+
+        Args:
+            device_id: Идентификатор устройства.
+
+        Returns:
+            True, если устройство было удалено; False, если его не было.
+        """
+        return await self.devices.delete_device(device_id)
+
+    async def delete_devices_by_source(self, source_id):
+        """Удаляет все устройства источника.
+
+        Args:
+            source_id: Идентификатор источника.
+
+        Returns:
+            Количество удалённых устройств.
+        """
+        return await self.devices.delete_devices_by_source(source_id)
+
+    async def delete_accesses_for_device(self, device_id):
+        """Удаляет все записи о доступе к устройству.
+
+        Args:
+            device_id: Идентификатор устройства.
+
+        Returns:
+            Количество удалённых записей.
+        """
+        return await self.device_access.delete_accesses_for_device(device_id)

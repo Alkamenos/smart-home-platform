@@ -29,10 +29,43 @@ class EventBus:
     def unsubscribe(
         self, event_type: str, handler: Callable[..., Coroutine[Any, Any, None]]
     ) -> None:
-        """Unsubscribe a handler from an event type."""
+        """Unsubscribe a handler from an event type.
+
+        Снимает как обычные подписки, так и подписки с фильтром: обработчик
+        идентифицируется по ссылке (spec 006, FR-008).
+
+        Args:
+            event_type: Тип события.
+            handler: Обработчик для отписки.
+        """
         if event_type in self._subscribers:
             with contextlib.suppress(ValueError):
                 self._subscribers[event_type].remove(handler)
+
+        self._filtered_subscribers = [
+            entry
+            for entry in self._filtered_subscribers
+            if not (entry[0] == event_type and entry[2] is handler)
+        ]
+
+    def unsubscribe_with_filter(
+        self,
+        event_type: str,
+        filter_params: dict,
+        handler: Callable[..., Coroutine[Any, Any, None]],
+    ) -> None:
+        """Unsubscribe a handler that was subscribed with a filter.
+
+        Args:
+            event_type: Тип события.
+            filter_params: Параметры фильтра, с которыми была подписка.
+            handler: Обработчик для отписки.
+        """
+        self._filtered_subscribers = [
+            entry
+            for entry in self._filtered_subscribers
+            if not (entry[0] == event_type and entry[1] == filter_params and entry[2] is handler)
+        ]
 
     def subscribe_with_filter(
         self,

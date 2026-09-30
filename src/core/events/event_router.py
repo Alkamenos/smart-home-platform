@@ -72,6 +72,23 @@ class EventRouter:
         if entry not in self._sensor_to_fsms[sensor_id]:
             self._sensor_to_fsms[sensor_id].append(entry)
 
+    def rebuild(self, manifest: Manifest | None = None) -> None:
+        """Перестроить карту «датчик → автоматика» с нуля.
+
+        Нужен при изменении состава устройств во время работы системы: маппинг
+        строится из манифеста и состояния движка, поэтому без перестроения
+        новое устройство не получало бы событий, а записи удалённых устройств
+        оставались бы навсегда (spec 006, FR-015).
+
+        Args:
+            manifest: Актуальный манифест. Если не передан, используется текущий.
+        """
+        if manifest is not None:
+            self._manifest = manifest
+
+        self._sensor_to_fsms.clear()
+        self._build_mapping()
+
     def get_mapping(self, sensor_id: str) -> list[tuple[str, str]]:
         """Get FSM mappings for a sensor."""
         return list(self._sensor_to_fsms.get(sensor_id, []))
