@@ -4,7 +4,11 @@
 
 from pathlib import Path
 
-from src.core.persistence.devices import DeviceAccessPersistence, DevicePersistence
+from src.core.persistence.devices import (
+    DeviceAccessPersistence,
+    DevicePersistence,
+    DeviceSyncEventPersistence,
+)
 from src.core.persistence.sources import HASourcePersistence
 
 
@@ -39,6 +43,7 @@ class PersistenceManager:
         self.sources = HASourcePersistence(data_dir=self.data_dir, encryptor=encryptor)
         self.devices = DevicePersistence(data_dir=self.data_dir)
         self.device_access = DeviceAccessPersistence(data_dir=self.data_dir)
+        self.device_sync_events = DeviceSyncEventPersistence(data_dir=self.data_dir)
 
     async def load_device_config(self, device_id):
         """Загружает конфигурацию устройства."""

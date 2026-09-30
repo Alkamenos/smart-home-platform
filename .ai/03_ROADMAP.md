@@ -251,9 +251,7 @@
 ### High Priority
 
 1. ~~Завершить US4 Access Control (бэклог из specs/001)~~ ✅ закрыто 2026-09-29 (specs/004-device-access-control: middleware подключён, фильтрация/roles enforcing, grant/revoke/list реальные, WS-права; детали в tasks.md фичи)
-2. Модель `DeviceSyncEvent` + персистентность (история операций, ТР-010)
-   - Files: `src/core/models/`, `src/core/persistence/`
-   - Source: RU T041, T070
+2. ~~Модель `DeviceSyncEvent` + персистентность (история операций, ТР-010)~~ ✅ закрыто 2026-09-30 (specs/005-device-audit-log: модель + append-only JSON-персистентность, запись config/access/command операций с user_id и before/after, `GET /devices/{id}/events` из персистентности; детали в tasks.md фичи)
 
 ### Medium Priority
 0. Device integration E2E-тесты отсутствуют (0 из 6: sync/config/commands/access)

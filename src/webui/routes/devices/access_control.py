@@ -7,11 +7,11 @@ Endpoints для назначения, обновления и отзыва до
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from src.services.device_service import DeviceService
-from src.webui.routes.devices.deps import get_device_service
+from src.webui.routes.devices.deps import get_device_service, record_sync_event
 
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,7 @@ _VALID_ROLES = ("viewer", "controller", "admin")
 async def grant_device_access(
     device_id: UUID,
     request: GrantAccessRequest,
+    http_request: Request,
     current_user: str = Depends(get_current_user),
     is_admin: bool = Depends(require_admin),
     service: DeviceService = Depends(get_device_service),
@@ -94,6 +95,7 @@ async def grant_device_access(
     Args:
         device_id: ID устройства
         request: Данные доступа (user_id, role)
+        http_request: HTTP запрос (запись истории операций, spec 005)
         current_user: Текущий пользователь (администратор)
         is_admin: Проверка что это администратор
         service: DeviceService приложения (dependency)
@@ -107,9 +109,15 @@ async def grant_device_access(
     if request.role not in _VALID_ROLES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role: {request.role}. Must be one of: viewer, controller, admin",
+            detail=f"Invalid role: {request.role}. Must be one of: {_VALID_ROLES}",
         )
     try:
+        existing = await service.get_device_accesses(device_id)
+        previous_role = next(
+            (a.role for a in existing if a.user_id == request.user_id),
+            None,
+        )
+
         access = await service.grant_access(
             device_id=device_id,
             user_id=request.user_id,
@@ -122,6 +130,15 @@ async def grant_device_access(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Device not found",
             )
+
+        await record_sync_event(
+            http_request,
+            device_id,
+            "access_granted" if previous_role is None else "access_updated",
+            before={"role": previous_role} if previous_role else None,
+            after={"role": access.role},
+            data={"granted_to": request.user_id},
+        )
 
         return {
             "id": str(access.id),
@@ -145,6 +162,7 @@ async def grant_device_access(
 async def revoke_device_access(
     device_id: UUID,
     access_id: UUID,
+    http_request: Request,
     current_user: str = Depends(get_current_user),
     is_admin: bool = Depends(require_admin),
     service: DeviceService = Depends(get_device_service),
@@ -156,6 +174,7 @@ async def revoke_device_access(
     Args:
         device_id: ID устройства
         access_id: ID записи доступа для удаления
+        http_request: HTTP запрос (запись истории операций, spec 005)
         current_user: Текущий пользователь (администратор)
         is_admin: Проверка что это администратор
         service: DeviceService приложения (dependency)
@@ -166,8 +185,8 @@ async def revoke_device_access(
     try:
         # Запись должна существовать и относиться к этому устройству
         accesses = await service.get_device_accesses(device_id)
-        record_exists = any(str(access.id) == str(access_id) for access in accesses)
-        if not record_exists:
+        target = next((a for a in accesses if str(a.id) == str(access_id)), None)
+        if target is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Access record not found",
@@ -179,6 +198,15 @@ async def revoke_device_access(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Access record not found",
             )
+
+        await record_sync_event(
+            http_request,
+            device_id,
+            "access_revoked",
+            before={"role": target.role},
+            after=None,
+            data={"granted_to": target.user_id},
+        )
         return None
 
     except HTTPException:

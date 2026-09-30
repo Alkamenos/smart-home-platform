@@ -26,7 +26,7 @@
 - [x] CHK010 Контракты plan.md соответствуют коду (после H4-правки: `/api/v1/*`, реальные пути модулей)
 - [x] CHK011 Заявленные в plan.md артефакты существуют (после C1: research.md, contracts/rest-api.md, quickstart.md, checklists/requirements.md восстановлены)
 - [ ] CHK012 Правила data-model подкреплены кодом (уникальность display_name — отложено, бэклог RU T035: H3)
-- [ ] CHK013 ТР-010 (логирование before/after) подкреплена моделью DeviceSyncEvent — **нет**, Technical Debt (H1)
+- [x] CHK013 ТР-010 (логирование before/after) подкреплена моделью DeviceSyncEvent — ✅ реализовано в specs/005-device-audit-log (2026-09-30)
 
 ## Неоднозначность и дублирование
 

@@ -1,6 +1,6 @@
 # Project State
 
-*Последнее обновление: 2026-09-29*
+*Последнее обновление: 2026-09-30*
 
 ## 📌 Как использовать этот файл
 
@@ -11,7 +11,7 @@
 ---
 
 **Версия:** v3.0.0 (Production Readiness)
-**Последний коммит:** 2026-09-29 — fix(core): устранены расхождения документации и кода (motion-баг, валидатор, specs/001)
+**Последний коммит:** 16a54f0 (2026-09-30) — feat(webui): подключить Access Control middleware, фильтрацию прав и WS-доставку по ролям (spec 004 US4)
 
 ### ✅ Полностью реализовано и протестировано
 
@@ -88,7 +88,7 @@
    - **root+unit: 15** — `tests/unit/test_cache.py` (5), `tests/unit/test_models.py` (3), `tests/unit/test_device_service.py` (1: `test_handle_state_change_with_malformed_data`), `tests/test_websocket_batcher.py` (3), `tests/test_discovery_classifier.py` (2), `tests/test_metrics.py` (1 — ✅ исправлено 2026-09-29: невалидный kwarg `help=` в `MetricsCollector.initialize()`)
    - **contract: 6 failed + 27 errors** (запускать отдельно от integration)
    - **integration: 4 failed** (`test_commands.py` 2, `test_state_sync.py` 2)
-   - **playwright: 14** — `RuntimeError: Runner.run() cannot be called from a running event loop` (конфликт event loop)
+   - **playwright: 14** — `RuntimeError: Runner.run() cannot be called from a running event loop` (конфликт event loop → см. Known Issue #13: файл заражает loop'ом последующие async-тесты)
    - Все перечисленные падают и на baseline (HEAD `d1918d8`) — не регрессии
    - **Статус:** Не исправлено
 
@@ -138,10 +138,21 @@
     - **Проблема:** при `docker compose stop` event loop закрывается с pending-задачей self-shutdown uvicorn; критерии T011 (`Traceback`/`Unclosed client session`, останов ≤30с) при этом выполняются (останов 1с, 0 ошибок)
     - **Статус:** Не исправлено (низкий приоритет, косметика graceful shutdown)
 
+### 🟡 High (добавлено 2026-09-30 при регрессе specs/005)
+
+13. **`tests/test_webui_playwright.py` заражает event loop'ом весь root-прогон**
+    - **Файл:** `tests/test_webui_playwright.py` (async-тесты с playwright `page`)
+    - **Проблема:** после выполнения этого файла в главном потоке остаётся **живой (running, не закрытый) event loop** → все последующие async-тесты падают с `RuntimeError: Runner.run() cannot be called from a running event loop`; даже синхронный тест с `asyncio.run()` после него падает. В root-прогоне под удар попадают: все 14 playwright-тестов, ~51 `test_device_service.py` (в составе 51 root-pадений), 9 `test_device_sync_persistence.py` (specs/005) и др.
+    - **Доказательства:** `pytest tests/ --ignore=tests/contract --ignore=tests/integration` без playwright-файла → **15 failed** (только baseline); с ним → 87; `pytest tests/unit` отдельно → playwright-жертв нет
+    - **Влияние на baseline:** root 78 failed (baseline) частично состоит из loop-жертв; изоляция playwright-файла резко улучшит регресс
+    - **Направление фикса:** перевести тесты на синхронный playwright API (`def test` без `await`) либо изолировать файл (отдельный маркер/прогон), либо закрывать loop после файла
+    - **Статус:** Не исправлено
+
 ## Последние значимые изменения
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-30 | Specs 005 device-audit-log: модель `DeviceSyncEvent` + `DeviceSyncEventPersistence` (append-only JSON `data/device_sync_events.json`), чтение `GET /api/v1/devices/{id}/events` из персистентности вместо заглушки, синхронная запись в webui-хендлерах (config_changed с before/after только запрашиваемых полей, access_granted/updated/revoked, command_executed с содержимым команды), helper `record_sync_event`/`get_sync_history` в deps; ТР-010 (Tech Debt High #2) закрыт; quickstart 6/6; регресс: contract/integration без новых падений, root без новых падений (9 падений unit — pre-existing заражение playwright, см. Known Issue #13) | `src/core/models/device_sync_event.py`, `src/core/persistence/{devices,manager}.py`, `src/webui/routes/devices/{deps,devices,access_control}.py`, `tests/unit/test_device_sync_{event,persistence}.py`, `tests/contract/test_device_events_api.py`, `tests/integration/test_device_audit_log.py`, `specs/005-device-audit-log/` | ✅ Complete |
 | 2026-09-29 | Specs 004 US4 Access Control: DeviceAccessMiddleware зарегистрирован в create_app (+`access_control.router` не был включён — 404 на все access-endpoints), module-level `app` в main.py (TestClient-совместимость), фильтрация `GET /api/v1/devices` по доступу, grant/revoke/list на body-схемах с реальной логикой (grant device-blind), union-схема POST /command (стаб `cmd_123` удалён), WS: подписка с `check_device_access` + доставка по правам при каждой доставке; access contract 11 passed, integration 2 passed; регресс без новых падений | `src/webui/app.py`, `src/webui/middleware_access_control.py`, `src/webui/routes/devices/{devices,access_control,websocket,__init__}.py`, `src/webui/routes/devices/deps.py`, `src/services/device_service.py`, `src/main.py`, `tests/contract/test_access_control.py`, `tests/integration/test_access_control.py`, `tests/contract/{test_devices_api,test_sources_api}.py` | ✅ Complete |
 | 2026-09-29 | Specs 003 US3: TTL командных интентов — `CommandIntent.last_updated/ttl_seconds` (+`refresh()/is_expired()`, валидация ≥0), `asyncio.Lock` в submit/cleanup, cleanup-loop (`start()/stop()` идемпотентны), force-release WARNING contracts §4, preempt-лог; lifecycle: `dispatcher.start()` в `Container.build()`, `PlatformContext.shutdown()` → `ctx.shutdown()` в `src/main.py`; тесты TTL (10) + регресс SC-005; фул-регресс без новых падений | `src/core/commands/dispatcher.py`, `src/core/container.py`, `src/main.py`, `tests/test_dispatcher_ttl.py`, `tests/test_dispatcher.py` | ✅ Complete |
 | 2026-09-29 | Specs 003 US1+US2: healthcheck CLI+`/health` JSON, Docker E2E (10 мин healthy, 0 рестартов, stop 1с/без Traceback), WebSocket reconnect (backoff после обрыва, метрика `websocket_disconnects_total`, логи contracts §4), reconnect-тесты (6), фикс `MetricsCollector.initialize()` (13× `help=` → TypeError → все метрики были no-op) | `src/cli/health_check.py`, `src/webui/routes/__init__.py`, `src/adapters/ha_adapter.py`, `src/core/metrics.py`, `tests/test_ha_adapter_reconnect.py`, `tests/cli/`, `deploy/docker/Dockerfile`, `specs/003-critical-production-fixes/tasks.md` | ✅ Complete |

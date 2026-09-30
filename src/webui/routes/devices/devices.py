@@ -12,7 +12,12 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
 
-from src.webui.routes.devices.deps import get_device_service
+from src.core.models.device_sync_event import DeviceSyncEvent
+from src.webui.routes.devices.deps import (
+    get_device_service,
+    get_sync_history,
+    record_sync_event,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -235,6 +240,14 @@ async def update_device_config(
 
         config = device["config"]
 
+        # Снимок изменяемых полей ДО обновления (ТР-010, spec 005)
+        updated_fields = [
+            name
+            for name in ("display_name", "description", "location", "tags")
+            if getattr(request, name) is not None
+        ]
+        before_snapshot = {name: config.get(name) for name in updated_fields}
+
         # Обновляем поля если они указаны
         if request.display_name is not None:
             config["display_name"] = request.display_name
@@ -251,6 +264,15 @@ async def update_device_config(
         config["updated_at"] = datetime.utcnow().isoformat()
 
         logger.info(f"Обновлена конфигурация устройства {device_id}")
+
+        after_snapshot = {name: config.get(name) for name in updated_fields}
+        await record_sync_event(
+            http_request,
+            device_id,
+            "config_changed",
+            before=before_snapshot,
+            after=after_snapshot,
+        )
 
         # Создаем ответ с полной информацией
         response_data = dict(device)
@@ -366,6 +388,18 @@ async def execute_device_command(
         effective_name = request.command_name or request.name or request.service or "unknown"
         logger.info(f"Выполняю команду {effective_name} на устройстве {device_id}")
 
+        await record_sync_event(
+            http_request,
+            device_id,
+            "command_executed",
+            before=None,
+            after=None,
+            data={
+                "command": effective_name,
+                "parameters": request.parameters if request.parameters else request.data,
+            },
+        )
+
         return CommandResponse(
             id=command_id,
             device_id=str(device_id),
@@ -449,6 +483,28 @@ class DeviceEventResponse(BaseModel):
     data: dict = Field(description="Данные события")
 
 
+def _to_event_response(event: DeviceSyncEvent) -> DeviceEventResponse:
+    """Переводит запись истории в формат ответа эндпоинта events (research R5).
+
+    Args:
+        event: Запись истории операций
+
+    Returns:
+        Событие в формате DeviceEventResponse (event_type ← action).
+    """
+    payload = dict(event.data or {})
+    payload["user_id"] = event.user_id
+    payload["before"] = event.before
+    payload["after"] = event.after
+    return DeviceEventResponse(
+        id=str(event.id),
+        device_id=str(event.device_id),
+        event_type=event.action,
+        timestamp=event.timestamp.isoformat(),
+        data=payload,
+    )
+
+
 @router.get("/{device_id}/events", status_code=status.HTTP_200_OK)
 async def get_device_events(
     device_id: UUID,
@@ -482,13 +538,13 @@ async def get_device_events(
     await _require_access_or_403(request, device_id, _ROLE_VIEWER)
 
     try:
-        # TODO: Получить события из persistence или EventBus
-        logger.info(
-            f"Получаю события для устройства {device_id}, тип: {event_type}, limit: {limit}"
-        )
+        history = get_sync_history(request)
+        if history is None:
+            logger.warning(f"История операций недоступна для устройства {device_id}")
+            return []
 
-        # Заглушка - возвращаем пустой список
-        return []
+        events = await history.list_events(device_id, action=event_type, limit=limit, offset=offset)
+        return [_to_event_response(event) for event in events]
 
     except Exception as e:
         logger.error(f"Ошибка при получении событий устройства: {e}")

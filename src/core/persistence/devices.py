@@ -13,6 +13,7 @@ from uuid import UUID
 from src.core.models.device import Device
 from src.core.models.device_access import DeviceAccess
 from src.core.models.device_config import DeviceConfig
+from src.core.models.device_sync_event import DeviceSyncEvent
 
 
 logger = logging.getLogger(__name__)
@@ -520,4 +521,101 @@ class DeviceAccessPersistence:
                 return json.load(f)
         except json.JSONDecodeError:
             logger.warning(f"Файл {self.access_file} повреждён, начинаю с пустого")
+            return {}
+
+
+class DeviceSyncEventPersistence:
+    """Управляет историей операций с устройствами (ТР-010, spec 005).
+
+    Append-only хранилище записей DeviceSyncEvent в JSON-файле
+    ``device_sync_events.json`` (паттерн DeviceAccessPersistence).
+    """
+
+    def __init__(self, data_dir: Path | str = "data") -> None:
+        """Инициализация персистентности истории операций.
+
+        Args:
+            data_dir: Директория для сохранения данных
+        """
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.events_file = self.data_dir / "device_sync_events.json"
+
+    async def append_event(self, event: DeviceSyncEvent) -> None:
+        """Добавляет запись операции в историю.
+
+        Args:
+            event: Запись операции для сохранения
+
+        Raises:
+            Exception: При ошибке записи в файл (вызывающий решает,
+                блокировать ли основную операцию — FR-009)
+        """
+        try:
+            events_data = await self._load_events_data()
+            events_data[str(event.id)] = event.model_dump(mode="json")
+
+            with open(self.events_file, "w") as f:
+                json.dump(events_data, f, indent=2, default=str)
+
+            logger.info(
+                f"История: записана операция {event.action} "
+                f"для устройства {event.device_id} (user {event.user_id})"
+            )
+
+        except Exception as e:
+            logger.error(f"Ошибка сохранения записи истории: {e}")
+            raise
+
+    async def list_events(
+        self,
+        device_id: UUID,
+        action: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[DeviceSyncEvent]:
+        """Возвращает историю операций устройства (новые первыми).
+
+        Args:
+            device_id: Устройство, операции которого запрашиваются
+            action: Фильтр по типу операции (неизвестное значение → [])
+            limit: Максимум записей в ответе
+            offset: Смещение для пагинации
+
+        Returns:
+            Список записей операций; [] при отсутствии или повреждении файла
+        """
+        events_data = await self._load_events_data()
+
+        events: list[DeviceSyncEvent] = []
+        for record in events_data.values():
+            try:
+                event = DeviceSyncEvent.model_validate(record)
+            except Exception as e:
+                logger.warning(f"Пропущена некорректная запись истории: {e}")
+                continue
+
+            if event.device_id != device_id:
+                continue
+            if action is not None and event.action != action:
+                continue
+            events.append(event)
+
+        events.sort(key=lambda e: e.timestamp, reverse=True)
+        return events[offset : offset + limit]
+
+    async def _load_events_data(self) -> dict:
+        """Загружает данные истории операций из файла.
+
+        Returns:
+            Словарь с данными записей операций; {} при отсутствии/повреждении
+        """
+        if not self.events_file.exists():
+            return {}
+
+        try:
+            with open(self.events_file) as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            logger.warning(f"Файл {self.events_file} повреждён, начинаю с пустого")
             return {}

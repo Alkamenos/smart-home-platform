@@ -320,8 +320,6 @@ gantt
 
 
 ### High Priority
-- Files: `src/core/models/`, `src/core/persistence/`
-- Source: RU T041, T070
 
 ### Medium Priority
 - Source: `specs/001-device-integration/tasks.md` → «Бэклог» (EN T040, T046, T054, T060, T067)

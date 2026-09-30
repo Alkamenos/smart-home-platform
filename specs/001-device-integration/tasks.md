@@ -361,7 +361,7 @@ Phase 4 (US2: Config) ← MVP часть 2
 - [x] T038 [US2] Создать FastAPI route `PUT /api/v1/devices/{id}/config` в `src/webui/routes/devices/devices.py` для обновления конфигурации (зависит от T036)
 - [x] T039 [US2] Расширить FastAPI route `GET /api/v1/devices/{id}` для возврата полной информации об устройстве с конфигурацией, командами и событиями
 - [x] T040 [US2] Публиковать `DeviceConfigChangedEvent` при каждом изменении конфигурации через EventBus
-- [ ] T041 [US2] Создать SyncEvent запись для каждого изменения конфигурации с информацией о пользователе (ТР-010)
+- [x] T041 [US2] Создать SyncEvent запись для каждого изменения конфигурации с информацией о пользователе (ТР-010) — ✅ реализовано в specs/005-device-audit-log: `DeviceSyncEvent` + запись `config_changed` в `PUT /devices/{id}/config`
 - [x] T042 [US2] Реализовать сохранение конфигурации при перезагрузке (ТР-003 и КУ-003)
 
 **Контрольная точка**: Истории пользователя 1 И 2 должны работать независимо. Конфигурация сохраняется в БД и восстанавливается при перезагрузке (КУ-003).
@@ -555,7 +555,7 @@ T022: fetch_devices()
 
 ### Отсутствующие модели/события/сервисы
 
-- RU T041 / RU T070: модель и персистентность `DeviceSyncEvent` не существуют → нет истории операций (ТР-010)
+- ~~RU T041 / RU T070: модель и персистентность `DeviceSyncEvent` не существуют → нет истории операций (ТР-010)~~ ✅ закрыто 2026-09-30 (specs/005-device-audit-log: модель, `DeviceSyncEventPersistence`, запись config/access/command операций)
 - EN T016, T036, T052: `DeviceSyncEvent`, `DeviceSyncStarted/CompletedEvent`, `DeviceCommandSent/FailedEvent` — не реализованы
 - EN T022, T023: `persistence/device_commands.py`, `persistence/device_sync_events.py` — отсутствуют
 - EN T047: `DeviceSyncService` (`src/services/sync_service.py`) — отсутствует
