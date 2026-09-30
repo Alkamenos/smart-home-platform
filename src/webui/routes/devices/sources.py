@@ -6,6 +6,7 @@ API маршруты для управления источниками Home Ass
 
 import logging
 from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -324,6 +325,107 @@ class DiscoveryData(BaseModel):
     areas: list[AreaInfo] = Field(description="Список доступных комнат в HA")
     available_devices: list[AvailableDevice] = Field(description="Список доступных устройств")
     available_device_count: int = Field(description="Количество доступных устройств в HA")
+    error: str | None = Field(
+        default=None,
+        description=(
+            "Причина недоступности источника. Заполняется, когда получить данные "
+            "не удалось: интерфейс обязан показать причину, а не «устройств нет» (FR-013)"
+        ),
+    )
+
+
+async def _fetch_discovery_data(source: HASource) -> DiscoveryData:
+    """Получает устройства и области источника из Home Assistant.
+
+    Используется тот же путь, что и при синхронизации
+    (``connect_to_ha`` → ``fetch_devices`` → ``fetch_areas``): он работает в
+    автономном режиме и с источниками, созданными в интерфейсе, в отличие от
+    глобального WebSocket-адаптера (spec 006, D-006).
+
+    Args:
+        source: Источник Home Assistant.
+
+    Returns:
+        Данные для мастера; при недоступном источнике — с заполненной причиной.
+    """
+    from src.adapters.home_assistant.rest_client import HARestClient
+
+    async with HARestClient(source.url, source.token) as rest_client:
+        if not await rest_client.connect_to_ha():
+            return DiscoveryData(
+                source_id=str(source.id),
+                areas=[],
+                available_devices=[],
+                available_device_count=0,
+                error=f"Не удалось подключиться к источнику: {source.url}",
+            )
+
+        states = await rest_client.fetch_devices()
+        areas_raw = await _safe_fetch_areas(rest_client, source)
+
+    areas = [
+        AreaInfo(
+            id=str(area.get("area_id") or area.get("id") or ""),
+            name=str(area.get("name") or ""),
+            icon=area.get("icon"),
+            picture=area.get("picture"),
+        )
+        for area in areas_raw
+        if area.get("area_id") or area.get("id")
+    ]
+    area_names = {area.id: area.name for area in areas}
+
+    devices = [
+        _to_available_device(state, area_names) for state in states if state.get("entity_id")
+    ]
+
+    return DiscoveryData(
+        source_id=str(source.id),
+        areas=areas,
+        available_devices=devices,
+        available_device_count=len(devices),
+    )
+
+
+async def _safe_fetch_areas(rest_client: Any, source: HASource) -> list[dict[str, Any]]:
+    """Получает области источника, не роняя весь ответ из-за их недоступности.
+
+    Args:
+        rest_client: REST-клиент Home Assistant.
+        source: Источник (для сообщения в журнале).
+
+    Returns:
+        Список областей; пустой список при ошибке.
+    """
+    try:
+        return await rest_client.fetch_areas()
+    except Exception as e:
+        logger.warning(f"Не удалось получить области источника {source.id}: {e}")
+        return []
+
+
+def _to_available_device(state: dict[str, Any], area_names: dict[str, str]) -> AvailableDevice:
+    """Преобразует состояние Home Assistant в элемент ответа мастера.
+
+    Args:
+        state: Состояние сущности из Home Assistant.
+        area_names: Соответствие идентификаторов областей их названиям.
+
+    Returns:
+        Описание доступного устройства.
+    """
+    attributes = state.get("attributes") or {}
+    entity_id = str(state.get("entity_id", ""))
+    area_id = attributes.get("area_id")
+    return AvailableDevice(
+        entity_id=entity_id,
+        friendly_name=str(attributes.get("friendly_name") or entity_id),
+        device_type=entity_id.split(".")[0],
+        area_id=area_id,
+        area_name=area_names.get(area_id) if area_id else None,
+        state=str(state.get("state", "")),
+        icon=attributes.get("icon"),
+    )
 
 
 @router.get("/{source_id}/discovery-data", status_code=status.HTTP_200_OK)
@@ -331,45 +433,40 @@ async def get_discovery_data(request: Request, source_id: UUID) -> DiscoveryData
     """Получает доступные устройства из Home Assistant для помощи при добавлении.
 
     Args:
-        request: FastAPI request
+        request: HTTP request
         source_id: ID источника
 
     Returns:
-        Данные для discovery
+        Данные для мастера: устройства, области и причина недоступности
+        источника, если получить данные не удалось (FR-010, FR-013).
 
     Raises:
-        HTTPException: 404 если источник не найден, 500 если ошибка подключения
+        HTTPException: 404 если источник не найден, 503 если persistence недоступен
     """
+    persistence = getattr(request.app.state, "persistence", None)
+    if not persistence:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Persistence не инициализирован",
+        )
+
+    source = await persistence.sources.load_source(source_id)
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Источник {source_id} не найден",
+        )
+
     try:
-        persistence = getattr(request.app.state, "persistence", None)
-        if not persistence:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Persistence не инициализирован",
-            )
-
-        source = await persistence.sources.load_source(source_id)
-        if not source:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Источник {source_id} не найден",
-            )
-
-        # TODO: Реализовать получение доступных устройств из HA
-        # через HARestClient.fetch_devices() и HARestClient.fetch_areas()
-
+        return await _fetch_discovery_data(source)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при получении discovery data для источника {source_id}: {e}")
         return DiscoveryData(
             source_id=str(source_id),
             areas=[],
             available_devices=[],
             available_device_count=0,
+            error=f"Не удалось получить данные источника: {e}",
         )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при получении discovery data для источника {source_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при получении данных об устройствах",
-        ) from e

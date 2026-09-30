@@ -15,7 +15,7 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from src.adapters.ha_adapter import HAAdapter
-    from src.core.container import Container
+    from src.core.persistence.manifest_store import ManifestStore
 
 router = APIRouter()
 
@@ -26,19 +26,20 @@ _manifest_path: str | None = None
 def init_discovery_routes(
     ha_adapter: HAAdapter,
     manifest_path: str,
-    container: Container | None = None,
+    manifest_store: ManifestStore | None = None,
 ) -> None:
-    """Initialize the discovery service with HA adapter and manifest path.
+    """Инициализирует сервис обнаружения с адаптером и хранилищем манифеста.
 
     Args:
-        ha_adapter: Home Assistant adapter used to scan entities.
-        manifest_path: Path to the manifest YAML file.
-        container: Optional platform container, used for FSM hot-reload.
+        ha_adapter: Адаптер Home Assistant для сканирования сущностей.
+        manifest_path: Путь к файлу манифеста.
+        manifest_store: Хранилище манифеста приложения. Передаётся, чтобы
+            применение из мастера обновляло то же состояние, что и веб-интерфейс.
     """
     global _discovery_service, _manifest_path
     from src.core.discovery.discovery_service import DeviceDiscoveryService
 
-    _discovery_service = DeviceDiscoveryService(ha_adapter, container=container)
+    _discovery_service = DeviceDiscoveryService(ha_adapter, manifest_store=manifest_store)
     _manifest_path = manifest_path
     logger.info(f"Discovery routes initialized with manifest: {manifest_path}")
 

@@ -81,13 +81,13 @@ description: "Список задач для фичи Device Lifecycle (жизн
 
 ### Tests for User Story 2 ⚠️ (сначала падающие)
 
-- [ ] T023 [P] [US2] Контрактные тесты реальных данных источника в `tests/contract/test_sources_api.py`: `discovery-data` возвращает устройства и области, при недоступном источнике — причина ошибки в теле ответа, `404` для несуществующего источника
-- [ ] T024 [P] [US2] Интеграционный тест применения из мастера в `tests/integration/test_discovery_apply.py`: применение выбранных устройств, отсутствие невыбранных, идемпотентность, частичный успех с причинами
+- [x] T023 [P] [US2] Контрактные тесты реальных данных источника в `tests/contract/test_sources_api.py`: `discovery-data` возвращает устройства и области, при недоступном источнике — причина ошибки в теле ответа, `404` для несуществующего источника
+- [x] T024 [P] [US2] Интеграционный тест применения из мастера в `tests/integration/test_discovery_apply.py`: применение выбранных устройств, отсутствие невыбранных, идемпотентность, частичный успех с причинами
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Реализовать реальные данные источника в `src/webui/routes/devices/sources.py`: `HARestClient.connect_to_ha()` → `fetch_devices()` → `fetch_areas()` (тот же путь, что у `sync_devices_from_source`), заполнить `available_devices`/`areas`/`available_device_count` и поле с причиной ошибки
-- [ ] T026 [US2] Удалить мёртвый `_hot_reload_fsm` из `src/core/discovery/discovery_service.py` и перевести запись манифеста на `ManifestStore` (сейчас пишется сырой YAML минус хранилище → «Reload» откатывает результат), исправить порядок резервной копии (снимок до мутации) и дедупликацию устройств
+- [x] T025 [US2] Реализовать реальные данные источника в `src/webui/routes/devices/sources.py`: `HARestClient.connect_to_ha()` → `fetch_devices()` → `fetch_areas()` (тот же путь, что у `sync_devices_from_source`), заполнить `available_devices`/`areas`/`available_device_count` и поле с причиной ошибки
+- [x] T026 [US2] Удалить мёртвый `_hot_reload_fsm` из `src/core/discovery/discovery_service.py` и перевести запись манифеста на `ManifestStore` (сейчас пишется сырой YAML минус хранилище → «Reload» откатывает результат), исправить порядок резервной копии (снимок до мутации) и дедупликацию устройств
 - [ ] T027 [US2] Переключить мастер на реальные данные источника в `src/webui/templates/discovery.html` (убрать обращение к заглушке `discovery-data` с нулевым результатом либо оставить только реальный источник данных)
 - [ ] T028 [US2] Добавить форму создания источника в `src/webui/templates/discovery.html` (имя, адрес, токен, отправка в `POST /api/v1/devices/sources`, показ ошибок по полям, автовыбор созданного источника)
 - [ ] T029 [US2] Передавать `X-User-ID` и `X-Is-Admin` во все запросы интерфейса в `src/webui/templates/discovery.html` и `src/webui/templates/index.html` из серверных атрибутов разметки (перехват `fetch` + обработчик `htmx:configRequest`)

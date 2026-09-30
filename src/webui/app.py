@@ -20,6 +20,7 @@ from loguru import logger
 
 from src.core.models.device import Device
 from src.core.models.manifest import BehaviorConfig
+from src.core.persistence.manifest_store import ManifestStore
 
 from .models import ManifestModel
 
@@ -119,94 +120,6 @@ class LogStore:
     def clear(self) -> None:
         """Clear all logs."""
         self.logs = []
-
-
-class ManifestStore:
-    """In-memory storage for manifest with undo support."""
-
-    def __init__(self, path: str) -> None:
-        """Initialize the manifest store.
-
-        Args:
-            path: Path to the manifest YAML file.
-        """
-        self.path = path
-        self.current: ManifestModel | None = None
-        self.backup: ManifestModel | None = None
-        self.has_unsaved_changes: bool = False
-
-    def load(self) -> ManifestModel:
-        """Load manifest from YAML file.
-
-        Returns:
-            Loaded and validated manifest model.
-
-        Raises:
-            FileNotFoundError: If manifest file doesn't exist.
-            ValidationError: If manifest is invalid.
-        """
-        with open(self.path) as f:
-            data = yaml.safe_load(f) or {}
-
-        self.current = ManifestModel(**data)
-        self.backup = None
-        self.has_unsaved_changes = False
-        logger.info(f"Manifest loaded from {self.path}")
-        return self.current
-
-    def save(self) -> None:
-        """Save current manifest to YAML file with backup.
-
-        Creates a timestamped backup before saving.
-
-        Raises:
-            ValueError: If no manifest is loaded.
-        """
-        if self.current is None:
-            raise ValueError("No manifest loaded")
-
-        # Create backup
-        backup_path = f"{self.path}.bak"
-        with open(backup_path, "w") as f:
-            if self.backup:
-                yaml.dump(self.backup.model_dump(), f, default_flow_style=False, sort_keys=False)
-            else:
-                # No previous backup, save current as backup
-                yaml.dump(self.current.model_dump(), f, default_flow_style=False, sort_keys=False)
-
-        # Save current
-        with open(self.path, "w") as f:
-            yaml.dump(self.current.model_dump(), f, default_flow_style=False, sort_keys=False)
-
-        self.backup = copy.deepcopy(self.current)
-        self.has_unsaved_changes = False
-        logger.info(f"Manifest saved to {self.path}, backup at {backup_path}")
-
-    def revert(self) -> ManifestModel:
-        """Revert to last saved state (undo).
-
-        Returns:
-            Reverted manifest model.
-
-        Raises:
-            ValueError: If no manifest is loaded.
-        """
-        if self.current is None:
-            raise ValueError("No manifest loaded")
-
-        if self.backup is not None:
-            self.current = copy.deepcopy(self.backup)
-        else:
-            # Reload from file
-            self.load()
-
-        self.has_unsaved_changes = False
-        logger.info("Manifest reverted to last saved state")
-        return self.current
-
-    def mark_changed(self) -> None:
-        """Mark the manifest as having unsaved changes."""
-        self.has_unsaved_changes = True
 
 
 def _get_project_root() -> Path:
@@ -382,7 +295,7 @@ def create_app(
         manifest_path = str(_get_project_root() / "instances" / "leonids_house" / "manifest.yaml")
 
     # Initialize manifest store
-    manifest_store = ManifestStore(manifest_path)
+    manifest_store = ManifestStore(manifest_path, ManifestModel)
 
     # Initialize log store
     log_store = LogStore()
@@ -428,7 +341,7 @@ def create_app(
             _ = _container.build()  # Trigger initialization
             logger.info("Created new container instance for discovery routes")
 
-        init_discovery_routes(_container.adapter, manifest_path, container=_container)
+        init_discovery_routes(_container.adapter, manifest_path, manifest_store=manifest_store)
         logger.info("Discovery routes initialized with shared adapter")
     except Exception as e:
         logger.warning(f"Could not initialize discovery routes: {e}")

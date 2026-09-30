@@ -1,8 +1,18 @@
-"""Service for discovering 200+ devices from Home Assistant."""
+"""Обнаружение устройств в Home Assistant и применение их к манифесту.
+
+Манифест пишется только через ``ManifestStore`` — тем же путём, что и
+веб-интерфейс. Раньше здесь был сырой YAML: правки из мастера и CLI
+расходились с состоянием интерфейса, и «Reload» откатывал результат.
+Пересборка машин состояний убрана: ею занимается сервис жизненного
+цикла устройств (``DeviceLifecycleService``), а не этот сервис.
+
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -12,7 +22,7 @@ from .models import BulkApplyRequest, DiscoveredDevice
 
 if TYPE_CHECKING:
     from src.adapters.ha_adapter import HAAdapter
-    from src.core.container import Container
+    from src.core.persistence.manifest_store import ManifestStore
 
 
 SYSTEM_DOMAINS = {
@@ -43,17 +53,75 @@ PAGE_SIZE = 25
 class DeviceDiscoveryService:
     """Сканирует 200+ устройств с пагинацией и автоприменением шаблонов."""
 
-    def __init__(self, ha_adapter: HAAdapter, container: Container | None = None) -> None:
-        """Initialize the discovery service.
+    def __init__(self, ha_adapter: HAAdapter, manifest_store: ManifestStore | None = None) -> None:
+        """Создаёт сервис обнаружения.
 
         Args:
-            ha_adapter: Adapter used to scan Home Assistant entities.
-            container: Optional platform container, required for FSM hot-reload.
+            ha_adapter: Адаптер для сканирования сущностей Home Assistant.
+            manifest_store: Хранилище манифеста. Если не передано, создаётся
+                по пути манифеста при первом применении.
         """
         self._ha_adapter = ha_adapter
-        self._container = container
+        self._manifest_store = manifest_store
         self._classifier = DeviceClassifier()
-        logger.info("DeviceDiscoveryService initialized")
+        logger.info("Сервис обнаружения устройств инициализирован")
+
+    def _store_for(self, manifest_path: str) -> ManifestStore:
+        """Возвращает хранилище манифеста, создавая его при необходимости.
+
+        Args:
+            manifest_path: Путь к файлу манифеста.
+
+        Returns:
+            Хранилище манифеста с уже загруженным состоянием.
+        """
+        from src.core.persistence.manifest_store import ManifestStore
+
+        if self._manifest_store is None or self._manifest_store.path != manifest_path:
+            self._manifest_store = ManifestStore(manifest_path)
+        if self._manifest_store.current is None:
+            self._manifest_store.load()
+        return self._manifest_store
+
+    @staticmethod
+    def _room_manifest(manifest: Any, target_room: str) -> Any:
+        """Находит комнату манифеста или создаёт её.
+
+        Args:
+            manifest: Модель манифеста.
+            target_room: Идентификатор комнаты.
+
+        Returns:
+            Модель комнаты.
+        """
+        from src.core.models.manifest import RoomConfig
+
+        room = next((r for r in manifest.rooms if r.id == target_room), None)
+        if room is None:
+            room = RoomConfig(
+                id=target_room,
+                name=target_room.replace("_", " ").title(),
+                sensors={},
+                devices=[],
+            )
+            manifest.rooms.append(room)
+        return room
+
+    @staticmethod
+    def _already_present(room: Any, entity_id: str) -> bool:
+        """Проверяет, нет ли уже такого устройства в комнате.
+
+        Args:
+            room: Модель комнаты.
+            entity_id: Идентификатор сущности.
+
+        Returns:
+            True, если устройство уже описано в комнате.
+        """
+        return (
+            any(device.id == entity_id for device in room.devices)
+            or entity_id in (room.sensors or {}).values()
+        )
 
     async def scan_devices(
         self,
@@ -145,249 +213,238 @@ class DeviceDiscoveryService:
         }
 
     async def bulk_apply(self, request: BulkApplyRequest, manifest_path: str) -> dict:
-        """Массовое применение для 200+ устройств."""
-        # Получаем все устройства
+        """Массово применяет найденные устройства к манифесту.
+
+        Args:
+            request: Параметры отбора (категории, автоприменение, исключения).
+            manifest_path: Путь к файлу манифеста.
+
+        Returns:
+            Итог применения: счётчики добавленных устройств и путь к резервной копии.
+        """
         scan_result = await self.scan_devices(page=1, page_size=10000)
         all_devices = scan_result["devices"]
 
-        selections = []
+        selected = self._select_for_bulk(request, all_devices)
+        if request.dry_run:
+            return {"dry_run": True, "would_add": len(selected), "dry_run_selected": selected}
+
+        store = self._store_for(manifest_path)
+        manifest = store.current
+        added_count = 0
+        for selection in selected:
+            device = next(
+                (d for d in all_devices if d["entity_id"] == selection["device_entity_id"]),
+                None,
+            )
+            if device is None:
+                continue
+            room = self._room_manifest(manifest, selection["target_room"])
+            if self._add_to_room(
+                room,
+                entity_id=selection["device_entity_id"],
+                category=device["category"],
+                domain=device["domain"],
+                behavior_template=selection["behavior_template"],
+            ):
+                added_count += 1
+
+        store.mark_changed()
+        store.save()
+        backup_path = f"{manifest_path}.bak"
+
+        logger.info(f"Массовое применение: добавлено устройств — {added_count}")
+        return {
+            "success": True,
+            "devices_added": added_count,
+            "backup_path": backup_path,
+            "already_present": len(selected) - added_count,
+        }
+
+    def _select_for_bulk(
+        self, request: BulkApplyRequest, all_devices: list[dict]
+    ) -> list[dict[str, Any]]:
+        """Отбирает устройства для массового применения.
+
+        Args:
+            request: Параметры отбора.
+            all_devices: Все найденные устройства.
+
+        Returns:
+            Список отобранных устройств в формате применения.
+        """
+        auto_apply_flags = {
+            "lighting": request.auto_apply_lighting,
+            "climate_control": request.auto_apply_climate,
+            "ventilation": request.auto_apply_ventilation,
+        }
+        requested_categories = {c.value for c in request.include_categories}
+
+        selected: list[dict[str, Any]] = []
         for device in all_devices:
             if device["entity_id"] in request.exclude_entities:
                 continue
-
-            include = False
-            if (
-                request.include_all
-                or device["category"] in [c.value for c in request.include_categories]
-                or (
-                    device["auto_apply"]
-                    and (
-                        (device["category"] == "lighting" and request.auto_apply_lighting)
-                        or (device["category"] == "climate_control" and request.auto_apply_climate)
-                        or (device["category"] == "ventilation" and request.auto_apply_ventilation)
-                    )
-                )
-            ):
-                include = True
-
-            if include:
-                selections.append(
-                    {
-                        "device_entity_id": device["entity_id"],
-                        "include": True,
-                        "target_room": device["area_id"] or "unassigned",
-                        "behavior_template": device["suggested_behavior"],
-                    }
-                )
-
-        if request.dry_run:
-            return {"dry_run": True, "would_add": len(selections)}
-
-        # Применяем к манифесту
-        from datetime import datetime
-
-        import yaml
-
-        with open(manifest_path) as f:
-            manifest = yaml.safe_load(f) or {}
-
-        rooms = manifest.setdefault("rooms", [])
-        added_count = 0
-
-        for sel in selections:
-            entity_id = sel["device_entity_id"]
-            target_room = sel["target_room"]
-            behavior_template = sel["behavior_template"]
-
-            # Найти или создать комнату
-            room = next((r for r in rooms if r["id"] == target_room), None)
-            if room is None:
-                room = {
-                    "id": target_room,
-                    "name": target_room.replace("_", " ").title(),
-                    "sensors": {},
-                    "devices": [],
-                }
-                rooms.append(room)
-
-            # Найти оригинальное устройство для категории
-            device_obj = next((d for d in all_devices if d["entity_id"] == entity_id), None)
-            if not device_obj:
+            by_category = device["category"] in requested_categories
+            by_auto_apply = bool(device.get("auto_apply")) and auto_apply_flags.get(
+                device["category"], False
+            )
+            if not (request.include_all or by_category or by_auto_apply):
                 continue
+            selected.append(
+                {
+                    "device_entity_id": device["entity_id"],
+                    "include": True,
+                    "target_room": device["area_id"] or "unassigned",
+                    "behavior_template": device["suggested_behavior"],
+                }
+            )
+        return selected
 
-            if device_obj["category"] in ("temperature_sensor", "humidity_sensor", "motion_sensor"):
-                sensor_type = device_obj["category"].replace("_sensor", "")
-                room.setdefault("sensors", {})[sensor_type] = entity_id
-            else:
-                device_entry = {"id": entity_id, "type": device_obj["domain"]}
-                if behavior_template:
-                    device_entry["behaviors"] = [
-                        {
-                            "template": behavior_template,
-                            "priority": 10,
-                            "params": {},
-                        }
-                    ]
-                room.setdefault("devices", []).append(device_entry)
+    @staticmethod
+    def _add_to_room(
+        room: Any,
+        entity_id: str,
+        category: str,
+        domain: str,
+        behavior_template: str | None,
+        behavior_params: dict | None = None,
+    ) -> bool:
+        """Добавляет устройство в комнату манифеста, если его там ещё нет.
 
-            added_count += 1
+        Args:
+            room: Модель комнаты.
+            entity_id: Идентификатор сущности.
+            category: Категория устройства.
+            domain: Домен сущности.
+            behavior_template: Шаблон поведения.
+            behavior_params: Параметры поведения.
 
-        # Backup
-        backup_path = f"{manifest_path}.bak.{datetime.now():%Y%m%d_%H%M%S}"
-        with open(backup_path, "w") as f:
-            yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
+        Returns:
+            True, если устройство добавлено; False, если уже было или это датчик без
+            свободного слота в комнате.
+        """
+        from src.core.models.manifest import BehaviorConfig, DeviceConfig
 
-        # Сохраняем
-        with open(manifest_path, "w") as f:
-            yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
+        if DeviceDiscoveryService._already_present(room, entity_id):
+            return False
 
-        # Hot reload
-        await self._hot_reload_fsm(manifest)
+        if category in ("temperature_sensor", "humidity_sensor", "motion_sensor"):
+            sensor_type = category.replace("_sensor", "")
+            if room.sensors is None:
+                room.sensors = {}
+            if room.sensors.get(sensor_type):
+                logger.debug(f"Слот датчика {sensor_type} комнаты {room.id} уже занят")
+                return False
+            room.sensors[sensor_type] = entity_id
+            return True
 
-        logger.info(f"Bulk apply: {added_count} devices added. Backup: {backup_path}")
-        return {"success": True, "devices_added": added_count, "backup_path": backup_path}
+        device_entry = DeviceConfig(id=entity_id, type=domain)
+        if behavior_template:
+            device_entry.behaviors = [
+                BehaviorConfig(
+                    template=behavior_template,
+                    priority=10,
+                    params=behavior_params or {},
+                )
+            ]
+        room.devices.append(device_entry)
+        return True
 
     async def apply_selective(
         self, selections: list[dict], manifest_path: str, dry_run: bool = False
     ) -> dict:
-        """Apply selectively chosen devices to manifest.
+        """Применяет выбранные пользователем устройства к манифесту.
 
         Args:
-            selections: List of device selections with entity_id, room, behavior, etc.
-            manifest_path: Path to manifest file
-            dry_run: If True, don't write to file, just return what would be added
+            selections: Выбранные устройства с комнатой и поведением.
+            manifest_path: Путь к файлу манифеста.
+            dry_run: True — только посчитать, ничего не записывая.
 
         Returns:
-            Result with success status and number of devices added/would be added
+            Итог применения: счётчики, список неудачных устройств с причинами
+            и путь к резервной копии.
         """
-        from datetime import datetime
-
-        import yaml
-
-        # Load current manifest
-        with open(manifest_path) as f:
-            manifest = yaml.safe_load(f) or {}
-
-        rooms = manifest.setdefault("rooms", [])
-        added_devices = []
-        failed_devices = []
+        store = self._store_for(manifest_path)
+        manifest = store.current
+        added_devices: list[str] = []
+        failed_devices: list[dict[str, Any]] = []
+        skipped_devices: list[str] = []
 
         for selection in selections:
+            entity_id: str | None = selection.get("device_entity_id")
+            if not entity_id:
+                failed_devices.append(
+                    {"entity_id": entity_id or "", "error": "Не указан идентификатор устройства"}
+                )
+                continue
+
             try:
-                entity_id: str | None = selection.get("device_entity_id")
-                if not entity_id:
+                target_room: str = selection.get("target_room") or "unassigned"
+                domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
+                category = selection.get("category") or _category_for_domain(domain)
+
+                if dry_run:
+                    room = next((r for r in manifest.rooms if r.id == target_room), None)
+                    if room is None or self._already_present(room, entity_id):
+                        added_devices.append(entity_id)
+                    else:
+                        skipped_devices.append(entity_id)
                     continue
 
-                target_room: str = selection.get("target_room", "unassigned") or "unassigned"
-                behavior_template: str | None = selection.get("behavior_template")
-                domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
-
-                # Find or create room
-                room = next((r for r in rooms if r["id"] == target_room), None)
-                if room is None and not dry_run:
-                    room = {
-                        "id": target_room,
-                        "name": target_room.replace("_", " ").title(),
-                        "sensors": {},
-                        "devices": [],
-                    }
-                    rooms.append(room)
-                elif room is None:
-                    room = {
-                        "id": target_room,
-                        "name": target_room.replace("_", " ").title(),
-                        "sensors": {},
-                        "devices": [],
-                    }
-
-                # Determine device type based on domain
-                if domain in ("sensor", "binary_sensor"):
-                    # For sensors, extract type from entity_id or use as-is
-                    sensor_type = entity_id.split("_")[1] if "_" in entity_id else "custom"
-                    room.setdefault("sensors", {})[sensor_type] = entity_id
+                room = self._room_manifest(manifest, target_room)
+                created = self._add_to_room(
+                    room,
+                    entity_id=entity_id,
+                    category=category,
+                    domain=domain,
+                    behavior_template=selection.get("behavior_template"),
+                    behavior_params=selection.get("behavior_params"),
+                )
+                if created:
+                    added_devices.append(entity_id)
                 else:
-                    # For regular devices
-                    device_entry = {"id": entity_id, "type": domain}
-                    if behavior_template:
-                        device_entry["behaviors"] = [
-                            {
-                                "template": behavior_template,
-                                "priority": 10,
-                                "params": selection.get("behavior_params", {}),
-                            }
-                        ]
-                    room.setdefault("devices", []).append(device_entry)
-
-                added_devices.append(entity_id)
+                    skipped_devices.append(entity_id)
             except Exception as e:
-                logger.warning(f"Failed to add device {entity_id}: {e}")
+                logger.warning(f"Не удалось добавить устройство {entity_id}: {e}")
                 failed_devices.append({"entity_id": entity_id, "error": str(e)})
 
         if dry_run:
             return {
                 "dry_run": True,
                 "would_add": len(added_devices),
+                "already_present": len(skipped_devices),
                 "devices": added_devices,
+                "failed": len(failed_devices),
+                "failed_devices": failed_devices,
             }
 
-        # Create backup
-        backup_path = f"{manifest_path}.bak.{datetime.now():%Y%m%d_%H%M%S}"
-        with open(backup_path, "w") as f:
-            yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
-
-        # Save manifest
-        with open(manifest_path, "w") as f:
-            yaml.dump(manifest, f, default_flow_style=False, sort_keys=False)
-
-        # Hot reload
-        await self._hot_reload_fsm(manifest)
+        store.mark_changed()
+        store.save()
+        backup_path = f"{manifest_path}.bak"
 
         logger.info(
-            f"Selective apply: {len(added_devices)} devices added, "
-            f"{len(failed_devices)} failed. Backup: {backup_path}"
+            f"Выборочное применение: добавлено — {len(added_devices)}, "
+            f"уже было — {len(skipped_devices)}, ошибок — {len(failed_devices)}"
         )
         return {
-            "success": True,
+            "success": not failed_devices,
             "devices_added": len(added_devices),
+            "already_present": len(skipped_devices),
             "failed": len(failed_devices),
             "failed_devices": failed_devices,
             "backup_path": backup_path,
         }
 
-    async def _hot_reload_fsm(self, manifest: dict) -> None:
-        """Пересоздать FSM definitions после обновления манифеста.
 
-        Args:
-            manifest: Updated manifest data.
-        """
-        if self._container is None:
-            logger.warning("Hot reload skipped: no container available")
-            return
+def _category_for_domain(domain: str) -> str:
+    """Определяет категорию устройства по домену сущности.
 
-        try:
-            from src.core.manifest_generator import ManifestAutomationGenerator
+    Args:
+        domain: Домен сущности Home Assistant.
 
-            generator = ManifestAutomationGenerator(manifest)
-            result = generator.generate_all()
-
-            fsm_engine = self._container.fsm
-            event_router = self._container.event_router
-
-            all_definitions = (
-                result.lighting_definitions
-                + result.climate_definitions
-                + result.ventilation_definitions
-            )
-            all_mappings = (
-                result.lighting_mappings + result.climate_mappings + result.ventilation_mappings
-            )
-
-            for definition in all_definitions:
-                fsm_engine.register_definition(definition)
-
-            for mapping in all_mappings:
-                event_router.add_mapping(mapping)
-
-            logger.info(f"Hot reload: registered {len(all_definitions)} FSM definitions")
-        except Exception as e:
-            logger.error(f"Hot reload failed: {e}")
+    Returns:
+        Категория устройства.
+    """
+    if domain in ("sensor", "binary_sensor"):
+        return "motion_sensor"
+    return "other"

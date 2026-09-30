@@ -215,3 +215,104 @@ class TestSourcesAPI:
             assert "name" in device
             assert "device_type" in device
             assert "status" in device
+
+
+class TestSourceDiscoveryData:
+    """T030/T033: Реальные данные источника для мастера (spec 006, FR-010).
+
+    До spec 006 эндпоинт возвращал заглушку с нулём устройств: мастер
+    показывал «устройств нет» при живом источнике.
+    """
+
+    @pytest.fixture
+    def source_id(self, client):
+        """Создаёт источник и возвращает его идентификатор.
+
+        Args:
+            client: HTTP-клиент теста.
+
+        Returns:
+            Идентификатор источника.
+        """
+        response = client.post(
+            "/api/v1/devices/sources",
+            json={
+                "name": "Discovery HA",
+                "url": "http://192.168.1.77:8123",
+                "token": "discovery_token_123",
+            },
+        )
+        assert response.status_code == 201
+        return response.json()["id"]
+
+    def test_discovery_data_should_return_devices_when_source_available(self, client, source_id):
+        """Доступные устройства источника попадают в ответ (FR-010)."""
+        with (
+            patch(
+                "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
+                return_value=True,
+            ),
+            patch(
+                "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+                return_value=[
+                    {
+                        "entity_id": "light.hall",
+                        "state": "on",
+                        "attributes": {
+                            "friendly_name": "Hall Light",
+                            "area_id": "hall",
+                        },
+                    },
+                    {
+                        "entity_id": "switch.pump",
+                        "state": "off",
+                        "attributes": {"friendly_name": "Pump"},
+                    },
+                ],
+            ),
+            patch(
+                "src.adapters.home_assistant.rest_client.HARestClient.fetch_areas",
+                return_value=[{"area_id": "hall", "name": "Hall"}],
+            ),
+        ):
+            response = client.get(f"/api/v1/devices/sources/{source_id}/discovery-data")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["available_device_count"] == 2
+        entities = {device["entity_id"] for device in data["available_devices"]}
+        assert entities == {"light.hall", "switch.pump"}
+        hall = next(d for d in data["available_devices"] if d["entity_id"] == "light.hall")
+        assert hall["friendly_name"] == "Hall Light"
+        assert hall["device_type"] == "light"
+        assert hall["area_name"] == "Hall"
+        assert [area["id"] for area in data["areas"]] == ["hall"]
+        assert not data["error"], "Для доступного источника причина ошибки не заполняется"
+
+    def test_discovery_data_should_report_reason_when_source_unavailable(self, client, source_id):
+        """При недоступном источнике возвращается причина, а не «устройств нет» (FR-013)."""
+        with patch(
+            "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
+            return_value=False,
+        ):
+            response = client.get(f"/api/v1/devices/sources/{source_id}/discovery-data")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["available_device_count"] == 0
+        assert data["error"], "При недоступном источнике должна быть указана причина"
+
+    def test_discovery_data_should_return_404_for_unknown_source(self, client):
+        """Несуществующий источник — 404."""
+        response = client.get(f"/api/v1/devices/sources/{uuid4()}/discovery-data")
+
+        assert response.status_code == 404
+
+    def test_discovery_data_should_require_user_header(self, client, source_id):
+        """Запрос без идентификации отклоняется защитным слоем (FR-009)."""
+        response = client.get(
+            f"/api/v1/devices/sources/{source_id}/discovery-data",
+            headers={"X-User-ID": ""},
+        )
+
+        assert response.status_code in (401, 403)
