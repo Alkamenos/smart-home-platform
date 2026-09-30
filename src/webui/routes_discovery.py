@@ -21,6 +21,7 @@ router = APIRouter()
 
 _discovery_service = None
 _manifest_path: str | None = None
+_manifest_store: ManifestStore | None = None
 
 
 def init_discovery_routes(
@@ -36,26 +37,49 @@ def init_discovery_routes(
         manifest_store: Хранилище манифеста приложения. Передаётся, чтобы
             применение из мастера обновляло то же состояние, что и веб-интерфейс.
     """
-    global _discovery_service, _manifest_path
+    global _discovery_service, _manifest_path, _manifest_store
     from src.core.discovery.discovery_service import DeviceDiscoveryService
 
     _discovery_service = DeviceDiscoveryService(ha_adapter, manifest_store=manifest_store)
     _manifest_path = manifest_path
+    _manifest_store = manifest_store
     logger.info(f"Discovery routes initialized with manifest: {manifest_path}")
 
 
 @router.get("/discovery", response_class=HTMLResponse)
 async def discovery_page(request: Request) -> HTMLResponse:
-    """Render the device discovery wizard page."""
+    """Отдаёт страницу мастера добавления устройств.
+
+    Шаблоны поведений и категории берутся у бэкенда, а не зашиваются в
+    JavaScript: мастер обязан предлагать только то, что платформа
+    действительно поддерживает (spec 006, T031).
+
+    Args:
+        request: HTTP-запрос.
+
+    Returns:
+        Отрисованная страница мастера.
+    """
     template_dir = Path(__file__).parent / "templates"
     from fastapi.templating import Jinja2Templates
 
+    from src.core.discovery.classifier import DeviceClassifier
+    from src.webui.template_loader import get_template_loader
+
     templates = Jinja2Templates(directory=str(template_dir))
+    template_names = sorted(get_template_loader().load_all().keys())
 
     return templates.TemplateResponse(
         request,
         "discovery.html",
-        {},
+        {
+            "user_id": getattr(request.app.state, "default_user_id", None) or "admin_user",
+            "user_is_admin": bool(getattr(request.app.state, "default_user_is_admin", False)),
+            "available_templates": template_names,
+            "categories": {
+                domain: category.value for domain, category in DeviceClassifier.DOMAIN_MAP.items()
+            },
+        },
     )
 
 
@@ -149,20 +173,13 @@ async def get_rooms() -> JSONResponse:
         raise HTTPException(status_code=503, detail="Manifest path not initialized")
 
     try:
-        from pathlib import Path
-
-        import yaml
-
-        if not Path(_manifest_path).exists():
+        if _manifest_store is None:
             return JSONResponse(content={"rooms": []})
+        if _manifest_store.current is None:
+            _manifest_store.load()
 
-        with open(_manifest_path) as f:
-            manifest = yaml.safe_load(f) or {}
-
-        rooms = manifest.get("rooms", [])
-        return JSONResponse(
-            content={"rooms": [{"id": room.get("id"), "name": room.get("name")} for room in rooms]}
-        )
+        rooms = [{"id": room.id, "name": room.name} for room in _manifest_store.current.rooms]
+        return JSONResponse(content={"rooms": rooms})
     except Exception as e:
         logger.error(f"Failed to get rooms: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

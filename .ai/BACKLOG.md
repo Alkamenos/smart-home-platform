@@ -46,7 +46,7 @@
 
 Истории:
 - **US1 — Прямое добавление работает:** убрать дубль `@router.post("/apply")` (`src/webui/routes/devices/devices.py:99` vs `:585` — настоящий `apply_devices` недостижим); единое хранилище: `GET /api/v1/devices` должен отдавать устройства из `DeviceService`/persistence, а не in-memory `_devices_store` (`devices.py:27-28`); запись добавленного в persistence
-- **US2 — Мастер discovery работает:** 401 от access-middleware в UI (нет `X-User-ID` в запросах шаблонов); UI ходит в заглушку `discovery-data` (`sources.py:347-355`, всегда 0 устройств) вместо реализованного `POST /discovery/scan` (`routes_discovery.py:61`); нет формы создания источника в UI; «Применить» → починенный apply (см. US1)
+- ✅ **US2 — Мастер discovery работает (закрыт 2026-10-01):** `discovery-data` отдаёт реальные устройства и области (причина недоступности — в теле ответа); идентичность (`X-User-ID`/`X-Is-Admin`) приходит из серверных атрибутов и подставляется во все запросы `/api/**`; форма создания источника с ошибками по полям и автовыбором; `discovery.html` переписан без дублей скриптов и htmx; мастер применяет через канонический `POST /api/v1/devices/apply`
 - **US3 — Устройство оживает без рестарта:** FSM создаётся только в `Container.build()` — нужен hot-reload (`factory.create_and_register` / `_hot_reload_fsm`) или подключение ConfigWatcher (перекрывается с Q3); пробросить `ha_adapter` в webui `DeviceService` (`app.py:301` — сейчас `None`); перестройка маппинга EventRouter
 - **US4 (опц.) — синк ↔ список:** после `POST /sources/{id}/sync` устройства появляются в `GET /api/v1/devices` (сейчас синк пишет в `DeviceService`, список читает другой мир)
 
@@ -115,7 +115,7 @@
 
 | Фича | Спека | Статус |
 |------|-------|--------|
-| F1 Device Lifecycle | specs/006 | 🚧 Реализация: **US1 (MVP) закрыт 2026-10-01** — 20/47 задач (включая форму `/devices/save` и обязательный выбор источника) (Foundational + US1: единый источник устройств, транзакция жизненного цикла, `EventRouter.rebuild()`, отписка от подписок, дубль `/apply` устранён); quickstart 1–3 ✅; 1459 passed / 0 failed. Далее: US2 (мастер), US3 (синк↔список), US4 (удаление) | spec (4 US, 30 FR, 10 SC), research (15 решений), plan (конституция PASS, 4 волны), data-model, 2 контракта, quickstart (9 сценариев), **tasks.md (47 задач: 3 setup + 8 foundational + 11 US1 + 10 US2 + 4 US3 + 5 US4 + 6 polish; 19 параллельных)**. Далее: `/speckit-implement` |
+| F1 Device Lifecycle | specs/006 | 🚧 Реализация: **US1 и US2 закрыты 2026-10-01** — 30/47 задач. US1 (MVP): единый источник устройств, транзакция жизненного цикла, форма `/devices/save` с обязательным источником, `EventRouter.rebuild()`, отписка от подписок, дубль `/apply` устранён, quickstart 1–3 ✅. US2: мастер на реальных данных источника, `ManifestStore` вынесен в core, запись манифеста через хранилище со снимком до мутации, идентичность в запросах UI, форма создания источника, `discovery.html` без дублей скриптов. **Проверено:** 1486 passed / 9 skipped / 0 failed, mypy --strict ✅. Далее: US3 (синк↔список), US4 (удаление), Polish | spec (4 US, 30 FR, 10 SC), research (15 решений), plan (конституция PASS, 4 волны), data-model, 2 контракта, quickstart (9 сценариев), **tasks.md (47 задач: 3 setup + 8 foundational + 11 US1 + 10 US2 + 4 US3 + 5 US4 + 6 polish)** |
 | F2 Live FSM Statuses | specs/007 (будет) | ⬜ Не начата |
 | F3 FSM Observability | specs/008 (будет) | ⬜ Не начата |
 | F4 Device E2E | specs/009 (будет) | ⬜ Не начата |

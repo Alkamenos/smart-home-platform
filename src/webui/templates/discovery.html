@@ -8,1751 +8,720 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мастер добавления устройств - Smart Home</title>
+    <title>Мастер добавления устройств — Smart Home</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <script src="https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js"></script>
     <style>
-        :root {
-            --primary-color: #0d6efd;
-            --success-color: #198754;
-            --warning-color: #ffc107;
-            --danger-color: #dc3545;
-            --info-color: #0dcaf0;
-        }
-
-        body {
-            font-size: 14px;
-        }
+        body { font-size: 14px; }
 
         .device-card {
-            border-left: 4px solid var(--primary-color);
+            border-left: 4px solid var(--bs-primary);
             padding: 0;
             margin-bottom: 0.5rem;
-            transition: all 0.2s ease;
+            transition: background-color 0.2s ease;
             cursor: pointer;
         }
-
-        .device-card:hover {
-            background-color: rgba(13, 110, 253, 0.05);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        .device-card.selected {
-            background-color: rgba(25, 135, 84, 0.1);
-            border-left-color: var(--success-color);
-        }
-
-        .device-checkbox {
-            margin-right: 0.75rem;
-            cursor: pointer;
-            width: 1.25rem;
-            height: 1.25rem;
-        }
-
-        .device-header {
-            display: flex;
-            align-items: center;
-            padding: 0.75rem;
-            gap: 0.5rem;
-        }
-
-        .device-body {
-            padding: 0 0.75rem 0.75rem 3.25rem;
-            font-size: 0.85rem;
-            color: #999;
-        }
-
-        .device-meta {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-            flex-wrap: wrap;
-        }
-
-        .badge-custom {
-            background-color: rgba(13, 110, 253, 0.2);
-            color: #0d6efd;
-            padding: 0.35rem 0.6rem;
-            border-radius: 0.25rem;
-            font-size: 0.8rem;
-        }
-
-        .badge-auto {
-            background-color: rgba(25, 135, 84, 0.2);
-            color: var(--success-color);
-        }
-
-        .badge-manual {
-            background-color: rgba(255, 193, 7, 0.2);
-            color: #ffc107;
-        }
-
-        .filter-sidebar {
-            position: sticky;
-            top: 1rem;
-            max-height: calc(100vh - 2rem);
-            overflow-y: auto;
-        }
-
-        .filter-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .filter-group label {
-            font-size: 0.85rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            color: #999;
-            margin-bottom: 0.5rem;
-            display: block;
-        }
-
-        .filter-btn {
-            font-size: 0.85rem;
-            margin-bottom: 0.4rem;
-            text-align: left;
-            justify-content: flex-start;
-        }
-
-        .preview-panel {
-            position: sticky;
-            top: 1rem;
-            max-height: calc(100vh - 2rem);
-            overflow-y: auto;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 0.5rem;
-            padding: 1rem;
-        }
-
-        .preview-item {
-            background: rgba(13, 110, 253, 0.05);
-            border-left: 3px solid var(--primary-color);
-            padding: 0.75rem;
-            margin-bottom: 0.5rem;
-            border-radius: 0.25rem;
-            font-size: 0.85rem;
-        }
-
-        .preview-item-remove {
-            cursor: pointer;
-            color: var(--danger-color);
-            float: right;
-            opacity: 0.5;
-            transition: opacity 0.2s;
-        }
-
-        .preview-item-remove:hover {
-            opacity: 1;
-        }
-
-        .stat-box {
-            text-align: center;
-            padding: 1rem;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 0.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-box h4 {
-            margin-bottom: 0.25rem;
-            color: var(--primary-color);
-        }
-
-        .stat-box p {
-            font-size: 0.85rem;
-            color: #999;
-            margin-bottom: 0;
-        }
-
-        .search-input {
-            background: rgba(255, 255, 255, 0.05) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            color: #fff !important;
-        }
-
-        .search-input::placeholder {
-            color: #999;
-        }
-
-        .btn-action {
-            font-size: 0.9rem;
-            padding: 0.5rem 1rem;
-        }
-
-        .progress-indicator {
-            font-size: 0.8rem;
-            padding: 0.5rem;
-            background: rgba(13, 110, 253, 0.1);
-            border-radius: 0.25rem;
-            text-align: center;
-            color: var(--primary-color);
-        }
-
-        .devices-loading {
-            text-align: center;
-            padding: 2rem;
-            color: #999;
-        }
-
-        .spinner-border-sm {
-            width: 1rem;
-            height: 1rem;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem 1rem;
-            color: #999;
-        }
-
-        .empty-state i {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
-        }
-
-        @media (max-width: 1024px) {
-            .filter-sidebar {
-                max-height: 400px;
-            }
-
-            .preview-panel {
-                max-height: 400px;
-            }
-        }
-
-        .alert-custom {
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .select-all-checkbox {
-            width: 1.25rem;
-            height: 1.25rem;
-            margin-right: 0.75rem;
-        }
+        .device-card:hover { background-color: rgba(13, 110, 253, 0.05); }
+        .device-card.selected { background-color: rgba(25, 135, 84, 0.1); border-left-color: var(--bs-success); }
+        .device-card.disabled { opacity: 0.5; cursor: not-allowed; }
+        .device-checkbox { margin-right: 0.5rem; width: 1.1rem; height: 1.1rem; }
+        .device-header { display: flex; align-items: center; padding: 0.6rem 0.75rem; gap: 0.5rem; }
+        .device-body { padding: 0 0.75rem 0.6rem 2.6rem; }
+        .source-card { cursor: pointer; height: 100%; }
+        .source-card.active { border-color: var(--bs-success); }
+        .filter-btn { font-size: 0.8rem; }
+        .btn-action { font-size: 0.85rem; }
+        .empty-state { padding: 2rem 1rem; text-align: center; }
+        code.entity-id { font-size: 0.75rem; }
     </style>
 </head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom">
-        <div class="container-fluid">
-            <span class="navbar-brand">
-                <i class="bi bi-plus-circle"></i> Добавление устройств
-            </span>
-            <div class="d-flex gap-2 align-items-center">
-                <small id="source-info" class="text-muted"></small>
-                <a href="/" class="btn btn-outline-secondary btn-sm">← Назад</a>
-            </div>
+<body data-user-id="{{ user_id }}"
+      data-user-is-admin="{{ 'true' if user_is_admin else 'false' }}">
+
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-0"><i class="bi bi-magic"></i> Мастер добавления устройств</h1>
+            <small id="source-info" class="text-muted">Источник не выбран</small>
         </div>
-    </nav>
+        <a href="/" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-house"></i> К списку устройств
+        </a>
+    </div>
 
-    <div class="container-fluid mt-4 mb-4">
-        <!-- Source Selection -->
-        <div class="row mb-4" id="source-selection">
-            <div class="col-12">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body">
-                        <h5 class="mb-3">
-                            <i class="bi bi-diagram-3"></i> Выберите источник Home Assistant
-                        </h5>
-                        <div id="sources-list" class="row g-3">
-                            <div class="col-12 text-center text-muted" id="sources-loading">
-                                <span class="spinner-border spinner-border-sm me-2"></span>
-                                Загружаю источники...
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <!-- Шаг 1: выбор или создание источника -->
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-hdd-network"></i> Шаг 1. Источник Home Assistant</span>
+            <button class="btn btn-sm btn-outline-primary" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#source-form-collapse"
+                    aria-controls="source-form-collapse" aria-expanded="false">
+                <i class="bi bi-plus-circle"></i> Создать источник
+            </button>
         </div>
-
-        <!-- Devices Section (Hidden until source selected) -->
-        <div id="devices-section" style="display: none;">
-            <div class="col-12">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="row text-center">
-                            <div class="col-md-3">
-                                <div class="stat-box">
-                                    <h4 id="total-devices">-</h4>
-                                    <p>Всего устройств</p>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="stat-box">
-                                    <h4 id="auto-count">-</h4>
-                                    <p>✅ Автоприменение</p>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="stat-box">
-                                    <h4 id="manual-count">-</h4>
-                                    <p>⚠️ Требует внимания</p>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="stat-box">
-                                    <h4 id="selected-count">0</h4>
-                                    <p>🎯 Выбрано</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Main content -->
-        <div class="row">
-            <!-- Left: Filters and Scan -->
-            <div class="col-lg-2">
-                <div class="card border-0 shadow-sm filter-sidebar">
-                    <div class="card-body">
-                        <h6 class="mb-3">
-                            <i class="bi bi-funnel"></i> Управление
-                        </h6>
-
-                        <button id="scan-btn" class="btn btn-primary w-100 btn-action mb-3" onclick="startScan()">
-                            <i class="bi bi-arrow-repeat"></i> Сканировать
-                        </button>
-
-                        <hr>
-
-                        <div class="filter-group">
-                            <label>Быстрый выбор</label>
-                            <button class="btn btn-outline-secondary w-100 filter-btn mb-2" onclick="selectAll()">
-                                ✓ Выбрать все
-                            </button>
-                            <button class="btn btn-outline-secondary w-100 filter-btn mb-2" onclick="deselectAll()">
-                                ✗ Очистить
-                            </button>
-                            <button class="btn btn-outline-secondary w-100 filter-btn" onclick="selectAuto()">
-                                ✅ Только авто
-                            </button>
-                        </div>
-
-                        <hr>
-
-                        <div class="filter-group">
-                            <label>По домену</label>
-                            <div id="domain-filters"></div>
-                        </div>
-
-                        <div class="filter-group">
-                            <label>По категории</label>
-                            <div id="category-filters"></div>
-                        </div>
-
-                        <div class="filter-group">
-                            <label>Поиск</label>
-                            <input type="text" id="search-box" class="form-control form-control-sm search-input"
-                                   placeholder="Entity ID или имя..." oninput="applyFilters()">
-                        </div>
-                    </div>
+        <div class="card-body">
+            <div id="sources-list" class="row g-3">
+                <div class="col-12 text-muted" id="sources-loading">
+                    <span class="spinner-border spinner-border-sm me-2"></span>Загрузка источников…
                 </div>
             </div>
 
-            <!-- Center: Device List -->
-            <div class="col-lg-7">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">
-                            <i class="bi bi-list-ul"></i> Обнаруженные устройства
-                        </h5>
-                        <div id="pagination-info" class="text-muted small"></div>
+            <div class="collapse mt-3" id="source-form-collapse">
+                <form id="source-form" class="row g-3" novalidate>
+                    <div class="col-md-4">
+                        <label class="form-label" for="source-name">Название</label>
+                        <input class="form-control form-control-sm" id="source-name"
+                               name="name" placeholder="Дом" required>
+                        <div class="invalid-feedback" id="source-name-error"></div>
                     </div>
-                    <div class="card-body" style="max-height: calc(100vh - 300px); overflow-y: auto;">
-                        <div id="devices-container" class="devices-loading">
-                            <p class="text-muted">Нажмите "Сканировать" для начала</p>
-                        </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="source-url">Адрес</label>
+                        <input class="form-control form-control-sm" id="source-url"
+                               name="url" placeholder="http://192.168.1.10:8123" required>
+                        <div class="invalid-feedback" id="source-url-error"></div>
                     </div>
-                    <div class="card-footer bg-transparent">
-                        <nav aria-label="Пагинация">
-                            <ul class="pagination pagination-sm justify-content-center mb-0" id="pagination-controls">
-                            </ul>
-                        </nav>
+                    <div class="col-md-4">
+                        <label class="form-label" for="source-token">Токен</label>
+                        <input class="form-control form-control-sm" id="source-token"
+                               name="token" type="password" placeholder="Долгосрочный токен HA" required>
+                        <div class="invalid-feedback" id="source-token-error"></div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Right: Preview and Actions -->
-            <div class="col-lg-3">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-transparent">
-                        <h5 class="mb-0">
-                            <i class="bi bi-eye"></i> Предпросмотр
-                        </h5>
-                    </div>
-                    <div class="preview-panel">
-                        <div id="preview-list">
-                            <p class="text-muted text-center" style="padding: 1rem 0;">
-                                Выбранных устройств нет
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Action buttons -->
-                <div class="card border-0 shadow-sm mt-3">
-                    <div class="card-body">
-                        <button class="btn btn-outline-primary w-100 btn-action mb-2" onclick="dryRun()">
-                            <i class="bi bi-eye"></i> Тестовый запуск
+                    <div class="col-12 d-flex align-items-center gap-2">
+                        <button type="submit" class="btn btn-primary btn-sm" id="source-submit">
+                            <i class="bi bi-check-lg"></i> Создать и выбрать
                         </button>
-                        <button class="btn btn-success w-100 btn-action" onclick="applySelected()">
-                            <i class="bi bi-check-circle"></i> Применить
-                        </button>
+                        <span id="source-form-status" class="small"></span>
                     </div>
-                </div>
-
-                <!-- Status -->
-                <div id="status-area" class="mt-3"></div>
+                </form>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        let allDevices = [];
-        let selectedDevices = new Set();
-        let currentPage = 1;
-        let totalPages = 1;
-        let currentFilters = {
-            domain: null,
-            category: null,
-            search: ''
+    <!-- Шаг 2: найденные устройства -->
+    <div class="card mb-3" id="devices-section" hidden>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-search"></i> Шаг 2. Найденные устройства</span>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="scan-btn">
+                <i class="bi bi-arrow-repeat"></i> Обновить
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="row text-center mb-3">
+                <div class="col-6 col-md-3">
+                    <div class="h4 mb-0" id="total-devices">—</div>
+                    <small class="text-muted">Всего</small>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="h4 mb-0" id="selected-count">0</div>
+                    <small class="text-muted">Выбрано</small>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="h4 mb-0" id="room-count">—</div>
+                    <small class="text-muted">Комнат</small>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="h4 mb-0" id="page-info">—</div>
+                    <small class="text-muted">Страница</small>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-lg-3">
+                    <div class="btn-group w-100 mb-2" role="group">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="selectAll()">Все</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="deselectAll()">Снять</button>
+                    </div>
+                    <div class="mb-2">
+                        <small class="text-muted">Фильтр по категории</small>
+                        <div id="category-filters" class="d-flex flex-wrap gap-1 mt-1"></div>
+                    </div>
+                    <div class="mb-2">
+                        <input type="search" class="form-control form-control-sm" id="search-box"
+                               placeholder="Поиск по названию или entity_id">
+                    </div>
+                    <div>
+                        <small class="text-muted">Комната по умолчанию</small>
+                        <select class="form-select form-select-sm mt-1" id="default-room"></select>
+                    </div>
+                </div>
+
+                <div class="col-lg-9">
+                    <div id="devices-container" class="empty-state text-muted">
+                        <span class="spinner-border spinner-border-sm me-2"></span>Загрузка устройств…
+                    </div>
+                    <nav aria-label="Страницы устройств">
+                        <ul class="pagination pagination-sm justify-content-center mb-0" id="pagination-controls"></ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Шаг 3: применение -->
+    <div class="card mb-3" id="apply-section" hidden>
+        <div class="card-header"><i class="bi bi-check2-square"></i> Шаг 3. Применение</div>
+        <div class="card-body">
+            <div id="preview-list" class="small text-muted mb-3">Устройства не выбраны</div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-primary btn-action" id="dry-run-btn" onclick="dryRun()">
+                    <i class="bi bi-clipboard-check"></i> Проверить
+                </button>
+                <button type="button" class="btn btn-success btn-action" id="apply-btn" onclick="applySelected()">
+                    <i class="bi bi-check-lg"></i> Применить
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="status-area" class="sticky-bottom" aria-live="polite"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    'use strict';
+
+    // ------------------------------------------------------------------
+    // Конфигурация из серверной разметки: идентичность приходит с бэкенда,
+    // чтобы запросы интерфейса проходили проверку доступа (FR-009).
+    // ------------------------------------------------------------------
+    const IDENTITY = {
+        userId: document.body.dataset.userId || '',
+        isAdmin: document.body.dataset.userIsAdmin === 'true'
+    };
+    const TEMPLATES = {{ available_templates | tojson }};
+    const CATEGORIES = {{ categories | tojson }};
+
+    const API = {
+        sources: '/api/v1/devices/sources',
+        discoveryData: (id) => `/api/v1/devices/sources/${encodeURIComponent(id)}/discovery-data`,
+        apply: '/api/v1/devices/apply',
+        rooms: '/api/rooms'
+    };
+
+    const PAGE_SIZE = 25;
+
+    const state = {
+        sourceId: new URLSearchParams(window.location.search).get('source_id'),
+        devices: [],
+        rooms: [],
+        selected: new Set(),
+        page: 1,
+        filterCategory: null,
+        search: '',
+        defaultRoom: '',
+        sourceError: null
+    };
+
+    // ------------------------------------------------------------------
+    // Запросы: идентичность на все обращения к API устройств.
+    // Раньше мастер отправлял запросы без заголовков и получал 401.
+    // ------------------------------------------------------------------
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const options = { ...init };
+        if (url.startsWith('/api/')) {
+            options.headers = {
+                'X-User-ID': IDENTITY.userId,
+                'X-Is-Admin': String(IDENTITY.isAdmin),
+                ...(init.headers || {})
+            };
+        }
+        return nativeFetch(input, options);
+    };
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[ch]);
+    }
+
+    function showStatus(type, message) {
+        const area = document.getElementById('status-area');
+        const icon = { success: 'check-circle', error: 'exclamation-octagon', info: 'info-circle' }[type] || 'info-circle';
+        area.innerHTML = `<div class="alert alert-${type} py-2 mb-2 d-flex gap-2 align-items-start">
+            <i class="bi bi-${icon}"></i><div class="flex-grow-1">${escapeHtml(message)}</div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+        </div>`;
+    }
+
+    function withBusy(button, busy, label) {
+        button.disabled = busy;
+        if (busy) {
+            button.dataset.label = button.innerHTML;
+            button.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${escapeHtml(label)}`;
+        } else if (button.dataset.label) {
+            button.innerHTML = button.dataset.label;
+        }
+    }
+
+    async function apiError(response, fallback) {
+        let detail = fallback;
+        try {
+            const body = await response.json();
+            detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail || body);
+        } catch (err) {
+            /* тело ответа не JSON — оставляем fallback */
+        }
+        return detail;
+    }
+
+    // ------------------------------------------------------------------
+    // Шаг 1: источники
+    // ------------------------------------------------------------------
+    async function loadSources() {
+        const container = document.getElementById('sources-list');
+        container.innerHTML = '<div class="col-12 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Загрузка…</div>';
+        try {
+            const response = await fetch(API.sources);
+            if (!response.ok) {
+                throw new Error(await apiError(response, `HTTP ${response.status}`));
+            }
+            const sources = await response.json();
+            if (!sources.length) {
+                container.innerHTML = '<div class="col-12 text-muted">Источников пока нет. Создайте первый — форма выше.</div>';
+                return;
+            }
+            container.innerHTML = sources.map((source) => `
+                <div class="col-md-6 col-lg-4">
+                    <div class="card source-card ${source.id === state.sourceId ? 'active' : ''}"
+                         data-source-id="${escapeHtml(source.id)}">
+                        <div class="card-body py-2">
+                            <div class="fw-semibold">${escapeHtml(source.name)}</div>
+                            <small class="text-muted d-block text-truncate">${escapeHtml(source.url)}</small>
+                        </div>
+                    </div>
+                </div>`).join('');
+            container.querySelectorAll('.source-card').forEach((card) => {
+                card.addEventListener('click', () => selectSource(card.dataset.sourceId));
+            });
+        } catch (error) {
+            container.innerHTML = `<div class="col-12 text-danger">Не удалось загрузить источники: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    async function selectSource(sourceId) {
+        state.sourceId = sourceId;
+        state.selected.clear();
+        state.page = 1;
+        document.querySelectorAll('.source-card').forEach((card) => {
+            card.classList.toggle('active', card.dataset.sourceId === sourceId);
+        });
+        const url = new URL(window.location.href);
+        url.searchParams.set('source_id', sourceId);
+        window.history.replaceState({}, '', url);
+        document.getElementById('source-info').textContent = `Источник: ${sourceId.slice(0, 8)}…`;
+        await Promise.all([loadRooms(), loadDiscoveryData()]);
+    }
+
+    function showSourceFormErrors(detail) {
+        ['name', 'url', 'token'].forEach((field) => {
+            document.getElementById(`source-${field}-error`).textContent = '';
+            document.getElementById(`source-${field}`).classList.remove('is-invalid');
+        });
+        const items = Array.isArray(detail) ? detail : [];
+        if (!items.length) {
+            document.getElementById('source-form-status').innerHTML =
+                `<span class="text-danger">${escapeHtml(Array.isArray(detail) ? 'Проверьте поля' : String(detail))}</span>`;
+            return;
+        }
+        items.forEach((item) => {
+            const field = String(item.loc || item.field || '').split('.').pop();
+            const input = document.getElementById(`source-${field}`);
+            if (!input) return;
+            input.classList.add('is-invalid');
+            document.getElementById(`source-${field}-error`).textContent = item.msg || 'Некорректное значение';
+        });
+    }
+
+    document.getElementById('source-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const submit = document.getElementById('source-submit');
+        const status = document.getElementById('source-form-status');
+        status.textContent = '';
+        const payload = {
+            name: document.getElementById('source-name').value.trim(),
+            url: document.getElementById('source-url').value.trim(),
+            token: document.getElementById('source-token').value.trim()
         };
-        let discoveryData = null;
-        const urlParams = new URLSearchParams(window.location.search);
-        let sourceId = urlParams.get('source_id');
-
-        async function loadSources() {
-            try {
-                const response = await fetch('/api/v1/devices/sources');
-                if (!response.ok) throw new Error('Ошибка загрузки источников');
-
-                const sources = await response.json();
-                console.log('Загруженные источники:', sources);
-
-                const sourcesList = document.getElementById('sources-list');
-                const sourcesLoading = document.getElementById('sources-loading');
-
-                if (sources.length === 0) {
-                    sourcesLoading.innerHTML = `
-                        <p class="text-muted mb-0">
-                            <i class="bi bi-exclamation-circle"></i>
-                            Нет доступных источников.
-                            <a href="#" onclick="alert('Создайте источник через API:\\n\\ncurl -X POST http://0.0.0.0:8125/api/v1/devices/sources \\\\\\n  -H \\\"Content-Type: application/json\\\" \\\\\\n  -d \\\"...\\\"')">Как создать?</a>
-                        </p>
-                    `;
-                    return;
-                }
-
-                sourcesLoading.remove();
-
-                sources.forEach(source => {
-                    const statusColor = source.status === 'connected' ? 'success' : 'warning';
-                    const statusIcon = source.status === 'connected' ? '✅' : '⚠️';
-
-                    const card = document.createElement('div');
-                    card.className = 'col-md-6 col-lg-4';
-                    card.innerHTML = `
-                        <div class="card h-100 cursor-pointer source-card" onclick="selectSource('${source.id}', '${source.name}')" style="cursor: pointer; transition: all 0.2s;">
-                            <div class="card-body">
-                                <h6 class="card-title mb-2">
-                                    <i class="bi bi-diagram-3"></i> ${source.name}
-                                </h6>
-                                <small class="text-muted d-block mb-2">${source.url}</small>
-                                <span class="badge bg-${statusColor}">${statusIcon} ${source.status}</span>
-                            </div>
-                        </div>
-                    `;
-                    sourcesList.appendChild(card);
-                });
-            } catch (error) {
-                console.error('Ошибка загрузки источников:', error);
-                document.getElementById('sources-loading').innerHTML = `
-                    <p class="text-danger">Ошибка: ${error.message}</p>
-                `;
-            }
-        }
-
-        function selectSource(id, name) {
-            sourceId = id;
-            console.log('Выбран источник:', name, '(' + id + ')');
-
-            // Скрыть выбор источников
-            document.getElementById('source-selection').style.display = 'none';
-
-            // Показать секцию с устройствами
-            const devicesSection = document.getElementById('devices-section');
-            devicesSection.style.display = 'block';
-            devicesSection.innerHTML = `
-                <!-- Header with stats -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="card border-0 shadow-sm">
-                            <div class="card-body">
-                                <div class="row text-center">
-                                    <div class="col-md-3">
-                                        <div class="stat-box">
-                                            <h4 id="total-devices">-</h4>
-                                            <p>Всего устройств</p>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="stat-box">
-                                            <h4 id="auto-count">-</h4>
-                                            <p>✅ Автоприменение</p>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="stat-box">
-                                            <h4 id="manual-count">-</h4>
-                                            <p>⚠️ Требует внимания</p>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="stat-box">
-                                            <h4 id="selected-count">0</h4>
-                                            <p>🎯 Выбрано</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Main content -->
-                <div class="row">
-                    <!-- Left: Filters and Scan -->
-                    <div class="col-lg-2">
-                        <div class="card border-0 shadow-sm filter-sidebar">
-                            <div class="card-body">
-                                <h6 class="mb-3">
-                                    <i class="bi bi-funnel"></i> Управление
-                                </h6>
-
-                                <button id="scan-btn" class="btn btn-primary w-100 btn-action mb-3" onclick="startScan()">
-                                    <i class="bi bi-arrow-repeat"></i> Сканировать
-                                </button>
-
-                                <button class="btn btn-secondary w-100 btn-action mb-3" onclick="goBackToSources()">
-                                    <i class="bi bi-arrow-left"></i> Назад
-                                </button>
-
-                                <hr>
-
-                                <div class="filter-group">
-                                    <label>Быстрый выбор</label>
-                                    <button class="btn btn-outline-secondary w-100 filter-btn mb-2" onclick="selectAll()">
-                                        ✓ Выбрать все
-                                    </button>
-                                    <button class="btn btn-outline-secondary w-100 filter-btn mb-2" onclick="deselectAll()">
-                                        ✗ Очистить
-                                    </button>
-                                    <button class="btn btn-outline-secondary w-100 filter-btn" onclick="selectAuto()">
-                                        ✅ Только авто
-                                    </button>
-                                </div>
-
-                                <hr>
-
-                                <div class="filter-group">
-                                    <label>По домену</label>
-                                    <div id="domain-filters"></div>
-                                </div>
-
-                                <div class="filter-group">
-                                    <label>По категории</label>
-                                    <div id="category-filters"></div>
-                                </div>
-
-                                <div class="filter-group">
-                                    <label>Поиск</label>
-                                    <input type="text" id="search-box" class="form-control form-control-sm search-input"
-                                           placeholder="Entity ID или имя..." oninput="applyFilters()">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Center: Device List -->
-                    <div class="col-lg-7">
-                        <div class="card border-0 shadow-sm">
-                            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-list-ul"></i> Обнаруженные устройства
-                                </h5>
-                                <div id="pagination-info" class="text-muted small"></div>
-                            </div>
-                            <div class="card-body" style="max-height: calc(100vh - 300px); overflow-y: auto;">
-                                <div id="devices-container" class="devices-loading">
-                                    <p class="text-muted">Нажмите "Сканировать" для начала</p>
-                                </div>
-                            </div>
-                            <div class="card-footer bg-transparent">
-                                <nav aria-label="Пагинация">
-                                    <ul class="pagination pagination-sm justify-content-center mb-0" id="pagination-controls">
-                                    </ul>
-                                </nav>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right: Preview and Actions -->
-                    <div class="col-lg-3">
-                        <div class="card border-0 shadow-sm">
-                            <div class="card-header bg-transparent">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-eye"></i> Предпросмотр
-                                </h5>
-                            </div>
-                            <div class="preview-panel">
-                                <div id="preview-list">
-                                    <p class="text-muted text-center" style="padding: 1rem 0;">
-                                        Выбранных устройств нет
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Action buttons -->
-                        <div class="card border-0 shadow-sm mt-3">
-                            <div class="card-body">
-                                <button class="btn btn-outline-primary w-100 btn-action mb-2" onclick="dryRun()">
-                                    <i class="bi bi-eye"></i> Тестовый запуск
-                                </button>
-                                <button class="btn btn-success w-100 btn-action" onclick="applySelected()">
-                                    <i class="bi bi-check-circle"></i> Применить
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Status -->
-                        <div id="status-area" class="mt-3"></div>
-                    </div>
-                </div>
-            `;
-
-            // Запустить сканирование
-            startScan();
-        }
-
-        function goBackToSources() {
-            document.getElementById('source-selection').style.display = 'block';
-            document.getElementById('devices-section').style.display = 'none';
-            sourceId = null;
-        }
-
-        async function loadDiscoveryData() {
-            if (!sourceId) {
-                showStatus('error', 'Не указан source_id. Выберите источник.');
+        withBusy(submit, true, 'Создание…');
+        try {
+            const response = await fetch(API.sources, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const detail = (await response.json().catch(() => null) || {}).detail;
+                showSourceFormErrors(detail ?? `HTTP ${response.status}`);
                 return;
             }
-
-            try {
-                console.log('Загружаю данные для source_id:', sourceId);
-                const url = `/api/v1/devices/sources/${sourceId}/discovery-data`;
-                console.log('Запрос к:', url);
-
-                const response = await fetch(url);
-
-                console.log('Ответ статус:', response.status);
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Ошибка ответа:', errorText);
-                    throw new Error(`Статус ${response.status}: ${errorText}`);
-                }
-
-                discoveryData = await response.json();
-                console.log('Discovery data loaded:', discoveryData);
-                return discoveryData;
-            } catch (error) {
-                console.error('Full error:', error);
-                showStatus('error', `Ошибка загрузки: ${error.message}`);
-                return null;
-            }
+            const created = await response.json();
+            document.getElementById('source-form').reset();
+            await loadSources();
+            showStatus('success', `Источник «${created.name}» создан`);
+            await selectSource(created.id);
+        } catch (error) {
+            status.innerHTML = `<span class="text-danger">${escapeHtml(error.message)}</span>`;
+        } finally {
+            withBusy(submit, false);
         }
+    });
 
-        async function startScan() {
-            const btn = document.getElementById('scan-btn');
-            if (!btn) return; // Кнопка может быть не видна
+    // ------------------------------------------------------------------
+    // Шаг 2: устройства источника
+    // ------------------------------------------------------------------
+    function categoryOf(device) {
+        return CATEGORIES[device.device_type] || 'monitoring_only';
+    }
 
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Сканирование...';
+    function templateFor(category) {
+        return {
+            lighting: 'lighting',
+            climate_control: 'climate_control',
+            ventilation: 'humidity_ventilation',
+            cover_control: 'generic_cover',
+            switch_control: 'generic_switch'
+        }[category] || null;
+    }
 
-            try {
-                // Load discovery data from HA
-                const haData = await loadDiscoveryData();
-                if (!haData) {
-                    throw new Error('Не удалось загрузить данные из Home Assistant. Проверьте консоль для деталей.');
-                }
+    async function loadRooms() {
+        try {
+            const response = await fetch(API.rooms);
+            state.rooms = response.ok ? (await response.json()).rooms : [];
+        } catch (error) {
+            state.rooms = [];
+        }
+        document.getElementById('room-count').textContent = state.rooms.length;
+        const select = document.getElementById('default-room');
+        select.innerHTML = '<option value="">— не выбрана —</option>' + state.rooms
+            .map((room) => `<option value="${escapeHtml(room.id)}">${escapeHtml(room.name)}</option>`)
+            .join('');
+        if (!state.defaultRoom && state.rooms.length) {
+            state.defaultRoom = state.rooms[0].id;
+            select.value = state.defaultRoom;
+        }
+    }
 
-                console.log('Преобразую данные для отображения...');
-
-                // Transform available_devices to the expected format
-                allDevices = (haData.available_devices || []).map(device => {
-                    const domain = device.device_type || 'unknown';
-                    return {
-                        entity_id: device.entity_id,
-                        friendly_name: device.friendly_name,
-                        name: device.friendly_name,
-                        device_type: domain,
-                        domain: domain,
-                        category: domain === 'light' ? 'lighting' :
-                                  domain === 'climate' ? 'climate' :
-                                  domain === 'sensor' ? 'sensors' :
-                                  'other',
-                        state: device.state || 'unknown',
-                        area_id: device.area_id,
-                        area_name: device.area_name,
-                        icon: device.icon,
-                        auto_apply: true,
-                        suggested_behavior: suggestBehavior(domain)
-                    };
-                });
-
-                console.log('Загружено устройств:', allDevices.length);
-
-                totalPages = Math.ceil(allDevices.length / 25);
-                currentPage = 1;
-
-                const stats = {
-                    total: allDevices.length,
-                    auto_apply_stats: {
-                        auto_apply: allDevices.filter(d => d.auto_apply).length,
-                        manual: allDevices.filter(d => !d.auto_apply).length
-                    },
-                    by_domain: groupBy(allDevices, 'domain'),
-                    by_category: groupBy(allDevices, 'category')
+    async function loadDiscoveryData() {
+        if (!state.sourceId) {
+            showStatus('info', 'Выберите источник, чтобы увидеть его устройства');
+            return;
+        }
+        const container = document.getElementById('devices-container');
+        const scanBtn = document.getElementById('scan-btn');
+        document.getElementById('devices-section').hidden = false;
+        container.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Опрос источника…';
+        withBusy(scanBtn, true, 'Опрос…');
+        try {
+            const response = await fetch(API.discoveryData(state.sourceId));
+            if (!response.ok) {
+                throw new Error(await apiError(response, `HTTP ${response.status}`));
+            }
+            const data = await response.json();
+            state.sourceError = data.error || null;
+            state.devices = (data.available_devices || []).map((device) => {
+                const category = categoryOf(device);
+                return {
+                    ...device,
+                    category,
+                    template: templateFor(category)
                 };
-
-                updateStats(stats);
-                renderFilterButtons(stats);
-                renderDevices(allDevices.slice(0, 25));
-                renderPagination();
-
-                showStatus('success', `✅ Загружено ${allDevices.length} устройств`);
-
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
-            } catch (error) {
-                console.error('startScan error:', error);
-                showStatus('error', `Ошибка сканирования: ${error.message}`);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
-            }
-        }
-
-        function suggestBehavior(domain) {
-            const behaviorMap = {
-                'light': 'lighting',
-                'climate': 'climate_control',
-                'switch': 'switch_control',
-                'sensor': 'sensor_monitoring',
-                'binary_sensor': 'binary_sensor_monitoring'
-            };
-            return behaviorMap[domain] || null;
-        }
-
-        function groupBy(arr, key) {
-            return arr.reduce((result, item) => {
-                const groupKey = item[key] || 'unknown';
-                result[groupKey] = (result[groupKey] || 0) + 1;
-                return result;
-            }, {});
-        }
-
-        function updateStats(data) {
-            const totalEl = document.getElementById('total-devices');
-            const autoEl = document.getElementById('auto-count');
-            const manualEl = document.getElementById('manual-count');
-
-            if (totalEl) totalEl.textContent = data.total;
-            if (autoEl) autoEl.textContent = data.auto_apply_stats?.auto_apply || 0;
-            if (manualEl) manualEl.textContent = data.auto_apply_stats?.manual || 0;
-        }
-
-        function renderFilterButtons(data) {
-            // Domain filters
-            const domainContainer = document.getElementById('domain-filters');
-            if (domainContainer) {
-                domainContainer.innerHTML = '';
-                Object.entries(data.by_domain || {}).forEach(([domain, count]) => {
-                    const btn = document.createElement('button');
-                    btn.className = 'btn btn-outline-secondary w-100 filter-btn';
-                    btn.textContent = `${domain} (${count})`;
-                    btn.onclick = () => {
-                        currentFilters.domain = currentFilters.domain === domain ? null : domain;
-                        applyFilters();
-                    };
-                    domainContainer.appendChild(btn);
-                });
-            }
-
-            // Category filters
-            const categoryContainer = document.getElementById('category-filters');
-            if (categoryContainer) {
-                categoryContainer.innerHTML = '';
-                Object.entries(data.by_category || {}).forEach(([category, count]) => {
-                    const btn = document.createElement('button');
-                    btn.className = 'btn btn-outline-secondary w-100 filter-btn';
-                    btn.textContent = `${category} (${count})`;
-                    btn.onclick = () => {
-                        currentFilters.category = currentFilters.category === category ? null : category;
-                        applyFilters();
-                    };
-                    categoryContainer.appendChild(btn);
-                });
-            }
-        }
-
-        function renderDevices(devices) {
-            const container = document.getElementById('devices-container');
-            if (!container) return;
-
-            if (devices.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="bi bi-inbox"></i>
-                        <p>Устройства не найдены</p>
-                    </div>
-                `;
-                return;
-            }
-
-            let html = '<div class="list-group list-group-flush">';
-            devices.forEach(device => {
-                const isSelected = selectedDevices.has(device.entity_id);
-                const autoApplyBadge = device.auto_apply
-                    ? '<span class="badge badge-custom badge-auto">✅ Авто</span>'
-                    : '<span class="badge badge-custom badge-manual">⚠️ Ручное</span>';
-
-                const areaDisplay = device.area_name
-                    ? `<span class="badge badge-custom">📍 ${device.area_name}</span>`
-                    : '<span class="badge badge-custom" style="opacity: 0.5;">📍 нет комнаты</span>';
-
-                html += `
-                    <div class="card device-card ${isSelected ? 'selected' : ''}"
-                         onclick="toggleDevice('${device.entity_id}', this)">
-                        <div class="device-header">
-                            <input type="checkbox" class="device-checkbox"
-                                   ${isSelected ? 'checked' : ''}
-                                   onclick="event.stopPropagation()">
-                            <div class="flex-grow-1">
-                                <div style="font-weight: 500;">${device.friendly_name || device.name}</div>
-                                <small style="color: #666;">${device.entity_id}</small>
-                            </div>
-                            ${autoApplyBadge}
-                        </div>
-                        <div class="device-body">
-                            <div class="device-meta">
-                                <span class="badge badge-custom">🏷️ ${device.domain}</span>
-                                <span class="badge badge-custom">📁 ${device.category}</span>
-                                ${areaDisplay}
-                            </div>
-                            ${device.suggested_behavior ? `<div style="margin-top: 0.5rem;"><small>Шаблон: <strong>${device.suggested_behavior}</strong></small></div>` : ''}
-                            <div style="margin-top: 0.5rem; color: #777;"><small>Статус: ${device.state}</small></div>
-                        </div>
-                    </div>
-                `;
             });
-            html += '</div>';
-            container.innerHTML = html;
-        }
-
-        function renderPagination() {
-            const container = document.getElementById('pagination-controls');
-            const infoContainer = document.getElementById('pagination-info');
-
-            if (!container || !infoContainer) return;
-
-            infoContainer.textContent = `Страница ${currentPage} из ${totalPages}`;
-            let html = '';
-
-            // Previous
-            html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-                <button class="page-link" onclick="goToPage(${currentPage - 1})">← Пред.</button>
-            </li>`;
-
-            // Page numbers
-            const maxVisible = 5;
-            let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-            let end = Math.min(totalPages, start + maxVisible - 1);
-            if (end - start + 1 < maxVisible) {
-                start = Math.max(1, end - maxVisible + 1);
-            }
-
-            for (let i = start; i <= end; i++) {
-                html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
-                    <button class="page-link" onclick="goToPage(${i})">${i}</button>
-                </li>`;
-            }
-
-            // Next
-            html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-                <button class="page-link" onclick="goToPage(${currentPage + 1})">След. →</button>
-            </li>`;
-
-            container.innerHTML = html;
-        }
-
-        async function goToPage(page) {
-            if (page < 1 || page > totalPages) return;
-
-            currentPage = page;
-            const filteredDevices = filterDevices(allDevices);
-            const start = (page - 1) * 25;
-            const end = start + 25;
-
-            renderDevices(filteredDevices.slice(start, end));
-            renderPagination();
-        }
-
-        function filterDevices(devices) {
-            return devices.filter(d => {
-                if (currentFilters.domain && d.domain !== currentFilters.domain) return false;
-                if (currentFilters.category && d.category !== currentFilters.category) return false;
-                if (currentFilters.search) {
-                    const search = currentFilters.search.toLowerCase();
-                    if (!d.entity_id.toLowerCase().includes(search) &&
-                        !d.friendly_name.toLowerCase().includes(search)) {
-                        return false;
-                    }
-                }
-                return true;
-            });
-        }
-
-        function applyFilters() {
-            const searchBox = document.getElementById('search-box');
-            currentFilters.search = searchBox ? searchBox.value : '';
-            currentPage = 1;
-            const filteredDevices = filterDevices(allDevices);
-            totalPages = Math.ceil(filteredDevices.length / 25);
-            renderDevices(filteredDevices.slice(0, 25));
-            renderPagination();
-        }
-
-        function toggleDevice(entityId, element) {
-            if (selectedDevices.has(entityId)) {
-                selectedDevices.delete(entityId);
+            state.page = 1;
+            render();
+            if (state.sourceError) {
+                showStatus('error', `Источник недоступен: ${state.sourceError}`);
+            } else if (!state.devices.length) {
+                showStatus('info', 'Источник не вернул ни одного устройства. Проверьте, что в Home Assistant есть сущности и токен имеет доступ к ним.');
             } else {
-                selectedDevices.add(entityId);
+                showStatus('success', `Найдено устройств: ${state.devices.length}`);
             }
-            updatePreview();
-            element.classList.toggle('selected');
+        } catch (error) {
+            state.sourceError = error.message;
+            state.devices = [];
+            render();
+            showStatus('error', `Не удалось получить устройства источника: ${error.message}`);
+        } finally {
+            withBusy(scanBtn, false);
         }
+    }
 
-        function selectAll() {
-            const filteredDevices = filterDevices(allDevices);
-            filteredDevices.forEach(d => selectedDevices.add(d.entity_id));
-            updatePreview();
-            document.querySelectorAll('.device-card').forEach(el => el.classList.add('selected'));
+    function filteredDevices() {
+        const search = state.search.trim().toLowerCase();
+        return state.devices.filter((device) => {
+            if (state.filterCategory && device.category !== state.filterCategory) return false;
+            if (!search) return true;
+            return `${device.friendly_name} ${device.entity_id}`.toLowerCase().includes(search);
+        });
+    }
+
+    function render() {
+        renderStats();
+        renderCategoryFilters();
+        renderDevices();
+        renderPagination();
+        renderPreview();
+    }
+
+    function renderStats() {
+        document.getElementById('total-devices').textContent = state.devices.length;
+        document.getElementById('selected-count').textContent = state.selected.size;
+        document.getElementById('page-info').textContent =
+            state.devices.length ? `${state.page} / ${Math.max(1, Math.ceil(filteredDevices().length / PAGE_SIZE))}` : '—';
+    }
+
+    function renderCategoryFilters() {
+        const counts = new Map();
+        state.devices.forEach((device) => counts.set(device.category, (counts.get(device.category) || 0) + 1));
+        document.getElementById('category-filters').innerHTML =
+            `<button class="btn btn-sm filter-btn ${state.filterCategory === null ? 'btn-primary' : 'btn-outline-secondary'}"
+                     onclick="setCategory(null)">все</button>` +
+            [...counts.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .map(([category, count]) => `
+                    <button class="btn btn-sm filter-btn ${state.filterCategory === category ? 'btn-primary' : 'btn-outline-secondary'}"
+                            onclick="setCategory('${escapeHtml(category)}')">${escapeHtml(category)} (${count})</button>`)
+                .join('');
+    }
+
+    function renderDevices() {
+        const container = document.getElementById('devices-container');
+        const devices = filteredDevices();
+        if (!devices.length) {
+            container.innerHTML = `<div class="empty-state text-muted">
+                ${state.sourceError ? 'Источник недоступен — устройства не показаны' : 'Ничего не найдено по текущему фильтру'}
+            </div>`;
+            document.getElementById('pagination-controls').innerHTML = '';
+            document.getElementById('apply-section').hidden = true;
+            return;
         }
+        document.getElementById('apply-section').hidden = false;
 
-        function deselectAll() {
-            selectedDevices.clear();
-            updatePreview();
-            document.querySelectorAll('.device-card').forEach(el => el.classList.remove('selected'));
-        }
+        const start = (state.page - 1) * PAGE_SIZE;
+        const pageDevices = devices.slice(start, start + PAGE_SIZE);
+        const roomOptions = state.rooms
+            .map((room) => `<option value="${escapeHtml(room.id)}">${escapeHtml(room.name)}</option>`)
+            .join('');
 
-        function selectAuto() {
-            selectedDevices.clear();
-            allDevices.forEach(d => {
-                if (d.auto_apply) selectedDevices.add(d.entity_id);
-            });
-            updatePreview();
-            document.querySelectorAll('.device-card').forEach(el => {
-                const isAuto = allDevices.some(d => d.entity_id && el.textContent.includes(d.entity_id) && d.auto_apply);
-                el.classList.toggle('selected', isAuto);
-            });
-        }
-
-         let deviceRoomAssignments = {};
-
-         function updatePreview() {
-             const container = document.getElementById('preview-list');
-             const countEl = document.getElementById('selected-count');
-
-             if (!container || !countEl) return;
-
-             countEl.textContent = selectedDevices.size;
-
-             if (selectedDevices.size === 0) {
-                 container.innerHTML = '<p class="text-muted text-center" style="padding: 1rem 0;">Выбранных устройств нет</p>';
-                 return;
-             }
-
-             let html = '';
-             selectedDevices.forEach(entityId => {
-                 const device = allDevices.find(d => d.entity_id === entityId);
-                 if (device) {
-                     const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
-                     const areaName = device.area_name || 'нет комнаты';
-                     html += `
-                         <div class="preview-item">
-                             <span class="preview-item-remove" onclick="toggleDevice('${entityId}'); updatePreview();">✕</span>
-                             <strong>${device.friendly_name || device.name}</strong><br>
-                             <small>${device.entity_id}</small><br>
-                             <small style="color: #999;">
-                                 Комната:
-                                 <a href="#" onclick="openRoomSelector('${entityId}'); return false;" style="cursor: pointer; text-decoration: underline;">
-                                     ${assignedRoom === device.area_id ? areaName : assignedRoom}
-                                 </a>
-                             </small>
-                         </div>
-                     `;
-                 }
-             });
-             container.innerHTML = html;
-         }
-
-         function openRoomSelector(entityId) {
-             const device = allDevices.find(d => d.entity_id === entityId);
-             const currentRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
-
-             // Create modal
-             const modal = document.createElement('div');
-             modal.className = 'modal fade';
-             modal.id = 'roomSelectorModal';
-             modal.tabIndex = -1;
-             modal.innerHTML = `
-                 <div class="modal-dialog modal-sm">
-                     <div class="modal-content bg-dark border-secondary">
-                         <div class="modal-header border-secondary">
-                             <h5 class="modal-title">
-                                 Выбор комнаты для ${device.friendly_name || device.name}
-                             </h5>
-                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                         </div>
-                         <div class="modal-body">
-                             <div class="mb-3">
-                                 <label class="form-label">Доступные комнаты из Home Assistant:</label>
-                                 <div id="roomOptions" style="max-height: 200px; overflow-y: auto;">
-                                     ${discoveryData && discoveryData.areas && discoveryData.areas.length > 0
-                                         ? discoveryData.areas.map(area => `
-                                             <div class="form-check">
-                                                 <input class="form-check-input room-radio" type="radio" name="room" id="room_${area.id}" value="${area.id}"
-                                                     ${currentRoom === area.id ? 'checked' : ''}>
-                                                 <label class="form-check-label" for="room_${area.id}">
-                                                     ${area.icon ? `<i class="${area.icon}"></i> ` : ''}${area.name}
-                                                 </label>
-                                             </div>
-                                         `).join('')
-                                         : '<p class="text-muted small">Нет доступных комнат в Home Assistant</p>'
-                                     }
-                                 </div>
-                             </div>
-                             <hr>
-                             <div class="mb-3">
-                                 <label class="form-label">Или указайте вручную:</label>
-                                 <input type="text" class="form-control form-control-sm bg-secondary text-white border-secondary"
-                                        id="newRoomName" placeholder="Код комнаты (например: kitchen)">
-                                 <small class="text-muted d-block mt-2">Используйте строчные буквы и подчеркивание</small>
-                             </div>
-                         </div>
-                         <div class="modal-footer border-secondary">
-                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                             <button type="button" class="btn btn-primary" onclick="saveRoomAssignment('${entityId}')">Сохранить</button>
-                         </div>
-                     </div>
-                 </div>
-             `;
-
-             document.body.appendChild(modal);
-             const roomModal = new bootstrap.Modal(modal);
-             roomModal.show();
-             modal.addEventListener('hidden.bs.modal', () => modal.remove());
-         }
-
-         function saveRoomAssignment(entityId) {
-             const selectedRadio = document.querySelector('input[name="room"]:checked');
-             const newRoomName = document.getElementById('newRoomName').value.trim().toLowerCase();
-
-             let selectedRoom = null;
-             if (selectedRadio) {
-                 selectedRoom = selectedRadio.value;
-             } else if (newRoomName) {
-                 selectedRoom = newRoomName.replace(/\s+/g, '_');
-             }
-
-             if (!selectedRoom) {
-                 alert('Пожалуйста, выберите комнату или введите новую');
-                 return;
-             }
-
-             deviceRoomAssignments[entityId] = selectedRoom;
-             updatePreview();
-
-             // Close modal
-             const modal = document.getElementById('roomSelectorModal');
-             const bsModal = bootstrap.Modal.getInstance(modal);
-             bsModal.hide();
-         }
-
-         async function dryRun() {
-             if (selectedDevices.size === 0) {
-                 showStatus('warning', 'Выберите хотя бы одно устройство');
-                 return;
-             }
-
-             const selections = Array.from(selectedDevices).map(entityId => {
-                 const device = allDevices.find(d => d.entity_id === entityId);
-                 const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
-                 return {
-                     device_entity_id: entityId,
-                     target_room: assignedRoom,
-                     behavior_template: device.suggested_behavior,
-                     ha_area_id: device.area_id
-                 };
-             });
-
-             showStatus('info', 'Проверка...');
-
-             try {
-                 const response = await fetch('/api/v1/devices/apply', {
-                     method: 'POST',
-                     headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({source_id: sourceId, selections, dry_run: true})
-                 });
-
-                 if (!response.ok) throw new Error(await response.text());
-                 const result = await response.json();
-                 showStatus('info', `Будет добавлено устройств: <strong>${result.devices_count || selectedDevices.size}</strong>`);
-             } catch (error) {
-                 showStatus('error', `Ошибка: ${error.message}`);
-             }
-         }
-
-         async function applySelected() {
-             if (selectedDevices.size === 0) {
-                 showStatus('warning', 'Выберите хотя бы одно устройство');
-                 return;
-             }
-
-             const selections = Array.from(selectedDevices).map(entityId => {
-                 const device = allDevices.find(d => d.entity_id === entityId);
-                 const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
-                 return {
-                     device_entity_id: entityId,
-                     target_room: assignedRoom,
-                     behavior_template: device.suggested_behavior,
-                     ha_area_id: device.area_id
-                 };
-             });
-
-             showStatus('info', '<span class="spinner-border spinner-border-sm me-2"></span>Применение...');
-
-             try {
-                 const response = await fetch('/api/v1/devices/apply', {
-                     method: 'POST',
-                     headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({source_id: sourceId, selections, dry_run: false})
-                 });
-
-                 if (!response.ok) throw new Error(await response.text());
-                 const result = await response.json();
-
-                 if (result.success) {
-                     showStatus('success',
-                         `✅ Успешно добавлено: <strong>${result.devices_count || selectedDevices.size}</strong> устройств`);
-                     selectedDevices.clear();
-                     deviceRoomAssignments = {};
-                     updatePreview();
-                     deselectAll();
-                 } else {
-                     showStatus('error', 'Ошибка при применении');
-                 }
-             } catch (error) {
-                 showStatus('error', `Ошибка: ${error.message}`);
-             }
-         }
-
-        function showStatus(type, message) {
-            const statusArea = document.getElementById('status-area');
-            if (!statusArea) return;
-
-            const alertClass = {
-                'success': 'alert-success',
-                'error': 'alert-danger',
-                'warning': 'alert-warning',
-                'info': 'alert-info'
-            }[type] || 'alert-info';
-
-            statusArea.innerHTML = `
-                <div class="alert ${alertClass} alert-custom" role="alert">
-                    ${message}
+        container.innerHTML = pageDevices.map((device) => {
+            const checked = state.selected.has(device.entity_id);
+            const preferred = device.area_id || state.defaultRoom;
+            return `
+            <div class="card device-card ${checked ? 'selected' : ''}" data-entity-id="${escapeHtml(device.entity_id)}">
+                <div class="device-header">
+                    <input class="form-check-input device-checkbox" type="checkbox" ${checked ? 'checked' : ''}
+                           onclick="event.stopPropagation(); toggleDevice('${escapeHtml(device.entity_id)}')">
+                    <div class="flex-grow-1">
+                        <span class="fw-semibold">${escapeHtml(device.friendly_name)}</span>
+                        <span class="badge text-bg-secondary ms-1">${escapeHtml(device.category)}</span>
+                        ${device.area_name ? `<span class="badge text-bg-info ms-1">${escapeHtml(device.area_name)}</span>` : ''}
+                    </div>
+                    <small class="text-muted">${escapeHtml(device.state)}</small>
                 </div>
-            `;
+                <div class="device-body">
+                    <code class="entity-id text-muted">${escapeHtml(device.entity_id)}</code>
+                    <div class="row g-2 mt-1">
+                        <div class="col-sm-6">
+                            <select class="form-select form-select-sm device-room" data-entity-id="${escapeHtml(device.entity_id)}">
+                                <option value="">— комната не выбрана —</option>
+                                ${roomOptions}
+                            </select>
+                        </div>
+                        <div class="col-sm-6">
+                            <select class="form-select form-select-sm device-template" data-entity-id="${escapeHtml(device.entity_id)}"
+                                    ${device.template ? '' : 'disabled'}>
+                                <option value="">без автоматики</option>
+                                ${TEMPLATES.filter((t) => !device.template || t === device.template)
+                                    .map((t) => `<option value="${escapeHtml(t)}" ${t === device.template ? 'selected' : ''}>${escapeHtml(t)}</option>`)
+                                    .join('')}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
 
-            // Auto-hide after 5 seconds for success
-            if (type === 'success') {
-                setTimeout(() => statusArea.innerHTML = '', 5000);
-            }
+        container.querySelectorAll('.device-room').forEach((select) => {
+            select.value = preferred;
+            select.addEventListener('click', (event) => event.stopPropagation());
+            select.addEventListener('change', () => {
+                state.defaultRoom = select.value;
+                renderPreview();
+            });
+        });
+        container.querySelectorAll('.device-template').forEach((select) => {
+            select.addEventListener('click', (event) => event.stopPropagation());
+        });
+        container.querySelectorAll('.device-card').forEach((card) => {
+            card.addEventListener('click', () => toggleDevice(card.dataset.entityId));
+        });
+    }
+
+    function renderPagination() {
+        const pages = Math.ceil(filteredDevices().length / PAGE_SIZE);
+        const control = document.getElementById('pagination-controls');
+        if (pages <= 1) {
+            control.innerHTML = '';
+            return;
         }
+        control.innerHTML = `
+            <li class="page-item ${state.page <= 1 ? 'disabled' : ''}">
+                <button class="page-link" onclick="goToPage(${state.page - 1})">←</button>
+            </li>
+            ${Array.from({ length: pages }, (_, i) => `
+                <li class="page-item ${state.page === i + 1 ? 'active' : ''}">
+                    <button class="page-link" onclick="goToPage(${i + 1})">${i + 1}</button>
+                </li>`).join('')}
+            <li class="page-item ${state.page >= pages ? 'disabled' : ''}">
+                <button class="page-link" onclick="goToPage(${state.page + 1})">→</button>
+            </li>`;
+    }
 
-         // Auto-load on page load
-         window.addEventListener('load', () => {
-             // Display source ID info
-             const sourceInfo = document.getElementById('source-info');
-             if (sourceInfo) {
-                 if (!sourceId) {
-                     sourceInfo.innerHTML = '📋 Выберите источник';
-                 } else {
-                     sourceInfo.innerHTML = `📋 Source: <code>${sourceId.substring(0, 8)}...</code>`;
-                 }
-             }
+    function setCategory(category) {
+        state.filterCategory = category;
+        state.page = 1;
+        render();
+    }
 
-             // Load sources
-             loadSources();
-         });
-    </script>
+    function goToPage(page) {
+        state.page = page;
+        renderDevices();
+        renderStats();
+    }
 
-        async function loadDiscoveryData() {
-            if (!sourceId) {
-                showStatus('error', 'Не указан source_id. Пожалуйста, откройте страницу с параметром ?source_id=UUID');
-                return;
-            }
-
-            try {
-                console.log('Загружаю данные для source_id:', sourceId);
-                const url = `/api/v1/devices/sources/${sourceId}/discovery-data`;
-                console.log('Запрос к:', url);
-
-                const response = await fetch(url);
-
-                console.log('Ответ статус:', response.status);
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Ошибка ответа:', errorText);
-                    throw new Error(`Статус ${response.status}: ${errorText}`);
-                }
-
-                discoveryData = await response.json();
-                console.log('Discovery data loaded:', discoveryData);
-                return discoveryData;
-            } catch (error) {
-                console.error('Full error:', error);
-                showStatus('error', `Ошибка загрузки: ${error.message}`);
-                return null;
-            }
+    function toggleDevice(entityId) {
+        if (state.selected.has(entityId)) {
+            state.selected.delete(entityId);
+        } else {
+            state.selected.add(entityId);
         }
+        renderStats();
+        renderDevices();
+        renderPreview();
+    }
 
-        async function startScan() {
-            const btn = document.getElementById('scan-btn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Сканирование...';
+    function selectAll() {
+        filteredDevices().forEach((device) => state.selected.add(device.entity_id));
+        render();
+    }
 
-            try {
-                // Load discovery data from HA
-                const haData = await loadDiscoveryData();
-                if (!haData) {
-                    throw new Error('Не удалось загрузить данные из Home Assistant. Проверьте консоль для деталей.');
-                }
+    function deselectAll() {
+        state.selected.clear();
+        render();
+    }
 
-                console.log('Преобразую данные для отображения...');
-
-                // Transform available_devices to the expected format
-                allDevices = (haData.available_devices || []).map(device => {
-                    const domain = device.device_type || 'unknown';
-                    return {
-                        entity_id: device.entity_id,
-                        friendly_name: device.friendly_name,
-                        name: device.friendly_name,
-                        device_type: domain,
-                        domain: domain,
-                        category: domain === 'light' ? 'lighting' :
-                                  domain === 'climate' ? 'climate' :
-                                  domain === 'sensor' ? 'sensors' :
-                                  'other',
-                        state: device.state || 'unknown',
-                        area_id: device.area_id,
-                        area_name: device.area_name,
-                        icon: device.icon,
-                        auto_apply: true,
-                        suggested_behavior: suggestBehavior(domain)
-                    };
-                });
-
-                console.log('Загружено устройств:', allDevices.length);
-
-                totalPages = Math.ceil(allDevices.length / 25);
-                currentPage = 1;
-
-                const stats = {
-                    total: allDevices.length,
-                    auto_apply_stats: {
-                        auto_apply: allDevices.filter(d => d.auto_apply).length,
-                        manual: allDevices.filter(d => !d.auto_apply).length
-                    },
-                    by_domain: groupBy(allDevices, 'domain'),
-                    by_category: groupBy(allDevices, 'category')
-                };
-
-                updateStats(stats);
-                renderFilterButtons(stats);
-                renderDevices(allDevices.slice(0, 25));
-                renderPagination();
-
-                showStatus('success', `✅ Загружено ${allDevices.length} устройств`);
-
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
-            } catch (error) {
-                console.error('startScan error:', error);
-                showStatus('error', `Ошибка сканирования: ${error.message}`);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Сканировать';
-            }
-        }
-
-        function suggestBehavior(domain) {
-            const behaviorMap = {
-                'light': 'lighting',
-                'climate': 'climate_control',
-                'switch': 'switch_control',
-                'sensor': 'sensor_monitoring',
-                'binary_sensor': 'binary_sensor_monitoring'
+    function selectionsPayload() {
+        return [...state.selected].map((entityId) => {
+            const device = state.devices.find((item) => item.entity_id === entityId);
+            const roomSelect = document.querySelector(`.device-room[data-entity-id="${CSS.escape(entityId)}"]`);
+            const templateSelect = document.querySelector(`.device-template[data-entity-id="${CSS.escape(entityId)}"]`);
+            return {
+                device_entity_id: entityId,
+                device_type: device?.device_type || null,
+                name: device?.friendly_name || entityId,
+                target_room: roomSelect?.value || state.defaultRoom || null,
+                ha_area_id: device?.area_id || null,
+                behavior_template: templateSelect?.value || null
             };
-            return behaviorMap[domain] || null;
-        }
+        });
+    }
 
-        function groupBy(arr, key) {
-            return arr.reduce((result, item) => {
-                const groupKey = item[key] || 'unknown';
-                result[groupKey] = (result[groupKey] || 0) + 1;
-                return result;
-            }, {});
+    function renderPreview() {
+        const preview = document.getElementById('preview-list');
+        if (!state.selected.size) {
+            preview.textContent = 'Устройства не выбраны';
+            document.getElementById('apply-btn').disabled = true;
+            document.getElementById('dry-run-btn').disabled = true;
+            return;
         }
+        document.getElementById('apply-btn').disabled = false;
+        document.getElementById('dry-run-btn').disabled = false;
+        preview.innerHTML = `Выбрано устройств: <strong>${state.selected.size}</strong> — они получат
+            машину состояния и попадут в общий список сразу после применения.`;
+    }
 
-        function updateStats(data) {
-            document.getElementById('total-devices').textContent = data.total;
-            document.getElementById('auto-count').textContent = data.auto_apply_stats?.auto_apply || 0;
-            document.getElementById('manual-count').textContent = data.auto_apply_stats?.manual || 0;
-        }
-
-        function renderFilterButtons(data) {
-            // Domain filters
-            const domainContainer = document.getElementById('domain-filters');
-            domainContainer.innerHTML = '';
-            Object.entries(data.by_domain || {}).forEach(([domain, count]) => {
-                const btn = document.createElement('button');
-                btn.className = 'btn btn-outline-secondary w-100 filter-btn';
-                btn.textContent = `${domain} (${count})`;
-                btn.onclick = () => {
-                    currentFilters.domain = currentFilters.domain === domain ? null : domain;
-                    applyFilters();
-                };
-                domainContainer.appendChild(btn);
+    async function dryRun() {
+        if (!state.selected.size || !state.sourceId) return;
+        const button = document.getElementById('dry-run-btn');
+        withBusy(button, true, 'Проверка…');
+        try {
+            const response = await fetch(API.apply, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_id: state.sourceId,
+                    selections: selectionsPayload(),
+                    dry_run: true
+                })
             });
-
-            // Category filters
-            const categoryContainer = document.getElementById('category-filters');
-            categoryContainer.innerHTML = '';
-            Object.entries(data.by_category || {}).forEach(([category, count]) => {
-                const btn = document.createElement('button');
-                btn.className = 'btn btn-outline-secondary w-100 filter-btn';
-                btn.textContent = `${category} (${count})`;
-                btn.onclick = () => {
-                    currentFilters.category = currentFilters.category === category ? null : category;
-                    applyFilters();
-                };
-                categoryContainer.appendChild(btn);
-            });
-        }
-
-        function renderDevices(devices) {
-            const container = document.getElementById('devices-container');
-            if (devices.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <i class="bi bi-inbox"></i>
-                        <p>Устройства не найдены</p>
-                    </div>
-                `;
-                return;
+            if (!response.ok) {
+                throw new Error(await apiError(response, `HTTP ${response.status}`));
             }
+            const result = await response.json();
+            showStatus('info', `Проверка: добавится устройств — ${result.would_add ?? 0}, ошибок — ${result.failed ?? 0}`);
+        } catch (error) {
+            showStatus('error', `Проверка не удалась: ${error.message}`);
+        } finally {
+            withBusy(button, false);
+        }
+    }
 
-            let html = '<div class="list-group list-group-flush">';
-            devices.forEach(device => {
-                const isSelected = selectedDevices.has(device.entity_id);
-                const autoApplyBadge = device.auto_apply
-                    ? '<span class="badge badge-custom badge-auto">✅ Авто</span>'
-                    : '<span class="badge badge-custom badge-manual">⚠️ Ручное</span>';
-
-                const areaDisplay = device.area_name
-                    ? `<span class="badge badge-custom">📍 ${device.area_name}</span>`
-                    : '<span class="badge badge-custom" style="opacity: 0.5;">📍 нет комнаты</span>';
-
-                html += `
-                    <div class="card device-card ${isSelected ? 'selected' : ''}"
-                         onclick="toggleDevice('${device.entity_id}', this)">
-                        <div class="device-header">
-                            <input type="checkbox" class="device-checkbox"
-                                   ${isSelected ? 'checked' : ''}
-                                   onclick="event.stopPropagation()">
-                            <div class="flex-grow-1">
-                                <div style="font-weight: 500;">${device.friendly_name || device.name}</div>
-                                <small style="color: #666;">${device.entity_id}</small>
-                            </div>
-                            ${autoApplyBadge}
-                        </div>
-                        <div class="device-body">
-                            <div class="device-meta">
-                                <span class="badge badge-custom">🏷️ ${device.domain}</span>
-                                <span class="badge badge-custom">📁 ${device.category}</span>
-                                ${areaDisplay}
-                            </div>
-                            ${device.suggested_behavior ? `<div style="margin-top: 0.5rem;"><small>Шаблон: <strong>${device.suggested_behavior}</strong></small></div>` : ''}
-                            <div style="margin-top: 0.5rem; color: #777;"><small>Статус: ${device.state}</small></div>
-                        </div>
-                    </div>
-                `;
+    async function applySelected() {
+        if (!state.selected.size || !state.sourceId) return;
+        const button = document.getElementById('apply-btn');
+        const dryRunButton = document.getElementById('dry-run-btn');
+        withBusy(button, true, 'Применение…');
+        dryRunButton.disabled = true;
+        try {
+            const response = await fetch(API.apply, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_id: state.sourceId,
+                    selections: selectionsPayload()
+                })
             });
-            html += '</div>';
-            container.innerHTML = html;
-        }
-
-        function renderPagination() {
-            const container = document.getElementById('pagination-controls');
-            const infoContainer = document.getElementById('pagination-info');
-
-            infoContainer.textContent = `Страница ${currentPage} из ${totalPages}`;
-            let html = '';
-
-            // Previous
-            html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-                <button class="page-link" onclick="goToPage(${currentPage - 1})">← Пред.</button>
-            </li>`;
-
-            // Page numbers
-            const maxVisible = 5;
-            let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-            let end = Math.min(totalPages, start + maxVisible - 1);
-            if (end - start + 1 < maxVisible) {
-                start = Math.max(1, end - maxVisible + 1);
+            if (!response.ok) {
+                throw new Error(await apiError(response, `HTTP ${response.status}`));
             }
-
-            for (let i = start; i <= end; i++) {
-                html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
-                    <button class="page-link" onclick="goToPage(${i})">${i}</button>
-                </li>`;
-            }
-
-            // Next
-            html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-                <button class="page-link" onclick="goToPage(${currentPage + 1})">След. →</button>
-            </li>`;
-
-            container.innerHTML = html;
-        }
-
-        async function goToPage(page) {
-            if (page < 1 || page > totalPages) return;
-
-            currentPage = page;
-            const filteredDevices = filterDevices(allDevices);
-            const start = (page - 1) * 25;
-            const end = start + 25;
-
-            renderDevices(filteredDevices.slice(start, end));
-            renderPagination();
-        }
-
-        function filterDevices(devices) {
-            return devices.filter(d => {
-                if (currentFilters.domain && d.domain !== currentFilters.domain) return false;
-                if (currentFilters.category && d.category !== currentFilters.category) return false;
-                if (currentFilters.search) {
-                    const search = currentFilters.search.toLowerCase();
-                    if (!d.entity_id.toLowerCase().includes(search) &&
-                        !d.friendly_name.toLowerCase().includes(search)) {
-                        return false;
-                    }
-                }
-                return true;
-            });
-        }
-
-        function applyFilters() {
-            currentFilters.search = document.getElementById('search-box').value;
-            currentPage = 1;
-            const filteredDevices = filterDevices(allDevices);
-            totalPages = Math.ceil(filteredDevices.length / 25);
-            renderDevices(filteredDevices.slice(0, 25));
-            renderPagination();
-        }
-
-        function toggleDevice(entityId, element) {
-            if (selectedDevices.has(entityId)) {
-                selectedDevices.delete(entityId);
+            const result = await response.json();
+            const parts = [];
+            if (result.devices_added) parts.push(`добавлено: ${result.devices_added}`);
+            if (result.devices_updated) parts.push(`обновлено: ${result.devices_updated}`);
+            if (result.failed) parts.push(`ошибок: ${result.failed}`);
+            const message = parts.length ? parts.join(', ') : 'изменений нет';
+            if (result.failed) {
+                const reasons = (result.failed_devices || [])
+                    .map((item) => `${item.ha_entity_id}: ${item.reason}`).join('; ');
+                showStatus('error', `Применено частично (${message}). ${reasons}`);
             } else {
-                selectedDevices.add(entityId);
+                showStatus('success', `Готово (${message}). Устройства работают без перезапуска.`);
             }
-            updatePreview();
-            element.classList.toggle('selected');
+            await Promise.all([loadSources(), loadRooms()]);
+            await loadDiscoveryData();
+        } catch (error) {
+            showStatus('error', `Применение не удалось: ${error.message}`);
+        } finally {
+            withBusy(button, false);
+            renderPreview();
         }
+    }
 
-        function selectAll() {
-            const filteredDevices = filterDevices(allDevices);
-            filteredDevices.forEach(d => selectedDevices.add(d.entity_id));
-            updatePreview();
-            document.querySelectorAll('.device-card').forEach(el => el.classList.add('selected'));
+    document.getElementById('search-box').addEventListener('input', (event) => {
+        state.search = event.target.value;
+        state.page = 1;
+        render();
+    });
+
+    document.getElementById('scan-btn').addEventListener('click', loadDiscoveryData);
+
+    (async function init() {
+        await loadSources();
+        if (state.sourceId) {
+            await Promise.all([loadRooms(), loadDiscoveryData()]);
         }
-
-        function deselectAll() {
-            selectedDevices.clear();
-            updatePreview();
-            document.querySelectorAll('.device-card').forEach(el => el.classList.remove('selected'));
-        }
-
-        function selectAuto() {
-            selectedDevices.clear();
-            allDevices.forEach(d => {
-                if (d.auto_apply) selectedDevices.add(d.entity_id);
-            });
-            updatePreview();
-            document.querySelectorAll('.device-card').forEach(el => {
-                const isAuto = allDevices.some(d => d.entity_id && el.textContent.includes(d.entity_id) && d.auto_apply);
-                el.classList.toggle('selected', isAuto);
-            });
-        }
-
-         let deviceRoomAssignments = {};
-
-         function updatePreview() {
-             const container = document.getElementById('preview-list');
-             document.getElementById('selected-count').textContent = selectedDevices.size;
-
-             if (selectedDevices.size === 0) {
-                 container.innerHTML = '<p class="text-muted text-center" style="padding: 1rem 0;">Выбранных устройств нет</p>';
-                 return;
-             }
-
-             let html = '';
-             selectedDevices.forEach(entityId => {
-                 const device = allDevices.find(d => d.entity_id === entityId);
-                 if (device) {
-                     const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
-                     const areaName = device.area_name || 'нет комнаты';
-                     html += `
-                         <div class="preview-item">
-                             <span class="preview-item-remove" onclick="toggleDevice('${entityId}'); updatePreview();">✕</span>
-                             <strong>${device.friendly_name || device.name}</strong><br>
-                             <small>${device.entity_id}</small><br>
-                             <small style="color: #999;">
-                                 Комната:
-                                 <a href="#" onclick="openRoomSelector('${entityId}'); return false;" style="cursor: pointer; text-decoration: underline;">
-                                     ${assignedRoom === device.area_id ? areaName : assignedRoom}
-                                 </a>
-                             </small>
-                         </div>
-                     `;
-                 }
-             });
-             container.innerHTML = html;
-         }
-
-         function openRoomSelector(entityId) {
-             const device = allDevices.find(d => d.entity_id === entityId);
-             const currentRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
-
-             // Create modal
-             const modal = document.createElement('div');
-             modal.className = 'modal fade';
-             modal.id = 'roomSelectorModal';
-             modal.tabIndex = -1;
-             modal.innerHTML = `
-                 <div class="modal-dialog modal-sm">
-                     <div class="modal-content bg-dark border-secondary">
-                         <div class="modal-header border-secondary">
-                             <h5 class="modal-title">
-                                 Выбор комнаты для ${device.friendly_name || device.name}
-                             </h5>
-                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                         </div>
-                         <div class="modal-body">
-                             <div class="mb-3">
-                                 <label class="form-label">Доступные комнаты из Home Assistant:</label>
-                                 <div id="roomOptions" style="max-height: 200px; overflow-y: auto;">
-                                     ${discoveryData && discoveryData.areas && discoveryData.areas.length > 0
-                                         ? discoveryData.areas.map(area => `
-                                             <div class="form-check">
-                                                 <input class="form-check-input room-radio" type="radio" name="room" id="room_${area.id}" value="${area.id}"
-                                                     ${currentRoom === area.id ? 'checked' : ''}>
-                                                 <label class="form-check-label" for="room_${area.id}">
-                                                     ${area.icon ? `<i class="${area.icon}"></i> ` : ''}${area.name}
-                                                 </label>
-                                             </div>
-                                         `).join('')
-                                         : '<p class="text-muted small">Нет доступных комнат в Home Assistant</p>'
-                                     }
-                                 </div>
-                             </div>
-                             <hr>
-                             <div class="mb-3">
-                                 <label class="form-label">Или указайте вручную:</label>
-                                 <input type="text" class="form-control form-control-sm bg-secondary text-white border-secondary"
-                                        id="newRoomName" placeholder="Код комнаты (например: kitchen)">
-                                 <small class="text-muted d-block mt-2">Используйте строчные буквы и подчеркивание</small>
-                             </div>
-                         </div>
-                         <div class="modal-footer border-secondary">
-                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                             <button type="button" class="btn btn-primary" onclick="saveRoomAssignment('${entityId}')">Сохранить</button>
-                         </div>
-                     </div>
-                 </div>
-             `;
-
-             document.body.appendChild(modal);
-             const roomModal = new bootstrap.Modal(modal);
-             roomModal.show();
-             modal.addEventListener('hidden.bs.modal', () => modal.remove());
-         }
-
-         function saveRoomAssignment(entityId) {
-             const selectedRadio = document.querySelector('input[name="room"]:checked');
-             const newRoomName = document.getElementById('newRoomName').value.trim().toLowerCase();
-
-             let selectedRoom = null;
-             if (selectedRadio) {
-                 selectedRoom = selectedRadio.value;
-             } else if (newRoomName) {
-                 selectedRoom = newRoomName.replace(/\s+/g, '_');
-             }
-
-             if (!selectedRoom) {
-                 alert('Пожалуйста, выберите комнату или введите новую');
-                 return;
-             }
-
-             deviceRoomAssignments[entityId] = selectedRoom;
-             updatePreview();
-
-             // Close modal
-             const modal = document.getElementById('roomSelectorModal');
-             const bsModal = bootstrap.Modal.getInstance(modal);
-             bsModal.hide();
-         }
-
-         async function dryRun() {
-             if (selectedDevices.size === 0) {
-                 showStatus('warning', 'Выберите хотя бы одно устройство');
-                 return;
-             }
-
-             const selections = Array.from(selectedDevices).map(entityId => {
-                 const device = allDevices.find(d => d.entity_id === entityId);
-                 const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
-                 return {
-                     device_entity_id: entityId,
-                     target_room: assignedRoom,
-                     behavior_template: device.suggested_behavior,
-                     ha_area_id: device.area_id
-                 };
-             });
-
-             showStatus('info', 'Проверка...');
-
-             try {
-                 const response = await fetch('/api/v1/devices/apply', {
-                     method: 'POST',
-                     headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({source_id: sourceId, selections, dry_run: true})
-                 });
-
-                 if (!response.ok) throw new Error(await response.text());
-                 const result = await response.json();
-                 showStatus('info', `Будет добавлено устройств: <strong>${result.devices_count || selectedDevices.size}</strong>`);
-             } catch (error) {
-                 showStatus('error', `Ошибка: ${error.message}`);
-             }
-         }
-
-         async function applySelected() {
-             if (selectedDevices.size === 0) {
-                 showStatus('warning', 'Выберите хотя бы одно устройство');
-                 return;
-             }
-
-             const selections = Array.from(selectedDevices).map(entityId => {
-                 const device = allDevices.find(d => d.entity_id === entityId);
-                 const assignedRoom = deviceRoomAssignments[entityId] || device.area_id || 'unassigned';
-                 return {
-                     device_entity_id: entityId,
-                     target_room: assignedRoom,
-                     behavior_template: device.suggested_behavior,
-                     ha_area_id: device.area_id
-                 };
-             });
-
-             showStatus('info', '<span class="spinner-border spinner-border-sm me-2"></span>Применение...');
-
-             try {
-                 const response = await fetch('/api/v1/devices/apply', {
-                     method: 'POST',
-                     headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({source_id: sourceId, selections, dry_run: false})
-                 });
-
-                 if (!response.ok) throw new Error(await response.text());
-                 const result = await response.json();
-
-                 if (result.success) {
-                     showStatus('success',
-                         `✅ Успешно добавлено: <strong>${result.devices_count || selectedDevices.size}</strong> устройств`);
-                     selectedDevices.clear();
-                     deviceRoomAssignments = {};
-                     updatePreview();
-                     deselectAll();
-                 } else {
-                     showStatus('error', 'Ошибка при применении');
-                 }
-             } catch (error) {
-                 showStatus('error', `Ошибка: ${error.message}`);
-             }
-         }
-
-        function showStatus(type, message) {
-            const statusArea = document.getElementById('status-area');
-            const alertClass = {
-                'success': 'alert-success',
-                'error': 'alert-danger',
-                'warning': 'alert-warning',
-                'info': 'alert-info'
-            }[type] || 'alert-info';
-
-            statusArea.innerHTML = `
-                <div class="alert ${alertClass} alert-custom" role="alert">
-                    ${message}
-                </div>
-            `;
-
-            // Auto-hide after 5 seconds for success
-            if (type === 'success') {
-                setTimeout(() => statusArea.innerHTML = '', 5000);
-            }
-        }
-
-         // Auto-load on page load
-         window.addEventListener('load', () => {
-             // Display source ID info
-             const sourceInfo = document.getElementById('source-info');
-             if (!sourceId) {
-                 sourceInfo.innerHTML = '⚠️ Нет source_id в URL';
-                 showStatus('error', 'Пожалуйста, откройте страницу с параметром: ?source_id=YOUR_UUID');
-             } else {
-                 sourceInfo.innerHTML = `📋 Source: <code>${sourceId.substring(0, 8)}...</code>`;
-                 startScan();
-             }
-         });
-    </script>
+    })();
+</script>
 </body>
 </html>

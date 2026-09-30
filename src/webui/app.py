@@ -512,6 +512,8 @@ def create_app(
                 "has_unsaved_changes": manifest_store.has_unsaved_changes,
                 "total_devices": total_devices,
                 "total_behaviors": total_behaviors,
+                "user_id": getattr(request.app.state, "default_user_id", None) or "admin_user",
+                "user_is_admin": bool(getattr(request.app.state, "default_user_is_admin", False)),
             },
         )
 

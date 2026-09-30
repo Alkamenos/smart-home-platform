@@ -541,7 +541,8 @@
         }
     </style>
 </head>
-<body>
+<body data-user-id="{{ user_id }}"
+      data-user-is-admin="{{ 'true' if user_is_admin else 'false' }}">
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container-fluid">
@@ -783,7 +784,12 @@
             const container = document.getElementById('fsm-diagram-container');
             container.innerHTML = '<div class="text-center py-5"><div class="loading-spinner"></div></div>';
 
-            fetch(`/api/fsm/${encodeURIComponent(deviceId)}/diagram`)
+            fetch(`/api/fsm/${encodeURIComponent(deviceId)}/diagram`, {
+                headers: {
+                    'X-User-ID': document.body.dataset.userId || '',
+                    'X-Is-Admin': document.body.dataset.userIsAdmin === 'true' ? 'true' : 'false'
+                }
+            })
                 .then(r => r.json().then(data => ({ ok: r.ok, data })))
                 .then(({ ok, data }) => {
                     if (!ok || data.error) {
