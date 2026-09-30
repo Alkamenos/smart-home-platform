@@ -76,7 +76,10 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v --cov=src"
+# test_webui_playwright.py исключён: playwright sync API держит running event loop
+# на весь прогон и ломает последующие async-тесты (Known Issue #13).
+# Запускать отдельно: pytest tests/test_webui_playwright.py
+addopts = "-v --cov=src --ignore=tests/test_webui_playwright.py"
 timeout = 30
 
 [tool.hatch.build.targets.wheel]

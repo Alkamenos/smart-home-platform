@@ -26,11 +26,12 @@
 
 | # | Задача | Источник | Приоритет | Статус |
 |---|--------|----------|-----------|--------|
-| Q1 | Починить loop-заражение `tests/test_webui_playwright.py` (живой event loop ломает ~51 async-тест в root-прогоне; после файла падает даже `asyncio.run`) — перевод тестов на sync playwright API или изоляция файла | Known Issue #13 | 🔴 High | ⬜ |
+| Q1 | Починить loop-заражение `tests/test_webui_playwright.py` (живой event loop ломает ~51 async-тест в root-прогоне; после файла падает даже `asyncio.run`) — перевод тестов на sync playwright API или изоляция файла | Known Issue #13 | 🔴 High | ✅ 2026-09-30: sync-перевод + `--ignore` в addopts, root = 15/1301 (baseline) |
 | Q2 | Убрать import file mismatch: совместный запуск `pytest tests/contract tests/integration` (нет `__init__.py` / `--import-mode=importlib`) | Known Issue #3 | 🔴 High | ⬜ |
 | Q3 | Подключить `ConfigWatcher` к приложению (hot-reload манифеста; сейчас 0 инстанциаций) | Known Issue #8 | 🔴 High | ⬜ |
 | Q4 | Починить baseline-падения: root 15 + contract 6/27 + integration 4 (после Q1/Q2 картина улучшится) | Known Issue #4 | 🟡 Medium | ⬜ |
 | Q5 | Проверить/починить enhancements-расхождения: 26 (фича 5 «WS в реальном времени» — все пункты `[ ]` при статусе ✅), 27/28 (мастер discovery/add-devices ✅, но нерабочие — см. F1) | INDEX.md | 🟡 Medium | ⬜ |
+| Q6 | Починить отдельный прогон `tests/test_webui_playwright.py`: зависит на teardown playwright-сессии (`stop_sync`); устаревшие ассерты (`/health` → JSON, а тест ждёт "healthy") | Known Issue #13 (остаток) | 🟡 Medium | ⬜ |
 
 ---
 

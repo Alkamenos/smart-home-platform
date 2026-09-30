@@ -1,4 +1,14 @@
-"""Playwright E2E tests for Web UI functionality."""
+"""Playwright E2E tests for Web UI functionality.
+
+Запускать ОТДЕЛЬНО от основного прогона (файл исключён из addopts в pyproject.toml):
+
+    pytest tests/test_webui_playwright.py
+
+Причина: session-фикстура playwright sync API держит event loop в состоянии
+running на протяжении всей сессии — async-тесты и последующие pytest-файлы
+падают с \"Runner.run() cannot be called from a running event loop\"
+(см. Known Issue #13 в .ai/01_PROJECT_STATE.md). Тесты должны быть sync.
+"""
 
 from __future__ import annotations
 
@@ -68,226 +78,226 @@ def start_webui_server():
 class TestWebUIBasics:
     """Test basic Web UI functionality."""
 
-    async def test_index_page_loads(self, page):
+    def test_index_page_loads(self, page):
         """Test that index page loads successfully."""
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Check page title
-        title = await page.title()
+        title = page.title()
         assert "Smart Home" in title
 
         # Check for room cards
-        room_cards = await page.locator(".room-card").count()
+        room_cards = page.locator(".room-card").count()
         assert room_cards > 0
 
-    async def test_health_check_endpoint(self, page):
+    def test_health_check_endpoint(self, page):
         """Test health check endpoint."""
-        await page.goto("http://127.0.0.1:8125/health")
-        content = await page.content()
+        page.goto("http://127.0.0.1:8125/health")
+        content = page.content()
         assert "healthy" in content.lower()
 
 
 class TestDeviceManagement:
     """Test device management functionality."""
 
-    async def test_open_device_edit_form(self, page):
+    def test_open_device_edit_form(self, page):
         """Test opening device edit form."""
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Find first device edit button
-        edit_buttons = await page.locator("button:has-text('Edit')").count()
+        edit_buttons = page.locator("button:has-text('Edit')").count()
         assert edit_buttons > 0
 
         # Click first edit button
-        await page.locator("button:has-text('Edit')").first.click()
+        page.locator("button:has-text('Edit')").first.click()
 
         # Wait for modal to appear
         modal = page.locator("#deviceModal, [role='dialog']")
-        await modal.wait_for(state="visible", timeout=5000)
+        modal.wait_for(state="visible", timeout=5000)
 
         # Check form elements
-        assert await page.locator('input[name="device_id"]').is_visible()
-        assert await page.locator('select[name="device_type"]').is_visible()
+        assert page.locator('input[name="device_id"]').is_visible()
+        assert page.locator('select[name="device_type"]').is_visible()
 
-    async def test_device_form_displays_room_selector(self, page):
+    def test_device_form_displays_room_selector(self, page):
         """Test that device form has room selector."""
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Open device edit form
-        await page.locator("button:has-text('Edit')").first.click()
-        await page.wait_for_load_state("networkidle")
+        page.locator("button:has-text('Edit')").first.click()
+        page.wait_for_load_state("networkidle")
 
         # Check for room selector
         room_select = page.locator('select[name="room_id"]')
-        assert await room_select.is_visible()
+        assert room_select.is_visible()
 
         # Check that room options are available
-        options = await room_select.locator("option").count()
+        options = room_select.locator("option").count()
         assert options > 1  # At least one room option
 
-    async def test_change_device_room(self, page):
+    def test_change_device_room(self, page):
         """Test changing device to different room."""
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Open device edit form
-        await page.locator("button:has-text('Edit')").first.click()
-        await page.wait_for_load_state("networkidle")
+        page.locator("button:has-text('Edit')").first.click()
+        page.wait_for_load_state("networkidle")
 
         # Get current room selection
         room_select = page.locator('select[name="room_id"]')
-        current_room = await room_select.input_value()
+        current_room = room_select.input_value()
 
         # Select different room
-        available_options = await room_select.locator("option").count()
+        available_options = room_select.locator("option").count()
         if available_options > 2:
-            await room_select.locator("option").nth(2).click()
-            await page.wait_for_timeout(500)
+            room_select.locator("option").nth(2).click()
+            page.wait_for_timeout(500)
 
-            new_room = await room_select.input_value()
+            new_room = room_select.input_value()
             assert new_room != current_room, "Room selection should change"
 
             # Save device
-            await page.locator("button:has-text('Save Device')").click()
-            await page.wait_for_load_state("networkidle")
+            page.locator("button:has-text('Save Device')").click()
+            page.wait_for_load_state("networkidle")
 
             # Reload page to verify change persisted
-            await page.reload()
-            await page.wait_for_load_state("networkidle")
+            page.reload()
+            page.wait_for_load_state("networkidle")
 
             # Open same device again and verify it's in new room
             # (This requires finding the device in its new location)
 
-    async def test_add_device_to_room(self, page):
+    def test_add_device_to_room(self, page):
         """Test adding new device to a room."""
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Find "Add Device" button
-        add_buttons = await page.locator("button:has-text('Add Device')").count()
+        add_buttons = page.locator("button:has-text('Add Device')").count()
         assert add_buttons > 0
 
         # Click first "Add Device" button
-        await page.locator("button:has-text('Add Device')").first.click()
-        await page.wait_for_load_state("networkidle")
+        page.locator("button:has-text('Add Device')").first.click()
+        page.wait_for_load_state("networkidle")
 
         # Fill device form
-        await page.locator('input[name="device_id"]').fill("test.newdevice")
-        await page.locator('select[name="device_type"]').select_option("light")
-        await page.locator('input[name="device_name"]').fill("Test Device")
+        page.locator('input[name="device_id"]').fill("test.newdevice")
+        page.locator('select[name="device_type"]').select_option("light")
+        page.locator('input[name="device_name"]').fill("Test Device")
 
         # Add behavior
-        await page.locator("button:has-text('Add Behavior')").click()
-        await page.wait_for_timeout(500)
+        page.locator("button:has-text('Add Behavior')").click()
+        page.wait_for_timeout(500)
 
         # Select template
         template_select = page.locator("select.behavior-template").last
-        await template_select.select_option("lighting")
+        template_select.select_option("lighting")
 
         # Set priority
-        await page.locator('input[name="behavior_priority_0"]').fill("10")
+        page.locator('input[name="behavior_priority_0"]').fill("10")
 
         # Save device
-        await page.locator("button:has-text('Save Device')").click()
-        await page.wait_for_load_state("networkidle")
+        page.locator("button:has-text('Save Device')").click()
+        page.wait_for_load_state("networkidle")
 
         # Wait for modal to close
         modal = page.locator("#deviceModal, [role='dialog']")
-        await modal.wait_for(state="hidden", timeout=5000)
+        modal.wait_for(state="hidden", timeout=5000)
 
         # Verify device appears in the room
-        await page.wait_for_timeout(1000)
-        assert await page.locator(":has-text('test.newdevice')").count() > 0
+        page.wait_for_timeout(1000)
+        assert page.locator(":has-text('test.newdevice')").count() > 0
 
 
 class TestBehaviorManagement:
     """Test behavior configuration."""
 
-    async def test_add_behavior_to_device(self, page):
+    def test_add_behavior_to_device(self, page):
         """Test adding behavior to device."""
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Open device edit form
-        await page.locator("button:has-text('Edit')").first.click()
-        await page.wait_for_load_state("networkidle")
+        page.locator("button:has-text('Edit')").first.click()
+        page.wait_for_load_state("networkidle")
 
         # Count behaviors before
-        behaviors_before = await page.locator(".behavior-item").count()
+        behaviors_before = page.locator(".behavior-item").count()
 
         # Add behavior
-        await page.locator("button:has-text('Add Behavior')").click()
-        await page.wait_for_timeout(500)
+        page.locator("button:has-text('Add Behavior')").click()
+        page.wait_for_timeout(500)
 
         # Count behaviors after
-        behaviors_after = await page.locator(".behavior-item").count()
+        behaviors_after = page.locator(".behavior-item").count()
         assert behaviors_after == behaviors_before + 1
 
-    async def test_expand_behavior_parameters(self, page):
+    def test_expand_behavior_parameters(self, page):
         """Test expanding behavior parameters section."""
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Open device edit form
-        await page.locator("button:has-text('Edit')").first.click()
-        await page.wait_for_load_state("networkidle")
+        page.locator("button:has-text('Edit')").first.click()
+        page.wait_for_load_state("networkidle")
 
         # Find parameters section
-        params_links = await page.locator("a:has-text('Show Parameters')").count()
+        params_links = page.locator("a:has-text('Show Parameters')").count()
         if params_links > 0:
-            await page.locator("a:has-text('Show Parameters')").first.click()
-            await page.wait_for_timeout(300)
+            page.locator("a:has-text('Show Parameters')").first.click()
+            page.wait_for_timeout(300)
 
             # Check that parameters form is visible
-            params_forms = await page.locator(".params-form").count()
+            params_forms = page.locator(".params-form").count()
             assert params_forms > 0
 
-    async def test_remove_behavior_from_device(self, page):
+    def test_remove_behavior_from_device(self, page):
         """Test removing behavior from device."""
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Open device edit form
-        await page.locator("button:has-text('Edit')").first.click()
-        await page.wait_for_load_state("networkidle")
+        page.locator("button:has-text('Edit')").first.click()
+        page.wait_for_load_state("networkidle")
 
         # Count behaviors before
-        behaviors_before = await page.locator(".behavior-item").count()
+        behaviors_before = page.locator(".behavior-item").count()
 
         if behaviors_before > 1:
             # Remove last behavior
-            remove_buttons = await page.locator("button:has-text('Remove')")
-            await remove_buttons.last.click()
-            await page.wait_for_timeout(300)
+            remove_buttons = page.locator("button:has-text('Remove')")
+            remove_buttons.last.click()
+            page.wait_for_timeout(300)
 
             # Count behaviors after
-            behaviors_after = await page.locator(".behavior-item").count()
+            behaviors_after = page.locator(".behavior-item").count()
             assert behaviors_after == behaviors_before - 1
 
 
 class TestTemplateAPI:
     """Test template API functionality."""
 
-    async def test_templates_api_returns_list(self, page):
+    def test_templates_api_returns_list(self, page):
         """Test that /api/templates endpoint returns template list."""
-        await page.goto("http://127.0.0.1:8125/api/templates")
+        page.goto("http://127.0.0.1:8125/api/templates")
 
         # Get response
-        response_text = await page.content()
+        response_text = page.content()
         templates = json.loads(response_text)
 
         assert isinstance(templates, list)
         assert len(templates) > 0
         assert any(t in templates for t in ["lighting", "climate_control"])
 
-    async def test_template_info_api(self, page):
+    def test_template_info_api(self, page):
         """Test that template info API returns correct data."""
-        await page.goto("http://127.0.0.1:8125/api/templates/lighting")
+        page.goto("http://127.0.0.1:8125/api/templates/lighting")
 
-        response_text = await page.content()
+        response_text = page.content()
         template_info = json.loads(response_text)
 
         assert "name" in template_info
@@ -297,32 +307,32 @@ class TestTemplateAPI:
 class TestResponsiveness:
     """Test responsive design."""
 
-    async def test_mobile_layout(self, page):
+    def test_mobile_layout(self, page):
         """Test mobile layout (375px width)."""
-        await page.set_viewport_size({"width": 375, "height": 667})
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.set_viewport_size({"width": 375, "height": 667})
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Check that room cards are still visible
-        room_cards = await page.locator(".room-card").count()
+        room_cards = page.locator(".room-card").count()
         assert room_cards > 0
 
-    async def test_tablet_layout(self, page):
+    def test_tablet_layout(self, page):
         """Test tablet layout (768px width)."""
-        await page.set_viewport_size({"width": 768, "height": 1024})
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.set_viewport_size({"width": 768, "height": 1024})
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Check that room cards are still visible
-        room_cards = await page.locator(".room-card").count()
+        room_cards = page.locator(".room-card").count()
         assert room_cards > 0
 
-    async def test_desktop_layout(self, page):
+    def test_desktop_layout(self, page):
         """Test desktop layout (1920px width)."""
-        await page.set_viewport_size({"width": 1920, "height": 1080})
-        await page.goto("http://127.0.0.1:8125/")
-        await page.wait_for_load_state("networkidle")
+        page.set_viewport_size({"width": 1920, "height": 1080})
+        page.goto("http://127.0.0.1:8125/")
+        page.wait_for_load_state("networkidle")
 
         # Check that room cards are visible
-        room_cards = await page.locator(".room-card").count()
+        room_cards = page.locator(".room-card").count()
         assert room_cards > 0
