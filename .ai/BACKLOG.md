@@ -31,7 +31,7 @@
 | Q3 | Подключить `ConfigWatcher` к приложению (hot-reload манифеста; сейчас 0 инстанциаций) | Known Issue #8 | 🔴 High | ✅ 2026-09-30: под `HOT_RELOAD=1` (default OFF), +20 тестов, починены stop/детекция путей; риски до default-ON в Known Issue #8 |
 | Q4 | Починить baseline-падения: root 15 + contract 6/27 + integration 4 (после Q1/Q2 картина улучшилась: полный прогон = 29 failed / 1374 passed) | Known Issue #4 | 🟡 Medium | ✅ 2026-09-30: все 29 устранены (6 багов в коде + 23 устаревших теста), полный прогон = 0 failed / 1411 passed / 9 skipped |
 | Q5 | Проверить/починить enhancements-расхождения: 26 (фича 5 «WS в реальном времени» — все пункты `[ ]` при статусе ✅), 27/28 (мастер discovery/add-devices ✅, но нерабочие — см. F1) | INDEX.md | 🟡 Medium | ⬜ |
-| Q6 | Починить отдельный прогон `tests/test_webui_playwright.py`: зависит на teardown playwright-сессии (`stop_sync`); устаревшие ассерты (`/health` → JSON, а тест ждёт "healthy") | Known Issue #13 (остаток) | 🟡 Medium | ⬜ |
+| Q6 | Починить отдельный прогон `tests/test_webui_playwright.py`: зависит на teardown playwright-сессии (`stop_sync`); устаревшие ассерты (`/health` → JSON, а тест ждёт "healthy") | Known Issue #13 (остаток) | 🟡 Medium | ✅ 2026-09-30: битая ASGI-цель (`src.webui.app:app`), `networkidle` при живом WS, CDN-гонка, JSON через `page.content()`, изоляция манифеста → 14 passed за 40с |
 | Q7 | Добавить `MockAdapter.start()/stop()` (async no-op) — `run_platform` падает в mock-режиме без HA_TOKEN (локальный запуск невозможен) | Known Issue #14 | 🟡 Medium | ✅ 2026-09-30: no-op start/stop + 8 тестов, smoke `/health` ok |
 
 ---
@@ -99,6 +99,7 @@
 | B7 | Known Issue #12 — `Task was destroyed` при остановке контейнера | PROJECT_STATE | ⬜ |
 | B8 | Dashboard Generator: CLI `shp generate-dashboard` (enhancement 19, Phase 9.75 остаток) | ROADMAP 9.75 | ⬜ |
 | B9 | Tech Debt Low #5 — dashboard generator → Jinja2 | ROADMAP | ⬜ |
+| B10 | Удалить/починить автофикстуру `tests/conftest.py::webui_server` — битая ASGI-цель `src.webui.app:app`, ~15с ожидания и мёртвый процесс на каждый прогон; тесты её не используют | Known Issue #13 (остаток Q6) | ⬜ |
 
 ---
 

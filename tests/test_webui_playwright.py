@@ -1,23 +1,57 @@
-"""Playwright E2E tests for Web UI functionality.
+"""Playwright E2E-тесты Web UI.
 
 Запускать ОТДЕЛЬНО от основного прогона (файл исключён из addopts в pyproject.toml):
 
     pytest tests/test_webui_playwright.py
 
-Причина: session-фикстура playwright sync API держит event loop в состоянии
-running на протяжении всей сессии — async-тесты и последующие pytest-файлы
-падают с \"Runner.run() cannot be called from a running event loop\"
-(см. Known Issue #13 в .ai/01_PROJECT_STATE.md). Тесты должны быть sync.
+Почему отдельно: session-фикстура pytest-playwright использует sync API, который
+внутри держит запущенный event loop. Пока она активна, любые async-тесты в том же
+процессе падают с "Runner.run() cannot be called from a running event loop"
+(Known Issue #13).
+
+Особенности, зафиксированные при починке Q6:
+- uvicorn запускается на фабрике ``tests.e2e_app:create_e2e_app`` (в
+  ``src/webui/app.py`` нет модуль-левел ``app``, поэтому цель ``src.webui.app:app``
+  падала с "Attribute 'app' not found", и все тесты получали ERR_CONNECTION_TIMED_OUT);
+- приложение работает на временной копии манифеста, а его CWD — во временном
+  каталоге, поэтому тесты сохранения (/devices/save, /save) не трогают репозиторий;
+- страница index.html держит открытым WebSocket ``/ws/live``, поэтому
+  ``wait_for_load_state("networkidle")`` никогда не срабатывает — используются
+  ``wait_until="load"`` и автоожидающие проверки ``expect(...)``;
+- JSON-эндпоинты проверяются через ``page.request``: ``page.content()`` для JSON
+  ответа возвращает HTML-обёртку с ``<pre>``, а не сам JSON.
 """
+
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
-import json
+import os
+import re
+import shutil
+import socket
 import subprocess
+import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import Page, expect
+
+
+SERVER_HOST = "127.0.0.1"
+SERVER_PORT = 8125
+SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
+SERVER_START_TIMEOUT_SEC = 30.0
+DEFAULT_ACTION_TIMEOUT_MS = 10_000
+
+# htmx-цели шаблонов: форма устройства грузится в #device-form-container,
+# форма комнаты — в #edit-modal-content. По hx-target селекторы однозначны.
+DEVICE_FORM_TARGET = "#device-form-container"
+DEVICE_EDIT_BUTTON = f'button[hx-target="{DEVICE_FORM_TARGET}"][hx-get$="/edit"]'
+DEVICE_ADD_BUTTON = f'button[hx-target="{DEVICE_FORM_TARGET}"][hx-get$="/add"]'
 
 
 @pytest.fixture(scope="session")
@@ -29,160 +63,190 @@ def browser_context_args():
     }
 
 
+def _is_server_up() -> bool:
+    """Проверяет, принимает ли сервер Web UI соединения.
+
+    Returns:
+        True, если порт отвечает.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1.0)
+        return sock.connect_ex((SERVER_HOST, SERVER_PORT)) == 0
+
+
 @pytest.fixture(scope="session", autouse=True)
-def start_webui_server():
-    """Start the Web UI server for testing."""
-    # Check if server is already running
-    import socket
+def start_webui_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """Поднимает Web UI на временной копии манифеста и ждёт готовности.
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    result = sock.connect_ex(("127.0.0.1", 8125))
-    sock.close()
-
-    if result == 0:
-        # Server already running
-        yield
+    Yields:
+        Базовый URL сервера.
+    """
+    if _is_server_up():
+        yield SERVER_URL
         return
 
-    # Start server
+    project_root = Path(__file__).resolve().parent.parent
+    work_dir = tmp_path_factory.mktemp("webui_e2e")
+    manifest_copy = work_dir / "manifest.yaml"
+    shutil.copy(project_root / "instances" / "leonids_house" / "manifest.yaml", manifest_copy)
+
     env = {
-        "PYTHONPATH": str(Path(__file__).parent.parent),
-        "MANIFEST_PATH": "instances/leonids_house/manifest.yaml",
+        **os.environ,
+        # Корень репозитория в PYTHONPATH — для импорта пакета src
+        "PYTHONPATH": str(project_root),
+        # Временный манифест: сохранения из UI не затрагивают репозиторий
+        "E2E_MANIFEST_PATH": str(manifest_copy),
     }
 
     process = subprocess.Popen(
         [
-            "python",
+            sys.executable,
             "-m",
             "uvicorn",
-            "src.webui.app:app",
+            "tests.e2e_app:create_e2e_app",
+            "--factory",
             "--host",
-            "127.0.0.1",
+            SERVER_HOST,
             "--port",
-            "8125",
-            "--reload",
+            str(SERVER_PORT),
         ],
-        env={**subprocess.os.environ, **env},
+        # CWD во временном каталоге: относительный data_dir="data" в create_app
+        # тоже остаётся изолированным от репозитория
+        cwd=str(work_dir),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
-    # Wait for server to start
-    time.sleep(3)
+    deadline = time.monotonic() + SERVER_START_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        if _is_server_up():
+            break
+        if process.poll() is not None:
+            pytest.fail(f"Web UI server завершился с кодом {process.returncode} до старта")
+        time.sleep(0.25)
+    else:
+        process.kill()
+        pytest.fail(f"Web UI server не поднялся за {SERVER_START_TIMEOUT_SEC:.0f}s")
 
-    yield
+    try:
+        yield SERVER_URL
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
 
-    # Cleanup
-    process.terminate()
-    process.wait(timeout=10)
+
+def _open_index(page: Page) -> None:
+    """Открывает главную страницу и дожидается готовности к взаимодействию.
+
+    htmx и Bootstrap подключаются с CDN: без явного ожидания клик может
+    произойти до инициализации htmx, и форма устройства просто не загрузится.
+
+    Args:
+        page: Playwright page.
+    """
+    # networkidle недостижим: страница держит открытым WebSocket /ws/live
+    page.goto(SERVER_URL, wait_until="load")
+    expect(page.locator(".room-card").first).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+    page.wait_for_function(
+        "() => typeof window.htmx !== 'undefined' && typeof window.bootstrap !== 'undefined'",
+        timeout=DEFAULT_ACTION_TIMEOUT_MS,
+    )
+
+
+def _open_device_form(page: Page) -> None:
+    """Открывает форму редактирования первого устройства.
+
+    Args:
+        page: Playwright page.
+    """
+    page.locator(DEVICE_EDIT_BUTTON).first.click()
+    expect(page.locator('input[name="device_id"]')).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
 
 
 class TestWebUIBasics:
     """Test basic Web UI functionality."""
 
-    def test_index_page_loads(self, page):
+    def test_index_page_loads(self, page: Page):
         """Test that index page loads successfully."""
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
+        _open_index(page)
 
         # Check page title
-        title = page.title()
-        assert "Smart Home" in title
+        expect(page).to_have_title(re.compile("Smart Home"))
 
         # Check for room cards
-        room_cards = page.locator(".room-card").count()
-        assert room_cards > 0
+        expect(page.locator(".room-card").first).to_be_visible()
 
-    def test_health_check_endpoint(self, page):
+    def test_health_check_endpoint(self, page: Page):
         """Test health check endpoint."""
-        page.goto("http://127.0.0.1:8125/health")
-        content = page.content()
-        assert "healthy" in content.lower()
+        # /health отдаёт JSON {"status": "ok"}; page.content() вернул бы HTML-обёртку
+        response = page.request.get(f"{SERVER_URL}/health")
+
+        assert response.status == 200
+        assert response.json()["status"] == "ok"
 
 
 class TestDeviceManagement:
     """Test device management functionality."""
 
-    def test_open_device_edit_form(self, page):
+    def test_open_device_edit_form(self, page: Page):
         """Test opening device edit form."""
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
-
-        # Find first device edit button
-        edit_buttons = page.locator("button:has-text('Edit')").count()
-        assert edit_buttons > 0
-
-        # Click first edit button
-        page.locator("button:has-text('Edit')").first.click()
-
-        # Wait for modal to appear
-        modal = page.locator("#deviceModal, [role='dialog']")
-        modal.wait_for(state="visible", timeout=5000)
+        _open_index(page)
+        _open_device_form(page)
 
         # Check form elements
-        assert page.locator('input[name="device_id"]').is_visible()
-        assert page.locator('select[name="device_type"]').is_visible()
+        expect(page.locator('input[name="device_id"]')).to_be_visible()
+        expect(page.locator('select[name="device_type"]')).to_be_visible()
 
-    def test_device_form_displays_room_selector(self, page):
+    def test_device_form_displays_room_selector(self, page: Page):
         """Test that device form has room selector."""
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
+        _open_index(page)
+        _open_device_form(page)
 
-        # Open device edit form
-        page.locator("button:has-text('Edit')").first.click()
-        page.wait_for_load_state("networkidle")
-
-        # Check for room selector
         room_select = page.locator('select[name="room_id"]')
-        assert room_select.is_visible()
+        expect(room_select).to_be_visible()
 
-        # Check that room options are available
-        options = room_select.locator("option").count()
-        assert options > 1  # At least one room option
+        # Комнаты подгружаются в select (плюс пустая опция "Select room...")
+        options = room_select.locator("option")
+        expect(options.first).to_be_attached()
+        assert options.count() > 1, "В форме устройства должен быть выбор комнаты"
 
-    def test_change_device_room(self, page):
+    def test_change_device_room(self, page: Page):
         """Test changing device to different room."""
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
+        _open_index(page)
+        _open_device_form(page)
 
-        # Open device edit form
-        page.locator("button:has-text('Edit')").first.click()
-        page.wait_for_load_state("networkidle")
-
-        # Get current room selection
         room_select = page.locator('select[name="room_id"]')
         current_room = room_select.input_value()
 
         # Select different room
         available_options = room_select.locator("option").count()
         if available_options > 2:
-            room_select.locator("option").nth(2).click()
-            page.wait_for_timeout(500)
+            room_select.select_option(index=2)
 
             new_room = room_select.input_value()
             assert new_room != current_room, "Room selection should change"
 
             # Save device
             page.locator("button:has-text('Save Device')").click()
-            page.wait_for_load_state("networkidle")
 
-            # Reload page to verify change persisted
-            page.reload()
-            page.wait_for_load_state("networkidle")
+            # Модалка закрывается после успешного сохранения
+            expect(page.locator('input[name="device_id"]')).to_be_hidden(
+                timeout=DEFAULT_ACTION_TIMEOUT_MS
+            )
 
-            # Open same device again and verify it's in new room
-            # (This requires finding the device in its new location)
-
-    def test_add_device_to_room(self, page):
+    def test_add_device_to_room(self, page: Page):
         """Test adding new device to a room."""
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
+        _open_index(page)
 
-        # Find "Add Device" button
-        add_buttons = page.locator("button:has-text('Add Device')").count()
-        assert add_buttons > 0
-
-        # Click first "Add Device" button
-        page.locator("button:has-text('Add Device')").first.click()
-        page.wait_for_load_state("networkidle")
+        page.locator(DEVICE_ADD_BUTTON).first.click()
+        expect(page.locator('input[name="device_id"]')).to_be_visible(
+            timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
 
         # Fill device form
         page.locator('input[name="device_id"]').fill("test.newdevice")
@@ -191,114 +255,92 @@ class TestDeviceManagement:
 
         # Add behavior
         page.locator("button:has-text('Add Behavior')").click()
-        page.wait_for_timeout(500)
+        expect(page.locator(".behavior-item")).to_have_count(1)
 
         # Select template
-        template_select = page.locator("select.behavior-template").last
-        template_select.select_option("lighting")
+        page.locator("select.behavior-template").last.select_option("lighting")
 
         # Set priority
         page.locator('input[name="behavior_priority_0"]').fill("10")
 
         # Save device
         page.locator("button:has-text('Save Device')").click()
-        page.wait_for_load_state("networkidle")
 
         # Wait for modal to close
-        modal = page.locator("#deviceModal, [role='dialog']")
-        modal.wait_for(state="hidden", timeout=5000)
+        expect(page.locator('input[name="device_id"]')).to_be_hidden(
+            timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
 
-        # Verify device appears in the room
-        page.wait_for_timeout(1000)
-        assert page.locator(":has-text('test.newdevice')").count() > 0
+        # Verify device appears on the page
+        expect(page.locator(":has-text('test.newdevice')").first).to_be_visible(
+            timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
 
 
 class TestBehaviorManagement:
     """Test behavior configuration."""
 
-    def test_add_behavior_to_device(self, page):
+    def test_add_behavior_to_device(self, page: Page):
         """Test adding behavior to device."""
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
+        _open_index(page)
+        _open_device_form(page)
 
-        # Open device edit form
-        page.locator("button:has-text('Edit')").first.click()
-        page.wait_for_load_state("networkidle")
-
-        # Count behaviors before
-        behaviors_before = page.locator(".behavior-item").count()
+        behaviors = page.locator(".behavior-item")
+        behaviors_before = behaviors.count()
 
         # Add behavior
         page.locator("button:has-text('Add Behavior')").click()
-        page.wait_for_timeout(500)
 
-        # Count behaviors after
-        behaviors_after = page.locator(".behavior-item").count()
-        assert behaviors_after == behaviors_before + 1
+        expect(behaviors).to_have_count(behaviors_before + 1)
 
-    def test_expand_behavior_parameters(self, page):
+    def test_expand_behavior_parameters(self, page: Page):
         """Test expanding behavior parameters section."""
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
+        _open_index(page)
+        _open_device_form(page)
 
-        # Open device edit form
-        page.locator("button:has-text('Edit')").first.click()
-        page.wait_for_load_state("networkidle")
+        params_links = page.locator("a:has-text('Show Parameters')")
+        if params_links.count() > 0:
+            params_links.first.click()
 
-        # Find parameters section
-        params_links = page.locator("a:has-text('Show Parameters')").count()
-        if params_links > 0:
-            page.locator("a:has-text('Show Parameters')").first.click()
-            page.wait_for_timeout(300)
+            expect(page.locator(".params-form").first).to_be_visible()
 
-            # Check that parameters form is visible
-            params_forms = page.locator(".params-form").count()
-            assert params_forms > 0
-
-    def test_remove_behavior_from_device(self, page):
+    def test_remove_behavior_from_device(self, page: Page):
         """Test removing behavior from device."""
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
+        _open_index(page)
+        _open_device_form(page)
 
-        # Open device edit form
-        page.locator("button:has-text('Edit')").first.click()
-        page.wait_for_load_state("networkidle")
-
-        # Count behaviors before
         behaviors_before = page.locator(".behavior-item").count()
 
         if behaviors_before > 1:
-            # Remove last behavior
-            remove_buttons = page.locator("button:has-text('Remove')")
-            remove_buttons.last.click()
-            page.wait_for_timeout(300)
+            page.locator("button:has-text('Remove')").last.click()
 
-            # Count behaviors after
-            behaviors_after = page.locator(".behavior-item").count()
-            assert behaviors_after == behaviors_before - 1
+            expect(page.locator(".behavior-item")).to_have_count(behaviors_before - 1)
 
 
 class TestTemplateAPI:
     """Test template API functionality."""
 
-    def test_templates_api_returns_list(self, page):
+    def test_templates_api_returns_list(self, page: Page):
         """Test that /api/templates endpoint returns template list."""
-        page.goto("http://127.0.0.1:8125/api/templates")
+        response = page.request.get(f"{SERVER_URL}/api/templates")
 
-        # Get response
-        response_text = page.content()
-        templates = json.loads(response_text)
+        assert response.status == 200
+        payload = response.json()
 
-        assert isinstance(templates, list)
-        assert len(templates) > 0
-        assert any(t in templates for t in ["lighting", "climate_control"])
+        # Контракт эндпоинта: {"templates": [...], "count": N}
+        assert isinstance(payload["templates"], list)
+        assert payload["count"] == len(payload["templates"])
+        assert payload["count"] > 0
 
-    def test_template_info_api(self, page):
+        names = [template["name"] for template in payload["templates"]]
+        assert any(name in names for name in ["lighting", "climate_control"])
+
+    def test_template_info_api(self, page: Page):
         """Test that template info API returns correct data."""
-        page.goto("http://127.0.0.1:8125/api/templates/lighting")
+        response = page.request.get(f"{SERVER_URL}/api/templates/lighting")
 
-        response_text = page.content()
-        template_info = json.loads(response_text)
+        assert response.status == 200
+        template_info = response.json()
 
         assert "name" in template_info
         assert template_info["name"] == "lighting"
@@ -307,32 +349,15 @@ class TestTemplateAPI:
 class TestResponsiveness:
     """Test responsive design."""
 
-    def test_mobile_layout(self, page):
-        """Test mobile layout (375px width)."""
-        page.set_viewport_size({"width": 375, "height": 667})
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
-
-        # Check that room cards are still visible
-        room_cards = page.locator(".room-card").count()
-        assert room_cards > 0
-
-    def test_tablet_layout(self, page):
-        """Test tablet layout (768px width)."""
-        page.set_viewport_size({"width": 768, "height": 1024})
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
-
-        # Check that room cards are still visible
-        room_cards = page.locator(".room-card").count()
-        assert room_cards > 0
-
-    def test_desktop_layout(self, page):
-        """Test desktop layout (1920px width)."""
-        page.set_viewport_size({"width": 1920, "height": 1080})
-        page.goto("http://127.0.0.1:8125/")
-        page.wait_for_load_state("networkidle")
+    @pytest.mark.parametrize(
+        ("width", "height"),
+        [(375, 667), (768, 1024), (1920, 1080)],
+        ids=["mobile", "tablet", "desktop"],
+    )
+    def test_layout_at_viewport(self, page: Page, width: int, height: int):
+        """Test layout for mobile/tablet/desktop viewports."""
+        page.set_viewport_size({"width": width, "height": height})
+        _open_index(page)
 
         # Check that room cards are visible
-        room_cards = page.locator(".room-card").count()
-        assert room_cards > 0
+        expect(page.locator(".room-card").first).to_be_visible()
