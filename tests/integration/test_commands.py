@@ -55,7 +55,10 @@ class TestCommandsIntegration:
 
             # Команда должна вернуть результат с ID
             assert result is not None
-            assert "id" in result or "command_id" in result
+            # execute_command возвращает pydantic-модель, а не dict:
+            # в pydantic v2 проверка `'id' in model` не работает — нужен model_dump()
+            data = result.model_dump() if hasattr(result, "model_dump") else result
+            assert "id" in data or "command_id" in data
 
     @pytest.mark.asyncio
     async def test_command_with_parameters(self):

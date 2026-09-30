@@ -31,7 +31,12 @@ class DeviceCommand(BaseModel):
         default=None, description="Тип возвращаемого значения (e.g., 'bool', 'dict', 'str')"
     )
     execution_timeout: int = Field(
-        default=30, ge=1, le=300, description="Таймаут выполнения в секундах (макс 300)"
+        default=30,
+        ge=1,
+        # le=300 намеренно не задан: констрейнт срабатывал раньше
+        # field-валидатора и отдавал стандартный текст pydantic вместо
+        # сообщения из validate_timeout
+        description="Таймаут выполнения в секундах (макс 300, проверяется validate_timeout)",
     )
     is_safe: bool = Field(
         default=True, description="Безопасна ли команда (не требует дополнительной проверки)"
@@ -106,7 +111,9 @@ class CommandExecutionResponse(BaseModel):
     device_id: UUID = Field(description="ID устройства")
     command_name: str = Field(description="Имя выполненной команды")
     status: str = Field(description="Статус выполнения: pending, executing, success, failed")
-    created_at: datetime = Field(description="Время создания запроса")
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, description="Время создания запроса"
+    )
     completed_at: datetime | None = Field(default=None, description="Время завершения")
     result: dict[str, Any] | None = Field(default=None, description="Результат выполнения")
     error: str | None = Field(default=None, description="Ошибка выполнения если есть")

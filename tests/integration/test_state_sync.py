@@ -88,10 +88,15 @@ class TestStateSyncIntegration:
         service._devices[device.id] = device
 
         # Формируем событие изменения состояния из HA
+        # Формат соответствует payload события HA (event.data), который ожидает
+        # DeviceService.handle_state_change
         state_change_event = {
-            "entity_id": "light.living_room",
-            "old_state": {"state": "off"},
-            "new_state": {"state": "on", "brightness": 150},
+            "event_type": "state_changed",
+            "data": {
+                "entity_id": "light.living_room",
+                "old_state": {"state": "off"},
+                "new_state": {"state": "on", "brightness": 150},
+            },
         }
 
         # Обрабатываем событие

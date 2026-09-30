@@ -960,7 +960,12 @@ class DeviceService:
             domain=domain, service=service, entity_id=device.ha_entity_id, **parameters
         )
 
-        return result or {}
+        # CommandExecutionResponse.result ожидает dict. Раньше здесь стояло `result or {}`,
+        # что пропускало непустые не-dict значения (bool от HAAdapter, MagicMock от моков)
+        # и приводило к ValidationError при формировании ответа.
+        if isinstance(result, dict):
+            return result
+        return {"success": bool(result)} if result is not None else {}
 
     async def get_command_status(
         self,

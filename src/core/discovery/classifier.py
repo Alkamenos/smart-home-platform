@@ -29,7 +29,10 @@ class DeviceClassifier:
     # Специфичные паттерны должны быть ПЕРЕД общими
     CATEGORY_PATTERNS: list[tuple[str, DeviceCategory]] = [
         # Temperature sensors (специфично)
-        (r"\b(temperature|temp(?:erature)?|температур)\b", DeviceCategory.TEMPERATURE_SENSOR),
+        (
+            r"\b(temperature|temperatura|temp(?:erature)?|температур)\b",
+            DeviceCategory.TEMPERATURE_SENSOR,
+        ),
         # Humidity sensors (специфично)
         (r"\b(humidity|humid|влажн)\b", DeviceCategory.HUMIDITY_SENSOR),
         # Motion sensors (специфично)
@@ -77,6 +80,24 @@ class DeviceClassifier:
         "sensor": DeviceCategory.MONITORING_ONLY,
     }
 
+    @staticmethod
+    def _searchable_text(entity_id: str, friendly_name: str) -> str:
+        """Собирает текст для поиска по паттернам.
+
+        Разделители entity_id/friendly_name (точки, дефисы, подчёркивания)
+        заменяются пробелами: символ ``_`` является «словным» символом regex,
+        из-за чего ``\\b`` не срабатывал в идентификаторах вида
+        ``sensor.temperatura_v_teplitse`` (Known Issue #4).
+
+        Args:
+            entity_id: Идентификатор сущности.
+            friendly_name: Человекочитаемое имя устройства.
+
+        Returns:
+            Нормализованный текст для поиска по паттернам.
+        """
+        return re.sub(r"[._\-]+", " ", f"{entity_id} {friendly_name}".lower())
+
     @classmethod
     def classify(
         cls, entity_id: str, domain: str, attributes: dict
@@ -87,7 +108,6 @@ class DeviceClassifier:
         Returns:
             (category, suggested_template, auto_apply)
         """
-        entity_lower = entity_id.lower()
         device_class = attributes.get("device_class", "").lower()
 
         # 1. Проверяем device_class (самый надежный источник)
@@ -97,8 +117,7 @@ class DeviceClassifier:
                 return category, template, auto_apply
 
         # 2. Проверяем специфичные паттерны в entity_id и friendly_name
-        friendly_name = attributes.get("friendly_name", "").lower()
-        full_text = f"{entity_lower} {friendly_name}"
+        full_text = cls._searchable_text(entity_id, attributes.get("friendly_name", ""))
 
         for pattern, pattern_category in cls.CATEGORY_PATTERNS:
             if re.search(pattern, full_text, re.IGNORECASE):
@@ -198,7 +217,7 @@ class DeviceClassifier:
         """Классифицировать switch как lighting или automation."""
         entity_lower = entity_id.lower()
         friendly_name = attributes.get("friendly_name", "").lower()
-        full_text = f"{entity_lower} {friendly_name}"
+        full_text = cls._searchable_text(entity_lower, friendly_name)
 
         # Lighting indicators
         if re.search(r"light|lamp|освещ|лампа|яркост", full_text, re.IGNORECASE):
@@ -218,11 +237,12 @@ class DeviceClassifier:
         """Классифицировать fan как ventilation или cooling."""
         entity_lower = entity_id.lower()
         friendly_name = attributes.get("friendly_name", "").lower()
+        full_text = cls._searchable_text(entity_lower, friendly_name)
 
         # Ventilation (humidity-controlled)
-        if re.search(
-            r"ventilat|exhaust|hood|вентил|вытяжк", f"{entity_lower} {friendly_name}", re.IGNORECASE
-        ):
+        # "vent" добавлен к "ventilat": реальные entity_id вроде fan.bathroom_vent
+        # не содержат полного "ventilation" (Known Issue #4)
+        if re.search(r"\bvent\b|ventilat|exhaust|hood|вентил|вытяжк", full_text, re.IGNORECASE):
             return (
                 DeviceCategory.VENTILATION,
                 BehaviorTemplate.HUMIDITY_VENTILATION.value,
@@ -230,11 +250,7 @@ class DeviceClassifier:
             )
 
         # Cooling/Circulation fan (speed-controlled)
-        if re.search(
-            r"cooling|cool|air|circulation|охлад|воздух",
-            f"{entity_lower} {friendly_name}",
-            re.IGNORECASE,
-        ):
+        if re.search(r"cooling|cool|air|circulation|охлад|воздух", full_text, re.IGNORECASE):
             return DeviceCategory.VENTILATION, None, False
 
         # Generic fan (no auto-apply)

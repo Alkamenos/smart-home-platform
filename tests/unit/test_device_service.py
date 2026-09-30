@@ -879,7 +879,11 @@ class TestGrantAccess:
 
     @pytest.mark.asyncio
     async def test_grant_access_device_not_found(self, device_service, mock_persistence):
-        """Проверяет отказ предоставления доступа если устройство не найдено."""
+        """Доступ выдаётся даже если устройство ещё не синхронизировано (device-blind grant).
+
+        Отклонение зафиксировано в specs/004: grant разрешён до синка,
+        чтобы можно было заранее выдать права на ещё не загруженное устройство.
+        """
         fake_id = uuid4()
         mock_persistence.device_access.load_access_for_user_device.return_value = None
 
@@ -890,7 +894,10 @@ class TestGrantAccess:
             granted_by="admin",
         )
 
-        assert result is None
+        assert result is not None
+        assert result.device_id == fake_id
+        assert result.role == "controller"
+        mock_persistence.device_access.save_access.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_grant_access_invalid_role(self, device_service, sample_device, mock_persistence):
@@ -1369,18 +1376,23 @@ class TestEdgeCases:
     """Тесты edge cases и обработки ошибок."""
 
     @pytest.mark.asyncio
-    async def test_handle_state_change_with_malformed_data(self, device_service, event_bus):
-        """Проверяет обработку malformed данных в состоянии."""
+    async def test_handle_state_change_with_malformed_data(
+        self, device_service, event_bus, sample_device
+    ):
+        """Проверяет обработку malformed данных в состоянии.
+
+        Не должно вызвать исключение: сервис логирует и продолжает работу.
+        """
+        device_service._devices[sample_device.id] = sample_device
         event_data = {
             "data": {
-                "entity_id": "light.test",
+                "entity_id": sample_device.ha_entity_id,
                 "new_state": None,  # Malformed
             }
         }
 
         # Не должно вызвать исключение
-        with pytest.raises(RuntimeError):
-            await device_service.handle_state_change(event_data)
+        await device_service.handle_state_change(event_data)
 
     def test_parse_devices_with_special_characters(self, device_service):
         """Проверяет парсинг устройств со специальными символами в имени."""

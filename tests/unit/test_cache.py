@@ -246,8 +246,9 @@ class TestDeviceCache:
 
     def test_cache_move_to_end_on_access(self, device_cache):
         """Тест: перемещение элемента в конец при доступе (LRU)."""
-        # Добавляем элементы до почти полного размера
-        for i in range(9):
+        # Заполняем кэш до максимального размера (вытеснение срабатывает
+        # на следующем добавлении, когда размер уже равен max_size)
+        for i in range(10):
             device_cache.set(f"key_{i}", f"value_{i}")
 
         # Обращаемся к первому элементу (переместит его в конец)
@@ -358,7 +359,7 @@ class TestIndexManager:
         source_id = uuid4()
         devices = [
             Device(
-                ha_entity_id=f"device_{i}",
+                ha_entity_id=f"light.device_{i}",
                 source_id=source_id,
                 name=f"Device {i}",
                 device_type="light",
@@ -384,7 +385,7 @@ class TestIndexManager:
 
         devices = [
             Device(
-                ha_entity_id=f"light_s1_{i}",
+                ha_entity_id=f"light.s1_{i}",
                 source_id=source1,
                 name=f"Light S1 {i}",
                 device_type="light",
@@ -396,7 +397,7 @@ class TestIndexManager:
         devices.extend(
             [
                 Device(
-                    ha_entity_id=f"switch_s1_{i}",
+                    ha_entity_id=f"switch.s1_{i}",
                     source_id=source1,
                     name=f"Switch S1 {i}",
                     device_type="switch",
@@ -409,7 +410,7 @@ class TestIndexManager:
         devices.extend(
             [
                 Device(
-                    ha_entity_id=f"light_s2_{i}",
+                    ha_entity_id=f"light.s2_{i}",
                     source_id=source2,
                     name=f"Light S2 {i}",
                     device_type="light",
@@ -494,7 +495,7 @@ class TestIndexManager:
         def worker(thread_id):
             for i in range(50):
                 device = Device(
-                    ha_entity_id=f"device_t{thread_id}_{i}",
+                    ha_entity_id=f"light.device_t{thread_id}_{i}",
                     source_id=source_id,
                     name=f"Device T{thread_id} {i}",
                     device_type="light",

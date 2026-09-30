@@ -4,6 +4,7 @@
 Тесты проверяют контракт между клиентом и сервером для операций над источниками HA.
 """
 
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -166,7 +167,26 @@ class TestSourcesAPI:
         source_id = create_response.json()["id"]
 
         # Запускаем синхронизацию
-        response = client.post(f"/api/v1/devices/sources/{source_id}/sync")
+        # HA недоступен в тестовом окружении — мокаем подключение и загрузку устройств,
+        # иначе соединение падает и endpoint честно возвращает 500
+        mock_devices = [
+            {
+                "entity_id": "light.kitchen",
+                "state": "on",
+                "attributes": {"friendly_name": "Kitchen Light"},
+            }
+        ]
+        with (
+            patch(
+                "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
+                return_value=True,
+            ),
+            patch(
+                "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+                return_value=mock_devices,
+            ),
+        ):
+            response = client.post(f"/api/v1/devices/sources/{source_id}/sync")
 
         # Ожидаем либо успешный запуск (202), либо 200
         assert response.status_code in [200, 202], (

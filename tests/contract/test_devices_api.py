@@ -108,7 +108,10 @@ class TestDeviceConfigAPI:
         }
 
         # Добавляем в хранилище
-        from src.webui.routes.devices.devices import _devices_store
+        # Импорт без префикса src: приложение (src.main → webui.app) использует модуль
+        # webui.routes.devices.devices, и только в нём общий _devices_store
+        # (Known Issue #4: два экземпляра модуля приводят к 404)
+        from webui.routes.devices.devices import _devices_store
 
         _devices_store[str(device_id)] = device_data
 

@@ -211,8 +211,10 @@ def create_app(
     try:
         from .routes.devices import access_control, devices, sources, websocket
 
-        app.include_router(devices.router)
+        # sources ДО devices: GET /api/v1/devices/sources иначе перехватывается
+        # маршрутом devices GET /api/v1/devices/{device_id} → 422 (Known Issue #4)
         app.include_router(sources.router)
+        app.include_router(devices.router)
         app.include_router(access_control.router)
         app.include_router(websocket.router)
         logger.info("Device management routes registered")

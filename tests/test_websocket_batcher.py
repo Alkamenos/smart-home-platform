@@ -271,8 +271,13 @@ class TestWebSocketEventBatcher:
         assert batch is None
 
     @pytest.mark.asyncio
-    async def test_concurrent_add_events(self, batcher):
-        """Параллельное добавление событий работает."""
+    async def test_concurrent_add_events(self):
+        """Параллельное добавление событий работает.
+
+        Используем батчер с высоким лимитом и длинным таймаутом, чтобы проверить
+        именно конкурентное добавление (при лимите 3 батч срабатывает по размеру).
+        """
+        batcher = WebSocketEventBatcher(batch_timeout_ms=60000, batch_size_limit=100)
 
         async def add_events(start_id, count):
             for i in range(count):
@@ -286,12 +291,15 @@ class TestWebSocketEventBatcher:
             add_events(3, 5),
         )
 
-        # В буфере должны быть все события
+        # В буфере должны быть все события (ни одно не потеряно)
         assert batcher.get_batch_size() == 15
 
     @pytest.mark.asyncio
-    async def test_statistics(self, batcher):
+    async def test_statistics(self):
         """Получение статистики батчера."""
+        # Лимит выше числа событий — иначе срабатывает автосрабатывание по размеру
+        batcher = WebSocketEventBatcher(batch_timeout_ms=60000, batch_size_limit=10)
+
         # Добавляем события
         for i in range(5):
             event = WebSocketEvent(device_id=f"light.room{i}", state="ON")
@@ -323,8 +331,11 @@ class TestWebSocketEventBatcher:
         assert batcher.get_batch_size() == 0
 
     @pytest.mark.asyncio
-    async def test_reset_batcher(self, batcher):
+    async def test_reset_batcher(self):
         """Сброс батчера очищает буфер и статистику."""
+        # Лимит выше числа событий, чтобы события оставались в буфере до reset()
+        batcher = WebSocketEventBatcher(batch_timeout_ms=60000, batch_size_limit=10)
+
         # Добавляем события
         for i in range(5):
             event = WebSocketEvent(device_id=f"light.room{i}", state="ON")

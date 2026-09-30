@@ -40,7 +40,8 @@ def sample_device(client):
     }
 
     # Добавляем в хранилище
-    from src.webui.routes.devices.devices import _devices_store
+    # Импорт без префикса src: тот же экземпляр модуля, что использует приложение
+    from webui.routes.devices.devices import _devices_store
 
     _devices_store[str(device_id)] = device_data
 

@@ -26,6 +26,8 @@ class TestWebSocketContract:
 
         # Mock WebSocket соединение
         mock_ws = AsyncMock()
+        # Ответ HA на подписку (subscribe_events)
+        mock_ws.receive_json.return_value = {"type": "result", "success": True, "id": 1}
         client.ws = mock_ws
         client._running = True
 
@@ -50,6 +52,9 @@ class TestWebSocketContract:
             base_url="http://localhost:8123",
             token="test_token",
             on_state_changed=on_state_changed,
+            # Без батчинга: контракт T043 — callback получает сырое событие
+            # (event_type == "state_changed"), а не пакет батчера
+            enable_batching=False,
         )
 
         # Mock события
@@ -72,7 +77,9 @@ class TestWebSocketContract:
         mock_msg.data = json.dumps(state_changed_event)
 
         # Установим первое сообщение как событие, второе как CLOSED
-        async def mock_iter():
+        # ВАЖНО: __aiter__ вызывается с самим mock-объектом (unittest.mock),
+        # поэтому генератор обязан принимать аргумент
+        async def mock_iter(_mock_ws):
             yield mock_msg
             closed_msg = MagicMock()
             closed_msg.type = WSMsgType.CLOSED
@@ -106,7 +113,8 @@ class TestWebSocketContract:
         mock_msg.type = WSMsgType.ERROR
         mock_ws.exception.return_value = Exception("Connection error")
 
-        async def mock_iter():
+        # __aiter__ вызывается с mock-объектом (unittest.mock)
+        async def mock_iter(_mock_ws):
             yield mock_msg
 
         mock_ws.__aiter__ = mock_iter

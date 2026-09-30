@@ -20,7 +20,9 @@ class DeviceConfig(BaseModel):
     device_id: UUID = Field(description="Ссылка на Device")
     display_name: str | None = Field(
         default=None,
-        min_length=1,
+        # min_length намеренно не задан: констрейнт срабатывал раньше
+        # field-валидатора и отдавал стандартный текст pydantic вместо
+        # понятного сообщения из validate_display_name
         max_length=255,
         description="Пользовательское название устройства",
     )

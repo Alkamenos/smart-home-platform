@@ -53,12 +53,22 @@ async def get_device_service(request: Request) -> DeviceService:
 
 
 def _source_to_response(source: HASource) -> SourceResponse:
-    """Преобразует HASource модель в SourceResponse."""
+    """Преобразует HASource модель в SourceResponse.
+
+    Args:
+        source: Источник из persistence.
+
+    Returns:
+        Ответ API с информацией об источнике.
+    """
     return SourceResponse(
         id=str(source.id),
         name=source.name,
-        url=str(source.url),
-        status="connected" if source.status == "active" else "disconnected",
+        # HttpUrl нормализует URL, добавляя '/' в конец (http://host:8123/).
+        # Убираем её, чтобы API возвращал URL в том виде, в котором его задал пользователь.
+        url=str(source.url).rstrip("/"),
+        # Исторически статус "active" использовался вместо "connected" — учитываем оба
+        status="connected" if source.status in ("active", "connected") else "disconnected",
         last_sync=source.last_sync.isoformat() if source.last_sync else None,
         last_error=source.last_error,
         created_at=source.created_at.isoformat(),
@@ -118,7 +128,8 @@ async def create_source(request: Request, req: CreateSourceRequest) -> SourceRes
             name=req.name,
             url=str(req.url),
             token=req.token,
-            status="active",
+            # Статус не переопределяем: HASource по умолчанию "disconnected" —
+            # источник создан, но ещё не проверен подключением к HA
             last_sync=None,
             last_error=None,
             created_at=datetime.utcnow(),

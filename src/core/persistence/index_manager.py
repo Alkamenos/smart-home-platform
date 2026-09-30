@@ -135,17 +135,20 @@ class IndexManager:
         """
         with self._lock:
             try:
-                # Если устройство существует, удалить старые индексы
-                if device.id in self._devices:
-                    old_device = self._devices[device.id]
+                # Старые значения ключей недоступны: вызывающий код обычно мутирует
+                # тот же объект, который лежит в self._devices, поэтому old_device is device.
+                # Поэтому удаляем устройство из ВСЕХ бакетов по его id, а не только из
+                # бакетов, вычисленных по текущим полям.
+                for index in (self._by_source_id, self._by_device_type, self._by_status):
+                    for key in list(index.keys()):
+                        index[key].discard(device.id)
+                        if not index[key]:
+                            del index[key]
 
-                    # Удалить из старых индексов
-                    self._by_source_id[old_device.source_id].discard(device.id)
-                    self._by_device_type[old_device.device_type].discard(device.id)
-                    self._by_status[old_device.status].discard(device.id)
-
-                    if old_device.ha_entity_id in self._by_ha_entity_id:
-                        del self._by_ha_entity_id[old_device.ha_entity_id]
+                for entity_id in [
+                    key for key, value in self._by_ha_entity_id.items() if value == device.id
+                ]:
+                    del self._by_ha_entity_id[entity_id]
 
                 # Добавить в новые индексы
                 self.add_device(device)
