@@ -45,7 +45,36 @@ class MockAdapter:
         self._states: dict[str, Any] = {}
         self._fsm_engine: Any = None
         self._service_calls: list[dict[str, Any]] = []
+        self._started: bool = False
         self.log = logger.bind(component="mock_adapter")
+
+    async def start(self) -> None:
+        """Start the adapter (no-op — mock mode has no external connection).
+
+        Idempotent: repeated calls after the first are ignored. Mirrors
+        ``HAAdapter.start()`` so ``run_platform()`` works without ``HA_TOKEN``.
+
+        Returns:
+            None.
+        """
+        if self._started:
+            return
+        self._started = True
+        self.log.info("MockAdapter started (mock mode, no external connection)")
+
+    async def stop(self) -> None:
+        """Stop the adapter (no-op — releases nothing in mock mode).
+
+        Idempotent: safe to call without a prior ``start()`` and safe to
+        repeat, so ``PlatformContext.shutdown()`` never fails in mock mode.
+
+        Returns:
+            None.
+        """
+        if not self._started:
+            return
+        self._started = False
+        self.log.info("MockAdapter stopped")
 
     def set_fsm_engine(self, fsm_engine: Any) -> None:
         """Set reference to FSMEngine for event forwarding.

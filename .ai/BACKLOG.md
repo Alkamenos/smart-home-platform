@@ -32,7 +32,7 @@
 | Q4 | Починить baseline-падения: root 15 + contract 6/27 + integration 4 (после Q1/Q2 картина улучшилась: полный прогон = 29 failed / 1374 passed) | Known Issue #4 | 🟡 Medium | ⬜ |
 | Q5 | Проверить/починить enhancements-расхождения: 26 (фича 5 «WS в реальном времени» — все пункты `[ ]` при статусе ✅), 27/28 (мастер discovery/add-devices ✅, но нерабочие — см. F1) | INDEX.md | 🟡 Medium | ⬜ |
 | Q6 | Починить отдельный прогон `tests/test_webui_playwright.py`: зависит на teardown playwright-сессии (`stop_sync`); устаревшие ассерты (`/health` → JSON, а тест ждёт "healthy") | Known Issue #13 (остаток) | 🟡 Medium | ⬜ |
-| Q7 | Добавить `MockAdapter.start()/stop()` (async no-op) — `run_platform` падает в mock-режиме без HA_TOKEN (локальный запуск невозможен) | Known Issue #14 | 🟡 Medium | ⬜ |
+| Q7 | Добавить `MockAdapter.start()/stop()` (async no-op) — `run_platform` падает в mock-режиме без HA_TOKEN (локальный запуск невозможен) | Known Issue #14 | 🟡 Medium | ✅ 2026-09-30: no-op start/stop + 8 тестов, smoke `/health` ok |
 
 ---
 
