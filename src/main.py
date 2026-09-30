@@ -12,7 +12,8 @@ from pathlib import Path
 import uvicorn
 from loguru import logger
 
-from bootstrap import bootstrap_platform
+from core.container import Container
+from services.config_watcher import create_watcher, hot_reload_enabled
 from webui.app import create_app
 
 
@@ -109,33 +110,55 @@ async def run_platform():
     manifest_path = manifest_path.resolve()
 
     logger.info(f"🚀 Bootstrapping Smart Home Platform from {manifest_path}")
-    container = bootstrap_platform(str(manifest_path))
-    ctx = container  # Alias for backward compatibility
+    # Явная сборка контейнера (как bootstrap_platform): нужен доступ к factory/registry
+    # для ConfigWatcher — PlatformContext контейнера не содержит
+    container = Container(manifest_path=str(manifest_path))
+    ctx = container.build()
 
-    # 1. Запуск WebSocket коннекта к HA (в фоне)
-    await ctx.adapter.start()
+    # Hot-reload манифеста/фич под env-флагом HOT_RELOAD (default OFF — Known Issue #8)
+    config_watcher = None
+    if hot_reload_enabled():
+        config_watcher = create_watcher(
+            factory=container.factory,
+            engine=container.fsm,
+            registry=container.registry,
+            manifest_path=str(manifest_path),
+            features_dir=str(project_root / "src" / "features"),
+            instances_dir=str(project_root / "instances"),
+        )
+        config_watcher.start()
+        logger.info("🔄 ConfigWatcher started (HOT_RELOAD enabled)")
+    else:
+        logger.info("Hot-reload disabled (set HOT_RELOAD=1 to enable)")
 
-    # 2. Запуск FastAPI для Healthcheck (порт 8125, как в docker-compose)
-    # Pass the container instance so discovery routes can use the connected adapter
-    logger.info(f"🌐 Creating FastAPI app with manifest: {manifest_path}")
-    app = create_app(str(manifest_path), container_instance=container)
-    logger.info("✅ FastAPI app created successfully")
+    try:
+        # 1. Запуск WebSocket коннекта к HA (в фоне)
+        await ctx.adapter.start()
 
-    # Принудительно ставим уровень DEBUG для всех логов Uvicorn
-    config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="debug")
-    server = uvicorn.Server(config)
-    logger.info("✅ Uvicorn server configured on port 8125 (log_level=debug)")
+        # 2. Запуск FastAPI для Healthcheck (порт 8125, как в docker-compose)
+        # Pass the container instance so discovery routes can use the connected adapter
+        logger.info(f"🌐 Creating FastAPI app with manifest: {manifest_path}")
+        app = create_app(str(manifest_path), container_instance=container)
+        logger.info("✅ FastAPI app created successfully")
 
-    # 3. Graceful Shutdown
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(server.shutdown()))
+        # Принудительно ставим уровень DEBUG для всех логов Uvicorn
+        config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="debug")
+        server = uvicorn.Server(config)
+        logger.info("✅ Uvicorn server configured on port 8125 (log_level=debug)")
 
-    logger.info("✅ Platform is ready and listening on port 8125")
-    await server.serve()
+        # 3. Graceful Shutdown
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(server.shutdown()))
 
-    # Очистка ресурсов (идемпотентная цепочка: adapter + FSM + dispatcher TTL-loop)
-    await ctx.shutdown()
+        logger.info("✅ Platform is ready and listening on port 8125")
+        await server.serve()
+
+        # Очистка ресурсов (идемпотентная цепочка: adapter + FSM + dispatcher TTL-loop)
+        await ctx.shutdown()
+    finally:
+        if config_watcher is not None:
+            config_watcher.stop()
 
 
 if __name__ == "__main__":

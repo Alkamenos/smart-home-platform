@@ -6,7 +6,7 @@ and automatically reloads FSM definitions when YAML files are modified.
 It also supports hot-reloading of Python modules containing guard/action functions.
 
 Usage:
-    watcher = ConfigWatcher(loader, factory, engine, registry)
+    watcher = ConfigWatcher(factory, engine, registry)
     watcher.start()
 
     # Or via CLI:
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -37,7 +38,7 @@ from watchdog.observers import Observer
 
 
 if TYPE_CHECKING:
-    from core import Loader, Registry
+    from core import Registry
     from core.fsm import FSMEngine
     from core.fsm.factory import FSMFactory
     from core.models.manifest import Manifest
@@ -153,7 +154,6 @@ class ConfigWatcher:
     2. For Python: Reload the module and re-register guard/action functions
 
     Attributes:
-        loader: Loader instance for loading YAML files
         factory: FSMFactory instance for creating FSM definitions
         engine: FSMEngine instance for managing FSM state
         registry: Registry instance for guard/action functions
@@ -163,7 +163,6 @@ class ConfigWatcher:
 
     def __init__(
         self,
-        loader: Loader,
         factory: FSMFactory,
         engine: FSMEngine,
         registry: Registry,
@@ -177,7 +176,6 @@ class ConfigWatcher:
         Initialize the ConfigWatcher.
 
         Args:
-            loader: Loader instance for loading YAML files
             factory: FSMFactory instance for creating FSM definitions
             engine: FSMEngine instance for managing FSM state
             registry: Registry instance for guard/action functions
@@ -187,7 +185,6 @@ class ConfigWatcher:
             guards_dir: Path to the guards directory (optional)
             actions_dir: Path to the actions directory (optional)
         """
-        self._loader = loader
         self._factory = factory
         self._engine = engine
         self._registry = registry
@@ -242,7 +239,9 @@ class ConfigWatcher:
         logger.info("ConfigWatcher started")
 
     def stop(self) -> None:
-        """Stop the watchdog observers."""
+        """Stop the watchdog observers (safe without start / on repeat)."""
+        if not self._running:
+            return
         self._running = False
         self._observer.stop()
         self._observer.join()
@@ -281,13 +280,15 @@ class ConfigWatcher:
             logger.error(f"Error processing YAML change: {e}")
 
     def _is_manifest_file(self, path: Path) -> bool:
-        """Check if the path is a manifest file."""
-        # Manifest files are in instances/*/manifest.yaml
+        """Check if the path is a manifest file (absolute/relative-safe)."""
+        resolved = path.resolve()
+        if resolved == self._manifest_path.resolve():
+            return True
+        # Manifest files are in instances/*/manifest.yaml (watchdog reports absolute paths)
         return (
-            path.parent.name != ""
-            and path.parent.parent == self._instances_dir
-            and path.name == "manifest.yaml"
-        ) or (self._manifest_path.resolve() == path.resolve())
+            resolved.name == "manifest.yaml"
+            and resolved.parent.parent == self._instances_dir.resolve()
+        )
 
     def _is_feature_file(self, path: Path) -> bool:
         """Check if the path is a feature template file."""
@@ -514,8 +515,12 @@ class ConfigWatcher:
         return self._running
 
 
+def hot_reload_enabled() -> bool:
+    """Check if hot-reload is enabled via the HOT_RELOAD env flag (default: off)."""
+    return os.getenv("HOT_RELOAD", "0").lower() in ("1", "true", "yes", "on")
+
+
 def create_watcher(
-    loader: Loader,
     factory: FSMFactory,
     engine: FSMEngine,
     registry: Registry,
@@ -529,7 +534,6 @@ def create_watcher(
     Create and return a ConfigWatcher instance.
 
     Args:
-        loader: Loader instance
         factory: FSMFactory instance
         engine: FSMEngine instance
         registry: Registry instance for guard/action functions
@@ -543,7 +547,6 @@ def create_watcher(
         ConfigWatcher instance
     """
     return ConfigWatcher(
-        loader=loader,
         factory=factory,
         engine=engine,
         registry=registry,

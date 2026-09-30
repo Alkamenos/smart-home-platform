@@ -109,10 +109,12 @@
 
 ### 🟡 High (добавлено 2026-09-29 при сверке расхождений)
 
-8. **Hot-reload сервис не подключён к приложению**
-   - **Файл:** `src/services/config_watcher.py`
-   - **Проблема:** `ConfigWatcher` реализован (manifest + Python module reload), но нигде не инстанцируется (grep по `src/`: 0 вызовов вне самого файла) — hot-reload не работает при штатном старте. Также `tests/test_hot_reload.py`, на который ссылается roadmap Phase 6, **не существует** (есть только `test_hot_reload_memory.py` — тесты unregister/памяти FSM)
-   - **Статус:** Не исправлено (roadmap Phase 6 помечен с предупреждением)
+8. **Hot-reload сервис подключён под env-флагом HOT_RELOAD (default OFF)**
+   - **Файл:** `src/services/config_watcher.py`, `src/main.py` (`run_platform`)
+   - **Проблема:** `ConfigWatcher` был реализован, но нигде не инстанцируется. Также `tests/test_hot_reload.py`, на который ссылается roadmap Phase 6, **не существует** (есть только `test_hot_reload_memory.py` — тесты unregister/памяти FSM)
+   - **Статус:** ✅ **Подключено** (2026-09-30, Q3 из BACKLOG) — watcher создаётся/стартует в `run_platform()` под `HOT_RELOAD=1` (проверка `hot_reload_enabled()`, default OFF — риски ниже), остановка в `finally`; явная сборка `Container` в main (PlatformContext контейнера не содержит); починены: `stop()` без start/повторный, `_is_manifest_file` (абс/отн пути), удалён мёртвый аргумент `loader` (несуществующий тип); тесты `tests/test_config_watcher.py` (20 passed: lifecycle, детекция, реальный reload через watchdog, env-флаг); smoke: `HOT_RELOAD=1` → started/stopped в логах
+   - **Риски ДО включения по умолчанию:** (1) колбэки reload выполняются в потоке watchdog — гонки с event loop (`register_definition` зовёт `asyncio.get_event_loop()`); (2) reload сбрасывает состояние FSM в `initial_state` (`restore_state=False`); (3) EventRouter-маппинг и кэш `Container._manifest` не обновляются; (4) отсутствует enable/disable в конфиге манифеста (только env)
+   - **Остаток:** `tests/test_hot_reload.py` из roadmap не создан (есть покрытие в `test_config_watcher.py`)
 
 11. **US4 Access Control не подключён — права фактически не проверяются** *(найдено 2026-09-29 при сверке specs/001)*
    - **Файлы:** `src/webui/middleware_access_control.py` (не подключён), `src/webui/routes/devices/devices.py:79-82` (фильтрация закомментирована), `src/webui/routes/devices/websocket.py:158-174` (проверка закомментирована), `src/webui/routes/devices/access_control.py:104-206` (grant/revoke/list — заглушки)
@@ -145,10 +147,16 @@
     - **Статус:** ✅ **ИСПРАВЛЕНО** (2026-09-30, Q1 из BACKLOG) — (1) 14 тестов переведены на **sync API** (`def` без `await` — pytest-playwright предоставляет sync `page`), (2) файл исключён из общего прогона: `--ignore=tests/test_webui_playwright.py` в `[tool.pytest.ini_options] addopts` (`pyproject.toml`), запуск отдельно: `pytest tests/test_webui_playwright.py` (документировано в шапке файла). Проверено: root-прогон **15 failed / 1301 passed = baseline** (было 87), `run_checks.sh` exit 0
     - **Остаток (отдельная задача Q6 в BACKLOG):** отдельный прогон playwright зависит на teardown-сессии (stop_sync); часть ассертов устарела (`/health` отдаёт JSON `{"status":"ok"}`, а тест ищет "healthy")
 
+14. **`MockAdapter` без `start()`/`stop()` — `run_platform` падает в mock-режиме** *(найдено 2026-09-30 при smoke Q3)*
+    - **Файл:** `src/adapters/mock_adapter.py` (нет `start`/`stop`), вызов `await ctx.adapter.start()` в `src/main.py`
+    - **Проблема:** при запуске без `HA_TOKEN` (MockAdapter) `run_platform` падает с `AttributeError: 'MockAdapter' object has no attribute 'start'` ещё до старта uvicorn — штатный локальный запуск `PYTHONPATH=. python -m src.main` в mock-режиме не работает (в Docker/HA-режиме `HAAdapter.start` есть)
+    - **Статус:** Не исправлено (BACKLOG Q7)
+
 ## Последние значимые изменения
 
 | Дата | Изменение | Файлы | Статус |
 |------|-----------|-------|--------|
+| 2026-09-30 | Q3 (BACKLOG): ConfigWatcher подключён к `run_platform()` под env-флагом `HOT_RELOAD` (default OFF): явная сборка Container в main (PlatformContext без контейнера), старт после bootstrap + остановка в `finally`; фиксы: `stop()` идемпотентен/безопасен без start, `_is_manifest_file` (абс/отн пути), удалён мёртвый `loader`; `hot_reload_enabled()` + 20 тестов (lifecycle, детекция, реальный reload манифеста через watchdog, env-флаг); smoke ON/OFF; Known Issue #8 → подключено (риски default-ON зафиксированы), новый Known Issue #14 (MockAdapter без start — BACKLOG Q7); полный прогон 29 failed (baseline) / 1374 passed (+20) | `src/main.py`, `src/services/config_watcher.py`, `tests/test_config_watcher.py` | ✅ Complete |
 | 2026-09-30 | Q2 (BACKLOG): убран import file mismatch — `--import-mode=importlib` в pytest addopts (коллизия basename `test_access_control.py` в contract/integration); полный `pytest tests/` теперь собирается и работает: 29 failed / 1354 passed / 9 skipped (= сумма baseline-групп), группы отдельно без изменений; Known Issue #3 закрыт | `pyproject.toml` | ✅ Complete |
 | 2026-09-30 | Q1 (BACKLOG): устранено loop-заражение playwright-файла — 14 E2E-тестов переведены на sync playwright API (были `async def` → конфликт с sync session-фикстурой, держащей running loop), файл исключён из общего прогона (`--ignore` в addopts), запуск отдельно; root-прогон: было 87 failed → **15 failed / 1301 passed = baseline**; Known Issue #13 закрыт (остаток — Q6: teardown-зависание отдельного прогона) | `tests/test_webui_playwright.py`, `pyproject.toml` | ✅ Complete |
 | 2026-09-30 | Specs 005 device-audit-log: модель `DeviceSyncEvent` + `DeviceSyncEventPersistence` (append-only JSON `data/device_sync_events.json`), чтение `GET /api/v1/devices/{id}/events` из персистентности вместо заглушки, синхронная запись в webui-хендлерах (config_changed с before/after только запрашиваемых полей, access_granted/updated/revoked, command_executed с содержимым команды), helper `record_sync_event`/`get_sync_history` в deps; ТР-010 (Tech Debt High #2) закрыт; quickstart 6/6; регресс: contract/integration без новых падений, root без новых падений (9 падений unit — pre-existing заражение playwright, см. Known Issue #13) | `src/core/models/device_sync_event.py`, `src/core/persistence/{devices,manager}.py`, `src/webui/routes/devices/{deps,devices,access_control}.py`, `tests/unit/test_device_sync_{event,persistence}.py`, `tests/contract/test_device_events_api.py`, `tests/integration/test_device_audit_log.py`, `specs/005-device-audit-log/` | ✅ Complete |
