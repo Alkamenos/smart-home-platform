@@ -74,13 +74,14 @@ def test_edit_device_not_found(client: TestClient):
 
 def test_save_device_updates_manifest(client: TestClient):
     """Test that saving device updates the manifest store."""
-    # Save a device with modified name
+    # Save a device with modified name (source is required since spec 006, D-009)
     response = client.post(
         "/devices/save",
         data={
             "room_index": "0",
             "device_index": "0",
             "device_id": "light.kitchen",
+            "source_id": "11111111-1111-1111-1111-111111111111",
             "device_type": "light",
             "device_name": "Updated Kitchen Light",
             "behavior_template_0": "lighting",
@@ -89,7 +90,26 @@ def test_save_device_updates_manifest(client: TestClient):
         },
     )
     assert response.status_code == 200
-    assert b"saved successfully" in response.content.lower()
+    assert "сохранено" in response.text.lower()
+
+
+def test_save_device_without_source_returns_error(client: TestClient):
+    """Saving without a source is rejected with a clear message (FR-007, D-009)."""
+    response = client.post(
+        "/devices/save",
+        data={
+            "room_index": "0",
+            "device_index": "-1",
+            "device_id": "light.kitchen",
+            "device_type": "light",
+            "device_name": "No Source Light",
+            "behavior_template_0": "lighting",
+            "behavior_priority_0": "10",
+            "behavior_params_0": "{}",
+        },
+    )
+    assert response.status_code == 400
+    assert "источник" in response.text.lower()
 
 
 def test_get_ai_suggestions(client: TestClient):

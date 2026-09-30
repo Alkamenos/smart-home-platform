@@ -50,8 +50,12 @@ class AutomationDomainRules(BaseModel):
 
     motion_enabled: bool = Field(default=True, description="Enable motion-based automation")
     schedule_enabled: bool = Field(default=True, description="Enable schedule-based automation")
-    manual_lockout_min: int = Field(
-        default=60, description="Minutes to block automation after manual control"
+    manual_lockout_min: int | None = Field(
+        default=None,
+        description=(
+            "Minutes to block automation after manual control. "
+            "Совпадает с ядерной моделью: None означает «настройка не задана»"
+        ),
     )
     safety_lockout_enabled: bool = Field(default=False, description="Enable safety lockout")
     away_mode_enabled: bool = Field(default=False, description="Enable away mode")

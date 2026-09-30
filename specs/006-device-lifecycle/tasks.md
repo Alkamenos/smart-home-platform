@@ -64,10 +64,10 @@ description: "Список задач для фичи Device Lifecycle (жизн
 - [x] T016 [US1] Реализовать создание и снятие машин состояний устройства в `src/services/device_lifecycle.py` через публичный API движка: `FSMFactory.create_from_behavior()` + `engine.unregister()` перед `engine.register_definition(..., restore_state=False)`; снятие всех машин устройства при удалении или переводе в `removed_from_ha`. Не менять `FSMDefinition`, логику дебаунса и механизм таймаутов
 - [x] T017 [US1] Перестроить чтение устройств в `src/webui/routes/devices/devices.py`: убрать использование `_devices_store`, получать устройства и список из `DeviceService`, собрать ответ из модели `Device` (включая `display_name`, `description`, `location`, `tags` из `device.config`)
 - [x] T018 [US1] Удалить дублирующийся `@router.post("/apply")` в `src/webui/routes/devices/devices.py:99` и перевести единственную реализацию применения на `DeviceLifecycleService` (идемпотентно по `ha_entity_id`, поддержка `dry_run`, отчёт `devices_added`/`devices_updated`/`failed`/`failed_devices`)
-- [ ] T019 [US1] Перевести сохранение формы устройства `/devices/save` в `src/webui/app.py` на `DeviceLifecycleService` (вместо прямой записи в манифест) и добавить в форму обязательный выбор источника
-- [ ] T020 [US1] Добавить выбор источника в форму устройства в `src/webui/templates/partials/device_form.html` (список из `GET /api/v1/devices/sources`, пустой выбор — отказ с понятным сообщением)
-- [ ] T021 [US1] Передать общий адаптер в `DeviceService` в `src/webui/app.py` вместо `ha_adapter=None` (снимает TODO и чинит отказу на отправку команд из веб-интерфейса)
-- [ ] T022 [US1] Добавить логирование через loguru с `trace_id` и запись событий аудита для операций добавления/изменения в `src/services/device_lifecycle.py`
+- [x] T019 [US1] Перевести сохранение формы устройства `/devices/save` в `src/webui/app.py` на `DeviceLifecycleService` (вместо прямой записи в манифест) и добавить в форму обязательный выбор источника
+- [x] T020 [US1] Добавить выбор источника в форму устройства в `src/webui/templates/partials/device_form.html` (список из `GET /api/v1/devices/sources`, пустой выбор — отказ с понятным сообщением)
+- [x] T021 [US1] Передать общий адаптер в `DeviceService` в `src/webui/app.py` вместо `ha_adapter=None` (снимает TODO и чинит отказу на отправку команд из веб-интерфейса)
+- [x] T022 [US1] Добавить логирование через loguru с `trace_id` и запись событий аудита для операций добавления/изменения в `src/services/device_lifecycle.py`
 
 **Checkpoint**: US1 работает независимо — устройство добавляется, видно, работает и переживает перезапуск.
 

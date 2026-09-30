@@ -6,14 +6,20 @@
 from __future__ import annotations
 
 import copy
+import json
+from collections.abc import Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import yaml
 from fastapi import FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
+
+from src.core.models.device import Device
+from src.core.models.manifest import BehaviorConfig
 
 from .models import ManifestModel
 
@@ -53,11 +59,7 @@ def _resolve_default_user() -> tuple[str, bool]:
 
 
 def _run_device_service_hydration(device_service: DeviceService) -> int:
-    """Синхронно выполняет асинхронную гидратацию устройств.
-
-    ``create_app`` — синхронная фабрика, а гидратация асинхронная. Если
-    вызывающий код уже работает в event loop, корутина выполняется в
-    отдельном потоке со своим циклом (spec 006, FR-004).
+    """Синхронно выполняет асинхронную гидратацию устройств (spec 006, FR-004).
 
     Args:
         device_service: Сервис устройств.
@@ -65,18 +67,7 @@ def _run_device_service_hydration(device_service: DeviceService) -> int:
     Returns:
         Количество загруженных устройств.
     """
-    import asyncio
-    from concurrent.futures import ThreadPoolExecutor
-
-    coroutine = device_service.hydrate_from_persistence()
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coroutine)
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(asyncio.run, coroutine).result()
+    return _run_coroutine(device_service.hydrate_from_persistence())
 
 
 class LogStore:
@@ -221,6 +212,114 @@ class ManifestStore:
 def _get_project_root() -> Path:
     """Get the project root directory."""
     return Path(__file__).parent.parent.parent
+
+
+def _run_coroutine[T](coroutine: Coroutine[Any, Any, T]) -> T:
+    """Выполняет корутину из синхронного обработчика FastAPI.
+
+    ``create_app`` и хендлеры, отдающие HTML-фрагменты, синхронны по сигнатуре,
+    хотя часть сервисов асинхронна. Если уже есть работающий event loop,
+    корутина выполняется в отдельном потоке со своим циклом.
+
+    Args:
+        coroutine: Корутина для выполнения.
+
+    Returns:
+        Результат корутины.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coroutine)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, coroutine).result()
+
+
+def _load_sources_for_form(persistence: Any) -> list[dict[str, Any]]:
+    """Загружает список источников для выпадающего списка в форме устройства.
+
+    Args:
+        persistence: Менеджер хранения (может быть None).
+
+    Returns:
+        Список словарей ``{id, name, url}``; пустой список, если источников нет
+        или хранилище недоступно.
+    """
+    if persistence is None or not hasattr(persistence, "sources"):
+        return []
+
+    try:
+        sources = _run_coroutine(persistence.sources.load_all_sources())
+    except Exception as e:
+        logger.warning(f"Не удалось загрузить источники для формы: {e}")
+        return []
+
+    return [
+        {"id": str(source.id), "name": source.name, "url": str(source.url).rstrip("/")}
+        for source in sources or []
+    ]
+
+
+def _sync_manifest_store(manifest_store: Any, core_manifest: Any) -> None:
+    """Синхронизирует веб-представление манифеста с ядерным.
+
+    Веб-слой historically держал собственную копию манифеста, из-за чего
+    изменения, сделанные сервисом жизненного цикла, не были видны на
+    странице (spec 006, D-007). Здесь представление пересобирается из
+    ядерного манифеста — единственного источника состава дома.
+
+    Args:
+        manifest_store: Хранилище манифеста веб-приложения.
+        core_manifest: Ядерная модель манифеста.
+    """
+    manifest_store.current = ManifestModel(**core_manifest.model_dump())
+
+
+def _parse_behaviors_from_form(form_data: Any, behavior_model: Any) -> list[Any]:
+    """Извлекает поведения устройства из данных формы.
+
+    Args:
+        form_data: Данные формы (``await request.form()``).
+        behavior_model: Модель поведения веб-слоя.
+
+    Returns:
+        Список поведений устройства.
+    """
+    behaviors = []
+    index = 0
+    while f"behavior_template_{index}" in form_data:
+        behaviors.append(
+            behavior_model(
+                template=form_data[f"behavior_template_{index}"],
+                priority=int(form_data[f"behavior_priority_{index}"]),
+                params=json.loads(form_data.get(f"behavior_params_{index}", "{}")),
+            )
+        )
+        index += 1
+    return behaviors
+
+
+def _form_error(request: Request, message: str) -> HTMLResponse:
+    """Собирает HTML-ответ с ошибкой формы.
+
+    Args:
+        request: HTTP запрос.
+        message: Текст ошибки.
+
+    Returns:
+        Ответ с partial-шаблоном ошибки.
+    """
+    templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+    return templates.TemplateResponse(
+        request,
+        "partials/save_error.html",
+        {"error": message},
+        status_code=400,
+    )
 
 
 def create_app(
@@ -736,6 +835,20 @@ def create_app(
             if device is None:
                 raise HTTPException(status_code=404, detail="Device not found")
 
+            # Источник устройства из единого хранилища (может отсутствовать)
+            device_source_id = ""
+            try:
+                device_service = getattr(request.app.state, "device_service", None)
+                stored = (
+                    device_service.find_device_by_ha_entity_id(device_id)
+                    if device_service
+                    else None
+                )
+                if stored is not None:
+                    device_source_id = str(stored.source_id)
+            except Exception as e:
+                logger.debug(f"Источник устройства {device_id} не найден: {e}")
+
             # Load available templates
             from .template_loader import get_template_loader
 
@@ -753,6 +866,10 @@ def create_app(
                     "current_room_id": room.id,
                     "available_rooms": manifest_store.current.rooms,
                     "available_templates": template_list,
+                    "available_sources": _load_sources_for_form(
+                        getattr(request.app.state, "persistence", None)
+                    ),
+                    "current_source_id": device_source_id,
                 },
             )
         except HTTPException:
@@ -798,6 +915,10 @@ def create_app(
                     "current_room_id": current_room_id,
                     "available_rooms": rooms,
                     "available_templates": template_list,
+                    "available_sources": _load_sources_for_form(
+                        getattr(request.app.state, "persistence", None)
+                    ),
+                    "current_source_id": "",
                 },
             )
         except Exception as e:
@@ -812,105 +933,100 @@ def create_app(
         device_id: str = Form(...),
         device_type: str = Form(...),
         device_name: str = Form(""),
+        source_id: str = Form(""),
     ) -> HTMLResponse:
-        """Save device changes.
+        """Сохраняет устройство через сервис жизненного цикла.
+
+        Устройство попадает в единый источник (DeviceService), в манифест и
+        получает машину состояний сразу, без перезапуска (spec 006, US1).
+        Источник обязателен: без него устройство нельзя ни синхронизировать,
+        ни адресовать командами (FR-007, D-009).
 
         Args:
             request: FastAPI request object.
-            room_index: Index of the room.
-            device_index: Index of the device (-1 for new).
+            room_index: Index of the room (для выбора комнаты по умолчанию).
+            device_index: Index of the device (-1 для нового) — не используется,
+                идентификация идёт по ``device_id``.
             device_id: Device entity ID.
             device_type: Device type.
             device_name: Human-readable device name.
+            source_id: Источник устройства (обязателен).
 
         Returns:
             HTML response with success/error message.
         """
-        import json
-
         try:
-            from .models import BehaviorConfig, DeviceConfig
+            from .models import BehaviorConfig as WebBehaviorConfig
 
             # Ensure manifest is loaded
             if manifest_store.current is None:
                 manifest_store.load()
 
+            form_data = await request.form()
             room_idx = int(room_index)
-            dev_idx = int(device_index)
 
             if room_idx >= len(manifest_store.current.rooms):
                 raise HTTPException(status_code=404, detail="Room not found")
 
-            # Save backup for undo
-            manifest_store.backup = copy.deepcopy(manifest_store.current)
-
-            # Build behaviors from form data
-            behaviors = []
-            form_data = await request.form()
-            idx = 0
-            while True:
-                template_key = f"behavior_template_{idx}"
-                if template_key not in form_data:
-                    break
-                behavior = BehaviorConfig(
-                    template=form_data[template_key],
-                    priority=int(form_data[f"behavior_priority_{idx}"]),
-                    params=json.loads(form_data.get(f"behavior_params_{idx}", "{}")),
+            if not source_id:
+                return _form_error(
+                    request,
+                    "Выберите источник устройства — без него синхронизация и команды невозможны",
                 )
-                behaviors.append(behavior)
-                idx += 1
 
-            device = DeviceConfig(
-                id=device_id,
-                type=device_type,
-                name=device_name,
-                behaviors=behaviors,
+            behaviors = _parse_behaviors_from_form(form_data, WebBehaviorConfig)
+            core_behaviors = [
+                BehaviorConfig(
+                    template=behavior.template,
+                    priority=behavior.priority,
+                    params=behavior.params,
+                )
+                for behavior in behaviors
+            ]
+
+            target_room_id = (
+                form_data.get("room_id", "") or manifest_store.current.rooms[room_idx].id
             )
 
-            # Check if room was changed (move device to different room)
-            target_room_id = form_data.get("room_id", "")
-            current_room = manifest_store.current.rooms[room_idx]
+            lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
+            if lifecycle_service is None:
+                raise HTTPException(status_code=503, detail="Сервис жизненного цикла недоступен")
 
-            # Find target room by ID if specified
-            target_room = current_room
-            target_room_idx = room_idx
+            device = Device(
+                ha_entity_id=device_id,
+                source_id=UUID(source_id),
+                name=device_name or device_id,
+                device_type=device_type,
+                state={},
+                status="available",
+            )
+            user_id = getattr(request.app.state, "default_user_id", None) or "admin_user"
 
-            if target_room_id and target_room_id != current_room.id:
-                # Find room by ID
-                for idx, room in enumerate(manifest_store.current.rooms):
-                    if room.id == target_room_id:
-                        target_room = room
-                        target_room_idx = idx
-                        break
+            device, _created = await lifecycle_service.add_device(
+                device, room_id=target_room_id, behaviors=core_behaviors, user_id=user_id
+            )
 
-                logger.info(
-                    f"Moving device {device_id} from room {current_room.id} to {target_room.id}"
-                )
-
-            # Remove device from current room if it exists and room changed
-            if dev_idx >= 0 and dev_idx < len(current_room.devices) and target_room_idx != room_idx:
-                current_room.devices.pop(dev_idx)
-
-            # Add/update device in target room
-            if dev_idx >= 0 and dev_idx < len(target_room.devices) and target_room_idx == room_idx:
-                # Update existing device in same room
-                target_room.devices[dev_idx] = device
-            else:
-                # Add new device or to different room
-                target_room.devices.append(device)
-
+            # Синхронизируем веб-представление манифеста с ядерным и сохраняем
+            _sync_manifest_store(manifest_store, lifecycle_service.manifest)
+            manifest_store.backup = copy.deepcopy(manifest_store.current)
             manifest_store.mark_changed()
-            # Persist changes to YAML file with backup
             manifest_store.save()
-            logger.info(f"Device {device_id} saved successfully")
+            logger.info(f"Device {device_id} saved and activated: {device.ha_entity_id}")
 
-            # Return success response that closes modal and reloads page
             return templates.TemplateResponse(
                 request,
                 "partials/save_success.html",
-                {"message": f"Device {device_id} saved successfully!"},
+                {"message": f"Устройство {device_id} сохранено и запущено!"},
             )
 
+        except HTTPException as e:
+            logger.error(f"Failed to save device: {e.detail}")
+            return templates.TemplateResponse(
+                request,
+                "partials/save_error.html",
+                {"error": str(e.detail)},
+                status_code=e.status_code,
+            )
         except Exception as e:
             logger.error(f"Failed to save device: {e}")
             return templates.TemplateResponse(

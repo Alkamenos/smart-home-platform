@@ -13,6 +13,10 @@ import yaml
 from fastapi.testclient import TestClient
 
 
+TEST_SOURCE_ID = "11111111-1111-1111-1111-111111111111"
+"""Источник устройств в тестах формы (обязателен с spec 006, D-009)."""
+
+
 @pytest.fixture
 def temp_manifest():
     """Create a temporary manifest file for testing."""
@@ -207,6 +211,7 @@ class TestMoveDeviceBetweenRooms:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "room_id": "living_room",  # Move to Living Room
@@ -227,6 +232,7 @@ class TestMoveDeviceBetweenRooms:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "room_id": "living_room",
@@ -248,6 +254,7 @@ class TestMoveDeviceBetweenRooms:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "room_id": "bedroom",
@@ -267,6 +274,7 @@ class TestMoveDeviceBetweenRooms:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "room_id": "living_room",
@@ -359,6 +367,7 @@ class TestConfigureDeviceBehaviors:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 # Only one behavior (removed the second one if it existed)
@@ -378,6 +387,7 @@ class TestConfigureDeviceBehaviors:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 # Valid behavior
@@ -426,6 +436,7 @@ class TestEditBehaviorParameters:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "behavior_template_0": "lighting",
@@ -444,6 +455,7 @@ class TestEditBehaviorParameters:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "behavior_template_0": "lighting",
@@ -569,6 +581,7 @@ class TestSaveManifestChanges:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Updated Name",
                 "behavior_template_0": "lighting",
@@ -589,6 +602,7 @@ class TestSaveManifestChanges:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "behavior_template_0": "lighting",
@@ -607,6 +621,7 @@ class TestSaveManifestChanges:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "behavior_template_0": "lighting",
@@ -634,6 +649,7 @@ class TestSaveManifestChanges:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Updated Name",
                 "behavior_template_0": "lighting",
@@ -711,6 +727,7 @@ class TestValidateManifestStructure:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "",  # Empty ID
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Test",
                 "behavior_template_0": "lighting",
@@ -729,6 +746,7 @@ class TestValidateManifestStructure:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.test",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "",  # Empty type
                 "device_name": "Test",
                 "behavior_template_0": "lighting",
@@ -747,6 +765,7 @@ class TestValidateManifestStructure:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.test",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Test",
                 "behavior_template_0": "lighting",
@@ -765,6 +784,7 @@ class TestValidateManifestStructure:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.test",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Test",
                 "behavior_template_0": "lighting",
@@ -783,6 +803,7 @@ class TestValidateManifestStructure:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.test",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Test",
                 "behavior_template_0": "lighting",
@@ -850,6 +871,7 @@ class TestIntegrationFlows:
                 "room_index": "2",  # Living Room
                 "device_index": "999",  # New device
                 "device_id": "light.new_device",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "New Light",
                 "behavior_template_0": "lighting",
@@ -872,6 +894,7 @@ class TestIntegrationFlows:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.kitchen",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Kitchen Light",
                 "room_id": "bedroom",  # Move to bedroom
@@ -924,6 +947,7 @@ class TestErrorHandling:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.test",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Test",
                 "behavior_template_0": "lighting",
@@ -941,6 +965,7 @@ class TestErrorHandling:
                 "room_index": "0",
                 "device_index": "0",
                 "device_id": "light.test",
+                "source_id": TEST_SOURCE_ID,
                 "device_type": "light",
                 "device_name": "Test",
                 "behavior_template_0": "lighting",

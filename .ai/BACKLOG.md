@@ -115,7 +115,7 @@
 
 | Фича | Спека | Статус |
 |------|-------|--------|
-| F1 Device Lifecycle | specs/006 | 🚧 Реализация: **US1 (MVP) закрыт 2026-10-01** — 16/47 задач (Foundational + US1: единый источник устройств, транзакция жизненного цикла, `EventRouter.rebuild()`, отписка от подписок, дубль `/apply` устранён); quickstart 1–3 ✅; 1459 passed / 0 failed. Далее: US2 (мастер), US3 (синк↔список), US4 (удаление) | spec (4 US, 30 FR, 10 SC), research (15 решений), plan (конституция PASS, 4 волны), data-model, 2 контракта, quickstart (9 сценариев), **tasks.md (47 задач: 3 setup + 8 foundational + 11 US1 + 10 US2 + 4 US3 + 5 US4 + 6 polish; 19 параллельных)**. Далее: `/speckit-implement` |
+| F1 Device Lifecycle | specs/006 | 🚧 Реализация: **US1 (MVP) закрыт 2026-10-01** — 20/47 задач (включая форму `/devices/save` и обязательный выбор источника) (Foundational + US1: единый источник устройств, транзакция жизненного цикла, `EventRouter.rebuild()`, отписка от подписок, дубль `/apply` устранён); quickstart 1–3 ✅; 1459 passed / 0 failed. Далее: US2 (мастер), US3 (синк↔список), US4 (удаление) | spec (4 US, 30 FR, 10 SC), research (15 решений), plan (конституция PASS, 4 волны), data-model, 2 контракта, quickstart (9 сценариев), **tasks.md (47 задач: 3 setup + 8 foundational + 11 US1 + 10 US2 + 4 US3 + 5 US4 + 6 polish; 19 параллельных)**. Далее: `/speckit-implement` |
 | F2 Live FSM Statuses | specs/007 (будет) | ⬜ Не начата |
 | F3 FSM Observability | specs/008 (будет) | ⬜ Не начата |
 | F4 Device E2E | specs/009 (будет) | ⬜ Не начата |

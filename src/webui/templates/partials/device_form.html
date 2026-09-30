@@ -16,6 +16,25 @@
             <input type="hidden" name="device_index" value="{{ device_index }}">
 
             <div class="mb-3">
+                <label for="source_id" class="form-label">Источник устройства</label>
+                <select class="form-select" id="source_id" name="source_id" required>
+                    <option value="">Выберите источник...</option>
+                    {% for source in available_sources | default([]) %}
+                    <option value="{{ source.id }}"
+                            {% if source.id == current_source_id | default('') %}selected{% endif %}>
+                        {{ source.name }} ({{ source.url }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">
+                    Источник нужен для синхронизации и управления устройством.
+                    {% if not available_sources %}
+                    Источников пока нет — создайте его в мастере подключения устройств.
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="mb-3">
                 <label for="device_id" class="form-label">Device ID</label>
                 <input type="text" class="form-control" id="device_id" name="device_id"
                        value="{{ device.id if device.id else '' }}" required>
