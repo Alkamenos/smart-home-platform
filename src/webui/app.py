@@ -687,6 +687,82 @@ def create_app(
                 status_code=400,
             )
 
+    @app.post("/devices/{room_id}/{device_entity_id}/delete", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
+    async def delete_device_from_room(
+        request: Request,
+        room_id: int,
+        device_entity_id: str,
+        user_id: str = Form(...),
+        is_admin: bool = Form(False),
+    ) -> HTMLResponse:
+        """T041: Удаляет устройство из комнаты вместе с конфигурацией.
+
+        Каскад выполняет сервис жизненного цикла: снятие машин состояний,
+        отзыв прав, удаление из хранилища и манифеста, перестроение
+        маршрутизации, аудит. Интерфейс получает обновлённую карточку
+        комнаты; при перезагрузке страницы устройство не возвращается.
+
+        Args:
+            request: FastAPI request object.
+            room_id: Индекс комнаты в манифесте.
+            device_entity_id: Идентификатор сущности Home Assistant.
+            user_id: Пользователь, инициировавший удаление (для аудита).
+            is_admin: Признак прав администратора.
+
+        Returns:
+            Обновлённая карточка комнаты или сообщение об ошибке.
+        """
+        if not is_admin:
+            return templates.TemplateResponse(
+                request,
+                "partials/save_error.html",
+                {"error": "Удаление устройства доступно только администратору"},
+                status_code=403,
+            )
+
+        try:
+            lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
+            device_service = getattr(request.app.state, "device_service", None)
+            if lifecycle_service is None or device_service is None:
+                raise HTTPException(status_code=503, detail="Сервис устройств недоступен")
+
+            device = device_service.find_device_by_ha_entity_id(device_entity_id)
+            if device is None:
+                return templates.TemplateResponse(
+                    request,
+                    "partials/save_error.html",
+                    {"error": f"Устройство {device_entity_id} не найдено в списке"},
+                    status_code=404,
+                )
+
+            await lifecycle_service.delete_device(device, user_id=user_id)
+
+            # Ядро обновило манифест — синхронизируем веб-представление
+            _sync_manifest_store(manifest_store, lifecycle_service.manifest)
+            manifest_store.mark_changed()
+
+            index = (
+                room_id
+                if 0 <= room_id < len(manifest_store.current.rooms)
+                else len(manifest_store.current.rooms) - 1
+            )
+            logger.info(f"Устройство {device_entity_id} удалено из комнаты {room_id}")
+            return templates.TemplateResponse(
+                request,
+                "partials/room_card.html",
+                {"room": manifest_store.current.rooms[index], "room_index": index},
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Не удалось удалить устройство {device_entity_id}: {e}")
+            return templates.TemplateResponse(
+                request,
+                "partials/save_error.html",
+                {"error": f"Не удалось удалить устройство: {e}"},
+                status_code=500,
+            )
+
     @app.delete("/rooms/{room_id}", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def delete_room(request: Request, room_id: int) -> HTMLResponse:
         """Delete a room from the manifest.

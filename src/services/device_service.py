@@ -73,6 +73,10 @@ class DeviceService:
         self._event_router = event_router
         self._devices: dict[UUID, Device] = {}
         self._sources: dict[UUID, HASource] = {}
+        # Удалённые устройства: по ним отличаем «уже удалено» от «неизвестно»,
+        # поэтому повторный DELETE идемпотентен, а неизвестный id даёт 404
+        # (spec 006, FR-025/FR-027).
+        self._deleted_devices: set[UUID] = set()
         self._commands: dict[UUID, dict[str, Any]] = {}  # Хранилище статусов команд
         self._unavailable_timers: dict[
             UUID, asyncio.Task
@@ -472,6 +476,17 @@ class DeviceService:
         logger.info(f"Устройство сохранено: {device.ha_entity_id} (источник {device.source_id})")
         return device
 
+    def was_device_deleted(self, device_id: UUID) -> bool:
+        """Сообщает, удалялось ли устройство за время работы процесса.
+
+        Args:
+            device_id: Идентификатор устройства.
+
+        Returns:
+            True, если устройство уже удалялось.
+        """
+        return device_id in self._deleted_devices
+
     async def remove_device(self, device_id: UUID) -> bool:
         """Удаляет устройство из постоянного хранилища, индекса и кэша.
 
@@ -491,6 +506,8 @@ class DeviceService:
 
         if self.persistence is not None and hasattr(self.persistence, "devices"):
             await self.persistence.devices.delete_device(device_id)
+        await self.persistence.device_access.delete_accesses_for_device(device_id)
+        self._deleted_devices.add(device_id)
 
         self._index.remove_device(device_id)
         self._devices.pop(device_id, None)

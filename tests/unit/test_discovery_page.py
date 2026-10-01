@@ -44,7 +44,7 @@ def client() -> Iterator[TestClient]:
         from src.webui.app import create_app
 
         app = create_app(str(Path(work_dir) / "manifest.yaml"))
-        yield TestClient(app)
+        yield TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
     finally:
         os.chdir(previous_cwd)
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -137,3 +137,72 @@ class TestDiscoveryRoomsEndpoint:
 
         assert response.status_code == 200
         assert response.json()["rooms"]
+
+
+class TestDeviceDeleteInUI:
+    """T041: удаление устройства из интерфейса."""
+
+    def test_room_card_should_offer_delete_with_confirmation(self, client: TestClient) -> None:
+        """В карточке устройства есть действие удаления с подтверждением."""
+        page = client.get("/").text
+
+        assert "/delete" in page, "Нет действия удаления"
+        assert "hx-confirm=" in page, "Удаление должно требовать подтверждения"
+        assert "Удалить устройство" in page
+
+    def test_room_card_delete_should_pass_identity(self, client: TestClient) -> None:
+        """Форма удаления передаёт пользователя и признак администратора."""
+        page = client.get("/").text
+
+        assert 'name="user_id"' in page
+        assert 'name="is_admin"' in page
+
+    def test_delete_room_device_should_remove_it_everywhere(self, client: TestClient) -> None:
+        """Удаление из карточки комнаты убирает устройство из манифеста и списка."""
+        source = client.post(
+            "/api/v1/devices/sources",
+            json={
+                "name": "UI Delete HA",
+                "url": "http://192.168.1.77:8123",
+                "token": "ui_delete_token_1",
+            },
+        ).json()
+        applied = client.post(
+            "/api/v1/devices/apply",
+            json={
+                "source_id": source["id"],
+                "selections": [
+                    {
+                        "device_entity_id": "light.ui_delete_me",
+                        "device_type": "light",
+                        "name": "UI Delete Me",
+                        "target_room": "kitchen",
+                        "behaviors": [{"template": "lighting", "priority": 10, "params": {}}],
+                    }
+                ],
+            },
+        )
+        assert applied.status_code == 201
+
+        room_index = next(
+            index
+            for index, room in enumerate(client.get("/").text.split('data-room="')[1:])
+            if room.startswith("kitchen")
+        )
+        response = client.post(
+            f"/devices/{room_index}/light.ui_delete_me/delete",
+            data={"user_id": "admin_user", "is_admin": "true"},
+        )
+
+        assert response.status_code == 200
+        assert "light.ui_delete_me" not in response.text
+        assert "light.ui_delete_me" not in client.get("/").text
+
+    def test_delete_room_device_should_require_admin(self, client: TestClient) -> None:
+        """Без прав администратора удаление из интерфейса отклоняется."""
+        response = client.post(
+            "/devices/0/light.not_mine/delete",
+            data={"user_id": "plain_user", "is_admin": "false"},
+        )
+
+        assert response.status_code == 403

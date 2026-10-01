@@ -74,6 +74,19 @@
                         data-bs-target="#deviceModal">
                     <i class="bi bi-pencil"></i> Edit
                 </button>
+                <form class="d-inline"
+                      hx-post="/devices/{{ room_index }}/{{ device.id }}/delete"
+                      hx-target="#room-{{ room_index }}"
+                      hx-swap="outerHTML"
+                      hx-confirm="Удалить устройство {{ device.id }}? Его автоматика и настройки будут удалены безвозвратно.">
+                    <input type="hidden" name="user_id"
+                           value="{{ user_id | default('admin_user', true) }}">
+                    <input type="hidden" name="is_admin"
+                           value="{{ 'true' if user_is_admin | default(true, true) else 'false' }}">
+                    <button type="submit" class="device-action text-danger" title="Удалить устройство">
+                        <i class="bi bi-trash"></i> Удалить
+                    </button>
+                </form>
             </div>
         </div>
         {% endfor %}

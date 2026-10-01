@@ -19,6 +19,7 @@ from src.core.events.event_bus import EventBus
 from src.core.events.event_router import EventRouter
 from src.core.fsm.engine import FSMEngine
 from src.core.fsm.factory import FSMFactory
+from src.core.models.device import Device
 from src.core.models.manifest import (
     AutomationDomainRules,
     AutomationRules,
@@ -375,6 +376,106 @@ class TestDeviceLifecycleDeactivate:
         await lifecycle.deactivate_device(device)
 
         assert await lifecycle.persistence.devices.load_device(device.id) is not None
+
+
+class TestDeviceLifecycleDelete:
+    """Тесты каскада удаления устройства (FR-024–FR-027)."""
+
+    @staticmethod
+    async def _device_with_access(lifecycle: DeviceLifecycleService) -> Device:
+        """Создаёт устройство с правами двух пользователей и автоматикой.
+
+        Args:
+            lifecycle: Сервис жизненного цикла.
+
+        Returns:
+            Удаляемое устройство.
+        """
+        device = make_device(ha_entity_id="light.kitchen", source_id=make_source().id)
+        await lifecycle.add_device(device, room_id="kitchen")
+        await lifecycle.device_service.grant_access(
+            device_id=device.id, user_id="viewer_user", role="viewer", granted_by="admin_user"
+        )
+        return device
+
+    async def test_delete_should_remove_device_everywhere(
+        self, lifecycle: DeviceLifecycleService
+    ) -> None:
+        """Устройство пропадает из манифеста, хранилища, кэша и индексов."""
+        device = await self._device_with_access(lifecycle)
+
+        removed = await lifecycle.delete_device(device)
+
+        assert removed is True
+        assert await lifecycle.device_service.get_device(device.id) is None
+        assert await lifecycle.persistence.devices.load_device(device.id) is None
+        rooms = [room.id for room in lifecycle.manifest.rooms]
+        assert all(
+            d["id"] != "light.kitchen" for room in lifecycle.manifest.rooms for d in room.devices
+        ), "Устройство осталось в манифесте"
+        assert rooms == ["kitchen"], "Комната не должна исчезнуть вместе с устройством"
+
+    async def test_delete_should_unregister_fsm_and_reroute(
+        self, lifecycle: DeviceLifecycleService
+    ) -> None:
+        """Машины состояний снимаются, маршрутизация перестраивается."""
+        device = await self._device_with_access(lifecycle)
+        assert _fsm_ids_of(lifecycle.engine, "light.kitchen")
+
+        await lifecycle.delete_device(device)
+
+        assert _fsm_ids_of(lifecycle.engine, "light.kitchen") == []
+        mappings = lifecycle.event_router.get_mapping_for_sensor("binary_sensor.kitchen_motion")
+        assert {fsm_id for fsm_id, _event in mappings} == set()
+
+    async def test_delete_should_revoke_all_accesses(
+        self, lifecycle: DeviceLifecycleService
+    ) -> None:
+        """Все записи о доступе к устройству отзываются (FR-025)."""
+        device = await self._device_with_access(lifecycle)
+
+        await lifecycle.delete_device(device)
+
+        assert await lifecycle.persistence.device_access.load_accesses_for_device(device.id) == []
+        assert await lifecycle.device_service.get_user_accessible_devices("admin_user") == []
+        assert await lifecycle.device_service.get_user_accessible_devices("viewer_user") == []
+
+    async def test_delete_should_be_idempotent(self, lifecycle: DeviceLifecycleService) -> None:
+        """Повторное удаление — успех и не падает (FR-027)."""
+        device = await self._device_with_access(lifecycle)
+        await lifecycle.delete_device(device)
+
+        assert await lifecycle.delete_device(device) is True
+        assert await lifecycle.delete_device(device.id) is True
+
+    async def test_delete_should_write_audit_record(
+        self, lifecycle: DeviceLifecycleService
+    ) -> None:
+        """Удаление попадает в аудит."""
+        device = await self._device_with_access(lifecycle)
+
+        await lifecycle.delete_device(device, user_id="admin_user")
+
+        actions = await lifecycle.persistence.device_sync_events.list_events(
+            device_id=device.id, action="device_deleted"
+        )
+        assert actions, "Аудит удаления обязателен"
+        assert actions[0].user_id == "admin_user"
+
+    async def test_delete_should_not_send_commands_afterwards(
+        self, lifecycle: DeviceLifecycleService
+    ) -> None:
+        """После удаления событие источника не приводит к команде устройству."""
+        device = await self._device_with_access(lifecycle)
+        await lifecycle.delete_device(device)
+
+        triggered = await lifecycle.engine.trigger(
+            entity_id="binary_sensor.kitchen_motion",
+            event="state_changed",
+        )
+
+        assert _fsm_ids_of(lifecycle.engine, "light.kitchen") == []
+        assert not triggered, "После удаления событие не должно приводить к действиям"
 
 
 class TestDeviceLifecycleStandalone:

@@ -307,3 +307,91 @@ class TestDeviceConfigAPI:
         response = client.get(f"/api/v1/devices/{device_id}/events?event_type=state_changed")
 
         assert response.status_code in [200, 404]
+
+
+class TestDeviceDeleteAPI:
+    """T037: контракт удаления устройства (spec 006, US4, FR-024–FR-027)."""
+
+    @staticmethod
+    def _applied_device(client, source_id: str) -> dict:
+        """Добавляет устройство через канонический apply и возвращает его.
+
+        Args:
+            client: HTTP-клиент теста.
+            source_id: Идентификатор источника.
+
+        Returns:
+            Описание добавленного устройства из списка.
+        """
+        response = client.post(
+            "/api/v1/devices/apply",
+            json={
+                "source_id": source_id,
+                "selections": [
+                    {
+                        "device_entity_id": "light.contract_delete",
+                        "device_type": "light",
+                        "name": "Contract Delete",
+                        "target_room": "living_room",
+                        "behaviors": [{"template": "lighting", "priority": 10, "params": {}}],
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 201
+        devices = client.get("/api/v1/devices").json()
+        return next(d for d in devices if d["ha_entity_id"] == "light.contract_delete")
+
+    def test_delete_should_return_204(self, client, sample_source):
+        """Удаление существующего устройства — 204 без тела."""
+        device = self._applied_device(client, sample_source["id"])
+
+        response = client.delete(f"/api/v1/devices/{device['id']}")
+
+        assert response.status_code == 204
+        assert response.content == b""
+
+    def test_delete_should_remove_device_from_list(self, client, sample_source):
+        """После удаления устройства нет ни в списке, ни в ответе устройства."""
+        device = self._applied_device(client, sample_source["id"])
+
+        client.delete(f"/api/v1/devices/{device['id']}")
+
+        assert device["id"] not in [d["id"] for d in client.get("/api/v1/devices").json()]
+        assert client.get(f"/api/v1/devices/{device['id']}").status_code == 404
+
+    def test_repeated_delete_should_stay_successful(self, client, sample_source):
+        """Повторное удаление — тоже успех (идемпотентность, FR-027)."""
+        device = self._applied_device(client, sample_source["id"])
+
+        first = client.delete(f"/api/v1/devices/{device['id']}")
+        second = client.delete(f"/api/v1/devices/{device['id']}")
+
+        assert first.status_code == 204
+        assert second.status_code == 204
+
+    def test_delete_should_require_admin(self, client, sample_source):
+        """Без прав администратора удаление запрещено (FR-026)."""
+        device = self._applied_device(client, sample_source["id"])
+
+        response = client.delete(
+            f"/api/v1/devices/{device['id']}",
+            headers={"X-User-ID": "plain_user", "X-Is-Admin": "false"},
+        )
+
+        assert response.status_code == 403
+        assert device["id"] in [d["id"] for d in client.get("/api/v1/devices").json()]
+
+    def test_delete_should_require_identification(self, client, sample_source):
+        """Без идентификации запрос отклоняется защитным слоем."""
+        device = self._applied_device(client, sample_source["id"])
+
+        response = client.delete(f"/api/v1/devices/{device['id']}", headers={"X-User-ID": ""})
+
+        assert response.status_code in (401, 403)
+
+    def test_delete_unknown_device_should_return_404(self, client):
+        """Удаление несуществующего устройства — 404."""
+        response = client.delete(f"/api/v1/devices/{uuid4()}")
+
+        assert response.status_code == 404

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from loguru import logger
 
@@ -346,6 +347,103 @@ class DeviceLifecycleService:
             if device.id == ha_entity_id:
                 return list(device.behaviors)
         return []
+
+    async def delete_device(
+        self, device_or_id: Device | UUID, user_id: str = DEFAULT_USER_ID
+    ) -> bool:
+        """Полностью удаляет устройство: конфигурация, права и автоматика.
+
+        Каскад (FR-024): снятие машин состояний → отзыв всех записей о
+        доступе → удаление из постоянного хранилища, кэша и индексов →
+        удаление из манифеста → перестроение маршрутизации → аудит.
+        Отсутствие устройства не считается ошибкой (FR-027).
+
+        Args:
+            device_or_id: Устройство или его идентификатор.
+            user_id: Инициатор операции для аудита.
+
+        Returns:
+            True, если устройство было удалено или уже отсутствовало.
+        """
+        device = device_or_id
+        if isinstance(device_or_id, UUID):
+            device = await self.device_service.get_device(device_or_id)
+            if device is None:
+                logger.info(
+                    f"Удаление отсутствующего устройства {device_or_id}: успех без изменений"
+                )
+                return True
+
+        before = self._snapshot(
+            device, self._behaviors_from_manifest(self._room_of(device), device.ha_entity_id)
+        )
+
+        # 1. Снять машины состояний: события источника больше не приводят к командам
+        if self.engine is not None:
+            for entity_id in self.engine.get_entities_by_device(device.ha_entity_id):
+                self.engine.unregister(entity_id)
+
+        # 2. Отозвать все записи о доступе
+        if self.persistence is not None and hasattr(self.persistence, "device_access"):
+            try:
+                await self.persistence.device_access.delete_accesses_for_device(device.id)
+            except Exception as e:
+                logger.warning(f"Не удалось отозвать доступ к {device.ha_entity_id}: {e}")
+
+        # 3. Удалить из постоянного хранилища, кэша и индексов
+        await self.device_service.remove_device(device.id)
+
+        # 4. Убрать из манифеста (запись поведений — источник конфигурации)
+        self._remove_from_manifest(device.ha_entity_id)
+
+        # 5. Перестроить маршрутизацию под обновлённый манифест
+        self._rebuild_event_routing()
+
+        # 6. Аудит
+        await self._record_audit(
+            device_id=device.id,
+            action="device_deleted",
+            user_id=user_id,
+            before=before,
+            data={"ha_entity_id": device.ha_entity_id},
+        )
+        logger.info(f"Устройство удалено полностью: {device.ha_entity_id}")
+        return True
+
+    def _room_of(self, device: Device) -> RoomConfig:
+        """Возвращает комнату устройства или пустую (для снимка аудита).
+
+        Args:
+            device: Устройство.
+
+        Returns:
+            Комната устройства либо новая пустая комната.
+        """
+        room = next(
+            (r for r in self.manifest.rooms if any(d.id == device.ha_entity_id for d in r.devices)),
+            None,
+        )
+        if room is not None:
+            return room
+        return RoomConfig(id="", name="", sensors={}, devices=[])
+
+    def _remove_from_manifest(self, ha_entity_id: str) -> None:
+        """Удаляет устройство из всех комнат манифеста.
+
+        Комната при этом сохраняется: пустая комната остаётся в конфигурации
+        дома, удаление устройства не должно её убирать.
+
+        Args:
+            ha_entity_id: Идентификатор сущности Home Assistant.
+        """
+        for room in self.manifest.rooms:
+            room.devices = [d for d in room.devices if d.id != ha_entity_id]
+            if room.sensors:
+                room.sensors = {
+                    sensor_type: entity_id
+                    for sensor_type, entity_id in room.sensors.items()
+                    if entity_id != ha_entity_id
+                }
 
     @staticmethod
     def _upsert_manifest_entry(
