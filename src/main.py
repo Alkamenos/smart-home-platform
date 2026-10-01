@@ -14,7 +14,12 @@ from loguru import logger
 
 from core.container import Container
 from services.config_watcher import create_watcher, hot_reload_enabled
-from webui.app import create_app
+
+# Канонический путь импорта — src.webui.* (совпадает с Makefile и со всеми
+# остальными импортами веб-слоя). Импорт через верхнеуровневый `webui` создавал
+# второй экземпляр модулей с собственным менеджером WebSocket-соединений, и
+# раздача живых обновлений уходила «в никуда» (spec 007, FR-024).
+from src.webui.app import create_app
 
 
 # Настройка loguru с цветным выводом для Docker
@@ -134,6 +139,12 @@ async def run_platform():
     try:
         # 1. Запуск WebSocket коннекта к HA (в фоне)
         await ctx.adapter.start()
+
+        # 1a. Оповещение подписчиков о готовности платформы: восстановление
+        # сохранённых состояний автоматов и запуск проверки расписаний
+        # (FR-007). Событие платформой не публиковалось, поэтому эти
+        # подписчики оставались мёртвыми.
+        await container.announce_started()
 
         # 2. Запуск FastAPI для Healthcheck (порт 8125, как в docker-compose)
         # Pass the container instance so discovery routes can use the connected adapter

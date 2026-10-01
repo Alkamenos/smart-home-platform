@@ -37,6 +37,11 @@ EVENT_DEVICE_STATE_CHANGED = "device.state_changed"
 EVENT_DEVICE_ACCESS_CHANGED = "device.access_changed"
 EVENT_DEVICE_REMOVED = "device.removed"
 
+# Канал Home Assistant с изменениями состояния. Раньше обработчик
+# handle_state_change существовал, но ни на что не подписывался, поэтому
+# состояние устройства обновлялось только синхронизацией (FR-007).
+EVENT_HA_STATE_CHANGE = "state_change"
+
 # Пользователь, которому выдаётся доступ на устройства, найденные синхронизацией
 SYNC_ACCESS_USER = "admin_user"
 
@@ -86,6 +91,46 @@ class DeviceService:
         # Инициализация кэша и индекса
         self._cache = DeviceCache(max_size=cache_max_size, ttl_seconds=cache_ttl_seconds)
         self._index = IndexManager()
+        self._state_change_subscribed = False
+
+    def subscribe_state_changes(self) -> None:
+        """Подписать обработчик изменения состояния устройства на шину.
+
+        Подписка выполняется ровно один раз: повторный вызов (например, при
+        пересборке приложения) не создаёт дубликатов, иначе одно событие
+        Home Assistant обрабатывалось бы несколько раз (FR-007).
+        """
+        if self._state_change_subscribed:
+            logger.debug("Device state change subscription already registered")
+            return
+
+        self.event_bus.subscribe(EVENT_HA_STATE_CHANGE, self._on_ha_state_change_event)
+        self._state_change_subscribed = True
+        logger.debug(f"Subscribed to {EVENT_HA_STATE_CHANGE} for device state updates")
+
+    async def _on_ha_state_change_event(
+        self, event_type: str, payload: dict[str, Any], trace_id: str | None = None
+    ) -> None:
+        """Привести событие шины к формату Home Assistant и обработать его.
+
+        Args:
+            event_type: Имя события.
+            payload: Полезная нагрузка события изменения состояния.
+            trace_id: Идентификатор трассы.
+        """
+        entity_id = (payload or {}).get("entity_id")
+        if not entity_id:
+            return
+
+        await self.handle_state_change(
+            {
+                "data": {
+                    "entity_id": entity_id,
+                    "old_state": payload.get("old_state"),
+                    "new_state": {"state": payload.get("new_state")},
+                }
+            }
+        )
 
     async def _merge_synced_devices(
         self, source_id: UUID, parsed_devices: list[Device]
