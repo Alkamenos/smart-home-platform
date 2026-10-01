@@ -16,6 +16,7 @@ from typing import Any
 
 from adapters.ha_adapter import HomeAssistantAdapter
 from core.events.event_bus import EventBus
+from core.events.fsm_events import EVENT_FSM_TRANSITIONED
 
 
 logger = logging.getLogger(__name__)
@@ -38,17 +39,31 @@ class DashboardIntegration:
 
     def _setup_event_handlers(self):
         """Настроить обработчики событий"""
-        self.event_bus.subscribe("fsm.state.changed", self._on_state_changed)
+        # Имя fsm.state.changed не публиковалось никем; единственным источником
+        # переходов стал fsm.transitioned (spec 007, contracts/fsm-events.md).
+        self.event_bus.subscribe(EVENT_FSM_TRANSITIONED, self._on_state_changed)
         self.event_bus.subscribe("ha.connected", self._on_ha_connected)
 
-    async def _on_state_changed(self, event_data: dict[str, Any]):
-        """Обработчик изменения состояния FSM"""
-        fsm_id = event_data.get("fsm_id")
-        new_state = event_data.get("new_state")
+    async def _on_state_changed(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        trace_id: str | None = None,
+    ) -> None:
+        """Обработать выполненный переход автомата.
+
+        Args:
+            event_type: Имя события.
+            payload: Полезная нагрузка перехода.
+            trace_id: Идентификатор трассы.
+        """
+        data = payload or {}
+        fsm_id = data.get("fsm_id")
+        new_state = data.get("to_state")
 
         if fsm_id and new_state:
             # Обновляем sensor в HA
-            await self._update_fsm_sensor(fsm_id, new_state, event_data)
+            await self._update_fsm_sensor(fsm_id, new_state, data)
 
     async def _on_ha_connected(self, event_data: dict[str, Any]):
         """Обработчик подключения к HA"""

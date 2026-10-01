@@ -83,21 +83,33 @@ class ContextManager:
 
         self._logger.info("ContextManager initialized")
 
-    def _on_platform_started(self, data: dict) -> None:
-        """При старте платформы запускаем проверку расписаний"""
-        self._start_schedule_checker()
-
-    def _on_ha_state_change(self, data: dict) -> None:
-        """
-        Обработчик изменения состояния сенсора
+    def _on_platform_started(
+        self, event_type: str, payload: dict, trace_id: str | None = None
+    ) -> None:
+        """При старте платформы запускаем проверку расписаний.
 
         Args:
-            data: {
+            event_type: Имя события.
+            payload: Полезная нагрузка события.
+            trace_id: Идентификатор трассы.
+        """
+        self._start_schedule_checker()
+
+    def _on_ha_state_change(
+        self, event_type: str, payload: dict, trace_id: str | None = None
+    ) -> None:
+        """Обработать изменение состояния сенсора.
+
+        Args:
+            event_type: Имя события.
+            payload: {
                 "entity_id": "binary_sensor.living_room_motion",
                 "old_state": "off",
                 "new_state": "on"
             }
+            trace_id: Идентификатор трассы.
         """
+        data = payload or {}
         entity_id = data.get("entity_id")
         new_state = data.get("new_state")
 

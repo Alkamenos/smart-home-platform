@@ -29,6 +29,8 @@ from __future__ import annotations
 import json
 import time
 
+from core.events.fsm_events import EVENT_FSM_TRANSITIONED, EVENT_PLATFORM_STARTED
+
 
 class FSMPersistence:
     """
@@ -53,9 +55,11 @@ class FSMPersistence:
         # Флаг доступности input_text
         self._input_text_available = True
 
-        # Подписываемся на переходы FSM
-        event_bus.subscribe("fsm.transition", self._on_fsm_transition)
-        event_bus.subscribe("platform.started", self._on_platform_started)
+        # Подписываемся на переходы FSM. Имя fsm.transitioned различает
+        # выполненный переход и отказ, в отличие от прежнего fsm.transition,
+        # которое ничего не публиковало (spec 007, T020).
+        event_bus.subscribe(EVENT_FSM_TRANSITIONED, self._on_fsm_transition)
+        event_bus.subscribe(EVENT_PLATFORM_STARTED, self._on_platform_started)
 
         self._logger.info("FSMPersistence initialized")
 
@@ -73,18 +77,25 @@ class FSMPersistence:
         self._enabled_entities[entity_id] = storage_key
         self._logger.info(f"Enabled persistence for {entity_id} (key: {storage_key})")
 
-    def _on_fsm_transition(self, data: dict) -> None:
-        """
-        Обработчик перехода FSM - сохраняет состояние
+    def _on_fsm_transition(
+        self, event_type: str, payload: dict, trace_id: str | None = None
+    ) -> None:
+        """Обработать выполненный переход FSM — сохранить состояние.
+
+        Обработчик синхронный: сохранение состояния пишет файл, а шина
+        поддерживает синхронные подписчики и не ожидает их результат (R-05).
 
         Args:
-            data: {
-                "entity_id": "light.living_room",
+            event_type: Имя события.
+            payload: {
+                "fsm_id": "light.kitchen_lighting_10",
                 "to_state": "PARTY",
                 ...
             }
+            trace_id: Идентификатор трассы для корреляции по журналу.
         """
-        entity_id = data.get("entity_id")
+        data = payload or {}
+        entity_id = data.get("fsm_id")
         to_state = data.get("to_state")
 
         if not entity_id or not to_state:
@@ -110,11 +121,17 @@ class FSMPersistence:
             new_state=to_state,
         )
 
-    def _on_platform_started(self, data: dict) -> None:
-        """
-        При старте платформы восстанавливаем сохраненные состояния
+    def _on_platform_started(
+        self, event_type: str, payload: dict, trace_id: str | None = None
+    ) -> None:
+        """Восстановить сохранённые состояния при старте платформы.
 
-        Вызывается после регистрации всех автоматов но до начала работы
+        Вызывается после регистрации всех автоматов, но до начала работы.
+
+        Args:
+            event_type: Имя события.
+            payload: Полезная нагрузка события.
+            trace_id: Идентификатор трассы для корреляции по журналу.
         """
         self._logger.info("Restoring persisted states...")
 

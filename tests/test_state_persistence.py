@@ -37,10 +37,14 @@ class TestStatePersistenceInitialization:
             assert persistence.storage_path == Path(storage_path)
 
     def test_default_storage_path(self):
-        """По умолчанию используется state.json в текущей директории"""
+        """По умолчанию используется data/state.json (T013, FR-015)
+
+        Раньше файл создавался в текущем рабочем каталоге, что разводило
+        состояния автоматов и остальные файлы данных платформы.
+        """
         persistence = StatePersistence()
 
-        assert persistence.storage_path == Path("state.json")
+        assert persistence.storage_path == Path("data") / "state.json"
 
 
 class TestSaveState:

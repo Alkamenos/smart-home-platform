@@ -289,6 +289,84 @@ class TestContainerWithMocks:
         assert factory._event_bus is container.event_bus
 
 
+class TestEngineDependencies:
+    """Движок состояний получает шину, хранилище и диспетчер (R-01)."""
+
+    def _build_container(self) -> Container:
+        """Собрать контейнер в автономном режиме.
+
+        Returns:
+            Собранный контейнер платформы.
+        """
+        os.environ.pop("HA_TOKEN", None)
+        container = Container(manifest_path="instances/leonids_house/manifest.yaml")
+        container.build()
+        return container
+
+    def test_build_should_inject_event_bus_into_fsm_engine(self):
+        """Движок публикует переходы в ту же шину, что и остальная платформа."""
+        container = self._build_container()
+
+        assert container.fsm._event_bus is container.event_bus
+
+    def test_build_should_inject_state_persistence_into_fsm_engine(self):
+        """Движок сохраняет состояние автоматов (FR-015)."""
+        container = self._build_container()
+
+        assert container.fsm._persistence is not None
+
+    def test_build_should_link_command_dispatcher_to_fsm_engine(self):
+        """Движок отправляет команды через диспетчер, а не отбрасывает их."""
+        container = self._build_container()
+
+        assert container.fsm._dispatcher is container.dispatcher
+
+    async def test_fsm_action_should_reach_dispatcher_when_transition_occurs(self):
+        """Переход приводит к отправке команды устройству (FR-016)."""
+        from unittest.mock import AsyncMock
+
+        from core import FSMDefinition, FSMEngine, Transition
+
+        container = self._build_container()
+        engine = FSMEngine(
+            event_bus=container.event_bus,
+            command_dispatcher=container.dispatcher,
+        )
+        container.dispatcher.submit = AsyncMock()  # type: ignore[method-assign]
+
+        def turn_on(state, context):
+            from core.commands.dispatcher import CommandIntent
+
+            return CommandIntent(
+                device_id="light.kitchen",
+                domain="light",
+                service="turn_on",
+                data={},
+                priority=10,
+                source="lighting",
+            )
+
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="light.kitchen_lighting_10",
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(
+                    Transition(
+                        from_state="OFF", to_state="ON", trigger="motion_detected", action=turn_on
+                    ),
+                ),
+                target_device_id="light.kitchen",
+            )
+        )
+
+        assert await engine.trigger("light.kitchen_lighting_10", "motion_detected") is True
+        container.dispatcher.submit.assert_awaited_once()
+        intent = container.dispatcher.submit.await_args.args[0]
+        assert intent.device_id == "light.kitchen"
+        assert intent.service == "turn_on"
+
+
 class TestErrorHandling:
     """Test error handling in container."""
 

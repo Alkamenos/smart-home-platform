@@ -20,10 +20,45 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from core.events.fsm_events import (
+    EVENT_FSM_REJECTED,
+    EVENT_FSM_TRANSITIONED,
+    OUTCOME_REJECTED,
+    OUTCOME_TRANSITIONED,
+    REASON_DEBOUNCED,
+    REASON_GUARD_FAILED,
+    REASON_NO_STATE,
+    REASON_NO_TRANSITION,
+    REASON_UNKNOWN_ENTITY,
+    build_transition_payload,
+)
+
 
 if TYPE_CHECKING:
     from core.commands.dispatcher import CommandDispatcher, CommandIntent
+    from core.events.event_bus import EventBus
     from core.persistence.state_persistence import StatePersistence
+
+
+# Сколько ждать завершения задач публикации при остановке движка, прежде чем
+# отменить их (FR-012).
+PUBLISH_DRAIN_TIMEOUT_SEC = 1.0
+
+
+def loop_time() -> float:
+    """Получить монотонное время текущего цикла событий.
+
+    Вне работающего цикла возвращается 0.0: `register_definition` может быть
+    вызван синхронно (сборка контейнера, тесты), и отсутствие цикла не должно
+    приводить к отказу регистрации автомата (FR-016).
+
+    Returns:
+        Монотонное время цикла событий либо 0.0, если цикл недоступен.
+    """
+    try:
+        return asyncio.get_event_loop().time()
+    except RuntimeError:
+        return 0.0
 
 
 # @dataclass (frozen=True)
@@ -113,6 +148,7 @@ class FSMEngine:
     - Action execution on transitions
     - Timeout-based automatic transitions
     - Debounce protection against rapid state changes
+    - Publication of every performed or rejected transition to the event bus
     - Comprehensive logging via loguru
     """
 
@@ -120,15 +156,140 @@ class FSMEngine:
         self,
         command_dispatcher: CommandDispatcher | None = None,
         persistence: StatePersistence | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         self._states: dict[str, State] = {}
         self._definitions: dict[str, FSMDefinition] = {}
         self._timers: dict[str, asyncio.Task[None]] = {}
         self._last_transition_time: dict[str, float] = {}
+        # Настенное время последнего перехода в формате интерфейса: монотонные
+        # часы цикла (State.entered_at) несравнимы с настенным временем и
+        # бессмысленны для показа пользователю (R-04, FR-017).
+        self._last_transition_wall: dict[str, str] = {}
         self._guards: dict[str, Callable[..., bool]] = {}
         self._actions: dict[str, Callable[..., Any]] = {}
         self._dispatcher = command_dispatcher
         self._persistence = persistence
+        self._event_bus = event_bus
+        self._publish_tasks: set[asyncio.Task[None]] = set()
+
+    def note_transition(self, entity_id: str, wall_clock: str | None = None) -> None:
+        """Зафиксировать настенное время перехода автомата.
+
+        Вызывается при каждом выполненном переходе. Хранится отдельно от
+        состояния, поэтому правила переходов, debounce и таймауты не затрагиваются.
+
+        Args:
+            entity_id: Идентификатор автомата.
+            wall_clock: Время перехода в формате ISO-8601; по умолчанию — текущее.
+        """
+        from core.events.fsm_events import now_timestamp
+
+        self._last_transition_wall[entity_id] = wall_clock or now_timestamp()
+
+    def get_last_transition_time(self, entity_id: str) -> str | None:
+        """Получить настенное время последнего перехода автомата.
+
+        Args:
+            entity_id: Идентификатор автомата.
+
+        Returns:
+            Время в формате ISO-8601 либо None, если переходов не было.
+        """
+        return self._last_transition_wall.get(entity_id)
+
+    def set_command_dispatcher(self, command_dispatcher: CommandDispatcher) -> None:
+        """Связать движок с диспетчером команд после его создания.
+
+        Диспетчер создаётся после движка (он зависит от адаптера, а адаптер — от
+        движка), поэтому циклическая зависимость разрывается связыванием
+        из контейнера (R-01).
+
+        Args:
+            command_dispatcher: Диспетчер команд, которому передаются интенты.
+        """
+        self._dispatcher = command_dispatcher
+
+    def _schedule_publish(self, event_type: str, payload: dict[str, Any], trace_id: str) -> None:
+        """Запланировать публикацию события перехода отдельной задачей.
+
+        Доставка неблокирующая: медленный подписчик не задерживает выполнение
+        перехода (FR-014, SC-015). Задача отслеживается, чтобы остановка движка
+        не оставляла висящих задач.
+
+        Args:
+            event_type: Имя события (`fsm.transitioned` или `fsm.rejected`).
+            payload: Полезная нагрузка события.
+            trace_id: Идентификатор трассы текущего срабатывания.
+        """
+        if self._event_bus is None:
+            return
+
+        bus = self._event_bus
+        task = asyncio.create_task(bus.publish(event_type, payload, trace_id))
+        self._publish_tasks.add(task)
+        task.add_done_callback(self._publish_tasks.discard)
+
+    def _publish_transition(
+        self,
+        entity_id: str,
+        event: str,
+        from_state: str | None,
+        to_state: str,
+        trace_id: str,
+    ) -> None:
+        """Опубликовать выполненный переход.
+
+        Args:
+            entity_id: Идентификатор автомата.
+            event: Событие-триггер.
+            from_state: Предыдущее состояние.
+            to_state: Новое состояние.
+            trace_id: Идентификатор трассы.
+        """
+        definition = self._definitions.get(entity_id)
+        device_id = definition.target_device_id if definition else None
+        payload = build_transition_payload(
+            fsm_id=entity_id,
+            device_id=device_id or entity_id,
+            from_state=from_state,
+            to_state=to_state,
+            event=event,
+            outcome=OUTCOME_TRANSITIONED,
+            trace_id=trace_id,
+        )
+        self._schedule_publish(EVENT_FSM_TRANSITIONED, payload, trace_id)
+
+    def _publish_rejection(
+        self,
+        entity_id: str,
+        event: str,
+        from_state: str | None,
+        reason: str,
+        trace_id: str,
+    ) -> None:
+        """Опубликовать отказ в переходе с указанием причины (FR-004).
+
+        Args:
+            entity_id: Идентификатор автомата.
+            event: Событие-триггер.
+            from_state: Состояние, из которого переход не состоялся.
+            reason: Причина отказа.
+            trace_id: Идентификатор трассы.
+        """
+        definition = self._definitions.get(entity_id)
+        device_id = definition.target_device_id if definition else None
+        payload = build_transition_payload(
+            fsm_id=entity_id,
+            device_id=device_id or entity_id,
+            from_state=from_state,
+            to_state=None,
+            event=event,
+            outcome=OUTCOME_REJECTED,
+            trace_id=trace_id,
+            reason=reason,
+        )
+        self._schedule_publish(EVENT_FSM_REJECTED, payload, trace_id)
 
     def register_definition(self, definition: FSMDefinition, restore_state: bool = True) -> None:
         """Register an FSM definition for an entity.
@@ -150,7 +311,7 @@ class FSMEngine:
             if saved_state in definition.states:
                 self._states[definition.entity_id] = State(
                     current_state=saved_state,
-                    entered_at=asyncio.get_event_loop().time(),
+                    entered_at=loop_time(),
                     context=saved_context,
                 )
                 logger.info(
@@ -163,16 +324,11 @@ class FSMEngine:
                 )
                 self._states[definition.entity_id] = State(
                     current_state=definition.initial_state,
-                    entered_at=asyncio.get_event_loop().time(),
+                    entered_at=loop_time(),
                     context={},
                 )
         elif definition.entity_id not in self._states:
-            try:
-                loop = asyncio.get_event_loop()
-                entered_at = loop.time()
-            except RuntimeError:
-                # No event loop in current thread (e.g., during sync test setup)
-                entered_at = 0.0
+            entered_at = loop_time()
             self._states[definition.entity_id] = State(
                 current_state=definition.initial_state,
                 entered_at=entered_at,
@@ -230,10 +386,12 @@ class FSMEngine:
         if entity_id in self._states:
             self._states[entity_id] = State(
                 current_state=state,
-                entered_at=asyncio.get_event_loop().time(),
+                entered_at=loop_time(),
                 context={},
             )
             logger.debug(f"Reset state for entity {entity_id} to '{state}'")
+        # Сброс состояния не является переходом, поэтому время последнего перехода
+        # намеренно не обновляется: `since` показывает момент реального перехода.
 
     async def _cancel_timers(self, entity_id: str, log: Any | None = None) -> None:
         """Cancel any pending timers for an entity.
@@ -405,12 +563,14 @@ class FSMEngine:
 
         if entity_id not in self._definitions:
             log.warning(f"No FSM definition found for entity {entity_id}")
+            self._publish_rejection(entity_id, event, None, REASON_UNKNOWN_ENTITY, trace_id)
             return False
 
         definition = self._definitions[entity_id]
 
         if entity_id not in self._states:
             log.error(f"No state found for entity {entity_id}")
+            self._publish_rejection(entity_id, event, None, REASON_NO_STATE, trace_id)
             return False
 
         current_state = self._states[entity_id]
@@ -424,6 +584,9 @@ class FSMEngine:
                     f"Entity {entity_id}: Debounce active ({elapsed:.3f}s < {definition.debounce_sec}s), "
                     f"ignoring event '{event}'"
                 )
+                self._publish_rejection(
+                    entity_id, event, current_state.current_state, REASON_DEBOUNCED, trace_id
+                )
                 return False
 
         # Find matching transitions
@@ -436,6 +599,9 @@ class FSMEngine:
         if not matching_transitions:
             log.debug(
                 f"Entity {entity_id}: No transitions for event '{event}' from state '{current_state.current_state}'"
+            )
+            self._publish_rejection(
+                entity_id, event, current_state.current_state, REASON_NO_TRANSITION, trace_id
             )
             return False
 
@@ -469,6 +635,7 @@ class FSMEngine:
             # Update state
             self._states[entity_id] = new_state
             self._last_transition_time[entity_id] = now
+            self.note_transition(entity_id)
 
             # Persist state if persistence is enabled
             if self._persistence is not None:
@@ -479,6 +646,12 @@ class FSMEngine:
                 f"triggered by '{event}'"
                 + (f" (guard: {transition.guard})" if transition.guard else "")
                 + (f" (action: {transition.action})" if transition.action else "")
+            )
+
+            # Publish after the new state is written, so a subscriber reading the
+            # engine always observes the state the event announces (R-02).
+            self._publish_transition(
+                entity_id, event, current_state.current_state, transition.to_state, trace_id
             )
 
             # Schedule timeout if specified
@@ -493,6 +666,9 @@ class FSMEngine:
             return True
 
         log.debug(f"Entity {entity_id}: No valid transitions for event '{event}'")
+        self._publish_rejection(
+            entity_id, event, current_state.current_state, REASON_GUARD_FAILED, trace_id
+        )
         return False
 
     async def _timeout_handler(self, entity_id: str, timeout_sec: float, trace_id: str) -> None:
@@ -542,11 +718,26 @@ class FSMEngine:
         # Clean up other tracking dictionaries
         if entity_id in self._last_transition_time:
             del self._last_transition_time[entity_id]
+        self._last_transition_wall.pop(entity_id, None)
 
         logger.info(f"Unregistered FSM for entity {entity_id}")
+
+    async def _drain_publish_tasks(self) -> None:
+        """Дождаться или отменить задачи публикации событий (FR-012)."""
+        tasks = list(self._publish_tasks)
+        if not tasks:
+            return
+
+        done, pending = await asyncio.wait(tasks, timeout=PUBLISH_DRAIN_TIMEOUT_SEC)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        logger.debug(f"Drained {len(done)} publish tasks, cancelled {len(pending)}")
 
     async def shutdown(self) -> None:
         """Shutdown the engine, cancelling all pending timers."""
         for entity_id in list(self._timers.keys()):
             await self._cancel_timers(entity_id)
+        await self._drain_publish_tasks()
         logger.info("FSM Engine shutdown complete")

@@ -32,14 +32,22 @@ class TestDashboardIntegrationInitialization:
         assert integration.event_bus is event_bus
         assert integration._created_entities == {}
 
-    def test_subscribes_to_fsm_state_changed_event(self):
-        """Подписка на событие изменения состояния FSM"""
+    def test_subscribes_to_fsm_transitioned_event(self):
+        """Подписка на событие перехода автомата.
+
+        Имя fsm.state.changed не публиковалось никем; единственным источником
+        переходов стал fsm.transitioned (spec 007, contracts/fsm-events.md).
+        """
         ha_adapter = MagicMock()
         event_bus = MagicMock()
 
         integration = DashboardIntegration(ha_adapter, event_bus)
 
-        event_bus.subscribe.assert_any_call("fsm.state.changed", integration._on_state_changed)
+        event_bus.subscribe.assert_any_call("fsm.transitioned", integration._on_state_changed)
+        assert not any(
+            call.args and call.args[0] == "fsm.state.changed"
+            for call in event_bus.subscribe.call_args_list
+        )
 
     def test_subscribes_to_ha_connected_event(self):
         """Подписка на событие подключения к HA"""

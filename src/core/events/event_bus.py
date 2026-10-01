@@ -4,31 +4,85 @@
 #  SPDX-License-Identifier: Apache-2.0
 
 import contextlib
+import inspect
 import uuid
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from typing import Any
 
 from loguru import logger
+
+
+# Обработчик события: async-функция (предпочтительно) либо обычная функция,
+# возвращающая None. Возвращённый awaitable шина дожидается (R-05).
+EventHandler = Callable[..., Any]
+
+
+def _accepts_trace_id(handler: EventHandler) -> bool:
+    """Проверить, принимает ли обработчик именованный аргумент ``trace_id``.
+
+    Args:
+        handler: Обработчик события.
+
+    Returns:
+        True, если обработчик явно принимает ``trace_id`` или принимает
+        произвольные именованные аргументы. False, если сигнатура не содержит
+        такого параметра или её не удалось получить.
+    """
+    try:
+        signature = inspect.signature(handler)
+    except (TypeError, ValueError):
+        # Обработчик без доступной сигнатуры — считаем, что trace_id примет.
+        return True
+
+    for parameter in signature.parameters.values():
+        if parameter.name == "trace_id":
+            return True
+        if parameter.kind is inspect.Parameter.VAR_KEYWORD:
+            return True
+    return False
+
+
+async def _invoke_handler(
+    handler: EventHandler,
+    event_type: str,
+    payload: Any,
+    trace_id: str,
+) -> None:
+    """Вызвать обработчик события, дождавшись результата.
+
+    Ошибка несовместимости сигнатуры определяется **до** вызова, поэтому
+    TypeError, возникший внутри тела обработчика, не приводит к повторному
+    вызову и не маскируется (R-05).
+
+    Args:
+        handler: Обработчик события.
+        event_type: Тип события.
+        payload: Полезная нагрузка события.
+        trace_id: Идентификатор трассы.
+    """
+    result = (
+        handler(event_type, payload, trace_id=trace_id)
+        if _accepts_trace_id(handler)
+        else handler(event_type, payload)
+    )
+    if inspect.isawaitable(result):
+        await result
 
 
 class EventBus:
     """Async event bus for publishing events to subscribers."""
 
     def __init__(self) -> None:
-        self._subscribers: dict[str, list[Callable[..., Coroutine[Any, Any, None]]]] = {}
-        self._filtered_subscribers: list[
-            tuple[str, dict, Callable[..., Coroutine[Any, Any, None]]]
-        ] = []
+        self._subscribers: dict[str, list[EventHandler]] = {}
+        self._filtered_subscribers: list[tuple[str, dict, EventHandler]] = []
 
-    def subscribe(self, event_type: str, handler: Callable[..., Coroutine[Any, Any, None]]) -> None:
+    def subscribe(self, event_type: str, handler: EventHandler) -> None:
         """Subscribe a handler to an event type."""
         if event_type not in self._subscribers:
             self._subscribers[event_type] = []
         self._subscribers[event_type].append(handler)
 
-    def unsubscribe(
-        self, event_type: str, handler: Callable[..., Coroutine[Any, Any, None]]
-    ) -> None:
+    def unsubscribe(self, event_type: str, handler: EventHandler) -> None:
         """Unsubscribe a handler from an event type.
 
         Снимает как обычные подписки, так и подписки с фильтром: обработчик
@@ -52,7 +106,7 @@ class EventBus:
         self,
         event_type: str,
         filter_params: dict,
-        handler: Callable[..., Coroutine[Any, Any, None]],
+        handler: EventHandler,
     ) -> None:
         """Unsubscribe a handler that was subscribed with a filter.
 
@@ -71,7 +125,7 @@ class EventBus:
         self,
         event_type: str,
         filter_params: dict,
-        handler: Callable[..., Coroutine[Any, Any, None]],
+        handler: EventHandler,
     ) -> None:
         """Subscribe a handler to an event type with filter parameters.
 
@@ -82,7 +136,7 @@ class EventBus:
         Args:
             event_type: Type of the event to subscribe to.
             filter_params: Dictionary of parameters that must match the event payload.
-            handler: Async handler function to call when event matches filter.
+            handler: Handler to call when event matches filter.
         """
         self._filtered_subscribers.append((event_type, filter_params, handler))
 
@@ -104,10 +158,37 @@ class EventBus:
                 return False
         return True
 
+    async def _dispatch(
+        self,
+        handler: EventHandler,
+        event_type: str,
+        payload: Any,
+        trace_id: str,
+        log: Any,
+        prefix: str,
+    ) -> None:
+        """Вызвать обработчик, изолировав его ошибку.
+
+        Args:
+            handler: Обработчик события.
+            event_type: Тип события.
+            payload: Полезная нагрузка события.
+            trace_id: Идентификатор трассы.
+            log: Привязанный к трассе логгер.
+            prefix: Префикс сообщения об ошибке.
+        """
+        try:
+            await _invoke_handler(handler, event_type, payload, trace_id)
+        except Exception as e:  # noqa: BLE001 - изоляция подписчика (FR-003)
+            log.error(f"{prefix} for event {event_type}: {e}")
+
     async def publish(
         self, event_type: str, payload: Any = None, trace_id: str | None = None
     ) -> None:
         """Publish an event to all subscribers.
+
+        Подписчики вызываются последовательно: сначала обычные в порядке
+        подписки, затем отфильтрованные. Порядок доставки не менялся (R-05).
 
         Args:
             event_type: Type of the event.
@@ -124,30 +205,22 @@ class EventBus:
         log_context.info(f"Publishing event: {event_type}")
 
         # Call regular subscribers
-        handlers = self._subscribers.get(event_type, [])
+        handlers = list(self._subscribers.get(event_type, []))
 
         for handler in handlers:
-            try:
-                await handler(event_type, payload, trace_id=trace_id)
-            except TypeError:
-                # Handler doesn't accept trace_id kwarg, call without it
-                try:
-                    await handler(event_type, payload)
-                except Exception as e:
-                    log_context.error(f"Handler error for event {event_type}: {e}")
-            except Exception as e:
-                log_context.error(f"Handler error for event {event_type}: {e}")
+            await self._dispatch(
+                handler, event_type, payload, trace_id, log_context, "Handler error"
+            )
 
         # Call filtered subscribers if payload matches
         if isinstance(payload, dict):
-            for sub_event_type, filter_params, handler in self._filtered_subscribers:
+            for sub_event_type, filter_params, handler in list(self._filtered_subscribers):
                 if sub_event_type == event_type and self._matches_filter(filter_params, payload):
-                    try:
-                        await handler(event_type, payload, trace_id=trace_id)
-                    except TypeError:
-                        try:
-                            await handler(event_type, payload)
-                        except Exception as e:
-                            log_context.error(f"Filtered handler error for event {event_type}: {e}")
-                    except Exception as e:
-                        log_context.error(f"Filtered handler error for event {event_type}: {e}")
+                    await self._dispatch(
+                        handler,
+                        event_type,
+                        payload,
+                        trace_id,
+                        log_context,
+                        "Filtered handler error",
+                    )

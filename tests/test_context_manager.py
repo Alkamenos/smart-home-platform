@@ -231,7 +231,7 @@ class TestOnHaStateChanged:
             "new_state": "on",
         }
 
-        context_manager._on_ha_state_change(event_data)
+        context_manager._on_ha_state_change("ha.state_changed", event_data)
 
         # Проверяем что контекст был обновлён
         assert context_manager.get_context("living_room_motion_sensor") is True
@@ -244,12 +244,13 @@ class TestOnHaStateChanged:
 
         # Сначала включаем
         context_manager._on_ha_state_change(
-            {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
+            "ha.state_changed", {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
         )
 
         # Затем выключаем
         context_manager._on_ha_state_change(
-            {"entity_id": "binary_sensor.living_room_motion", "new_state": "off"}
+            "ha.state_changed",
+            {"entity_id": "binary_sensor.living_room_motion", "new_state": "off"},
         )
 
         assert context_manager.get_context("living_room_motion_sensor") is False
@@ -257,7 +258,7 @@ class TestOnHaStateChanged:
     def test_ignores_unsubscribed_sensor(self, context_manager, mock_event_bus):
         """Игнорирование неподписанного сенсора."""
         context_manager._on_ha_state_change(
-            {"entity_id": "binary_sensor.unknown", "new_state": "on"}
+            "ha.state_changed", {"entity_id": "binary_sensor.unknown", "new_state": "on"}
         )
 
         mock_event_bus.publish.assert_not_called()
@@ -269,7 +270,7 @@ class TestOnHaStateChanged:
         )
 
         context_manager._on_ha_state_change(
-            {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
+            "ha.state_changed", {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
         )
 
         mock_event_bus.publish.assert_called()
@@ -285,14 +286,14 @@ class TestOnHaStateChanged:
         # Тестируем различные состояния которые должны конвертироваться в True
         for state in ["on", "open", "active", "home", "true", "yes"]:
             context_manager._on_ha_state_change(
-                {"entity_id": "binary_sensor.door", "new_state": state}
+                "ha.state_changed", {"entity_id": "binary_sensor.door", "new_state": state}
             )
             assert context_manager.get_context("door_sensor") is True
 
         # Тестируем состояния которые должны конвертироваться в False
         for state in ["off", "closed", "inactive", "away", "false", "no", None]:
             context_manager._on_ha_state_change(
-                {"entity_id": "binary_sensor.door", "new_state": state}
+                "ha.state_changed", {"entity_id": "binary_sensor.door", "new_state": state}
             )
             if state is None:
                 assert context_manager.get_context("door_sensor") is False
@@ -351,7 +352,7 @@ class TestOnPlatformStarted:
 
     def test_starts_schedule_checker_on_platform_start(self, context_manager):
         """Запуск проверки расписаний при старте платформы."""
-        context_manager._on_platform_started({})
+        context_manager._on_platform_started("platform.started", {})
 
         # Проверяем что метод _start_schedule_checker был вызван
         # (тестирование асинхронной логики через моки)
@@ -369,7 +370,7 @@ class TestIntegrationScenarios:
 
         # Движение обнаружено
         context_manager._on_ha_state_change(
-            {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
+            "ha.state_changed", {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"}
         )
 
         # Контекст обновлён
@@ -407,7 +408,7 @@ class TestIntegrationScenarios:
 
         # Теперь симулируем движение
         context_manager._on_ha_state_change(
-            {"entity_id": "binary_sensor.bedroom_motion", "new_state": "on"}
+            "ha.state_changed", {"entity_id": "binary_sensor.bedroom_motion", "new_state": "on"}
         )
 
         assert context_manager.get_context("bedroom_motion_sensor") is True

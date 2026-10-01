@@ -15,6 +15,8 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from loguru import logger
+
 from adapters.ha_adapter import HAAdapter
 from adapters.mock_adapter import MockAdapter
 from core.action_handlers import register_all_actions
@@ -23,6 +25,7 @@ from core.commands.middleware import ManualLockoutMiddleware
 from core.control_tracker import ControlTracker
 from core.events.event_bus import EventBus
 from core.events.event_router import EventRouter
+from core.events.fsm_events import EVENT_PLATFORM_STARTED
 from core.fsm.engine import FSMEngine
 from core.fsm.factory import FSMFactory
 from core.models.manifest import Manifest, load_manifest
@@ -42,6 +45,8 @@ class PlatformContext:
         adapter: HAAdapter or MockAdapter for calling services.
         dispatcher: CommandDispatcher with middleware chain.
         event_router: EventRouter for routing sensor events to FSMs.
+        fsm_bridge: Bridge delivering FSM transitions to persistence, Home
+            Assistant mirror and live updates.
     """
 
     manifest: Manifest
@@ -51,6 +56,7 @@ class PlatformContext:
     adapter: Any  # HAAdapter or MockAdapter
     dispatcher: CommandDispatcher
     event_router: EventRouter
+    fsm_bridge: Any = None
 
     async def shutdown(self) -> None:
         """Idempotent shutdown: adapter, FSM engine, dispatcher cleanup loop."""
@@ -97,6 +103,7 @@ class Container:
 
         # Lazy-initialized components
         self._event_bus: EventBus | None = None
+        self._fsm_bridge: Any | None = None
         self._fsm: FSMEngine | None = None
         self._control_tracker: ControlTracker | None = None
         self._event_router: EventRouter | None = None
@@ -125,10 +132,35 @@ class Container:
 
     @property
     def fsm(self) -> FSMEngine:
-        """Get or create FSMEngine instance."""
+        """Get or create FSMEngine instance.
+
+        Движок получает шину событий (публикует переходы) и хранилище состояний
+        (FR-015). Диспетчер команд связывается отдельно в build(): он создаётся
+        после движка, т.к. зависит от адаптера, а адаптер — от движка (R-01).
+        """
         if self._fsm is None:
-            self._fsm = FSMEngine()
+            self._fsm = FSMEngine(
+                event_bus=self.event_bus,
+                persistence=self._create_state_persistence(),
+            )
         return self._fsm
+
+    def _create_state_persistence(self) -> Any | None:
+        """Создать хранилище состояний автоматов.
+
+        Импорт выполняется внутри метода: пакет ``core.persistence`` тянет
+        ``src.core.*``, что создаёт циклический импорт с контейнером.
+
+        Returns:
+            Экземпляр хранилища либо None, если хранилище создать не удалось.
+        """
+        try:
+            from core.persistence.state_persistence import StatePersistence
+
+            return StatePersistence()
+        except (OSError, ImportError) as e:
+            logger.warning(f"FSM state persistence unavailable: {e}")
+            return None
 
     @property
     def control_tracker(self) -> ControlTracker:
@@ -200,6 +232,53 @@ class Container:
             )
         return self._factory
 
+    @property
+    def fsm_bridge(self) -> Any:
+        """Get or create FSMStateBridge (depends on event_bus, dispatcher).
+
+        Мост доставляет каждый переход автомата потребителям состояния: журналу
+        переходов, зеркалу Home Assistant и живым обновлениям (FR-015, FR-024).
+        """
+        if self._fsm_bridge is None:
+            from services.fsm_state_bridge import FSMStateBridge
+
+            self._fsm_bridge = FSMStateBridge(
+                event_bus=self.event_bus,
+                dispatcher=self.dispatcher,
+                event_store=self._create_event_store(),
+            )
+        return self._fsm_bridge
+
+    def _create_event_store(self) -> Any:
+        """Создать журнал переходов и событий.
+
+        Returns:
+            Экземпляр журнала либо None, если журнал недоступен: отсутствие
+            журнала не должно останавливать переходы автоматов (FR-003).
+        """
+        try:
+            from core.persistence.event_store import EventStore
+
+            return EventStore()
+        except Exception as e:  # noqa: BLE001 - журнал не влияет на работу платформы
+            logger.warning(f"Transition journal unavailable: {e}")
+            return None
+
+    async def announce_started(self) -> None:
+        """Оповестить подписчиков о завершении инициализации платформы.
+
+        Событие ``platform.started`` ожидают подписчики восстановления состояний
+        и менеджер контекста; раньше оно не публиковалось никогда, поэтому эти
+        подписчики были мертвы (FR-007).
+
+        Returns:
+            Ничего не возвращает; результат доставки логируется шиной.
+        """
+        await self.event_bus.publish(
+            EVENT_PLATFORM_STARTED,
+            {"manifest": str(self._manifest_path) if self._manifest_path else ""},
+        )
+
     def build(self) -> PlatformContext:
         """
         Build and return the complete platform context.
@@ -224,6 +303,12 @@ class Container:
         _ = self.adapter  # Depends on fsm, event_router
         _ = self.dispatcher  # Depends on adapter, middleware
 
+        # Link dispatcher to FSM engine: the engine exists before the dispatcher
+        # (dispatcher depends on adapter, adapter depends on engine), so the
+        # cyclic dependency is broken here. Without this, CommandIntents from FSM
+        # actions are dropped and automation never reaches devices (R-01, FR-016).
+        self.fsm.set_command_dispatcher(self.dispatcher)
+
         # Start TTL cleanup loop when a running event loop exists
         # (sync build() in tests runs without a loop — start is skipped)
         try:
@@ -236,6 +321,10 @@ class Container:
         # Link adapter to FSM engine
         self.adapter.set_fsm_engine(self.fsm)
 
+        # Мост состояний: подписывается на переходы и обслуживает журнал,
+        # зеркало Home Assistant и живые обновления (FR-015).
+        _ = self.fsm_bridge
+
         return PlatformContext(
             manifest=self.manifest,
             event_bus=self.event_bus,
@@ -244,11 +333,13 @@ class Container:
             adapter=self.adapter,
             dispatcher=self.dispatcher,
             event_router=self.event_router,
+            fsm_bridge=self.fsm_bridge,
         )
 
     def reset(self) -> None:
         """Reset all cached instances for testing purposes."""
         self._event_bus = None
+        self._fsm_bridge = None
         self._fsm = None
         self._control_tracker = None
         self._event_router = None

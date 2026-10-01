@@ -3,7 +3,15 @@
 import sqlite3
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+
+
+# Дни недели в порядке отображения карты активности.
+WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+HOURS_PER_DAY = 24
+# Сколько дней недели учитывает карта активности.
+ACTIVITY_DAYS = 7
 
 
 @dataclass
@@ -15,7 +23,9 @@ class FsmTransition:
     to_state: str
     trigger_name: str
     trace_id: str | None
-    timestamp: float = None
+    timestamp: float | None = None
+    success: bool = True
+    reason: str | None = None
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -31,7 +41,7 @@ class SensorEvent:
     new_state: str
     event_type: str
     trace_id: str | None
-    timestamp: float = None
+    timestamp: float | None = None
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -128,8 +138,28 @@ class EventStore:
             CREATE INDEX IF NOT EXISTS idx_suggestions_status ON ai_suggestions(status)
         """)
 
+        # Признак успеха перехода: раньше в журнал попадали только выполненные
+        # переходы, поэтому отказы невозможно было отличить (spec 007, FR-004).
+        self._ensure_column(cursor, "fsm_transitions", "success", "INTEGER DEFAULT 1")
+        self._ensure_column(cursor, "fsm_transitions", "reason", "TEXT")
+
         conn.commit()
         conn.close()
+
+    @staticmethod
+    def _ensure_column(cursor, table: str, column: str, definition: str) -> None:
+        """Добавить колонку в существующую таблицу, если её ещё нет.
+
+        Args:
+            cursor: Курсор соединения.
+            table: Имя таблицы.
+            column: Имя колонки.
+            definition: Описание колонки для ALTER TABLE.
+        """
+        cursor.execute(f"PRAGMA table_info({table})")
+        existing = {row["name"] for row in cursor.fetchall()}
+        if column not in existing:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def save_fsm_transition(self, transition: FsmTransition):
         """Сохранить переход FSM."""
@@ -138,8 +168,8 @@ class EventStore:
         cursor.execute(
             """
             INSERT INTO fsm_transitions
-            (timestamp, entity_id, from_state, to_state, trigger_name, trace_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (timestamp, entity_id, from_state, to_state, trigger_name, trace_id, success, reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 transition.timestamp,
@@ -148,6 +178,8 @@ class EventStore:
                 transition.to_state,
                 transition.trigger_name,
                 transition.trace_id,
+                1 if transition.success else 0,
+                transition.reason,
             ),
         )
         conn.commit()
@@ -159,7 +191,7 @@ class EventStore:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT entity_id, from_state, to_state, trigger_name, trace_id, timestamp
+            SELECT entity_id, from_state, to_state, trigger_name, trace_id, timestamp, success, reason
             FROM fsm_transitions
             WHERE entity_id = ?
             ORDER BY timestamp DESC
@@ -178,6 +210,8 @@ class EventStore:
                 trigger_name=row["trigger_name"],
                 trace_id=row["trace_id"],
                 timestamp=row["timestamp"],
+                success=bool(row["success"]) if row["success"] is not None else True,
+                reason=row["reason"],
             )
             for row in rows
         ]
@@ -427,3 +461,81 @@ class EventStore:
         conn.close()
 
         return {"deleted_events": deleted_events, "deleted_transitions": deleted_transitions}
+
+    def get_activity_heatmap(self, days: int = ACTIVITY_DAYS) -> dict:
+        """Собрать активность по дням недели и часам суток.
+
+        Данные берутся из записей переходов и событий: выдуманные значения не
+        строятся, поэтому раздел показывает фактическую картину (FR-033, D-2).
+
+        Args:
+            days: Сколько дней учитывать при определении «дня недели».
+
+        Returns:
+            Словарь с днями, часами, значениями и признаком наличия данных.
+        """
+        counts = [[0] * HOURS_PER_DAY for _ in WEEKDAY_LABELS]
+        total = 0
+        cutoff = time.time() - days * HOURS_PER_DAY * 3600
+
+        for timestamp in self._collect_activity_timestamps(cutoff):
+            moment = datetime.fromtimestamp(timestamp)
+            counts[moment.weekday()][moment.hour] += 1
+            total += 1
+
+        return {
+            "days": list(WEEKDAY_LABELS),
+            "hours": list(range(HOURS_PER_DAY)),
+            "data": [
+                {"day": label, "values": counts[index]}
+                for index, label in enumerate(WEEKDAY_LABELS)
+            ]
+            if total
+            else [],
+            "has_data": total > 0,
+        }
+
+    def get_hourly_history(self, hours: int = HOURS_PER_DAY) -> dict:
+        """Собрать число событий по часам суток за последние сутки.
+
+        Корзины соответствуют настенным часам (``0`` — полночь), поэтому график
+        не отображается задом наперёд (FR-033, R-10).
+
+        Args:
+            hours: Сколько часов охватывает график.
+
+        Returns:
+            Словарь с подписями, значениями и признаком наличия данных.
+        """
+        counts = [0] * hours
+        cutoff = time.time() - hours * 3600
+        total = 0
+
+        for timestamp in self._collect_activity_timestamps(cutoff):
+            moment = datetime.fromtimestamp(timestamp)
+            counts[moment.hour % hours] += 1
+            total += 1
+
+        return {
+            "labels": [f"{h:02d}:00" for h in range(hours)],
+            "data": counts,
+            "has_data": total > 0,
+        }
+
+    def _collect_activity_timestamps(self, cutoff: float) -> list[float]:
+        """Собрать временные метки переходов и событий после отсечки.
+
+        Args:
+            cutoff: Отсечка по времени.
+
+        Returns:
+            Список меток времени в секундах.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT timestamp FROM fsm_transitions WHERE timestamp >= ?", (cutoff,))
+        timestamps = [row["timestamp"] for row in cursor.fetchall()]
+        cursor.execute("SELECT timestamp FROM events WHERE timestamp >= ?", (cutoff,))
+        timestamps.extend(row["timestamp"] for row in cursor.fetchall())
+        conn.close()
+        return [t for t in timestamps if t is not None]

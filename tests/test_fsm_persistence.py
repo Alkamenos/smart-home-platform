@@ -114,10 +114,14 @@ class TestFSMPersistenceInitialization:
         assert persistence._input_text_available is True
 
     def test_subscribes_to_fsm_transition_event(self, mock_event_bus, persistence):
-        """FSMPersistence подписывается на fsm.transition."""
-        # Проверяем что subscribe был вызван для fsm.transition
+        """FSMPersistence подписывается на fsm.transitioned.
+
+        Прежнее имя fsm.transition не публиковалось никем, поэтому подписка
+        была мёртвой (spec 007, FR-001).
+        """
         calls = [call[0][0] for call in mock_event_bus.subscribe.call_args_list]
-        assert "fsm.transition" in calls
+        assert "fsm.transitioned" in calls
+        assert "fsm.transition" not in calls
 
     def test_subscribes_to_platform_started_event(self, mock_event_bus, persistence):
         """FSMPersistence подписывается на platform.started."""
@@ -169,14 +173,14 @@ class TestOnFSMTransition:
         persistence.enable_for_entity("light.living_room")
 
         transition_data = {
-            "entity_id": "light.living_room",
+            "fsm_id": "light.living_room",
             "to_state": "ON_MOTION",
             "from_state": "OFF",
             "trigger": "motion_detected",
         }
 
         with patch.object(persistence, "_save_state") as mock_save:
-            persistence._on_fsm_transition(transition_data)
+            persistence._on_fsm_transition("fsm.transitioned", transition_data)
 
             mock_save.assert_called_once_with(
                 "light_living_room_mode", "ON_MOTION", "light.living_room"
@@ -187,11 +191,11 @@ class TestOnFSMTransition:
         persistence.enable_for_entity("light.living_room")
 
         transition_data = {
-            "entity_id": "light.living_room",
+            "fsm_id": "light.living_room",
             "to_state": "PARTY",
         }
 
-        persistence._on_fsm_transition(transition_data)
+        persistence._on_fsm_transition("fsm.transitioned", transition_data)
 
         assert persistence._state_cache["light.living_room"] == "PARTY"
 
@@ -200,7 +204,7 @@ class TestOnFSMTransition:
         transition_data = {"to_state": "ON"}
 
         with patch.object(persistence, "_save_state") as mock_save:
-            persistence._on_fsm_transition(transition_data)
+            persistence._on_fsm_transition("fsm.transitioned", transition_data)
             mock_save.assert_not_called()
 
     def test_ignores_transition_without_to_state(self, persistence, mock_logger):
@@ -208,7 +212,7 @@ class TestOnFSMTransition:
         transition_data = {"entity_id": "light.living_room"}
 
         with patch.object(persistence, "_save_state") as mock_save:
-            persistence._on_fsm_transition(transition_data)
+            persistence._on_fsm_transition("fsm.transitioned", transition_data)
             mock_save.assert_not_called()
 
     def test_ignores_disabled_entity(self, persistence):
@@ -221,7 +225,7 @@ class TestOnFSMTransition:
         }
 
         with patch.object(persistence, "_save_state") as mock_save:
-            persistence._on_fsm_transition(transition_data)
+            persistence._on_fsm_transition("fsm.transitioned", transition_data)
             mock_save.assert_not_called()
 
     def test_tracks_old_state_in_cache(self, persistence):
@@ -230,12 +234,12 @@ class TestOnFSMTransition:
         persistence._state_cache["light.living_room"] = "OFF"
 
         transition_data = {
-            "entity_id": "light.living_room",
+            "fsm_id": "light.living_room",
             "to_state": "ON",
         }
 
         # Логирование должно содержать old_state и new_state
-        persistence._on_fsm_transition(transition_data)
+        persistence._on_fsm_transition("fsm.transitioned", transition_data)
 
         assert persistence._state_cache["light.living_room"] == "ON"
 
@@ -268,7 +272,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value="PARTY"),
             patch.object(persistence, "_restore_state") as mock_restore,
         ):
-            persistence._on_platform_started({})
+            persistence._on_platform_started("platform.started", {})
 
             mock_restore.assert_called_once_with("light.living_room", "PARTY")
 
@@ -287,7 +291,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value=None),
             patch.object(persistence, "_restore_state") as mock_restore,
         ):
-            persistence._on_platform_started({})
+            persistence._on_platform_started("platform.started", {})
 
             mock_restore.assert_not_called()
 
@@ -307,7 +311,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value="ON"),
             patch.object(persistence, "_restore_state") as mock_restore,
         ):
-            persistence._on_platform_started({})
+            persistence._on_platform_started("platform.started", {})
 
             mock_restore.assert_not_called()
 
@@ -333,7 +337,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value="INVALID_STATE"),
             patch.object(persistence, "_restore_state") as mock_restore,
         ):
-            persistence._on_platform_started({})
+            persistence._on_platform_started("platform.started", {})
 
             mock_restore.assert_not_called()
 
@@ -361,7 +365,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value="ON"),
             patch.object(persistence, "_restore_state"),
         ):
-            persistence._on_platform_started({})
+            persistence._on_platform_started("platform.started", {})
 
             mock_logger.info.assert_any_call("Restore complete. Restored 2 states")
 

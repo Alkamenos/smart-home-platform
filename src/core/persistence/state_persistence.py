@@ -21,6 +21,21 @@ else:
     import fcntl
 
 
+# Каталог хранения состояний автоматов — рядом с прочими файлами данных
+# платформы (data/), а не в текущем рабочем каталоге (T013).
+DEFAULT_DATA_DIR = "data"
+DEFAULT_STORAGE_FILENAME = "state.json"
+
+
+def default_storage_path() -> str:
+    """Получить путь файла состояний по умолчанию.
+
+    Returns:
+        Путь к файлу состояний внутри каталога данных платформы.
+    """
+    return str(Path(DEFAULT_DATA_DIR) / DEFAULT_STORAGE_FILENAME)
+
+
 class StatePersistence:
     """
     Persists FSM states to a JSON file.
@@ -32,14 +47,15 @@ class StatePersistence:
         storage_path: Path to the JSON file where states are stored.
     """
 
-    def __init__(self, storage_path: str = "state.json") -> None:
+    def __init__(self, storage_path: str | None = None) -> None:
         """
         Initialize the state persistence manager.
 
         Args:
-            storage_path: Path to the JSON file for storing states.
+            storage_path: Path to the JSON file for storing states. По умолчанию —
+                ``data/state.json``.
         """
-        self.storage_path = Path(storage_path)
+        self.storage_path = Path(storage_path) if storage_path else Path(default_storage_path())
         self._ensure_storage_dir()
 
     def _ensure_storage_dir(self) -> None:
