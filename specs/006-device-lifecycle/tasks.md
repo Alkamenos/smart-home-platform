@@ -54,8 +54,8 @@ description: "Список задач для фичи Device Lifecycle (жизн
 
 ### Tests for User Story 1 ⚠️ (сначала падающие)
 
-- [ ] T012 [P] [US1] Контрактные тесты чтения/применения в `tests/contract/test_devices_api.py`: список из единого источника, устройство после применения, идемпотентность повторного применения, отсутствие дубля маршрута применения, `dry_run` без изменений
-- [ ] T013 [P] [US1] Интеграционный тест сквозного пути в `tests/integration/test_device_lifecycle_flow.py`: добавление → видимость в списке → создание машины состояний → реакция на событие датчика → переживание перезапуска
+- [x] T012 [P] [US1] Контрактные тесты чтения/применения в `tests/contract/test_devices_api.py`: список из единого источника, устройство после применения, идемпотентность повторного применения, отсутствие дубля маршрута применения, `dry_run` без изменений
+- [x] T013 [P] [US1] Интеграционный тест сквозного пути в `tests/integration/test_device_lifecycle_flow.py`: добавление → видимость в списке → создание машины состояний → реакция на событие датчика → переживание перезапуска
 - [x] T014 [P] [US1] Юнит-тесты транзакции в `tests/unit/test_device_lifecycle.py`: порядок шагов, компенсация при сбое записи в хранилище, снятие и пересоздание машин состояний, перестроение маршрутизации
 
 ### Implementation for User Story 1
@@ -146,12 +146,12 @@ description: "Список задач для фичи Device Lifecycle (жизн
 
 **Purpose**: сквозные улучшения, проверки и документация.
 
-- [ ] T042 [P] Прогнать сценарии quickstart.md 1–6 (без Home Assistant) и 9 (автономный режим), зафиксировать результаты в `specs/006-device-lifecycle/quickstart.md`
-- [ ] T043 [P] Проверить смоук живой платформы: `PYTHONPATH=src python3 -m src.main` → `/health`, добавление устройства, реакция на событие, удаление, отсутствие Traceback в логах; результат зафиксировать в `specs/006-device-lifecycle/quickstart.md`
-- [ ] T044 Проверить покрытие: новые файлы ≥80%, критические модули (`src/core/events/event_router.py`, `src/services/device_service.py`) ≥95% — `python3 -m pytest tests/ --cov=src`
-- [ ] T045 [P] Обновить документацию проекта: `.ai/01_PROJECT_STATE.md` (известные проблемы и статус фичи), `.ai/BACKLOG.md` (F1 → выполнено), `python3 .ai/scripts/sync_roadmap.py --auto-update`
-- [ ] T046 Выполнить чистку: удалить осиротевший код после изменений в `src/webui/routes/devices/devices.py`, `src/webui/app.py` и `src/core/discovery/discovery_service.py` (старые пути записи устройств, неиспользуемые импорты); проверить type hints, docstrings Google-style, длину функций ≤50 строк, отсутствие bare `except` в затронутых файлах
-- [ ] T047 Финальная проверка качества: `python3 -m pytest tests/ -q` (ожидается 0 failed) и `.ai/scripts/run_checks.sh` (ожидается exit 0)
+- [x] T042 [P] Прогнать сценарии quickstart.md 1–6 (без Home Assistant) и 9 (автономный режим), зафиксировать результаты в `specs/006-device-lifecycle/quickstart.md`
+- [x] T043 [P] Проверить смоук живой платформы: `PYTHONPATH=src python3 -m src.main` → `/health`, добавление устройства, реакция на событие, удаление, отсутствие Traceback в логах; результат зафиксировать в `specs/006-device-lifecycle/quickstart.md`
+- [x] T044 Проверить покрытие: новые файлы ≥80%, критические модули (`src/core/events/event_router.py`, `src/services/device_service.py`) ≥95% — `python3 -m pytest tests/ --cov=src`
+- [x] T045 [P] Обновить документацию проекта: `.ai/01_PROJECT_STATE.md` (известные проблемы и статус фичи), `.ai/BACKLOG.md` (F1 → выполнено), `python3 .ai/scripts/sync_roadmap.py --auto-update`
+- [x] T046 Выполнить чистку: удалить осиротевший код после изменений в `src/webui/routes/devices/devices.py`, `src/webui/app.py` и `src/core/discovery/discovery_service.py` (старые пути записи устройств, неиспользуемые импорты); проверить type hints, docstrings Google-style, длину функций ≤50 строк, отсутствие bare `except` в затронутых файлах
+- [x] T047 Финальная проверка качества: `python3 -m pytest tests/ -q` (ожидается 0 failed) и `.ai/scripts/run_checks.sh` (ожидается exit 0)
 
 ---
 

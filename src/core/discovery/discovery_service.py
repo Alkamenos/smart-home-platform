@@ -350,6 +350,36 @@ class DeviceDiscoveryService:
         room.devices.append(device_entry)
         return True
 
+    def _plan_selection(self, manifest: Any, selection: dict, dry_run: bool) -> bool:
+        """Применяет одну выборку к манифесту или считает результат пробного прогона.
+
+        Args:
+            manifest: Модель манифеста.
+            selection: Выборка устройства.
+            dry_run: True — ничего не мутировать, только посчитать.
+
+        Returns:
+            True, если устройство добавлено (или будет добавлено), False — если
+            оно уже есть в манифесте.
+        """
+        entity_id = selection["device_entity_id"]
+        target_room = selection.get("target_room") or "unassigned"
+        domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
+        category = selection.get("category") or _category_for_domain(domain)
+
+        if dry_run:
+            room = next((r for r in manifest.rooms if r.id == target_room), None)
+            return room is None or not self._already_present(room, entity_id)
+
+        return self._add_to_room(
+            self._room_manifest(manifest, target_room),
+            entity_id=entity_id,
+            category=category,
+            domain=domain,
+            behavior_template=selection.get("behavior_template"),
+            behavior_params=selection.get("behavior_params"),
+        )
+
     async def apply_selective(
         self, selections: list[dict], manifest_path: str, dry_run: bool = False
     ) -> dict:
@@ -371,36 +401,15 @@ class DeviceDiscoveryService:
         skipped_devices: list[str] = []
 
         for selection in selections:
-            entity_id: str | None = selection.get("device_entity_id")
+            entity_id = selection.get("device_entity_id")
             if not entity_id:
                 failed_devices.append(
-                    {"entity_id": entity_id or "", "error": "Не указан идентификатор устройства"}
+                    {"entity_id": "", "error": "Не указан идентификатор устройства"}
                 )
                 continue
-
             try:
-                target_room: str = selection.get("target_room") or "unassigned"
-                domain = entity_id.split(".")[0] if "." in entity_id else "unknown"
-                category = selection.get("category") or _category_for_domain(domain)
-
-                if dry_run:
-                    room = next((r for r in manifest.rooms if r.id == target_room), None)
-                    if room is None or self._already_present(room, entity_id):
-                        added_devices.append(entity_id)
-                    else:
-                        skipped_devices.append(entity_id)
-                    continue
-
-                room = self._room_manifest(manifest, target_room)
-                created = self._add_to_room(
-                    room,
-                    entity_id=entity_id,
-                    category=category,
-                    domain=domain,
-                    behavior_template=selection.get("behavior_template"),
-                    behavior_params=selection.get("behavior_params"),
-                )
-                if created:
+                outcome = self._plan_selection(manifest, selection, dry_run)
+                if outcome:
                     added_devices.append(entity_id)
                 else:
                     skipped_devices.append(entity_id)

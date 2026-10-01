@@ -218,6 +218,76 @@ class DeviceService:
 
         logger.info(f"Снято машин состояний для исчезнувших устройств: {unregistered}")
 
+    async def _fetch_source_devices(self, source: HASource, source_id: UUID) -> list[Device]:
+        """Читает состояния устройств источника Home Assistant.
+
+        Args:
+            source: Источник Home Assistant.
+            source_id: Идентификатор источника (проставляется устройствам).
+
+        Returns:
+            Устройства, разобранные из состояний источника.
+
+        Raises:
+            RuntimeError: Если подключиться к источнику не удалось.
+        """
+        from src.adapters.home_assistant.rest_client import HARestClient
+
+        async with HARestClient(source.url, source.token) as rest_client:
+            if not await rest_client.connect_to_ha():
+                raise RuntimeError(f"Не удалось подключиться к HA: {source.url}")
+
+            ha_states = await rest_client.fetch_devices()
+
+        parsed_devices = self.parse_devices(ha_states)
+        for device in parsed_devices:
+            device.source_id = source_id
+        logger.info(
+            f"Преобразовано {len(parsed_devices)} устройств для источника {source_id} "
+            f"(прочитано состояний: {len(ha_states)})"
+        )
+        return parsed_devices
+
+    async def _mark_source_synced(self, source: HASource) -> None:
+        """Фиксирует успешную синхронизацию в метаданных источника.
+
+        Args:
+            source: Источник Home Assistant.
+        """
+        source.last_sync = datetime.utcnow()
+        source.last_error = None
+        if self.persistence and hasattr(self.persistence, "sources"):
+            await self.persistence.sources.save_source(source)
+            logger.info(f"Обновлено время синхронизации источника {source.id}")
+
+    async def _persist_sync_result(self, merged: list[Device], removed: list[Device]) -> None:
+        """Фиксирует результат синхронизации во всех хранилищах и событиях.
+
+        Args:
+            merged: Актуальные устройства источника.
+            removed: Устройства, помеченные как removed_from_ha.
+        """
+        if self.persistence and hasattr(self.persistence, "devices"):
+            await self.persistence.devices.save_devices(merged)
+            logger.info(f"Сохранено {len(merged)} устройств в persistence")
+
+        for device in merged:
+            self._devices[device.id] = device
+            self._index.add_device(device)
+        for device in removed:
+            self._devices[device.id] = device
+            self._index.update_device(device)
+        logger.info(
+            f"Обновлены внутренние хранилища: записей — {len(merged)}, исчезнувших — {len(removed)}"
+        )
+
+        await self._deactivate_removed_devices(removed)
+
+        for device in merged:
+            await self._publish_device_loaded_event(device)
+        for device in removed:
+            await self._publish_device_removed_event(device)
+
     async def sync_devices_from_source(self, source_id: UUID) -> list[Device]:
         """Синхронизирует устройства из указанного источника Home Assistant.
 
@@ -245,27 +315,8 @@ class DeviceService:
 
             logger.info(f"Источник найден: {source.name} ({source.url})")
 
-            # 2. Подключиться к HA через REST клиент
-            from src.adapters.home_assistant.rest_client import HARestClient
-
-            async with HARestClient(source.url, source.token) as rest_client:
-                # Подключаемся
-                connected = await rest_client.connect_to_ha()
-                if not connected:
-                    raise RuntimeError(f"Не удалось подключиться к HA: {source.url}")
-
-                # 3. Получить список устройств (состояний)
-                ha_states = await rest_client.fetch_devices()
-                logger.info(f"Получено {len(ha_states)} состояний из HA")
-
-                # 4. Преобразовать их в модели Device (устанавливаем source_id)
-                parsed_devices = self.parse_devices(ha_states)
-                for device in parsed_devices:
-                    device.source_id = source_id
-
-                logger.info(
-                    f"Преобразовано {len(parsed_devices)} устройств для источника {source_id}"
-                )
+            # 2-4. Прочитать состояния источника через REST-клиент
+            parsed_devices = await self._fetch_source_devices(source, source_id)
 
             # 5. Свести результат с единым хранилищем: обновить известные
             # устройства, создать новые, пометить исчезнувшие. Раньше каждая
@@ -273,39 +324,12 @@ class DeviceService:
             # исчезнувшие устройства навсегда оставались обычными (spec 006).
             merged, removed = await self._merge_synced_devices(source_id, parsed_devices)
 
-            # 6. Сохранить в persistence
-            if self.persistence and hasattr(self.persistence, "devices"):
-                await self.persistence.devices.save_devices(merged)
-                logger.info(f"Сохранено {len(merged)} устройств в persistence")
-
-            # 7. Обновить внутреннее хранилище и индекс
-            for device in merged:
-                self._devices[device.id] = device
-                self._index.add_device(device)
-            for device in removed:
-                self._devices[device.id] = device
-                self._index.update_device(device)
-
-            logger.info(
-                f"Обновлены внутренние хранилища: записей — {len(merged)}, "
-                f"исчезнувших — {len(removed)}"
-            )
-
-            # 8. Снять автоматику исчезнувших устройств
-            await self._deactivate_removed_devices(removed)
-
-            # 9. Опубликовать события для каждого устройства
-            for device in merged:
-                await self._publish_device_loaded_event(device)
-            for device in removed:
-                await self._publish_device_removed_event(device)
+            # 6-9. Записать результат: хранилище → память и индекс → снятие
+            # автоматики исчезнувших → события
+            await self._persist_sync_result(merged, removed)
 
             # 10. Обновить источник с временем последней синхронизации
-            source.last_sync = datetime.utcnow()
-            source.last_error = None
-            if self.persistence and hasattr(self.persistence, "sources"):
-                await self.persistence.sources.save_source(source)
-                logger.info(f"Обновлено время синхронизации источника {source_id}")
+            await self._mark_source_synced(source)
 
             # 11. Обновляем метрики
             sync_duration = time.time() - sync_start_time

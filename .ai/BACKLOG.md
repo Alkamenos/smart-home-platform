@@ -38,17 +38,19 @@
 
 ## §2. Крупные фичи (через Spec Kit → `specs/NNN-*`)
 
-### F1. Device Lifecycle: добавление устройства → FSM → работа 🔴
+### F1. Device Lifecycle: добавление устройства → FSM → работа ✅ (закрыто 2026-10-01)
 
-**Проблема:** единственный рабочий путь — ручной ввод в манифест через `/devices/save` (без FSM, оживёт после рестарта). Мастер `/discovery` нерабочий на 3 уровнях. Два несвязанных хранилища устройств. Enhancement 27/28 помечены ✅ фактически нерабочи.
+**Была проблема:** единственный рабочий путь — ручной ввод в манифест через `/devices/save` (без FSM, оживёт после рестарта). Мастер `/discovery` нерабочий на 3 уровнях. Два несвязанных хранилища устройств. Enhancement 27/28 помечены ✅ фактически нерабочи.
 
 **Спека при старте:** `specs/006-device-lifecycle/` (уточнить scope через clarify)
 
 Истории:
-- **US1 — Прямое добавление работает:** убрать дубль `@router.post("/apply")` (`src/webui/routes/devices/devices.py:99` vs `:585` — настоящий `apply_devices` недостижим); единое хранилище: `GET /api/v1/devices` должен отдавать устройства из `DeviceService`/persistence, а не in-memory `_devices_store` (`devices.py:27-28`); запись добавленного в persistence
+- ✅ **US1 — Прямое добавление работает:** убрать дубль `@router.post("/apply")` (`src/webui/routes/devices/devices.py:99` vs `:585` — настоящий `apply_devices` недостижим); единое хранилище: `GET /api/v1/devices` должен отдавать устройства из `DeviceService`/persistence, а не in-memory `_devices_store` (`devices.py:27-28`); запись добавленного в persistence
 - ✅ **US2 — Мастер discovery работает (закрыт 2026-10-01):** `discovery-data` отдаёт реальные устройства и области (причина недоступности — в теле ответа); идентичность (`X-User-ID`/`X-Is-Admin`) приходит из серверных атрибутов и подставляется во все запросы `/api/**`; форма создания источника с ошибками по полям и автовыбором; `discovery.html` переписан без дублей скриптов и htmx; мастер применяет через канонический `POST /api/v1/devices/apply`
-- **US3 — Устройство оживает без рестарта:** FSM создаётся только в `Container.build()` — нужен hot-reload (`factory.create_and_register` / `_hot_reload_fsm`) или подключение ConfigWatcher (перекрывается с Q3); пробросить `ha_adapter` в webui `DeviceService` (`app.py:301` — сейчас `None`); перестройка маппинга EventRouter
-- **US4 (опц.) — синк ↔ список:** после `POST /sources/{id}/sync` устройства появляются в `GET /api/v1/devices` (сейчас синк пишет в `DeviceService`, список читает другой мир)
+- ✅ **US3 — Устройство оживает без рестарта:** FSM создаётся только в `Container.build()` — нужен hot-reload (`factory.create_and_register` / `_hot_reload_fsm`) или подключение ConfigWatcher (перекрывается с Q3); пробросить `ha_adapter` в webui `DeviceService` (`app.py:301` — сейчас `None`); перестройка маппинга EventRouter
+- ✅ **US4 (опц.) — синк ↔ список:** после `POST /sources/{id}/sync` устройства появляются в `GET /api/v1/devices` (сейчас синк пишет в `DeviceService`, список читает другой мир)
+
+**Итог:** все 4 истории закрыты, 47/47 задач. Подробности — в `.ai/01_PROJECT_STATE.md` и `specs/006-device-lifecycle/quickstart.md`.
 
 ### F2. Live FSM Statuses: статусы FSM в UI 🔴
 
@@ -115,7 +117,7 @@
 
 | Фича | Спека | Статус |
 |------|-------|--------|
-| F1 Device Lifecycle | specs/006 | 🚧 Реализация: **US1–US4 закрыты 2026-10-01** — 39/47 задач; US4: каскадное удаление (автоматика → права → хранилище → манифест → маршрутизация → аудит), `DELETE /api/v1/devices/{id}` с проверкой прав и tombstone для идемпотентности, действие удаления в UI; US3: синк источника сводится с единым хранилищем (без дублей), исчезнувшие помечаются `removed_from_ha` и теряют автоматику, сбой подключения не теряет данные. **Проверено:** 1496 passed / 0 failed. Далее: US4 (удаление), Polish. US1 (MVP): единый источник устройств, транзакция жизненного цикла, форма `/devices/save` с обязательным источником, `EventRouter.rebuild()`, отписка от подписок, дубль `/apply` устранён, quickstart 1–3 ✅. US2: мастер на реальных данных источника, `ManifestStore` вынесен в core, запись манифеста через хранилище со снимком до мутации, идентичность в запросах UI, форма создания источника, `discovery.html` без дублей скриптов. **Проверено:** 1486 passed / 9 skipped / 0 failed, mypy --strict ✅. Далее: Polish (quickstart 4–9, смоук, документация) | spec (4 US, 30 FR, 10 SC), research (15 решений), plan (конституция PASS, 4 волны), data-model, 2 контракта, quickstart (9 сценариев), **tasks.md (47 задач: 3 setup + 8 foundational + 11 US1 + 10 US2 + 4 US3 + 5 US4 + 6 polish)** |
+| F1 Device Lifecycle | specs/006 | ✅ **Выполнено 2026-10-01** — 47/47 задач. US1: единый источник устройств + транзакция жизненного цикла, форма `/devices/save` с обязательным источником; US2: мастер на реальных данных источника, `ManifestStore` в core, идентичность в запросах UI, `discovery.html` без дублей; US3: синк сводится с единым хранилищем (без дублей), `removed_from_ha` снимает автоматику, сбой не теряет данные; US4: каскадное удаление + `DELETE /api/v1/devices/{id}` + действие в UI. **Проверено:** 1559 passed / 9 skipped / 0 failed, mypy --strict ✅, run_checks exit 0, quickstart 1–6 и 9 вживую (Traceback 0); покрытие: `device_lifecycle` 93%, `manifest_store` 96%, `discovery_service` 91%, `routes_discovery` 95%, `event_router` 95% | spec (4 US, 30 FR, 10 SC), research, plan, data-model, 2 контракта, quickstart (9 сценариев + фактические результаты), tasks.md (47) |
 | F2 Live FSM Statuses | specs/007 (будет) | ⬜ Не начата |
 | F3 FSM Observability | specs/008 (будет) | ⬜ Не начата |
 | F4 Device E2E | specs/009 (будет) | ⬜ Не начата |
