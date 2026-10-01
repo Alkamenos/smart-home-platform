@@ -43,7 +43,7 @@
 | [23](23-event-history-persistence.md) | Event History Persistence (Data Lake) | 📝 Планирование | HIGH | AI & Analytics |
 | [24](24-predictive-ai-middleware.md) | Predictive AI Middleware | 📝 Планирование | MEDIUM | AI & Advanced |
 | [25](25-web-ui.md) | Web UI (редактирование манифеста) | ✅ Реализовано | — | Web UI |
-| [26](26-extend-web-ui.md) | Расширенный Web UI (real-time визуализация FSM) | ✅ Реализовано | — | Web UI |
+| [26](26-extend-web-ui.md) | Расширенный Web UI (real-time визуализация FSM) | ✅ Реализовано (сверка 2026-10-01: real-time закрыт в specs/007 — публикация переходов, живой канал с проверкой прав, подсветка состояния; до этого был завышен) | specs/007 | Web UI |
 | [27](27-device-discovery-wizard.md) | Device Discovery Wizard | ✅ Реализовано | — | Web UI |
 | [28](28-add-devices.md) | Добавление устройств из HA в манифест | ✅ Реализовано | — | CLI / Web UI |
 
@@ -61,4 +61,4 @@
 
 ---
 
-**Последнее обновление:** 2026-09-29
+**Последнее обновление:** 2026-10-01
