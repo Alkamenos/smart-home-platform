@@ -138,7 +138,7 @@ class TestHistorySurvivesRestart:
         assert put_response.status_code == 200, put_response.text
 
         # «Рестарт»: полностью новое приложение на том же data-каталоге
-        from webui.app import create_app
+        from src.webui.app import create_app
 
         restarted_client = TestClient(create_app())
         events_response = restarted_client.get(

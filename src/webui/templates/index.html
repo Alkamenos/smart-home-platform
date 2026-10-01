@@ -546,6 +546,7 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container-fluid">
+            <span id="live-status" class="badge bg-secondary me-2">Подключение…</span>
             <a class="navbar-brand" href="/">
                 <i class="bi bi-house-fill"></i> Smart Home
             </a>
@@ -776,8 +777,11 @@
             const modalEl = document.getElementById('fsmModal');
             const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
             document.getElementById('fsm-device-id').textContent = deviceId;
+            // Схема строится после показа окна: в скрытом контейнере Mermaid не
+            // может вычислить разметку («Could not find a suitable point»).
+            const draw = () => loadFSMDiagram(deviceId);
+            modalEl.addEventListener('shown.bs.modal', draw, { once: true });
             modal.show();
-            loadFSMDiagram(deviceId);
         }
 
         function loadFSMDiagram(deviceId) {
@@ -790,18 +794,25 @@
                     'X-Is-Admin': document.body.dataset.userIsAdmin === 'true' ? 'true' : 'false'
                 }
             })
-                .then(r => r.json().then(data => ({ ok: r.ok, data })))
-                .then(({ ok, data }) => {
-                    if (!ok || data.error) {
+                .then(async (r) => {
+                    // Диаграмма отдаётся чистой Mermaid-строкой; ошибки — JSON.
+                    if (!r.ok) {
+                        let message = 'FSM unavailable';
+                        try {
+                            const data = await r.json();
+                            message = data.error || message;
+                        } catch (e) { /* не-JSON ответ */ }
                         container.innerHTML = `<div class="alert alert-warning mb-0">
-                            <i class="bi bi-info-circle"></i> ${data.error || 'FSM unavailable'}
+                            <i class="bi bi-info-circle"></i> ${message}
                         </div>`;
                         return;
                     }
-                    // Reset container so repeated opens re-render cleanly
-                    container.innerHTML = '<pre class="mermaid" id="fsm-mermaid"></pre>';
+                    const diagram = await r.text();
+                    container.innerHTML =
+                        '<pre class="mermaid" id="fsm-mermaid"></pre>' +
+                        '<div id="fsm-current-state" class="mt-2"></div>';
                     const pre = document.getElementById('fsm-mermaid');
-                    pre.textContent = data.diagram;
+                    pre.textContent = diagram;
 
                     mermaid.initialize({
                         startOnLoad: false,
@@ -809,7 +820,8 @@
                         securityLevel: 'strict',
                         flowchart: { htmlLabels: false }
                     });
-                    return mermaid.run({ nodes: [pre] });
+                    await mermaid.run({ nodes: [pre] });
+                    if (window.LiveUpdates) window.LiveUpdates.renderFsmCurrentState(deviceId);
                 })
                 .catch(e => {
                     container.innerHTML =
@@ -827,54 +839,173 @@
             }
         });
 
-        // WebSocket for real-time updates
-        (function() {
+        // Живые обновления состояний автоматов: канал устройств с проверкой прав.
+        // Прежний /ws/live не имел идентификации и доступа, а его обработчик
+        // только писал в консоль (spec 007, FR-024, FR-027).
+        const LiveUpdates = (function () {
+            const RECONNECT_MIN_MS = 1000;
+            const RECONNECT_MAX_MS = 30000;
+
             let socket = null;
-            let reconnectDelay = 1000;
-            const maxReconnectDelay = 30000;
+            let reconnectDelay = RECONNECT_MIN_MS;
+            let devices = [];
+            const fsmStates = {};       // fsm_id -> { state, since }
+            let fsmViews = [];           // представления состояний из раздела
+
+            function headers() {
+                return {
+                    'X-User-ID': document.body.dataset.userId || '',
+                    'X-Is-Admin': document.body.dataset.userIsAdmin === 'true' ? 'true' : 'false'
+                };
+            }
+
+            function setLiveStatus(connected) {
+                const badge = document.getElementById('live-status');
+                if (!badge) return;
+                badge.textContent = connected ? 'Обновления в реальном времени' : 'Нет обновлений';
+                badge.className = connected ? 'badge bg-success' : 'badge bg-warning text-dark';
+            }
+
+            // Карточки страницы рендерятся из манифеста (entity_id), а не из
+            // хранилища устройств, поэтому состояния группируются по entity_id
+            // из раздела состояний — иначе карточки остались бы пустыми.
+            function fsmViewsByDevice() {
+                const grouped = {};
+                Object.entries(fsmStates).forEach(([fsmId, value]) => {
+                    const view = fsmViews.find(v => v.fsm_id === fsmId);
+                    if (!view) return;
+                    (grouped[view.device_id] = grouped[view.device_id] || []).push({
+                        fsm_id: fsmId,
+                        behavior: view.behavior,
+                        state: value.state,
+                        since: value.since
+                    });
+                });
+                return grouped;
+            }
+
+            // Показать состояние автоматов устройства прямо на карточке (FR-028).
+            function renderDeviceStates(entityId, grouped) {
+                const card = document.querySelector(`.device-card[data-device="${CSS.escape(entityId)}"]`);
+                if (!card) return;
+                let holder = card.querySelector('.device-fsm-states');
+                if (!holder) {
+                    holder = document.createElement('div');
+                    holder.className = 'device-fsm-states mt-2';
+                    card.querySelector('.device-header').after(holder);
+                }
+                const entries = grouped[entityId] || [];
+                if (!entries.length) {
+                    holder.innerHTML = '';
+                    return;
+                }
+                holder.innerHTML = entries.map(v => `
+                    <div class="fsm-state-line" data-fsm-id="${CSS.escape(v.fsm_id)}">
+                        <span class="badge bg-primary">${v.behavior || 'fsm'}</span>
+                        <span class="fsm-state-value">${v.state}</span>
+                        <small class="text-muted fsm-state-since">${v.since || ''}</small>
+                    </div>`).join('');
+            }
+
+            function renderAllDevices() {
+                const grouped = fsmViewsByDevice();
+                document.querySelectorAll('.device-card').forEach(card => {
+                    renderDeviceStates(card.dataset.device, grouped);
+                });
+            }
+
+            // Текущее состояние в модальном окне диаграммы (FR-030).
+            function renderFsmCurrentState(entityId) {
+                const holder = document.getElementById('fsm-current-state');
+                if (!holder) return;
+                const entries = fsmViewsByDevice()[entityId] || [];
+                if (!entries.length) {
+                    holder.innerHTML = '<small class="text-muted">Текущее состояние неизвестно</small>';
+                    return;
+                }
+                holder.innerHTML = entries.map(v => `
+                    <div class="fsm-state-line">
+                        <span class="badge bg-primary">${v.behavior || 'fsm'}</span>
+                        <span class="fsm-state-value">${v.state}</span>
+                        <small class="text-muted">${v.since || ''}</small>
+                    </div>`).join('');
+            }
+
+            function applyTransition(message) {
+                fsmStates[message.fsm_id] = { state: message.state, since: message.timestamp };
+                const view = fsmViews.find(v => v.fsm_id === message.fsm_id);
+                if (view) {
+                    renderDeviceStates(view.device_id, fsmViewsByDevice());
+                }
+            }
+
+            async function loadInitialData() {
+                const [devicesResponse, statesResponse] = await Promise.all([
+                    fetch('/api/v1/devices', { headers: headers() }),
+                    fetch('/api/fsm/state', { headers: headers() })
+                ]);
+                devices = devicesResponse.ok ? await devicesResponse.json() : [];
+                const states = statesResponse.ok ? await statesResponse.json() : { states: [] };
+                fsmViews = states.states || [];
+                fsmViews.forEach(v => { fsmStates[v.fsm_id] = { state: v.state, since: v.since }; });
+                renderAllDevices();
+            }
 
             function connect() {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                socket = new WebSocket(`${protocol}//${window.location.host}/ws/live`);
+                socket = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/devices`);
 
-                socket.onopen = () => {
-                    console.log('WebSocket connected');
-                    reconnectDelay = 1000;
+                socket.onopen = async () => {
+                    reconnectDelay = RECONNECT_MIN_MS;
+                    socket.send(JSON.stringify({
+                        type: 'auth',
+                        user_id: document.body.dataset.userId || ''
+                    }));
+                    // Подписка только на доступные устройства — сервер проверяет
+                    // права при каждой доставке (FR-025).
+                    devices.forEach(d => socket.send(JSON.stringify({ type: 'subscribe', device_id: d.id })));
+                    setLiveStatus(true);
                 };
 
                 socket.onmessage = (e) => {
-                    try {
-                        const data = JSON.parse(e.data);
-                        console.log('Live update:', data);
-                        // Update UI with real-time data
-                        if (data.type === 'fsm_transition') {
-                            // Update device status
-                        } else if (data.type === 'sensor_event') {
-                            // Update sensor readings
-                        }
-                    } catch (err) {
-                        console.error('WebSocket parse error:', err);
+                    let data;
+                    try { data = JSON.parse(e.data); } catch (err) { return; }
+                    if (data.type === 'fsm_transition') {
+                        applyTransition(data);
+                    } else if (data.type === 'auth' || data.type === 'authenticated') {
+                        devices.forEach(d => socket.send(JSON.stringify({ type: 'subscribe', device_id: d.id })));
                     }
                 };
 
                 socket.onclose = () => {
-                    console.log('WebSocket disconnected');
+                    setLiveStatus(false);
                     setTimeout(() => {
-                        if (reconnectDelay < maxReconnectDelay) {
-                            reconnectDelay *= 2;
-                        }
+                        reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
                         connect();
                     }, reconnectDelay);
                 };
 
-                socket.onerror = (err) => {
-                    console.error('WebSocket error:', err);
-                    if (socket) socket.close();
-                };
+                socket.onerror = () => { if (socket) socket.close(); };
             }
 
-            connect();
+            async function start() {
+                await loadInitialData();
+                connect();
+            }
+
+            // Сокет закрывается при уходе со страницы: иначе соединения
+            // накапливаются и держат сервер занятым (FR-012).
+            window.addEventListener('beforeunload', () => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.close(1000, 'page unload');
+                }
+            });
+
+            return { start, renderFsmCurrentState };
         })();
+
+        window.LiveUpdates = LiveUpdates;
+        LiveUpdates.start();
     </script>
 </body>
 </html>

@@ -16,6 +16,12 @@ from pydantic import BaseModel, Field, model_validator
 from src.core.models.device import Device
 from src.core.models.device_sync_event import DeviceSyncEvent
 from src.core.models.manifest import BehaviorConfig
+from src.webui.models import (
+    AutomationInfo,
+    FSMStateView,
+    build_all_fsm_state_views,
+    build_automation_info,
+)
 from src.webui.routes.devices.deps import (
     get_device_service,
     get_lifecycle_service,
@@ -92,6 +98,11 @@ class DeviceResponse(BaseModel):
     tags: list[str] | None = None
     created_at: str
     updated_at: str
+    fsm: list[FSMStateView] = Field(default_factory=list, description="States of device FSMs")
+    automation: AutomationInfo = Field(
+        default_factory=lambda: AutomationInfo(configured=False, reason="no_automation"),
+        description="Automation availability for the device",
+    )
 
 
 # ============ T033-T057: Управление устройствами (полная реализация) ============
@@ -136,7 +147,11 @@ async def get_devices(
             devices = [device for device in devices if device.source_id == source_id]
 
         logger.info(f"Получен список {len(devices)} устройств для пользователя {x_user_id}")
-        return [_to_device_response(device) for device in devices]
+        fsm_views = _build_device_fsm_views(request, devices)
+        return [
+            _to_device_response(device, fsm_views.get(device.ha_entity_id, []))
+            for device in devices
+        ]
 
     except HTTPException:
         raise
@@ -148,20 +163,50 @@ async def get_devices(
         ) from e
 
 
-def _to_device_response(device: Any) -> DeviceResponse:
+def _build_device_fsm_views(request: Request, devices: list[Any]) -> dict[str, list[FSMStateView]]:
+    """Собрать состояния автоматов устройств из движка (FR-019).
+
+    Args:
+        request: HTTP запрос (для доступа к контейнеру платформы).
+        devices: Устройства, попавшие в ответ.
+
+    Returns:
+        Соответствие идентификатора устройства и его состояний автоматов.
+    """
+    container = getattr(request.app.state, "container", None)
+    fsm_engine = getattr(container, "fsm", None)
+    if fsm_engine is None:
+        logger.debug("FSM engine unavailable: device automation info omitted")
+        return {}
+
+    entity_ids = {device.ha_entity_id for device in devices if device.ha_entity_id}
+    views = build_all_fsm_state_views(fsm_engine, entity_ids)
+
+    grouped: dict[str, list[FSMStateView]] = {}
+    for view in views:
+        grouped.setdefault(view.device_id, []).append(view)
+    return grouped
+
+
+def _to_device_response(device: Any, fsm_views: list[FSMStateView] | None = None) -> DeviceResponse:
     """Собирает ответ API из модели устройства.
 
     Поля конфигурации (``display_name``, ``description``, ``location``,
     ``tags``) берутся из ``device.config`` — в модели устройства отдельных
     полей для них нет (spec 006, contracts/device-lifecycle-api.md).
 
+    Устройство без автоматики получает явную отметку ``no_automation``, а не
+    пустое значение состояния (spec 007, FR-019).
+
     Args:
         device: Модель устройства.
+        fsm_views: Состояния автоматов устройства.
 
     Returns:
         Ответ API с устройством.
     """
     config = device.config or {}
+    views = fsm_views or []
     return DeviceResponse(
         id=str(device.id),
         name=device.name,
@@ -177,6 +222,8 @@ def _to_device_response(device: Any) -> DeviceResponse:
         tags=config.get("tags"),
         created_at=device.created_at.isoformat(),
         updated_at=device.updated_at.isoformat(),
+        fsm=views,
+        automation=build_automation_info([view.fsm_id for view in views]),
     )
 
 

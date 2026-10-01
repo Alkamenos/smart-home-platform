@@ -169,8 +169,44 @@
         // Initialize Mermaid
         mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
 
+        // Состояния автоматов: реальные данные из раздела состояний.
+        // Раньше в колонке статуса стоял вписанный в шаблон «Active», независимо
+        // от того, что происходило с автоматикой (spec 007, FR-019).
+        let fsmStatesByDevice = {};
+
+        async function loadFsmStates() {
+            try {
+                const response = await fetch('/api/fsm/state', { headers: authHeaders() });
+                if (!response.ok) return;
+                const body = await response.json();
+                (body.states || []).forEach(view => {
+                    const key = view.device_id;
+                    fsmStatesByDevice[key] = fsmStatesByDevice[key] || [];
+                    fsmStatesByDevice[key].push(view);
+                });
+            } catch (e) {
+                console.error('Не удалось загрузить состояния автоматов:', e);
+            }
+        }
+
+        function fsmStateCell(entityId) {
+            const views = fsmStatesByDevice[entityId] || [];
+            if (!views.length) {
+                return '<span class="text-muted">Автоматика не настроена</span>';
+            }
+            return views.map(v =>
+                `<div class="mb-1"><span class="badge bg-primary me-1">${v.behavior || 'fsm'}</span>` +
+                `<span class="badge bg-success">${v.state}</span>` +
+                `<small class="text-muted ms-1">${v.since || ''}</small></div>`
+            ).join('');
+        }
+
+        function authHeaders() {
+            return {};
+        }
+
         // Load device status into table
-        function loadDeviceStatus() {
+        async function loadDeviceStatus() {
             const devices = {{ devices | tojson }};
 
             if (!devices || devices.length === 0) {
@@ -191,7 +227,7 @@
                             '<span class="text-muted">No behaviors</span>'
                         }
                     </td>
-                    <td><span class="badge bg-success">Active</span></td>
+                    <td>${fsmStateCell(device.id)}</td>
                     <td>
                         <a href="/devices/0/${device.id}/edit" class="btn btn-sm btn-outline-light">
                             <i class="bi bi-pencil"></i> Edit
@@ -233,19 +269,41 @@
                                     <span class="visually-hidden">Loading...</span>
                                 </div>
                             </div>
+                            <div class="fsm-current mt-2"></div>
                         </div>
                     </div>
                 `;
                 container.appendChild(col);
 
                 // Fetch FSM diagram for this device
-                fetch(`/api/fsm/${deviceId}/diagram`)
-                    .then(response => response.text())
-                    .then(diagramText => {
-                        const diagramContainer = document.getElementById(`fsm-${deviceId.replace(/\./g, '-')}`);
-                        diagramContainer.innerHTML = diagramText;
-                        // Re-render mermaid diagrams
-                        mermaid.contentLoaded();
+                // Диаграмма отдаётся чистой Mermaid-строкой; прежний разбор
+                // как JSON вставлял в страницу служебный конверт (FR-029).
+                fetch(`/api/fsm/${encodeURIComponent(deviceId)}/diagram`)
+                    .then(async (response) => {
+                        const target = document.getElementById(`fsm-${deviceId.replace(/\./g, '-')}`);
+                        if (!target) return;
+                        if (!response.ok) {
+                            let message = 'Не удалось загрузить схему';
+                            try { message = (await response.json()).error || message; } catch (e) { /* не-JSON */ }
+                            target.innerHTML = `<div class="alert alert-warning">${message}</div>`;
+                            return;
+                        }
+                        const diagramText = await response.text();
+                        target.innerHTML = '<pre class="mermaid"></pre>';
+                        const pre = target.querySelector('pre');
+                        pre.textContent = diagramText;
+                        await mermaid.run({ nodes: [pre] });
+
+                        // Текущее состояние показывается рядом со схемой (FR-030).
+                        const holder = target.parentElement.querySelector('.fsm-current');
+                        if (holder) {
+                            const views = fsmStatesByDevice[deviceId] || [];
+                            holder.innerHTML = views.length
+                                ? views.map(v =>
+                                    `<div><span class="badge bg-primary me-1">${v.behavior || 'fsm'}</span>` +
+                                    `<span class="badge bg-success">${v.state}</span></div>`).join('')
+                                : '<small class="text-muted">Автоматика не настроена</small>';
+                        }
                     })
                     .catch(error => {
                         console.error(`Error loading FSM for ${deviceId}:`, error);
@@ -293,6 +351,31 @@
             .then(response => response.json())
             .then(data => {
                 const ctx = document.getElementById('heatmapChart').getContext('2d');
+
+                // Нет фактических записей — сообщаем об этом, а не рисуем пустую
+                // сетку, которую можно принять за «активности не было» (FR-032).
+                if (!data.has_data) {
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: { labels: [], datasets: [] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: {
+                            title: {
+                                display: true,
+                                text: 'Данных пока нет: активность появится после первых событий',
+                                color: '#ccc',
+                                font: { size: 12 }
+                            }
+                        }},
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Данных пока нет: активность появится после первых событий',
+                                color: '#ccc'
+                            }
+                        }
+                    });
+                    return;
+                }
 
                 // Transform data for Chart.js matrix
                 const datasets = data.data.map((dayData, index) => ({
@@ -437,22 +520,33 @@
         // Load overrides on page load
         loadOverrides();
 
-        // Load device status on page load
-        loadDeviceStatus();
-
-        // Load FSM diagrams on page load
-        loadFSMDiagrams();
+        // Состояния автоматов загружаются первыми: от них зависят и таблица
+        // статусов, и блоки текущего состояния под схемами.
+        loadFsmStates().then(async () => {
+            await loadDeviceStatus();
+            loadFSMDiagrams();
+        });
 
         // AI Suggestions: Load suggestions
         function loadSuggestions() {
             fetch('/api/ai/suggestions')
                 .then(response => response.json())
-                .then(suggestions => {
+                .then(body => {
                     const container = document.getElementById('suggestionsContainer');
+                    // Раздел возвращает объект {suggestions, has_data}; выдуманные
+                    // записи удалены, поэтому при отсутствии данных сообщаем об этом
+                    // прямо (FR-035, FR-036).
+                    const suggestions = body.suggestions || [];
                     const pendingSuggestions = suggestions.filter(s => s.status === 'pending');
 
+                    if (!body.has_data) {
+                        container.innerHTML =
+                            '<div class="col-12 text-center text-muted">Данных пока нет: подсказки появятся после сбора статистики</div>';
+                        return;
+                    }
+
                     if (pendingSuggestions.length === 0) {
-                        container.innerHTML = '<div class="col-12 text-center">No pending suggestions</div>';
+                        container.innerHTML = '<div class="col-12 text-center">Нет подсказок в ожидании</div>';
                         return;
                     }
 

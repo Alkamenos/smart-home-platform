@@ -682,17 +682,17 @@ class TestViewFSMDiagrams:
         """FSM diagram returns Mermaid format."""
         response = client.get("/api/fsm/light.kitchen/diagram")
         if response.status_code == 200:
-            data = response.json()
-            assert "diagram" in data
-            diagram = data["diagram"]
+            # Диаграмма отдаётся чистой Mermaid-строкой, а не JSON-конвертом
+            # (spec 007, FR-029).
+            assert response.headers["content-type"].startswith("text/plain")
+            diagram = response.text
             assert "stateDiagram" in diagram or "state" in diagram.lower()
 
     def test_fsm_diagram_shows_all_states(self, client: TestClient):
         """FSM diagram includes all states."""
         response = client.get("/api/fsm/light.kitchen/diagram")
         if response.status_code == 200:
-            data = response.json()
-            diagram = data["diagram"]
+            diagram = response.text
             # Should have state definitions
             assert len(diagram) > 10  # Non-trivial diagram
 
@@ -700,8 +700,7 @@ class TestViewFSMDiagrams:
         """FSM diagram shows state transitions."""
         response = client.get("/api/fsm/light.kitchen/diagram")
         if response.status_code == 200:
-            data = response.json()
-            diagram = data["diagram"]
+            diagram = response.text
             # Should show transitions (typically with -->)
             assert "-->" in diagram or "transition" in diagram.lower()
 

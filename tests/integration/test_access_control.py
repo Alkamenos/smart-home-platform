@@ -300,10 +300,10 @@ class TestDeviceEventDeliveryRights:
             )
             assert grant.status_code in [200, 201]
 
-            # ВАЖНО: импорт из того же модуля, который использует приложение
-            # (main.py импортирует top-level `webui`, а не `src.webui` —
-            # разные имена = разные экземпляры connection_manager)
-            from webui.routes.devices.websocket import broadcast_state_change
+            # ВАЖНО: импорт из того же модуля, который использует приложение.
+            # Разные имена (`webui.*` и `src.webui.*`) дают разные экземпляры
+            # модуля и, следовательно, разные connection_manager.
+            from src.webui.routes.devices.websocket import broadcast_state_change
 
             with client.websocket_connect("/api/v1/ws/devices") as ws:
                 ws.send_json({"type": "auth", "user_id": regular_user_id})

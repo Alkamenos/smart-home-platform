@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from src.core.persistence.event_store import EventStore
+from src.webui.models import build_all_fsm_state_views
 
 
 if TYPE_CHECKING:
@@ -62,8 +63,80 @@ def _mermaid_state_id(raw: str) -> str:
     return re.sub(r"[^0-9a-zA-Z_]", "_", raw)
 
 
+# Сколько триггеров показывать в одной метке ребра до усечения.
+MAX_TRIGGERS_IN_EDGE_LABEL = 2
+
+
+def _state_alias(entity: str, state: str) -> str:
+    """Собрать уникальный идентификатор состояния для Mermaid.
+
+    Args:
+        entity: Идентификатор автомата, уже очищенный от недопустимых символов.
+        state: Имя состояния.
+
+    Returns:
+        Идентификатор, безопасный для ``stateDiagram-v2``.
+    """
+    return f"{entity}__{_mermaid_state_id(state)}"
+
+
+def _guard_label(guard: Any) -> str:
+    """Получить читаемое имя условия перехода.
+
+    Args:
+        guard: Условие перехода или None.
+
+    Returns:
+        Имя условия либо пустая строка для анонимных обёрток.
+    """
+    if guard is None:
+        return ""
+    name = getattr(guard, "__name__", "")
+    if name and name not in ("guard", "guard_fn", "combined_guard"):
+        return name
+    return ""
+
+
+def _combine_edge_labels(buckets: dict[str, list[str]]) -> str:
+    """Собрать метку ребра из триггеров и условий.
+
+    Одинаковые условия объединяются в один суффикс, а длинные списки
+    усекаются: разметка Mermaid не справляется с очень длинными метками рёбер
+    и не отображает схему вовсе (FR-029).
+
+    Args:
+        buckets: Условие перехода → список меток триггеров.
+
+    Returns:
+        Метка ребра.
+    """
+    parts: list[str] = []
+    plain = buckets.get("", [])
+    if plain:
+        shown = plain[:MAX_TRIGGERS_IN_EDGE_LABEL]
+        if len(plain) > len(shown):
+            shown.append(f"+{len(plain) - len(shown)}")
+        parts.append(", ".join(shown))
+
+    for guard, triggers in buckets.items():
+        if not guard:
+            continue
+        shown = triggers[:MAX_TRIGGERS_IN_EDGE_LABEL]
+        suffix = f" [{guard}]"
+        if len(triggers) > len(shown):
+            shown.append(f"+{len(triggers) - len(shown)}")
+        parts.append(f"{', '.join(shown)}{suffix}")
+
+    return " / ".join(parts)
+
+
 def _build_mermaid_state_diagram(definitions: list[Any]) -> str:
     """Build a Mermaid stateDiagram-v2 from FSM definitions.
+
+    Каждому состоянию присваивается собственный идентификатор через
+    ``state "Имя" as идентификатор``. Прежняя форма ``машина : СОСТОЯНИЕ`` не
+    разбирается Mermaid: интерфейс показывал ошибку парсинга вместо схемы
+    (spec 007, FR-029).
 
     Args:
         definitions: FSMDefinition objects to render.
@@ -72,54 +145,132 @@ def _build_mermaid_state_diagram(definitions: list[Any]) -> str:
         Mermaid diagram source.
     """
     lines = ["stateDiagram-v2"]
-    single = len(definitions) == 1
     initial_targets: list[str] = []
+    single = len(definitions) == 1
 
     for definition in definitions:
         entity = _mermaid_state_id(definition.entity_id)
         target = definition.target_device_id or definition.entity_id
-        initial_targets.append(entity)
-
-        # A device may own several behaviors, each with its own state machine.
-        # They are rendered as separate machines. Aliasing several ids onto the
-        # same display name is rejected by Mermaid, so only a lone machine gets
-        # the friendly device label.
         if single:
-            lines.append(f"state '{target}' as {entity}")
-        lines.append(f"{entity} : {definition.initial_state}")
+            lines.append(f"title {_mermaid_state_id(target)}")
 
-        seen: set[tuple[str, str, str]] = set()
+        states: list[str] = [
+            definition.initial_state,
+            *(t.to_state for t in definition.transitions),
+        ]
+        for state in dict.fromkeys(states):
+            lines.append(f'state "{state}" as {_state_alias(entity, state)}')
+
+        initial = _state_alias(entity, definition.initial_state)
+        initial_targets.append(initial)
+
+        # Несколько триггеров между одной парой состояний объединяются в одно
+        # ребро: параллельные дублирующиеся рёбра не разводит разметка Mermaid,
+        # и схема не отображалась вовсе (FR-029).
+        edges: dict[tuple[str, str], dict[str, list[str]]] = {}
         for transition in definition.transitions:
             label = transition.trigger
-            if transition.guard is not None:
-                guard_name = getattr(transition.guard, "__name__", "")
-                if guard_name and guard_name not in ("guard", "guard_fn", "combined_guard"):
-                    label = f"{label} [{guard_name}]"
             if transition.priority:
                 label = f"{label} (p{transition.priority})"
+            guard_name = _guard_label(transition.guard)
 
-            key = (transition.from_state, transition.to_state, label)
-            if key in seen:
-                continue
-            seen.add(key)
-            lines.append(f"{entity} : {transition.from_state} --> {transition.to_state} : {label}")
+            bucket = edges.setdefault((transition.from_state, transition.to_state), {})
+            triggers = bucket.setdefault(guard_name, [])
+            if label not in triggers:
+                triggers.append(label)
 
-    for entity in initial_targets:
-        lines.append(f"[*] --> {entity}")
+        for (from_state, to_state), buckets in edges.items():
+            lines.append(
+                f"{_state_alias(entity, from_state)} --> {_state_alias(entity, to_state)}"
+                f" : {_combine_edge_labels(buckets)}"
+            )
+
+    for initial in initial_targets:
+        lines.append(f"[*] --> {initial}")
 
     return "\n".join(lines)
 
 
+@router.get("/api/fsm/state", response_class=JSONResponse)
+async def get_fsm_state(request: Request) -> JSONResponse:
+    """Отдать текущее состояние всех автоматов (FR-017).
+
+    Состояние берётся из движка на момент запроса, поэтому ответ не устаревает
+    относительно последнего обработанного перехода (FR-018). Отсутствие
+    автоматов — пустой список, а недоступность движка — ошибка 503 с описанием:
+    эти ситуации нельзя смешивать (FR-020, FR-021).
+
+    Args:
+        request: Входящий HTTP-запрос.
+
+    Returns:
+        JSON ``{"count": N, "states": [...]}`` либо JSON с описанием ошибки.
+    """
+    container = getattr(request.app.state, "container", None)
+    fsm_engine = getattr(container, "fsm", None)
+    if fsm_engine is None:
+        return JSONResponse({"error": "FSM engine is not available"}, status_code=503)
+
+    allowed_devices = await _resolve_accessible_device_ids(request)
+    views = build_all_fsm_state_views(fsm_engine, allowed_devices)
+
+    return JSONResponse(
+        {
+            "count": len(views),
+            "states": [view.model_dump() for view in views],
+        }
+    )
+
+
+async def _resolve_accessible_device_ids(request: Request) -> set[str] | None:
+    """Определить устройства, доступные пользователю запроса (FR-038).
+
+    Ответ фильтруется по существующей модели доступа: пользователь видит
+    состояния только тех устройств, к которым у него есть права. Если сервис
+    устройств недоступен, фильтрация не применяется — иначе раздел выглядел бы
+    пустым из-за сбоя, а не из-за отсутствия прав.
+
+    Args:
+        request: Входящий HTTP-запрос.
+
+    Returns:
+        Множество доступных идентификаторов устройств. ``None`` означает «без
+        фильтрации», а пустое множество — у пользователя нет доступных
+        устройств, поэтому раздел должен быть пуст.
+    """
+    user_id = request.headers.get("X-User-ID")
+    device_service = getattr(request.app.state, "device_service", None)
+    if not user_id or device_service is None:
+        return None
+
+    is_admin = request.headers.get("X-Is-Admin", "false").lower() == "true"
+    if is_admin:
+        return None
+
+    try:
+        devices = await device_service.get_user_accessible_devices(user_id)
+    except Exception as e:  # noqa: BLE001 - фильтрация не должна ломать раздел
+        logger.warning(f"Could not resolve device access for {user_id}: {e}")
+        return None
+
+    return {device.ha_entity_id for device in devices if device.ha_entity_id}
+
+
 @router.get("/api/fsm/{entity_id}/diagram", response_class=Response)
 async def get_fsm_diagram(request: Request, entity_id: str) -> Response:
-    """Generate FSM diagram for a device.
+    """Generate FSM diagram for a device (FR-029).
+
+    Отдаётся чистая Mermaid-строка: прежний JSON-конверт вставлялся в страницу
+    как текст, и пользователь видел служебный JSON вместо схемы. Текущее
+    состояние в схему не встраивается — оно приходит разделом состояний и живыми
+    сообщениями и подсвечивается на клиенте (FR-030, R-09).
 
     Args:
         request: FastAPI request object.
         entity_id: Device entity ID.
 
     Returns:
-        JSON with Mermaid diagram definition.
+        Mermaid-строка (text/plain); ошибки — JSON с описанием.
     """
     try:
         container = getattr(request.app.state, "container", None)
@@ -153,8 +304,8 @@ async def get_fsm_diagram(request: Request, entity_id: str) -> Response:
             )
 
         return Response(
-            content=json.dumps({"diagram": _build_mermaid_state_diagram(definitions)}),
-            media_type="application/json",
+            content=_build_mermaid_state_diagram(definitions),
+            media_type="text/plain; charset=utf-8",
         )
 
     except Exception as e:
@@ -214,90 +365,52 @@ async def dashboard(request: Request) -> HTMLResponse:
 
 @router.get("/api/history/activity-heatmap")
 async def get_activity_heatmap() -> dict:
-    """Get activity heatmap data aggregated by hour of day.
+    """Карта активности по фактическим записям (FR-033, FR-036).
+
+    Раньше значения выдумывались генератором с фиксированным зерном, поэтому
+    график выглядел правдоподобно и менялся от запуска к запуску (решение D-2).
+    Теперь карта считается по журналу переходов и событий, а при отсутствии
+    записей возвращает ``has_data: false`` вместо правдоподобных нулей.
 
     Returns:
-        JSON data for heatmap visualization (hour x day_of_week).
+        JSON с днями, часами, значениями и признаком наличия данных.
     """
-    # Mock data for now - will be replaced with EventStore aggregation
-    # Format: array of 7 days (Mon-Sun), each with 24 hours
-    import random
-
-    random.seed(42)  # For consistent mock data
-
-    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    heatmap_data = []
-
-    for day in days:
-        day_hours = []
-        for hour in range(24):
-            # Simulate higher activity during morning and evening
-            base_activity = 5
-            if 7 <= hour <= 9:  # Morning peak
-                base_activity += 15
-            elif 18 <= hour <= 22:  # Evening peak
-                base_activity += 20
-            elif 0 <= hour <= 6:  # Night low
-                base_activity = 2
-
-            # Add some randomness
-            activity = max(0, base_activity + random.randint(-3, 3))
-            day_hours.append(activity)
-
-        heatmap_data.append(
-            {
-                "day": day,
-                "values": day_hours,
-            }
-        )
-
-    return {
-        "days": days,
-        "hours": list(range(24)),
-        "data": heatmap_data,
-    }
+    try:
+        return event_store.get_activity_heatmap()
+    except Exception as e:
+        logger.error(f"Failed to build activity heatmap: {e}")
+        return {"days": [], "hours": [], "data": [], "has_data": False, "error": str(e)}
 
 
 @router.get("/api/events/history")
 async def get_events_history() -> dict:
-    """Get event history data for charts.
+    """История событий за сутки по настенным часам (FR-033, FR-036).
+
+    Корзины считаются по часам суток (``0`` — полночь). Прежние корзины
+    считались «часов назад» при подписях от ``00:00``, из-за чего график
+    отображался задом наперёд.
 
     Returns:
-        JSON data for Chart.js visualization.
+        JSON с подписями, набором данных и признаком наличия данных.
     """
-    # Get real events from EventStore
-    events = event_store.get_events(limit=100)
-
-    # Aggregate events by hour
-    from collections import defaultdict
-
-    hourly_counts = defaultdict(int)
-
-    current_time = time.time()
-    hours_24 = 24 * 60 * 60
-
-    for event in events:
-        # Calculate which hour bucket this event falls into (relative to now)
-        hours_ago = (current_time - event.timestamp) / hours_24
-        if hours_ago <= 1:  # Last 24 hours
-            hour_bucket = int((1 - hours_ago) * 24) % 24
-            hourly_counts[hour_bucket] += 1
-
-    # Build labels and data
-    labels = [f"{h:02d}:00" for h in range(24)]
-    data_values = [hourly_counts.get(h, 0) for h in range(24)]
+    try:
+        history = event_store.get_hourly_history(hours=24)
+    except Exception as e:
+        logger.error(f"Failed to build events history: {e}")
+        return {"labels": [], "datasets": [], "has_data": False, "error": str(e)}
 
     return {
-        "labels": labels,
+        "labels": history["labels"],
         "datasets": [
             {
                 "label": "Events (Last 24h)",
-                "data": data_values,
+                "data": history["data"],
                 "borderColor": "#0d6efd",
                 "tension": 0.1,
                 "fill": False,
-            },
+            }
         ],
+        "has_data": history["has_data"],
     }
 
 
@@ -371,55 +484,24 @@ async def remove_override(entity_id: str) -> Any:
 
 
 @router.get("/api/ai/suggestions")
-async def get_ai_suggestions() -> list[dict]:
-    """Get AI suggestions (pending, accepted, rejected).
+async def get_ai_suggestions() -> dict:
+    """Подсказки из журнала (FR-035, FR-036).
+
+    Раньше при пустом журнале возвращались три выдуманные записи, не совпадавшие
+    по форме с настоящими строками, поэтому интерфейс всегда показывал вымысел.
+    Выдумка удалена полностью (решение D-2): пустой раздел честнее правдоподобной
+    лжи.
 
     Returns:
-        List of suggestion records. If empty, returns mock suggestions for demo.
+        JSON со списком подсказок и признаком наличия данных.
     """
-    suggestions = event_store.get_suggestions()
+    try:
+        suggestions = event_store.get_suggestions()
+    except Exception as e:
+        logger.error(f"Failed to load AI suggestions: {e}")
+        return {"suggestions": [], "has_data": False, "error": str(e)}
 
-    # If no suggestions in DB, generate mock data for demonstration
-    if not suggestions:
-        import random
-
-        random.seed(42)
-
-        mock_suggestions = [
-            {
-                "id": "sugg_001",
-                "timestamp": time.time() - random.randint(3600, 86400),
-                "entity_id": "light.living_room",
-                "suggestion_type": "behavior_adjustment",
-                "description": "Turn on living room light at 19:00 instead of 18:30 based on sunset patterns",
-                "reasoning": "Historical data shows manual overrides occur 80% of the time at 19:00",
-                "confidence": 0.85,
-                "status": "pending",
-            },
-            {
-                "id": "sugg_002",
-                "timestamp": time.time() - random.randint(7200, 172800),
-                "entity_id": "thermostat.main",
-                "suggestion_type": "energy_optimization",
-                "description": "Reduce heating by 2°C during 10:00-16:00 when house is empty",
-                "reasoning": "Motion sensors show no activity during these hours on weekdays",
-                "confidence": 0.92,
-                "status": "pending",
-            },
-            {
-                "id": "sugg_003",
-                "timestamp": time.time() - random.randint(86400, 259200),
-                "entity_id": "light.kitchen",
-                "suggestion_type": "automation_creation",
-                "description": "Create automation: turn on kitchen light when motion detected between 6:00-8:00",
-                "reasoning": "Pattern detected: manual activation every morning at 6:30-7:00",
-                "confidence": 0.78,
-                "status": "accepted",
-            },
-        ]
-        return mock_suggestions
-
-    return suggestions
+    return {"suggestions": suggestions, "has_data": bool(suggestions)}
 
 
 @router.post("/api/ai/suggestion/{suggestion_id}/respond")
@@ -443,10 +525,11 @@ async def respond_to_suggestion(suggestion_id: str, request: Request) -> Any:
 
         # Update suggestion status in EventStore
         new_status = "accepted" if action == "accept" else "rejected"
+        # Лишний аргумент responded_at приводил к TypeError и ответу 500:
+        # метод такого параметра не принимает (spec 007, FR-036).
         event_store.update_suggestion_status(
             suggestion_id=suggestion_id,
             status=new_status,
-            responded_at=time.time(),
         )
 
         return {"status": "success", "message": f"Suggestion {suggestion_id} {new_status}"}

@@ -381,3 +381,88 @@ async def broadcast_state_change(device_id: str, state: dict):
 
     await connection_manager.broadcast_device_event(device_id, message)
     logger.debug(f"Broadcasted state change for device {device_id}")
+
+
+def build_fsm_transition_message(payload: dict, device_id: str) -> dict | None:
+    """Собрать сообщение о переходе автомата для клиента (FR-024).
+
+    Args:
+        payload: Полезная нагрузка события перехода.
+        device_id: Идентификатор устройства (UUID), по которому клиенты
+            подписываются.
+
+    Returns:
+        Сообщение для отправки либо None, если в событии нет состояния.
+    """
+    to_state = payload.get("to_state")
+    fsm_id = payload.get("fsm_id")
+    if not to_state or not fsm_id or not payload.get("device_id"):
+        return None
+
+    return {
+        "type": "fsm_transition",
+        "device_id": device_id,
+        "fsm_id": fsm_id,
+        "from_state": payload.get("from_state"),
+        "state": to_state,
+        "source": payload.get("source"),
+        "timestamp": payload.get("timestamp"),
+    }
+
+
+def make_fsm_broadcaster(device_service: object | None):
+    """Создать раздатчик переходов для моста состояний (T041).
+
+    Событие перехода приходит с идентификатором устройства в формате Home
+    Assistant (``light.kitchen``), а клиенты подписываются по внутреннему
+    идентификатору устройства (UUID), поэтому требуется разрешение имён. Раздатчик
+    получается как метод моста: он ничего не знает о способе доставки, что
+    позволяет тестировать раздачу без веб-слоя.
+
+    Args:
+        device_service: Сервис устройств для разрешения идентификаторов.
+
+    Returns:
+        Асинхронный раздатчик, пригодный для ``FSMStateBridge.set_broadcaster``.
+    """
+
+    async def broadcast(payload: dict) -> None:
+        entity_id = payload.get("device_id")
+        if not entity_id or device_service is None:
+            return
+
+        device_uuid = await resolve_device_uuid(device_service, entity_id)
+        if device_uuid is None:
+            logger.debug(f"No device for FSM transition of {entity_id}; nothing to broadcast")
+            return
+
+        message = build_fsm_transition_message(payload, device_uuid)
+        if message is None:
+            return
+
+        await connection_manager.broadcast_device_event(device_uuid, message)
+        logger.debug(f"Broadcasted FSM transition for device {device_uuid}")
+
+    return broadcast
+
+
+async def resolve_device_uuid(device_service: object, entity_id: str) -> str | None:
+    """Разрешить идентификатор устройства по entity_id Home Assistant.
+
+    Args:
+        device_service: Сервис устройств.
+        entity_id: Идентификатор устройства в формате Home Assistant.
+
+    Returns:
+        Идентификатор устройства (UUID) либо None, если устройство не найдено.
+    """
+    try:
+        devices = await device_service.get_all_devices()  # type: ignore[attr-defined]
+    except Exception as e:  # noqa: BLE001 - раздача не должна ломать переход
+        logger.warning(f"Could not resolve device for {entity_id}: {e}")
+        return None
+
+    for device in devices:
+        if device.ha_entity_id == entity_id:
+            return str(device.id)
+    return None

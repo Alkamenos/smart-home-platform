@@ -113,18 +113,26 @@ def test_save_device_without_source_returns_error(client: TestClient):
 
 
 def test_get_ai_suggestions(client: TestClient):
-    """Test getting AI suggestions endpoint."""
+    """AI suggestions return an object with an explicit no-data marker.
+
+    The endpoint used to invent three demo records shaped differently from the
+    real rows, so the UI only ever displayed fiction (spec 007, FR-035, D-2).
+    """
     response = client.get("/api/ai/suggestions")
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
+    assert isinstance(data, dict)
+    assert "suggestions" in data
+    assert "has_data" in data
+    assert data["has_data"] == bool(data["suggestions"])
 
 
 def test_respond_to_suggestion(client: TestClient):
-    """Test responding to AI suggestion."""
-    # Test with mock suggestion ID
+    """Responding to a suggestion must not fail with an internal error."""
+    # Ответ не должен быть 500: прежний вызов передавал методу несуществующий
+    # аргумент responded_at (spec 007, FR-036).
     response = client.post("/api/ai/suggestion/1/respond", json={"action": "accept"})
-    assert response.status_code in [200, 404]  # 404 if no suggestion found, 200 if success
+    assert response.status_code != 500
 
 
 def test_dashboard_page(client: TestClient):
@@ -167,11 +175,15 @@ class TestFSMDiagram:
         assert len(definitions) > 0, "no FSM definitions registered from the manifest"
 
     def test_diagram_renders_for_device_with_behaviors(self, client: TestClient):
-        """A device with behaviors returns a populated Mermaid diagram."""
+        """A device with behaviors returns a populated Mermaid diagram.
+
+        The endpoint returns a plain Mermaid string: a JSON envelope ended up
+        rendered as page text by the dashboard (spec 007, FR-029).
+        """
         response = client.get("/api/fsm/light.kitchen/diagram")
 
         assert response.status_code == 200
-        diagram = response.json()["diagram"]
+        diagram = response.text
         assert diagram.startswith("stateDiagram-v2")
         assert "OFF" in diagram
         assert "ON_MOTION" in diagram
@@ -181,7 +193,7 @@ class TestFSMDiagram:
 
     def test_diagram_uses_valid_mermaid_state_ids(self, client: TestClient):
         """State ids are sanitized, so raw dotted entity ids never act as ids."""
-        diagram = client.get("/api/fsm/light.kitchen/diagram").json()["diagram"]
+        diagram = client.get("/api/fsm/light.kitchen/diagram").text
 
         state_ids = {
             line.split(":")[0].strip()
@@ -192,33 +204,63 @@ class TestFSMDiagram:
         for state_id in state_ids:
             assert "." not in state_id, f"illegal Mermaid state id: {state_id}"
 
+    def test_diagram_declares_state_aliases_in_parsable_syntax(self, client: TestClient):
+        """States are declared as `state "Name" as id`, which Mermaid can render.
+
+        The previous ``machine : STATE`` form was unparsable, so the UI showed a
+        parse error instead of a diagram (spec 007, FR-029).
+        """
+        diagram = client.get("/api/fsm/light.kitchen/diagram").text
+
+        assert 'state "OFF" as light_kitchen_lighting_10__OFF' in diagram
+        # Неразбираемой формы быть не должно.
+        assert ": OFF -->" not in diagram
+
+    def test_diagram_merges_parallel_edges_between_same_states(self, client: TestClient):
+        """Several triggers between one pair of states become a single edge.
+
+        Parallel duplicate edges break Mermaid's layout, and the diagram was not
+        rendered at all (spec 007, FR-029).
+        """
+        diagram = client.get("/api/fsm/light.kitchen/diagram").text
+        edges = [
+            line
+            for line in diagram.splitlines()
+            if "-->" in line and not line.startswith("stateDiagram") and not line.startswith("[*]")
+        ]
+        pairs = [
+            (e.split("-->")[0].strip(), e.split("-->")[1].split(":")[0].strip()) for e in edges
+        ]
+
+        assert len(pairs) == len(set(pairs)), "parallel duplicate edges present"
+
     def test_diagram_marks_every_machine_as_initial(self, client: TestClient):
         """Each state machine gets its own entry transition from the start state."""
-        diagram = client.get("/api/fsm/light.kitchen/diagram").json()["diagram"]
+        diagram = client.get("/api/fsm/light.kitchen/diagram").text
 
         assert diagram.count("[*] -->") == 2
-        assert "[*] --> light_kitchen_lighting_10" in diagram
-        assert "[*] --> light_kitchen_night_light_20" in diagram
+        assert "[*] --> light_kitchen_lighting_10__OFF" in diagram
+        assert "[*] --> light_kitchen_night_light_20__OFF" in diagram
 
     def test_diagram_does_not_alias_same_label_twice(self, client: TestClient):
         """A device with several behaviors must not reuse one Mermaid state alias."""
-        diagram = client.get("/api/fsm/light.kitchen/diagram").json()["diagram"]
+        diagram = client.get("/api/fsm/light.kitchen/diagram").text
 
         assert "state 'light.kitchen' as" not in diagram
 
     def test_diagram_shows_named_guards(self, client: TestClient):
         """Guards are labelled with their template name, not an anonymous wrapper."""
-        diagram = client.get("/api/fsm/light.kitchen/diagram").json()["diagram"]
+        diagram = client.get("/api/fsm/light.kitchen/diagram").text
 
         assert "guard_fn" not in diagram
         assert "[schedule]" in diagram
 
     def test_diagram_for_single_behavior_keeps_friendly_label(self, client: TestClient):
-        """A lone state machine may carry the human-readable device name."""
-        diagram = client.get("/api/fsm/fan.bathroom/diagram").json()["diagram"]
+        """A lone state machine carries the human-readable device name as title."""
+        diagram = client.get("/api/fsm/fan.bathroom/diagram").text
 
-        assert "state 'fan.bathroom' as fan_bathroom_humidity_ventilation_5" in diagram
-        assert "idle" in diagram
+        assert "title fan_bathroom" in diagram
+        assert 'state "idle" as fan_bathroom_humidity_ventilation_5__idle' in diagram
         assert "ventilating" in diagram
 
     def test_diagram_unknown_device_returns_404(self, client: TestClient):

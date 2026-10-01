@@ -15,7 +15,8 @@
   падала с "Attribute 'app' not found", и все тесты получали ERR_CONNECTION_TIMED_OUT);
 - приложение работает на временной копии манифеста, а его CWD — во временном
   каталоге, поэтому тесты сохранения (/devices/save, /save) не трогают репозиторий;
-- страница index.html держит открытым WebSocket ``/ws/live``, поэтому
+- страница index.html держит открытым WebSocket канала устройств
+  ``/api/v1/ws/devices``, поэтому
   ``wait_for_load_state("networkidle")`` никогда не срабатывает — используются
   ``wait_until="load"`` и автоожидающие проверки ``expect(...)``;
 - JSON-эндпоинты проверяются через ``page.request``: ``page.content()`` для JSON
@@ -149,7 +150,7 @@ def _open_index(page: Page) -> None:
     Args:
         page: Playwright page.
     """
-    # networkidle недостижим: страница держит открытым WebSocket /ws/live
+    # networkidle недостижим: страница держит открытым WebSocket канала устройств
     page.goto(SERVER_URL, wait_until="load")
     expect(page.locator(".room-card").first).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
     page.wait_for_function(
@@ -188,6 +189,85 @@ class TestWebUIBasics:
 
         assert response.status == 200
         assert response.json()["status"] == "ok"
+
+
+class TestLiveUpdates:
+    """Живые обновления состояний автоматов (spec 007, US3)."""
+
+    def test_live_status_indicator_shows_connected(self, page: Page):
+        """После загрузки индикатор показывает, что обновления включены."""
+        _open_index(page)
+
+        expect(page.locator("#live-status")).to_have_text(
+            "Обновления в реальном времени", timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
+
+    def test_states_visible_without_waiting_for_event(self, page: Page):
+        """Состояния показаны сразу при загрузке, до первого события (FR-028)."""
+        _open_index(page)
+
+        response = page.request.get(f"{SERVER_URL}/api/fsm/state")
+        assert response.status == 200
+        states = response.json()["states"]
+
+        if states:
+            expect(page.locator(".device-fsm-states .fsm-state-value").first).to_be_visible(
+                timeout=DEFAULT_ACTION_TIMEOUT_MS
+            )
+
+    def test_fsm_diagram_renders_as_diagram_not_json(self, page: Page):
+        """Схема отображается как диаграмма, а не как JSON (FR-029)."""
+        _open_index(page)
+
+        response = page.request.get(f"{SERVER_URL}/api/fsm/light.kitchen/diagram")
+        assert response.status == 200
+        assert response.text().startswith("stateDiagram-v2")
+
+        page.locator(".device-action", has_text="FSM").first.click()
+        expect(page.locator("#fsm-diagram-container svg")).to_be_visible(
+            timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
+        expect(page.locator("#fsm-diagram-container")).not_to_contain_text('{"diagram"')
+        expect(page.locator("#fsm-diagram-container")).not_to_contain_text("Parse error")
+        expect(page.locator("#fsm-diagram-container")).not_to_contain_text(
+            "Could not find a suitable point"
+        )
+
+    def test_shows_current_state_in_fsm_modal(self, page: Page):
+        """В окне схемы видно текущее состояние автоматов (FR-030)."""
+        _open_index(page)
+
+        page.locator(".device-action", has_text="FSM").first.click()
+        expect(page.locator("#fsm-current-state")).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+        expect(page.locator("#fsm-current-state .fsm-state-value").first).to_be_visible()
+
+    def test_no_json_envelope_leaks_into_page(self, page: Page):
+        """На странице нет служебного JSON-конверта диаграммы."""
+        _open_index(page)
+
+        expect(page.locator("body")).not_to_contain_text(
+            '{"diagram"', timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
+
+    def test_ws_endpoint_is_not_exposed_anymore(self, page: Page):
+        """Мёртвый канал /ws/live выведен из эксплуатации (T043)."""
+        _open_index(page)
+
+        status = page.request.get(f"{SERVER_URL}/ws/live")
+
+        assert status.status == 404
+
+    def test_dashboard_shows_real_states_not_hardcoded_active(self, page: Page):
+        """Дашборд показывает состояния автоматов, а не вписанный «Active»."""
+        page.goto(f"{SERVER_URL}/dashboard", wait_until="load")
+        page.wait_for_function(
+            "() => typeof window.Chart !== 'undefined'", timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
+
+        states = page.request.get(f"{SERVER_URL}/api/fsm/state").json()["states"]
+        if states:
+            expect(page.locator("#deviceStatusTable")).not_to_contain_text(">Active<")
+        expect(page.locator("#deviceStatusTable")).to_be_visible()
 
 
 class TestDeviceManagement:
@@ -344,6 +424,56 @@ class TestTemplateAPI:
 
         assert "name" in template_info
         assert template_info["name"] == "lighting"
+
+
+class TestHonestDataSections:
+    """Разделы визуализаций показывают фактические данные (spec 007, US4)."""
+
+    def _open_dashboard(self, page: Page) -> None:
+        """Открыть дашборд и дождаться загрузки графиков.
+
+        Args:
+            page: Playwright page.
+        """
+        page.goto(f"{SERVER_URL}/dashboard", wait_until="load")
+        page.wait_for_function(
+            "() => typeof window.Chart !== 'undefined'", timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
+
+    def test_sections_report_no_data_when_journal_empty(self, page: Page):
+        """Разделы отдают признак отсутствия данных, а не выдуманные значения."""
+        heatmap = page.request.get(f"{SERVER_URL}/api/history/activity-heatmap").json()
+        history = page.request.get(f"{SERVER_URL}/api/events/history").json()
+        suggestions = page.request.get(f"{SERVER_URL}/api/ai/suggestions").json()
+
+        for section in (heatmap, history, suggestions):
+            assert "has_data" in section
+        assert suggestions["suggestions"] == [] or suggestions["has_data"] is True
+
+    def test_repeated_requests_return_same_values(self, page: Page):
+        """Два одинаковых запроса дают одинаковый результат (SC-013)."""
+        first = page.request.get(f"{SERVER_URL}/api/history/activity-heatmap").json()
+        second = page.request.get(f"{SERVER_URL}/api/history/activity-heatmap").json()
+
+        assert first == second
+
+    def test_dashboard_shows_message_instead_of_empty_heatmap(self, page: Page):
+        """Вместо пустой карты активности показано сообщение (FR-032)."""
+        self._open_dashboard(page)
+        heatmap = page.request.get(f"{SERVER_URL}/api/history/activity-heatmap").json()
+
+        if not heatmap["has_data"]:
+            expect(page.locator("canvas#heatmapChart")).to_be_visible()
+            expect(page.locator("body")).to_contain_text("Данных пока нет")
+
+    def test_dashboard_shows_message_instead_of_fake_suggestions(self, page: Page):
+        """Вместо выдуманных подсказок показано сообщение (FR-035)."""
+        self._open_dashboard(page)
+        suggestions = page.request.get(f"{SERVER_URL}/api/ai/suggestions").json()
+
+        if not suggestions["has_data"]:
+            expect(page.locator("#suggestionsContainer")).to_contain_text("Данных пока нет")
+            expect(page.locator("#suggestionsContainer")).not_to_contain_text("Reasoning:")
 
 
 class TestResponsiveness:

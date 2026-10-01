@@ -353,8 +353,12 @@ def create_app(
     try:
         from src.core.events.event_bus import EventBus
         from src.services.device_service import DeviceService
+        from src.webui.routes.devices.websocket import make_fsm_broadcaster
 
-        event_bus = EventBus()
+        # Одна шина событий на процесс: веб-слой и ядро должны видеть одни и те
+        # же события, иначе переходы автоматов не доходят до интерфейса, а все
+        # события device.* уходят в пустоту (FR-006, R-07).
+        event_bus = _container.event_bus if _container is not None else EventBus()
         persistence = None
 
         try:
@@ -373,6 +377,10 @@ def create_app(
             engine=_container.fsm if _container is not None else None,
             event_router=_container.event_router if _container is not None else None,
         )
+
+        # Обработчик изменения состояния устройства существовал, но ни на что
+        # не подписывался: состояние обновлялось только синхронизацией (FR-007).
+        device_service.subscribe_state_changes()
 
         # Гидратация из постоянного хранилища: без неё список устройств был
         # пуст до первой синхронизации, а добавленные устройства исчезали
@@ -405,10 +413,19 @@ def create_app(
             except Exception as e:
                 logger.warning(f"Device lifecycle service unavailable: {e}")
 
+        # Живые обновления состояний автоматов: мост состояний получает раздатчик,
+        # который разрешает entity_id в идентификатор устройства и рассылает
+        # переход подписанным соединениям с проверкой прав (FR-024, FR-025).
+        fsm_broadcaster = make_fsm_broadcaster(device_service)
+        bridge = _container.fsm_bridge if _container is not None else None
+        if bridge is not None:
+            bridge.set_broadcaster(fsm_broadcaster)
+
         app.state.event_bus = event_bus
         app.state.persistence = persistence
         app.state.device_service = device_service
         app.state.lifecycle_service = lifecycle_service
+        app.state.fsm_broadcaster = fsm_broadcaster
         default_user_id, default_user_is_admin = _resolve_default_user()
         app.state.default_user_id = default_user_id
         app.state.default_user_is_admin = default_user_is_admin
@@ -419,59 +436,11 @@ def create_app(
     except Exception as e:
         logger.warning(f"Could not initialize device services: {e}")
 
-    # WebSocket connection manager for real-time updates
-    class ConnectionManager:
-        """Manages WebSocket connections for live updates."""
-
-        def __init__(self) -> None:
-            """Initialize the connection manager."""
-            self.active_connections: list[WebSocket] = []
-
-        async def connect(self, websocket: WebSocket) -> None:
-            """Accept a new WebSocket connection."""
-            await websocket.accept()
-            self.active_connections.append(websocket)
-            logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
-
-        def disconnect(self, websocket: WebSocket) -> None:
-            """Remove a WebSocket connection."""
-            if websocket in self.active_connections:
-                self.active_connections.remove(websocket)
-            logger.info(
-                f"WebSocket disconnected. Total connections: {len(self.active_connections)}"
-            )
-
-        async def broadcast(self, message: dict) -> None:
-            """Send a message to all connected clients."""
-            import json
-
-            for connection in self.active_connections:
-                try:
-                    await connection.send_text(json.dumps(message))
-                except Exception as e:
-                    logger.error(f"Failed to send message to WebSocket: {e}")
-
-    manager = ConnectionManager()
-
-    @app.websocket("/ws/live")
-    async def websocket_endpoint(websocket: WebSocket) -> None:
-        """WebSocket endpoint for real-time event streaming."""
-        await manager.connect(websocket)
-        try:
-            while True:
-                # Keep connection alive, receive messages if needed
-                data = await websocket.receive_text()
-                # Optionally handle incoming messages from client
-                logger.debug(f"Received WebSocket message: {data}")
-        except WebSocketDisconnect:
-            manager.disconnect(websocket)
-        except Exception as e:
-            logger.error(f"WebSocket error: {e}")
-            manager.disconnect(websocket)
-
-    async def broadcast_event(event_data: dict) -> None:
-        """Broadcast an event to all connected WebSocket clients."""
-        await manager.broadcast(event_data)
+    # Живые обновления состояний автоматов доставляются каналом устройств
+    # /api/v1/ws/devices: в нём есть идентификация пользователя, подписки и
+    # проверка прав при каждой доставке. Прежний /ws/live не имел ни того, ни
+    # другого, а его раздатчик не вызывался ниоткуда, поэтому эндпоинт выведен
+    # из эксплуатации (spec 007, FR-025, R-08).
 
     @app.get("/", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
     async def index(request: Request) -> HTMLResponse:
