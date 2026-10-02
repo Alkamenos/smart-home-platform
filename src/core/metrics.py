@@ -2,35 +2,94 @@
 
 This module provides metrics instrumentation for key components:
 - FSM transitions
+- FSM rejections (a transition that did not happen, with its reason)
+- FSM states restored from persistence
 - Event processing latency
 - Adapter connection errors
 - Middleware conflicts
 - Command dispatcher rejections
 - Active FSM instances
 - Device integration metrics (sync duration, commands, errors, device state, cache stats)
+
+Collection is best-effort by design (FR-008): a missing library or a failed
+registration degrades every ``record_*`` method into a silent no-op instead of
+breaking the platform.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import os
+from typing import TYPE_CHECKING, Any
+
+from loguru import logger
 
 
 if TYPE_CHECKING:
-    from prometheus_client import Counter, Gauge, Histogram
+    from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
 __all__ = [
+    "MAX_LABEL_SERIES_PER_METRIC",
+    "OTHER_LABEL",
     "MetricsCollector",
     "get_metrics_collector",
+    "metrics_enabled",
 ]
 
 
-class MetricsCollector:
-    """Collects and exports Prometheus metrics for the platform."""
+# Предел числа различных наборов меток для метрики переходов (FR-005).
+# Метки `from_state`/`to_state` приходят из описания автомата, поэтому их число
+# сверху не ограничено, а каждый новый набор создаёт серию в реестре. Сверх
+# предела значения агрегируются в серию `__other__`: сумма переходов не теряется,
+# ограничивается только память.
+MAX_LABEL_SERIES_PER_METRIC = 2000
 
-    def __init__(self) -> None:
+# Значение метки, в которое агрегируются наборы сверх предела.
+OTHER_LABEL = "__other__"
+
+# Настройка сбора показателей. По умолчанию включено: сбор — штатная часть
+# работы платформы, а не опциональный режим (FR-001).
+_METRICS_ENABLED_ENV = "METRICS_ENABLED"
+_FALSY_VALUES = ("0", "false", "no", "off")
+
+
+def metrics_enabled() -> bool:
+    """Проверить, включён ли сбор показателей.
+
+    Настройка объявлена в ``deploy/.env.example`` и обязана читаться кодом
+    (FR-024). Значение по умолчанию — включено.
+
+    Returns:
+        True, если показатели собираются.
+    """
+    raw = os.environ.get(_METRICS_ENABLED_ENV)
+    if raw is None:
+        return True
+    return raw.strip().lower() not in _FALSY_VALUES
+
+
+class MetricsCollector:
+    """Collects and exports Prometheus metrics for the platform.
+
+    Args:
+        registry: Реестр измерений, в который регистрируются метрики. ``None``
+            означает общий реестр prometheus_client. Тесты передают отдельный
+            реестр на тест: иначе вторая регистрация тех же имён в общем
+            реестре приводит к ошибке (R-08).
+    """
+
+    def __init__(self, registry: CollectorRegistry | None = None) -> None:
         """Initialize the metrics collector with default values."""
         self._initialized: bool = False
+        self._registry: CollectorRegistry | None = registry
+        self._registry_is_default: bool = registry is None
+        # Уже встреченные наборы меток по именам метрик: ограничивают рост
+        # числа серий (FR-005).
+        self._seen_series: dict[str, set[tuple[tuple[str, str], ...]]] = {}
+        self._overflow_reported: set[str] = set()
         self._fsm_transitions_total: Counter | None = None
+        self._fsm_rejections_total: Counter | None = None
+        self._fsm_states_restored_total: Counter | None = None
+        self._metrics_collection_errors_total: Counter | None = None
         self._event_processing_latency: Histogram | None = None
         self._ha_connection_errors_total: Counter | None = None
         self._websocket_disconnects_total: Counter | None = None
@@ -62,30 +121,128 @@ class MetricsCollector:
         self._cache_hits: Counter | None = None
         self._cache_misses: Counter | None = None
 
+    @property
+    def registry_is_default(self) -> bool:
+        """Используется ли общий реестр prometheus_client.
+
+        Returns:
+            True, если реестр не был передан явно.
+        """
+        return self._registry_is_default
+
+    def _bounded_labels(
+        self,
+        metric_name: str,
+        metric: Any | None,
+        **labels: str,
+    ) -> Any | None:
+        """Получить серию метрики с ограничением числа наборов меток.
+
+        Первые ``MAX_LABEL_SERIES_PER_METRIC`` различных наборов создают свои
+        серии; наборы сверх предела агрегируются в серию ``__other__``, чтобы
+        произвольные имена состояний не приводили к неограниченному росту
+        памяти (FR-005, R-04). Переполнение сообщается один раз на метрику.
+
+        Args:
+            metric_name: Имя метрики, для которого ведётся учёт наборов.
+            metric: Зарегистрированная метрика либо ``None``.
+            **labels: Значения меток.
+
+        Returns:
+            Серия метрики либо ``None``, если метрика не зарегистрирована или
+            сбор недоступен.
+        """
+        if not self._initialized or metric is None:
+            return None
+
+        key = tuple(sorted(labels.items()))
+        seen = self._seen_series.setdefault(metric_name, set())
+        if key not in seen:
+            if len(seen) >= MAX_LABEL_SERIES_PER_METRIC:
+                if metric_name not in self._overflow_reported:
+                    logger.warning(
+                        f"Metrics cardinality limit reached for {metric_name}; "
+                        f"further label sets aggregate into {OTHER_LABEL!r}"
+                    )
+                    self._overflow_reported.add(metric_name)
+                labels = dict.fromkeys(labels, OTHER_LABEL)
+            else:
+                seen.add(key)
+        return metric.labels(**labels)
+
     def initialize(self) -> None:
         """Initialize Prometheus metrics collectors.
 
-        This method should be called once at application startup.
-        It imports prometheus_client and registers all metrics.
+        This method is called once at application startup. It imports
+        prometheus_client and registers all metrics in the configured registry.
+
+        A missing library or a failed registration leaves the collector in
+        no-op mode with a warning: observation must never break the platform
+        (FR-008).
         """
         if self._initialized:
             return
 
         try:
-            from prometheus_client import Counter, Gauge, Histogram
+            from prometheus_client import REGISTRY, Counter, Gauge, Histogram
+
+            registry: CollectorRegistry = REGISTRY if self._registry is None else self._registry
+
+            # Локальные фабрики: все метрики регистрируются в одном реестре, и
+            # вызывающий код не должен повторять аргумент в каждом месте.
+            def counter(name: str, documentation: str, labelnames: tuple[str, ...] = ()) -> Counter:
+                """Создать счётчик в настроенном реестре."""
+                return Counter(name, documentation, labelnames, registry=registry)
+
+            def gauge(name: str, documentation: str, labelnames: tuple[str, ...] = ()) -> Gauge:
+                """Создать шкалу в настроенном реестре."""
+                return Gauge(name, documentation, labelnames, registry=registry)
+
+            def histogram(
+                name: str, documentation: str, labelnames: tuple[str, ...] = (), buckets: Any = None
+            ) -> Histogram:
+                """Создать гистограмму в настроенном реестре."""
+                if buckets is None:
+                    return Histogram(name, documentation, labelnames, registry=registry)
+                return Histogram(
+                    name, documentation, labelnames, buckets=buckets, registry=registry
+                )
 
             # FSM transitions counter
-            self._fsm_transitions_total = Counter(
+            self._fsm_transitions_total = counter(
                 "fsm_transitions_total",
                 "Total number of FSM state transitions",
-                ["fsm_name", "from_state", "to_state", "device"],
+                ("fsm_name", "from_state", "to_state", "device"),
+            )
+
+            # Отказы: переход не выполнен, указана причина (FR-004). Набор
+            # значений конечен — причины заданы константами REASON_*.
+            self._fsm_rejections_total = counter(
+                "fsm_rejections_total",
+                "Total number of rejected FSM transitions by reason",
+                ("fsm_name", "reason"),
+            )
+
+            # Восстановления состояний из хранилища после перезапуска.
+            self._fsm_states_restored_total = counter(
+                "fsm_states_restored_total",
+                "Total number of FSM states restored from persistence",
+                ("fsm_name",),
+            )
+
+            # Сбои самого сбора показателей — наблюдаемость должна быть
+            # наблюдаемой (FR-008).
+            self._metrics_collection_errors_total = counter(
+                "metrics_collection_errors_total",
+                "Total number of metrics collection failures by stage",
+                ("stage",),
             )
 
             # Event processing latency histogram
-            self._event_processing_latency = Histogram(
+            self._event_processing_latency = histogram(
                 "event_processing_latency_seconds",
                 "Latency of event processing in seconds",
-                ["event_type", "component"],
+                ("event_type", "component"),
                 buckets=(
                     0.001,
                     0.005,
@@ -103,140 +260,147 @@ class MetricsCollector:
             )
 
             # HA adapter connection errors counter
-            self._ha_connection_errors_total = Counter(
+            self._ha_connection_errors_total = counter(
                 "ha_adapter_connection_errors_total",
                 "Total number of Home Assistant adapter connection errors",
-                ["error_type"],
+                ("error_type",),
             )
 
             # WebSocket disconnections requiring reconnect
-            self._websocket_disconnects_total = Counter(
+            self._websocket_disconnects_total = counter(
                 "websocket_disconnects_total",
                 "Total number of WebSocket disconnects that triggered reconnect",
             )
 
             # Middleware conflicts counter
-            self._middleware_conflicts_total = Counter(
+            self._middleware_conflicts_total = counter(
                 "middleware_conflicts_total",
                 "Total number of middleware conflict detections",
-                ["middleware_name", "conflict_type"],
+                ("middleware_name", "conflict_type"),
             )
 
             # Command dispatcher rejections counter
-            self._command_rejections_total = Counter(
+            self._command_rejections_total = counter(
                 "command_dispatcher_rejections_total",
                 "Total number of commands rejected by the dispatcher",
-                ["reason", "command_type"],
+                ("reason", "command_type"),
             )
 
             # Active FSM instances gauge
-            self._active_fsm_instances = Gauge(
+            self._active_fsm_instances = gauge(
                 "active_fsm_instances",
                 "Number of active FSM instances",
-                ["manifest_name"],
+                ("manifest_name",),
             )
 
             # ============ Device Integration Metrics ============
 
             # 1. SYNC DURATION METRICS
             # Histogram для отслеживания времени синхронизации на устройство
-            self._device_sync_duration_seconds = Histogram(
+            self._device_sync_duration_seconds = histogram(
                 "device_integration_device_sync_duration_seconds",
                 "Время синхронизации устройства в секундах",
-                ["source_id", "device_type"],
+                ("source_id", "device_type"),
                 buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
             )
 
             # Histogram для общего времени синхронизации источника
-            self._source_sync_total_seconds = Histogram(
+            self._source_sync_total_seconds = histogram(
                 "device_integration_source_sync_total_seconds",
                 "Общее время синхронизации источника в секундах",
-                ["source_id"],
+                ("source_id",),
                 buckets=(0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0),
             )
 
             # 2. COMMAND METRICS
             # Counter для всех отправленных команд
-            self._device_commands_total = Counter(
+            self._device_commands_total = counter(
                 "device_integration_device_commands_total",
                 "Всего отправлено команд на устройства",
-                ["source_id", "device_type", "command_type"],
+                ("source_id", "device_type", "command_type"),
             )
 
             # Counter для успешных команд
-            self._device_commands_success = Counter(
+            self._device_commands_success = counter(
                 "device_integration_device_commands_success",
                 "Количество успешно выполненных команд",
-                ["source_id", "device_type", "command_type"],
+                ("source_id", "device_type", "command_type"),
             )
 
             # Counter для неудачных команд
-            self._device_commands_failed = Counter(
+            self._device_commands_failed = counter(
                 "device_integration_device_commands_failed",
                 "Количество неудачных команд",
-                ["source_id", "device_type", "command_type", "error_type"],
+                ("source_id", "device_type", "command_type", "error_type"),
             )
 
             # 3. ERROR METRICS
             # Counter для ошибок соединения
-            self._device_connection_errors_total = Counter(
+            self._device_connection_errors_total = counter(
                 "device_integration_device_connection_errors_total",
                 "Всего ошибок соединения с устройствами",
-                ["source_id", "error_type"],
+                ("source_id", "error_type"),
             )
 
             # Counter для ошибок синхронизации
-            self._device_sync_errors_total = Counter(
+            self._device_sync_errors_total = counter(
                 "device_integration_device_sync_errors_total",
                 "Всего ошибок синхронизации устройств",
-                ["source_id", "error_type"],
+                ("source_id", "error_type"),
             )
 
             # 4. DEVICE STATE METRICS
             # Gauge для количества доступных устройств
-            self._devices_available = Gauge(
+            self._devices_available = gauge(
                 "device_integration_devices_available",
                 "Количество доступных устройств",
-                ["source_id", "device_type"],
+                ("source_id", "device_type"),
             )
 
             # Gauge для количества недоступных устройств
-            self._devices_unavailable = Gauge(
+            self._devices_unavailable = gauge(
                 "device_integration_devices_unavailable",
                 "Количество недоступных устройств",
-                ["source_id", "device_type"],
+                ("source_id", "device_type"),
             )
 
             # Gauge для количества подключенных источников
-            self._sources_connected = Gauge(
+            self._sources_connected = gauge(
                 "device_integration_sources_connected",
                 "Количество подключенных источников",
             )
 
             # 5. CACHE METRICS
             # Gauge для размера кэша
-            self._cache_size = Gauge(
+            self._cache_size = gauge(
                 "device_integration_cache_size",
                 "Размер кэша в байтах",
             )
 
             # Counter для попаданий в кэш
-            self._cache_hits = Counter(
+            self._cache_hits = counter(
                 "device_integration_cache_hits",
                 "Количество попаданий в кэш",
-                ["cache_type"],
+                ("cache_type",),
             )
 
             # Counter для промахов кэша
-            self._cache_misses = Counter(
+            self._cache_misses = counter(
                 "device_integration_cache_misses",
                 "Количество промахов кэша",
-                ["cache_type"],
+                ("cache_type",),
             )
 
             self._initialized = True
         except ImportError:
             # prometheus_client not installed, metrics will be no-op
+            logger.warning("prometheus_client is not installed; metrics collection disabled")
+            self._initialized = False
+        except Exception as exc:  # noqa: BLE001 - наблюдаемость не должна ронять платформу
+            # Регистрация может не удаться, например при повторной регистрации
+            # имён в общем реестре. Сбор показателей — вспомогательная
+            # функция: платформа продолжает работать без метрик (FR-008).
+            logger.warning(f"Metrics registration failed ({type(exc).__name__}: {exc}); no-op mode")
             self._initialized = False
 
     def record_fsm_transition(
@@ -254,13 +418,52 @@ class MetricsCollector:
             to_state: The new state.
             device: Device associated with the transition.
         """
-        if self._initialized and self._fsm_transitions_total:
-            self._fsm_transitions_total.labels(
-                fsm_name=fsm_name,
-                from_state=from_state,
-                to_state=to_state,
-                device=device,
-            ).inc()
+        series = self._bounded_labels(
+            "fsm_transitions_total",
+            self._fsm_transitions_total,
+            fsm_name=fsm_name,
+            from_state=from_state,
+            to_state=to_state,
+            device=device,
+        )
+        if series is not None:
+            series.inc()
+
+    def record_fsm_rejection(self, fsm_name: str, reason: str) -> None:
+        """Записать отклонённый переход с причиной отказа.
+
+        Отказ считается отдельно от выполненного перехода: смешивать их в одной
+        величине нельзя, иначе требование различать успех и отказ (FR-004) не
+        проверяемо.
+
+        Args:
+            fsm_name: Идентификатор автомата.
+            reason: Причина отказа из констант ``REASON_*``.
+        """
+        if not self._initialized or self._fsm_rejections_total is None:
+            return
+        self._fsm_rejections_total.labels(fsm_name=fsm_name, reason=reason).inc()
+
+    def record_fsm_state_restored(self, fsm_name: str) -> None:
+        """Записать восстановление состояния автомата после перезапуска.
+
+        Args:
+            fsm_name: Идентификатор автомата.
+        """
+        if not self._initialized or self._fsm_states_restored_total is None:
+            return
+        self._fsm_states_restored_total.labels(fsm_name=fsm_name).inc()
+
+    def record_collection_error(self, stage: str) -> None:
+        """Записать сбой самого сбора показателей.
+
+        Args:
+            stage: Этап сбора, на котором произошёл сбой
+                (``initialize``, ``scrape``).
+        """
+        if not self._initialized or self._metrics_collection_errors_total is None:
+            return
+        self._metrics_collection_errors_total.labels(stage=stage).inc()
 
     def record_event_latency(
         self,

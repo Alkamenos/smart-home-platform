@@ -31,9 +31,9 @@ description: "Task list for specs/008-fsm-observability (Observability плат�
 
 **Purpose**: зафиксировать исходное состояние и открыть фичу в документации
 
-- [ ] T001 Зафиксировать baseline прогонов до изменений: `pytest tests/` (ожидается 1725 passed / 9 skipped / 0 failed), `.ai/scripts/run_checks.sh` (ожидается exit 0), `pytest tests/test_webui_playwright.py` (ожидается 23 passed / 2 предсуществующих падения по Known Issue #15) — числа записать в `.ai/01_PROJECT_STATE.md`
-- [ ] T002 [P] Обновить `.ai/BACKLOG.md`: F3 «в работе», указать число задач
-- [ ] T003 [P] Создать файлы тестов-заготовок (пустые, только docstring-модуля) `tests/unit/services/test_metrics_reporter.py`, `tests/unit/services/test_watchdog.py`, `tests/integration/test_platform_metrics.py`, `tests/contract/test_metrics_contract.py`
+- [X] T001 Зафиксировать baseline прогонов до изменений: `pytest tests/` (ожидается 1725 passed / 9 skipped / 0 failed), `.ai/scripts/run_checks.sh` (ожидается exit 0), `pytest tests/test_webui_playwright.py` (ожидается 23 passed / 2 предсуществующих падения по Known Issue #15) — числа записать в `.ai/01_PROJECT_STATE.md`
+- [X] T002 [P] Обновить `.ai/BACKLOG.md`: F3 «в работе», указать число задач
+- [X] T003 [P] Создать файлы тестов-заготовок (пустые, только docstring-модуля) `tests/unit/services/test_metrics_reporter.py`, `tests/unit/services/test_watchdog.py`, `tests/integration/test_platform_metrics.py`, `tests/contract/test_metrics_contract.py`
 
 ---
 
@@ -47,16 +47,16 @@ description: "Task list for specs/008-fsm-observability (Observability плат�
 
 > **NOTE: тесты пишутся ПЕРВЫМИ и должны падать до реализации**
 
-- [ ] T004 [P] Тесты: сборщик создаётся с изолированным реестром измерений и регистрирует в нём объявленные метрики; повторный `initialize()` идемпотентен; ошибка регистрации переводит сборщик в режим «показатели не собираются» с предупреждением в журнале и **без** исключения (FR-008, R-08) → `tests/unit/core/test_metrics.py`
-- [ ] T005 [P] Тесты: ограничение кардинальности — наборы значений сверх `MAX_LABEL_SERIES_PER_METRIC` учитываются в серии `__other__`, предупреждение о переполнении пишется один раз, а не на каждый переход; 10 000 переходов с уникальными именами состояний не дают роста числа серий (FR-005, SC-006) → `tests/unit/core/test_metrics.py`
-- [ ] T006 [P] Тесты: `FSMEngine.expected_timeout_sec()` возвращает максимум `timeout_sec` среди переходов из текущего состояния; `None`, если таких переходов нет; `None` для конечного состояния; `None` для незарегистрированного автомата; **механизм таймаутов движка при этом не изменён** — существующие тесты движка остаются зелёными без правок (FR-013, конституция I) → `tests/unit/core/test_fsm_engine_timeouts.py`
-- [ ] T007 [P] Тесты: `metrics_enabled()` по умолчанию истинно и выключается `METRICS_ENABLED=0`; настройки сторожа дают значения 60/30/300 по умолчанию; не число, ноль и отрицательное значение заменяются значением по умолчанию с предупреждением, **без** исключения (FR-019, R-07) → `tests/unit/services/test_watchdog_settings.py`
+- [X] T004 [P] Тесты: сборщик создаётся с изолированным реестром измерений и регистрирует в нём объявленные метрики; повторный `initialize()` идемпотентен; ошибка регистрации переводит сборщик в режим «показатели не собираются» с предупреждением в журнале и **без** исключения (FR-008, R-08) → `tests/test_metrics.py`
+- [X] T005 [P] Тесты: ограничение кардинальности — наборы значений сверх `MAX_LABEL_SERIES_PER_METRIC` учитываются в серии `__other__`, предупреждение о переполнении пишется один раз, а не на каждый переход; 10 000 переходов с уникальными именами состояний не дают роста числа серий (FR-005, SC-006) → `tests/test_metrics.py`
+- [X] T006 [P] Тесты: `FSMEngine.expected_timeout_sec()` возвращает максимум `timeout_sec` среди переходов из текущего состояния; `None`, если таких переходов нет; `None` для конечного состояния; `None` для незарегистрированного автомата; **механизм таймаутов движка при этом не изменён** — существующие тесты движка остаются зелёными без правок (FR-013, конституция I) → `tests/unit/core/test_fsm_engine_timeouts.py`
+- [X] T007 [P] Тесты: `metrics_enabled()` по умолчанию истинно и выключается `METRICS_ENABLED=0`; настройки сторожа дают значения 60/30/300 по умолчанию; не число, ноль и отрицательное значение заменяются значением по умолчанию с предупреждением, **без** исключения (FR-019, R-07) → `tests/unit/services/test_watchdog_settings.py`
 
 ### Implementation for Foundational
 
-- [ ] T008 [P] `src/core/metrics.py`: добавить необязательный параметр реестра измерений в `MetricsCollector.__init__` (по умолчанию — общий реестр prometheus_client); в `initialize()` расширить перехват ошибок с `ImportError` до ошибок регистрации с предупреждением; ввести константу `MAX_LABEL_SERIES_PER_METRIC` и ограничение числа различных наборов значений с серией `__other__`; зарегистрировать метрики `fsm_rejections_total` (наборы `fsm_name`, `reason`), `fsm_states_restored_total`, `metrics_collection_errors_total` (набор `stage`); добавить метод записи отказов и ошибок сбора; добавить `metrics_enabled()` с чтением `METRICS_ENABLED` (по умолчанию включено)
-- [ ] T009 `src/core/fsm/engine.py`: добавить публичный read-only метод `expected_timeout_sec(entity_id)` — максимум `timeout_sec` среди переходов из текущего состояния, иначе `None`; не трогать ни выбор перехода, ни дебаунс, ни взвод таймеров (конституция I)
-- [ ] T010 [P] `src/services/watchdog.py`: добавить константы настроек и функции их чтения `WATCHDOG_ENABLED`, `WATCHDOG_INTERVAL_SEC`, `WATCHDOG_STUCK_GRACE_SEC`, `WATCHDOG_HA_LOSS_SEC` по образцу работающего `hot_reload_enabled()` (`src/services/config_watcher.py`); некорректное значение → значение по умолчанию + предупреждение, без исключения (поведение существующего класса на этом шаге не меняется — переписывание в US2)
+- [X] T008 [P] `src/core/metrics.py`: добавить необязательный параметр реестра измерений в `MetricsCollector.__init__` (по умолчанию — общий реестр prometheus_client); в `initialize()` расширить перехват ошибок с `ImportError` до ошибок регистрации с предупреждением; ввести константу `MAX_LABEL_SERIES_PER_METRIC` и ограничение числа различных наборов значений с серией `__other__`; зарегистрировать метрики `fsm_rejections_total` (наборы `fsm_name`, `reason`), `fsm_states_restored_total`, `metrics_collection_errors_total` (набор `stage`); добавить метод записи отказов и ошибок сбора; добавить `metrics_enabled()` с чтением `METRICS_ENABLED` (по умолчанию включено)
+- [X] T009 `src/core/fsm/engine.py`: добавить публичный read-only метод `expected_timeout_sec(entity_id)` — максимум `timeout_sec` среди переходов из текущего состояния, иначе `None`; не трогать ни выбор перехода, ни дебаунс, ни взвод таймеров (конституция I)
+- [X] T010 [P] `src/services/watchdog.py`: добавить константы настроек и функции их чтения `WATCHDOG_ENABLED`, `WATCHDOG_INTERVAL_SEC`, `WATCHDOG_STUCK_GRACE_SEC`, `WATCHDOG_HA_LOSS_SEC` по образцу работающего `hot_reload_enabled()` (`src/services/config_watcher.py`); некорректное значение → значение по умолчанию + предупреждение, без исключения (поведение существующего класса на этом шаге не меняется — переписывание в US2)
 
 **Checkpoint**: сборщик тестируется настоящей библиотекой и ограничен по памяти, движок отдаёт допустимое время пребывания, настройки читаются — фундамент готов.
 
@@ -123,7 +123,7 @@ description: "Task list for specs/008-fsm-observability (Observability плат�
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T028 [US3] Переписать `tests/unit/core/test_metrics.py` на **настоящую** библиотеку сбора с изолированным реестром на тест: проверки регистрации метрик, ограничения кардинальности и ошибок регистрации; ни одного `MagicMock` вместо библиотеки (FR-023, R-08); класс тестов «без prometheus» (устойчивость к отсутствию библиотеки) сохранить. Существующий `tests/test_prometheus_metrics.py` удаляется вместе с зеркалом в T029
+- [ ] T028 [US3] Переписать `tests/test_metrics.py` на **настоящую** библиотеку сбора с изолированным реестром на тест: проверки регистрации метрик, ограничения кардинальности и ошибок регистрации; ни одного `MagicMock` вместо библиотеки (FR-023, R-08); класс тестов «без prometheus» (устойчивость к отсутствию библиотеки) сохранить. Существующий `tests/test_prometheus_metrics.py` удаляется вместе с зеркалом в T029
 
 ### Implementation for User Story 3
 

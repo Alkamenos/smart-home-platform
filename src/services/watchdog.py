@@ -19,6 +19,8 @@ Usage:
 import asyncio
 import contextlib
 import json
+import os
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -31,6 +33,115 @@ if TYPE_CHECKING:
     from core.registry import Registry
 
 logger = get_logger(__name__)
+
+
+# Настройки сторожа читаются из переменных окружения по образцу работающего
+# ``hot_reload_enabled()`` (FR-019, R-07). Схема манифеста не меняется.
+WATCHDOG_ENABLED_ENV = "WATCHDOG_ENABLED"
+WATCHDOG_INTERVAL_ENV = "WATCHDOG_INTERVAL_SEC"
+WATCHDOG_GRACE_ENV = "WATCHDOG_STUCK_GRACE_SEC"
+WATCHDOG_HA_LOSS_ENV = "WATCHDOG_HA_LOSS_SEC"
+
+DEFAULT_INTERVAL_SEC = 60.0
+DEFAULT_STUCK_GRACE_SEC = 30.0
+DEFAULT_HA_LOSS_SEC = 300.0
+
+_TRUTHY_VALUES = ("1", "true", "yes", "on")
+
+
+@dataclass(frozen=True)
+class WatchdogSettings:
+    """Настройки периодической проверки состояний.
+
+    Attributes:
+        enabled: Запускать ли сторож.
+        interval_sec: Интервал между проверками.
+        stuck_grace_sec: Запас сверх ожидаемого времени пребывания.
+        ha_loss_sec: Порог, после которого потеря связи считается проблемой.
+    """
+
+    enabled: bool = True
+    interval_sec: float = DEFAULT_INTERVAL_SEC
+    stuck_grace_sec: float = DEFAULT_STUCK_GRACE_SEC
+    ha_loss_sec: float = DEFAULT_HA_LOSS_SEC
+
+
+def watchdog_enabled() -> bool:
+    """Проверить, включён ли сторож (по умолчанию включён).
+
+    Returns:
+        True, если сторож должен работать.
+    """
+    return os.getenv(WATCHDOG_ENABLED_ENV, "1").strip().lower() in _TRUTHY_VALUES
+
+
+def _positive_number(env_name: str, default: float) -> float:
+    """Прочитать положительное число из окружения.
+
+    Некорректное значение (не число, ноль, отрицательное) заменяется
+    значением по умолчанию с предупреждением: сбой настройки не должен ронять
+    старт платформы (FR-019).
+
+    Args:
+        env_name: Имя переменной окружения.
+        default: Значение по умолчанию.
+
+    Returns:
+        Значение настройки.
+    """
+    raw = os.getenv(env_name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(f"Invalid {env_name}={raw!r}; using default {default}")
+        return default
+    if value <= 0:
+        logger.warning(f"{env_name}={raw!r} is not positive; using default {default}")
+        return default
+    return value
+
+
+def watchdog_interval_sec() -> float:
+    """Прочитать интервал проверок состояний.
+
+    Returns:
+        Интервал в секундах.
+    """
+    return _positive_number(WATCHDOG_INTERVAL_ENV, DEFAULT_INTERVAL_SEC)
+
+
+def watchdog_stuck_grace_sec() -> float:
+    """Прочитать запас сверх ожидаемого времени пребывания.
+
+    Returns:
+        Запас в секундах.
+    """
+    return _positive_number(WATCHDOG_GRACE_ENV, DEFAULT_STUCK_GRACE_SEC)
+
+
+def watchdog_ha_loss_sec() -> float:
+    """Прочитать порог потери связи с внешней системой.
+
+    Returns:
+        Порог в секундах.
+    """
+    return _positive_number(WATCHDOG_HA_LOSS_ENV, DEFAULT_HA_LOSS_SEC)
+
+
+def watchdog_settings() -> WatchdogSettings:
+    """Собрать настройки сторожа из окружения.
+
+    Returns:
+        Настройки сторожа.
+    """
+    return WatchdogSettings(
+        enabled=watchdog_enabled(),
+        interval_sec=watchdog_interval_sec(),
+        stuck_grace_sec=watchdog_stuck_grace_sec(),
+        ha_loss_sec=watchdog_ha_loss_sec(),
+    )
 
 
 class WatchdogService:

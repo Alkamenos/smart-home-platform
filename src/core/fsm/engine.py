@@ -376,6 +376,41 @@ class FSMEngine:
         """Get all current states of all entities."""
         return dict(self._states)
 
+    def expected_timeout_sec(self, entity_id: str) -> float | None:
+        """Получить допустимое время пребывания автомата в текущем состоянии.
+
+        Значение выводится из описания автомата: движок взводит таймер при
+        переходе с ``timeout_sec``, поэтому «правильное» время ожидания уже
+        описано, и ручной порог в конфигурации был бы вторым источником
+        правды, способным с ним разойтись.
+
+        Только чтение: правила переходов, дебаунс и механизм таймаутов не
+        затрагиваются (конституция I).
+
+        Args:
+            entity_id: Идентификатор автомата.
+
+        Returns:
+            Максимум ``timeout_sec`` среди переходов, ведущих из текущего
+            состояния; ``None``, если таких переходов нет, если состояние
+            конечное или автомат не зарегистрирован. ``None`` означает, что
+            состояние зависшим не считается: оно живёт, пока не придёт
+            событие.
+        """
+        state = self._states.get(entity_id)
+        definition = self._definitions.get(entity_id)
+        if state is None or definition is None:
+            return None
+
+        timeouts = [
+            transition.timeout_sec
+            for transition in definition.transitions
+            if transition.from_state == state.current_state
+            and transition.timeout_sec is not None
+            and transition.timeout_sec > 0
+        ]
+        return max(timeouts) if timeouts else None
+
     def reset_state(self, entity_id: str, state: str) -> None:
         """Reset the state of an entity to a specific state.
 
