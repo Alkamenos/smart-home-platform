@@ -57,9 +57,16 @@ class PlatformContext:
     dispatcher: CommandDispatcher
     event_router: EventRouter
     fsm_bridge: Any = None
+    watchdog: Any = None
 
     async def shutdown(self) -> None:
-        """Idempotent shutdown: adapter, FSM engine, dispatcher cleanup loop."""
+        """Idempotent shutdown: watchdog, adapter, FSM engine, dispatcher cleanup loop.
+
+        Порядок важен: сторож читает состояния движка, поэтому он останавливается
+        первым, а движок — после него (FR-017).
+        """
+        if self.watchdog is not None:
+            await self.watchdog.stop()
         await self.adapter.stop()
         await self.fsm.shutdown()
         await self.dispatcher.stop()
@@ -105,6 +112,7 @@ class Container:
         self._event_bus: EventBus | None = None
         self._metrics: Any | None = None
         self._metrics_reporter: Any | None = None
+        self._watchdog: Any | None = None
         self._fsm_bridge: Any | None = None
         self._fsm: FSMEngine | None = None
         self._control_tracker: ControlTracker | None = None
@@ -264,6 +272,43 @@ class Container:
         return self._metrics_reporter
 
     @property
+    def watchdog(self) -> Any:
+        """Get or create WatchdogService instance.
+
+        Сторож — часть жизненного цикла платформы: создаётся в ``build()`` и
+        останавливается в ``PlatformContext.shutdown()``. Отдельный путь
+        остановки в ``main.py`` создал бы вторую точку, которую легко забыть
+        (R-11, FR-017).
+        """
+        if self._watchdog is None:
+            from services.watchdog import WatchdogService, watchdog_settings
+
+            settings = watchdog_settings()
+            if not settings.enabled:
+                logger.info("Watchdog disabled (set WATCHDOG_ENABLED=0 to disable)")
+            # В автономном режиме адаптера-заглушки нет смысла считать
+            # источником внешней системы: её отсутствие не проблема (FR-014).
+            self._watchdog = WatchdogService(
+                fsm_engine=self.fsm,
+                metrics=self.metrics,
+                adapter=self._external_adapter(),
+                settings=settings,
+                event_bus=self.event_bus,
+            )
+        return self._watchdog
+
+    def _external_adapter(self) -> Any:
+        """Адаптер внешней системы, если он есть.
+
+        Returns:
+            Адаптер либо ``None`` в автономном режиме.
+        """
+        from adapters.ha_adapter import HomeAssistantAdapter
+
+        adapter = self.adapter
+        return adapter if isinstance(adapter, HomeAssistantAdapter) else None
+
+    @property
     def fsm_bridge(self) -> Any:
         """Get or create FSMStateBridge (depends on event_bus, dispatcher).
 
@@ -362,6 +407,10 @@ class Container:
         # зеркало Home Assistant и живые обновления (FR-015).
         _ = self.fsm_bridge
 
+        # Сторож: цикл проверок запускается, только если работает цикл событий
+        # и сторож не выключен настройкой (FR-017, FR-019).
+        self._start_watchdog()
+
         return PlatformContext(
             manifest=self.manifest,
             event_bus=self.event_bus,
@@ -372,6 +421,23 @@ class Container:
             event_router=self.event_router,
             fsm_bridge=self.fsm_bridge,
         )
+
+    def _start_watchdog(self) -> None:
+        """Запустить цикл проверок сторожа, если это возможно.
+
+        В синхронной сборке (тесты, ``Container.build()`` без цикла событий)
+        запуск пропускается: фоновая задача без работающего цикла завершилась
+        бы сразу, и вместо тихой пустоты мы получили бы висящее задание.
+        """
+        watchdog = self.watchdog
+        if not watchdog.settings.enabled:
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Watchdog not started: no running event loop")
+            return
+        watchdog.start()
 
     def _publish_fsm_inventory(self) -> None:
         """Опубликовать число зарегистрированных автоматов в показателях.

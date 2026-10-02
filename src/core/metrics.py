@@ -520,6 +520,58 @@ class MetricsCollector:
             return
         self._metrics_collection_errors_total.labels(stage=stage).inc()
 
+    def record_watchdog_check(self, result: str) -> None:
+        """Записать результат одной проверки сторожа.
+
+        Args:
+            result: ``ok``, ``degraded`` или ``failed``.
+        """
+        if not self._initialized or self._watchdog_checks_total is None:
+            return
+        self._watchdog_checks_total.labels(result=result).inc()
+
+    def record_fsm_stuck(self, fsm_name: str, state: str) -> None:
+        """Записать обнаружение зависшего автомата.
+
+        Args:
+            fsm_name: Идентификатор автомата.
+            state: Состояние, в котором он застрял.
+        """
+        if not self._initialized or self._fsm_stuck_total is None:
+            return
+        self._fsm_stuck_total.labels(fsm_name=fsm_name, state=state).inc()
+
+    def set_fsm_stuck(self, fsm_name: str, count: int) -> None:
+        """Отметить, застрял ли автомат прямо сейчас.
+
+        Args:
+            fsm_name: Идентификатор автомата.
+            count: 1, если автомат завис, иначе 0.
+        """
+        if not self._initialized or self._fsm_stuck_current is None:
+            return
+        self._fsm_stuck_current.labels(fsm_name=fsm_name).set(count)
+
+    def set_ha_connection_lost(self, lost: bool) -> None:
+        """Отметить потерю связи с внешней системой.
+
+        Args:
+            lost: True, если связь потеряна сверх порога.
+        """
+        if not self._initialized or self._ha_connection_lost is None:
+            return
+        self._ha_connection_lost.set(1 if lost else 0)
+
+    def set_watchdog_snapshot_timestamp(self, timestamp: float) -> None:
+        """Записать время последнего снимка состояний.
+
+        Args:
+            timestamp: Монотонное время последней проверки.
+        """
+        if not self._initialized or self._watchdog_last_snapshot_timestamp is None:
+            return
+        self._watchdog_last_snapshot_timestamp.set(timestamp)
+
     def record_event_latency(
         self,
         event_type: str,

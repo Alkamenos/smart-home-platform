@@ -23,6 +23,13 @@ EVENT_FSM_TRANSITIONED: Final[str] = "fsm.transitioned"
 EVENT_FSM_REJECTED: Final[str] = "fsm.rejected"
 EVENT_FSM_RESTORED: Final[str] = "fsm.restored"
 EVENT_PLATFORM_STARTED: Final[str] = "platform.started"
+# Проблема платформы: зависший автомат или потеря связи с внешней системой.
+# Публикуется сторожем только при появлении и устранении, а не каждый цикл.
+EVENT_PLATFORM_PROBLEM: Final[str] = "platform.problem"
+
+# Виды проблем
+PROBLEM_FSM_STUCK: Final[str] = "fsm_stuck"
+PROBLEM_HA_DISCONNECTED: Final[str] = "ha_disconnected"
 
 # Признак выполненного перехода и признак отказа
 OUTCOME_TRANSITIONED: Final[str] = "transitioned"

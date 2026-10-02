@@ -376,6 +376,26 @@ class FSMEngine:
         """Get all current states of all entities."""
         return dict(self._states)
 
+    def device_id_of(self, entity_id: str) -> str | None:
+        """Получить устройство автомата по его описанию.
+
+        Устройство берётся из ``target_device_id``, а не разбирается из
+        идентификатора: идентификатор строится как
+        ``{устройство}_{шаблон}_{приоритет}``, и имя шаблона может содержать
+        подчёркивание (``humidity_ventilation``), из-за чего разбор справа
+        относит часть имени устройства к шаблону.
+
+        Только чтение: правила переходов не затрагиваются (конституция I).
+
+        Args:
+            entity_id: Идентификатор автомата.
+
+        Returns:
+            Идентификатор устройства либо ``None``, если автомат не зарегистрирован.
+        """
+        definition = self._definitions.get(entity_id)
+        return definition.target_device_id if definition is not None else None
+
     def expected_timeout_sec(self, entity_id: str) -> float | None:
         """Получить допустимое время пребывания автомата в текущем состоянии.
 

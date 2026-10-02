@@ -45,6 +45,32 @@ def timed_definition() -> FSMDefinition:
     )
 
 
+class TestDeviceIdOf:
+    """Проверки определения устройства по описанию автомата."""
+
+    def test_should_return_device_from_definition_when_registered(self) -> None:
+        """Устройство берётся из описания, а не разбирается из имени."""
+        engine = make_engine()
+        engine.register_definition(
+            FSMDefinition(
+                entity_id="fan.bathroom_humidity_ventilation_5",
+                initial_state="idle",
+                states=("idle", "on"),
+                transitions=(Transition(from_state="idle", to_state="on", trigger="humid"),),
+                target_device_id="fan.bathroom",
+            ),
+            restore_state=False,
+        )
+
+        # Имя шаблона содержит подчёркивание, поэтому разбор идентификатора
+        # относил бы часть имени устройства к шаблону.
+        assert engine.device_id_of("fan.bathroom_humidity_ventilation_5") == "fan.bathroom"
+
+    def test_should_return_none_when_entity_not_registered(self) -> None:
+        """Незарегистрированный автомат устройства не имеет."""
+        assert make_engine().device_id_of("light.absent_10") is None
+
+
 class TestExpectedTimeoutSec:
     """Проверки вывода допустимого времени пребывания."""
 
