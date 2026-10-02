@@ -14,6 +14,7 @@ Specification:
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -58,7 +59,10 @@ def mock_event_bus():
     """Создаёт mock event bus."""
     bus = MagicMock()
     bus.subscribe = MagicMock()
-    bus.publish = MagicMock()
+    # Публикация — await-корутина: синхронная заглушка создавала корутину,
+    # которая никогда не ожидалась, и событие восстановления не доходило ни
+    # до одного подписчика.
+    bus.publish = AsyncMock()
     return bus
 
 
@@ -272,7 +276,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value="PARTY"),
             patch.object(persistence, "_restore_state") as mock_restore,
         ):
-            persistence._on_platform_started("platform.started", {})
+            asyncio.run(persistence._on_platform_started("platform.started", {}))
 
             mock_restore.assert_called_once_with("light.living_room", "PARTY")
 
@@ -291,7 +295,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value=None),
             patch.object(persistence, "_restore_state") as mock_restore,
         ):
-            persistence._on_platform_started("platform.started", {})
+            asyncio.run(persistence._on_platform_started("platform.started", {}))
 
             mock_restore.assert_not_called()
 
@@ -311,7 +315,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value="ON"),
             patch.object(persistence, "_restore_state") as mock_restore,
         ):
-            persistence._on_platform_started("platform.started", {})
+            asyncio.run(persistence._on_platform_started("platform.started", {}))
 
             mock_restore.assert_not_called()
 
@@ -337,7 +341,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value="INVALID_STATE"),
             patch.object(persistence, "_restore_state") as mock_restore,
         ):
-            persistence._on_platform_started("platform.started", {})
+            asyncio.run(persistence._on_platform_started("platform.started", {}))
 
             mock_restore.assert_not_called()
 
@@ -365,7 +369,7 @@ class TestOnPlatformStarted:
             patch.object(persistence, "_load_state", return_value="ON"),
             patch.object(persistence, "_restore_state"),
         ):
-            persistence._on_platform_started("platform.started", {})
+            asyncio.run(persistence._on_platform_started("platform.started", {}))
 
             mock_logger.info.assert_any_call("Restore complete. Restored 2 states")
 
@@ -542,7 +546,7 @@ class TestRestoreState:
         definition = MockDefinition(states=("OFF", "ON", "PARTY"))
         mock_fsm_engine.add_definition("light.living_room", definition)
 
-        persistence._restore_state("light.living_room", "PARTY")
+        asyncio.run(persistence._restore_state("light.living_room", "PARTY"))
 
         # Проверяем что состояние изменилось
         restored_state = mock_fsm_engine.get_state("light.living_room")
@@ -563,13 +567,15 @@ class TestRestoreState:
         definition = MockDefinition(states=("OFF", "PARTY"))
         mock_fsm_engine.add_definition("light.living_room", definition)
 
-        persistence._restore_state("light.living_room", "PARTY")
+        asyncio.run(persistence._restore_state("light.living_room", "PARTY"))
 
         mock_event_bus.publish.assert_called_with(
             "fsm.restored",
             {
                 "entity_id": "light.living_room",
+                "fsm_id": "light.living_room",
                 "restored_state": "PARTY",
+                "state": "PARTY",
                 "previous_state": "OFF",
             },
         )
@@ -589,7 +595,7 @@ class TestRestoreState:
         definition = MockDefinition(states=("OFF", "PARTY"))
         mock_fsm_engine.add_definition("light.living_room", definition)
 
-        persistence._restore_state("light.living_room", "PARTY")
+        asyncio.run(persistence._restore_state("light.living_room", "PARTY"))
 
         # Событие не должно быть опубликовано
         restore_calls = [
@@ -612,7 +618,7 @@ class TestRestoreState:
         definition = MockDefinition(states=("OFF", "ON"))
         mock_fsm_engine.add_definition("light.living_room", definition)
 
-        persistence._restore_state("light.living_room", "ON")
+        asyncio.run(persistence._restore_state("light.living_room", "ON"))
 
         assert persistence._state_cache["light.living_room"] == "ON"
 
@@ -631,6 +637,6 @@ class TestRestoreState:
         definition = MockDefinition(states=("OFF", "ON"))
         mock_fsm_engine.add_definition("light.living_room", definition)
 
-        persistence._restore_state("light.living_room", "INVALID")
+        asyncio.run(persistence._restore_state("light.living_room", "INVALID"))
 
         mock_logger.warning.assert_called()

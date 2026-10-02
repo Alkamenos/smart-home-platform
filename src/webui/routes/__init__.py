@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.core.persistence.event_store import EventStore
 from src.webui.models import build_all_fsm_state_views
@@ -33,6 +34,66 @@ templates = Jinja2Templates(directory=str(template_dir))
 
 # Initialize EventStore
 event_store = EventStore()
+
+
+def _resolve_metrics_collector() -> Any | None:
+    """Получить сборщик показателей, инициализированный платформой.
+
+    Args:
+        None.
+
+    Returns:
+        Сборщик показателей из состояния приложения либо None, если он недоступен.
+    """
+    from core.metrics import get_metrics_collector
+
+    return get_metrics_collector()
+
+
+@router.get("/metrics", response_class=Response)
+async def metrics_endpoint(request: Request) -> Response:
+    """Отдать показатели платформы в текстовом формате сбора данных.
+
+    Диагностическая точка рядом с ``/health`` и на том же порту: отдельный
+    сервис показателей сознательно не поднимается (решение D-2), иначе
+    наблюдаемость стала бы второй точкой отказа.
+
+    Пока платформа собирается, отдаётся 503 с причиной, а не пустой документ:
+    иначе система мониторинга приняла бы его за «показателей нет».
+
+    Args:
+        request: Входящий HTTP-запрос.
+
+    Returns:
+        Документ показателей с текстовым типом содержимого, пояснение при
+        отключённом сборе либо JSON с причиной при недоступности.
+    """
+    from core.metrics import metrics_enabled
+
+    if not metrics_enabled():
+        return Response(
+            content="# Metrics collection is disabled (METRICS_ENABLED)\n",
+            media_type="text/plain; charset=utf-8",
+        )
+
+    metrics = getattr(request.app.state, "metrics", None) or _resolve_metrics_collector()
+    if metrics is None or not metrics.is_initialized():
+        return JSONResponse(
+            {"reason": "Metrics collector is not initialized yet"},
+            status_code=503,
+        )
+
+    try:
+        payload = generate_latest(metrics.registry)
+    except Exception as exc:  # noqa: BLE001 - наблюдаемость не должна ронять веб-слой
+        logger.warning(f"Failed to render metrics document: {type(exc).__name__}: {exc}")
+        metrics.record_collection_error("scrape")
+        return JSONResponse(
+            {"reason": f"Failed to render metrics: {type(exc).__name__}"},
+            status_code=500,
+        )
+
+    return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
 
 
 @router.get("/health", response_class=JSONResponse)

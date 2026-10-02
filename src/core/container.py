@@ -103,6 +103,8 @@ class Container:
 
         # Lazy-initialized components
         self._event_bus: EventBus | None = None
+        self._metrics: Any | None = None
+        self._metrics_reporter: Any | None = None
         self._fsm_bridge: Any | None = None
         self._fsm: FSMEngine | None = None
         self._control_tracker: ControlTracker | None = None
@@ -233,6 +235,35 @@ class Container:
         return self._factory
 
     @property
+    def metrics(self) -> Any:
+        """Get or create MetricsCollector instance.
+
+        Инициализируется первым шагом ``build()``: сборщик нужен всем, кто уже
+        пишет в показатели — сервису устройств, адаптеру и подписчику
+        состояний, — и поздняя инициализация потеряла бы первые события (R-01).
+        """
+        if self._metrics is None:
+            from core.metrics import get_metrics_collector
+
+            self._metrics = get_metrics_collector()
+            self._metrics.initialize()
+        return self._metrics
+
+    @property
+    def metrics_reporter(self) -> Any:
+        """Get or create MetricsReporter instance (depends on event_bus).
+
+        Учёт переходов, отказов и восстановлений идёт подпиской на шину, а не
+        правкой движка: ядро не должно зависеть от наличия коллектора
+        (конституция I, R-03).
+        """
+        if self._metrics_reporter is None:
+            from services.metrics_reporter import MetricsReporter
+
+            self._metrics_reporter = MetricsReporter(self.event_bus, self.metrics)
+        return self._metrics_reporter
+
+    @property
     def fsm_bridge(self) -> Any:
         """Get or create FSMStateBridge (depends on event_bus, dispatcher).
 
@@ -290,6 +321,11 @@ class Container:
         """
         # Access properties in dependency order to ensure proper initialization
         _ = self.event_bus  # No dependencies
+        # Метрики и подписчик — до всего остального: сборщик нужен адаптеру и
+        # сервису устройств, поэтому первые же события не должны потеряться
+        # (R-01).
+        _ = self.metrics  # No dependencies
+        _ = self.metrics_reporter  # Depends on event_bus, metrics
         _ = self.fsm  # No dependencies
         _ = self.control_tracker  # No dependencies
         _ = self.factory  # Depends on fsm, registry, event_bus
@@ -298,6 +334,7 @@ class Container:
         # EventRouter builds its sensor->FSM mapping once in __init__
         # from engine.get_entities_by_device(), so FSMs must already exist.
         self.factory.create_and_register(self.manifest)
+        self._publish_fsm_inventory()
 
         _ = self.event_router  # Depends on manifest, fsm (mapping built here)
         _ = self.adapter  # Depends on fsm, event_router
@@ -336,9 +373,34 @@ class Container:
             fsm_bridge=self.fsm_bridge,
         )
 
+    def _publish_fsm_inventory(self) -> None:
+        """Опубликовать число зарегистрированных автоматов в показателях.
+
+        Число берётся из публичного состояния движка, поэтому ради одного
+        счётчика не приходится менять сам движок (R-05).
+        """
+        try:
+            self.metrics.set_active_fsm_count(self._manifest_name(), len(self.fsm.get_all_states()))
+        except Exception as exc:  # noqa: BLE001 - показатели не влияют на запуск
+            logger.warning(f"Failed to publish FSM inventory metric: {exc}")
+
+    def _manifest_name(self) -> str:
+        """Имя объекта для метки показателя активных автоматов.
+
+        Returns:
+            Имя инстанса из манифеста либо пустая строка, если манифест не задан.
+        """
+        manifest = self.manifest
+        if manifest is None:
+            return ""
+        return manifest.instance.name or manifest.instance.id
+
     def reset(self) -> None:
         """Reset all cached instances for testing purposes."""
         self._event_bus = None
+        # Сборщик показателей — глобальный синглтон: сбрасывать ссылку можно,
+        # сам синглтон переиспользуется следующим контейнером в том же процессе.
+        self._metrics_reporter = None
         self._fsm_bridge = None
         self._fsm = None
         self._control_tracker = None

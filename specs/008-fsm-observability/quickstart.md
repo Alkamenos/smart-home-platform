@@ -15,16 +15,17 @@
 
 Ожидание: exit code 0, покрытие не ниже 80% для новых файлов, mypy без ошибок.
 
-**Изолированный манифест** — чтобы не менять репозиторий:
+**Изолированный манифест** — чтобы не менять репозиторий. `CONFIG_PATH` указывает на **каталог** с `manifest.yaml`, а не на сам файл:
 
 ```bash
-cp instances/leonids_house/manifest.yaml /tmp/shp-008-manifest.yaml
+mkdir -p /tmp/shp-008
+cp instances/leonids_house/manifest.yaml /tmp/shp-008/manifest.yaml
 ```
 
 **Запуск без Home Assistant** (автономный режим, mock-адаптер):
 
 ```bash
-CONFIG_PATH=/tmp/shp-008-manifest.yaml PYTHONPATH=src python3 -m src.main
+CONFIG_PATH=/tmp/shp-008 PYTHONPATH=src python3 -m src.main
 ```
 
 Проверка готовности:
@@ -34,7 +35,11 @@ curl -s localhost:8125/health
 # {"status":"ok"}
 ```
 
+> ⚠️ Ошибка из предыдущих фич: `CONFIG_PATH=/tmp/shp-008-manifest.yaml` (файл вместо каталога) приводит к пути `/tmp/shp-008-manifest.yaml/manifest.yaml` и платформа не стартует. Та же ошибка была в `specs/007-fsm-live-status/quickstart.md`.
+
 **Сброс счётчиков**: показатели живут в памяти процесса и обнуляются при перезапуске (FR-010). Перезапускайте платформу перед сценариями, где важно нулевое начальное состояние.
+
+**Почему часть проверок выполняется через тесты, а не через внешний запрос**: в автономном режиме нет источника событий — `MockAdapter` не маршрутизирует изменения состояний (Known Issue #10), поэтому переход извне вызвать нечем. Путь «переход → шина → показатель» проверяется интеграционным тестом, который собирает настоящий контейнер, вызывает `engine.trigger()` и читает реестр: это тот же код, что работает в запущенной платформе.
 
 ---
 
@@ -56,6 +61,20 @@ curl -s localhost:8125/metrics | grep -E '^(# TYPE )?(fsm_transitions_total|fsm_
 Ожидание: все перечисленные имена найдены. `active_fsm_instances` > 0 — автоматы зарегистрированы.
 
 **Ранее**: `/metrics` не существовал вовсе (13 маршрутов, ни одного `/metrics`).
+
+### Фактические результаты (2026-10-02)
+
+| Проверка | Ожидание | Факт |
+|----------|----------|------|
+| `/health` | `{"status":"ok"}` | ✅ `{"status":"ok"}` |
+| `/metrics` код | `200` | ✅ `200` |
+| Тип содержимого | текстовый | ✅ `text/plain; version=1.0.0; charset=utf-8` |
+| Начало тела | `# HELP`, не `{` | ✅ `# HELP python_gc_objects_collected_total ...` |
+| Обязательные семейства до событий | все 9 присутствуют | ✅ 9/9 найдены `# TYPE ...` при нулевой активности |
+| `active_fsm_instances` | больше нуля | ✅ `active_fsm_instances{manifest_name="Leonid's House"} 8.0` — совпадает с «Created 8 FSM definitions» |
+| `METRICS_ENABLED=0` | `200` с пояснением | ✅ `200`, тело `# Metrics collection is disabled (METRICS_ENABLED)` |
+| `503` при неинициализированном сборщике | `503` с причиной | ✅ контрактным тестом (`TestMetricsEndpointDegradation`) |
+| Учёт перехода в показателях | счётчик +1 | ✅ интеграционным тестом (`test_should_count_transition_when_engine_triggered`): внешнего источника событий в автономном режиме нет (Known Issue #10) |
 
 ---
 

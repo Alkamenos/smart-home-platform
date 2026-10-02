@@ -90,6 +90,11 @@ class MetricsCollector:
         self._fsm_rejections_total: Counter | None = None
         self._fsm_states_restored_total: Counter | None = None
         self._metrics_collection_errors_total: Counter | None = None
+        self._fsm_stuck_total: Counter | None = None
+        self._fsm_stuck_current: Gauge | None = None
+        self._watchdog_checks_total: Counter | None = None
+        self._watchdog_last_snapshot_timestamp: Gauge | None = None
+        self._ha_connection_lost: Gauge | None = None
         self._event_processing_latency: Histogram | None = None
         self._ha_connection_errors_total: Counter | None = None
         self._websocket_disconnects_total: Counter | None = None
@@ -129,6 +134,23 @@ class MetricsCollector:
             True, если реестр не был передан явно.
         """
         return self._registry_is_default
+
+    @property
+    def registry(self) -> Any:
+        """Реестр измерений, в котором зарегистрированы метрики.
+
+        Нужен выдаче документа показателей: без него счётчики есть, а отдать
+        их нечем.
+
+        Returns:
+            Реестр измерений; общий реестр prometheus_client, если он не был
+            передан явно.
+        """
+        if self._registry is None:
+            from prometheus_client import REGISTRY
+
+            return REGISTRY
+        return self._registry
 
     def _bounded_labels(
         self,
@@ -236,6 +258,39 @@ class MetricsCollector:
                 "metrics_collection_errors_total",
                 "Total number of metrics collection failures by stage",
                 ("stage",),
+            )
+
+            # ===== Метрики сторожа (US2) =====
+            # Зависшие автоматы: счётчик обнаружений и шкала «зависло сейчас».
+            # Шкала нужна, чтобы «всё в порядке» отличалось от «никто не
+            # проверялся» (FR-016).
+            self._fsm_stuck_total = counter(
+                "fsm_stuck_total",
+                "Total number of detected stuck FSM instances by state",
+                ("fsm_name", "state"),
+            )
+            self._fsm_stuck_current = gauge(
+                "fsm_stuck_current",
+                "Number of FSM instances currently stuck",
+                ("fsm_name",),
+            )
+
+            # Результаты проверок сторожа: ok / degraded / failed (FR-018).
+            self._watchdog_checks_total = counter(
+                "watchdog_checks_total",
+                "Total number of watchdog checks by result",
+                ("result",),
+            )
+            self._watchdog_last_snapshot_timestamp = gauge(
+                "watchdog_last_snapshot_timestamp",
+                "Unix timestamp of the last watchdog state snapshot",
+            )
+
+            # 1, пока связь с внешней системой потеряна; 0 — иначе, включая
+            # автономный режим, где внешней системы нет (FR-014).
+            self._ha_connection_lost = gauge(
+                "ha_connection_lost",
+                "1 while the connection to the external system is lost, 0 otherwise",
             )
 
             # Event processing latency histogram

@@ -29,7 +29,11 @@ from __future__ import annotations
 import json
 import time
 
-from core.events.fsm_events import EVENT_FSM_TRANSITIONED, EVENT_PLATFORM_STARTED
+from core.events.fsm_events import (
+    EVENT_FSM_RESTORED,
+    EVENT_FSM_TRANSITIONED,
+    EVENT_PLATFORM_STARTED,
+)
 
 
 class FSMPersistence:
@@ -121,12 +125,18 @@ class FSMPersistence:
             new_state=to_state,
         )
 
-    def _on_platform_started(
+    async def _on_platform_started(
         self, event_type: str, payload: dict, trace_id: str | None = None
     ) -> None:
         """Восстановить сохранённые состояния при старте платформы.
 
         Вызывается после регистрации всех автоматов, но до начала работы.
+
+        Асинхронный обработчик: восстановление публикует событие
+        ``fsm.restored`` на шину, а публикация — ``await``-корутина. Пока
+        обработчик был синхронным, корутина создавалась и никогда не
+        ожидалась, поэтому событие восстановления не доходило ни до одного
+        подписчика (FR-025).
 
         Args:
             event_type: Имя события.
@@ -150,7 +160,7 @@ class FSMPersistence:
 
                     if definition and saved_state in definition.states:
                         # Восстанавливаем состояние
-                        self._restore_state(entity_id, saved_state)
+                        await self._restore_state(entity_id, saved_state)
                         restored_count += 1
 
                         self._logger.info(
@@ -285,7 +295,7 @@ class FSMPersistence:
             )
             return None
 
-    def _restore_state(self, entity_id: str, saved_state: str) -> None:
+    async def _restore_state(self, entity_id: str, saved_state: str) -> None:
         """
         Восстановить состояние автомата
 
@@ -322,12 +332,19 @@ class FSMPersistence:
                 # Обновляем состояние в движке
                 self._fsm_engine._states[entity_id] = restored_state
 
-                # Публикуем событие о восстановлении
-                self._event_bus.publish(
-                    "fsm.restored",
+                # Публикуем событие о восстановлении. Имя события — константой,
+                # а не литералом: литерал разошёлся с EVENT_FSM_RESTORED, и
+                # константа оставалась мёртвой декларацией (FR-025).
+                # Полезная нагрузка дополнена полем `fsm_id`, чтобы потребители
+                # события работали с одним соглашением об идентификаторе
+                # автомата.
+                await self._event_bus.publish(
+                    EVENT_FSM_RESTORED,
                     {
                         "entity_id": entity_id,
+                        "fsm_id": entity_id,
                         "restored_state": saved_state,
+                        "state": saved_state,
                         "previous_state": current_state.current_state,
                     },
                 )
