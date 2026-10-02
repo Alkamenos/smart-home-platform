@@ -16,7 +16,7 @@
 ## Как работать с этим пулом
 
 1. **Быстрые фиксы** (§1) — берутся как обычные задачи, без Spec Kit; после фикса — Known Issue в `01_PROJECT_STATE.md` закрывается.
-2. **Крупные фичи** (§2) — перед стартом запускается Spec Kit: `speckit-specify` → спека `specs/NNN-<name>/` (следующий номер: **008**, 007 занята F2), далее clarify → plan → tasks → implement. После закрытия фичи — отметить статус здесь.
+2. **Крупные фичи** (§2) — перед стартом запускается Spec Kit: `speckit-specify` → спека `specs/NNN-<name>/` (следующий номер: **009**, 008 занята F3), далее clarify → plan → tasks → implement. После закрытия фичи — отметить статус здесь.
 3. **Мелочи/бэклог** (§3) — без спеки, по мере сил.
 4. **Отложено** (§4) — не планируется сейчас.
 5. Обновлять этот файл после закрытия любой задачи из пула;ROADmap/PROJECT_STATE обновляются как обычно.
@@ -87,14 +87,14 @@
 
 ### F3. Observability FSM: метрики, watchdog, dashboard-интеграция 🟡
 
-**Проблема:** метрики FSM — no-op (`MetricsCollector.initialize()` не вызывается, `record_fsm_transition` нигде не вызывается, `/metrics` не подключён к FastAPI); watchdog не инстанцируется + баг (`state_obj.current` вместо `current_state`, `watchdog.py`); `DashboardIntegration` подписан на непубликуемое `fsm.state.changed`.
+**Проблема:** метрики FSM — no-op (`MetricsCollector.initialize()` не вызывается, `record_fsm_transition` нигде не вызывается, `/metrics` не подключён к FastAPI); watchdog не инстанцируется + баг (`state_obj.current` вместо `current_state`, `watchdog.py`) и второй баг (синхронный `log_snapshot_now` вызывается через `await`); `DashboardIntegration` — недостижимый модуль (подписка на `fsm.state.changed` исправлена в F2).
 
-**Спека при старте:** `specs/008-fsm-observability/` (можно объединить с F2, если clarify покажет общность)
+**Спека при старте:** `specs/008-fsm-observability/` ✅ **создана 2026-10-01** (3 US, 26 FR, 16 SC; решения D-1/D-2/D-3 приняты 2026-10-01). Далее: `/speckit-plan`.
 
 Истории:
-- **US1:** подключить `/metrics` в FastAPI + вызов `initialize()` + реальные записи переходов FSM
-- **US2:** подключить WatchdogService (или удалить), починить баг `current_state`, снимки состояний в лог/metrics
-- **US3:** связать `DashboardIntegration` с реальной шиной (перекрывается с F2 US1)
+- **US1 (P1):** подключить `/metrics` в FastAPI + вызов `initialize()` при старте + реальные записи переходов/отказов FSM + ограничение кардинальности значений; **D-2:** показатели отдаются с того же сервера, что и панель (8125), `MetricsServer` (9090) удаляется как дубликат
+- **US2 (P1→P2, требует US1):** **D-1:** починить и подключить `WatchdogService` как полноценную службу — снимки состояний, обнаружение зависших автоматов по таймаутам состояний, потеря связи, интеграция с жизненным циклом, настройки
+- **US3 (P3):** **D-3:** `src/dashboard/dashboard.py` удаляется как мёртвый код (32 теста, зеркалирование уже делает `fsm_state_bridge`); удалить `src/smart_home/core/metrics.py` + `src/smart_home/services/metrics_server.py` и тест `tests/test_prometheus_metrics.py` (23 теста на зеркало); тесты регистрации метрик — на реальной библиотеке, а не `MagicMock`; `METRICS_ENABLED`/`METRICS_PORT` из `deploy/.env.example` начать читать или убрать; исправить завышенные статусы в ROADMAP/INDEX/README/enhancement 07
 
 ### F4. E2E и интеграционные тесты device-integration 🟡
 
@@ -140,7 +140,7 @@
 |------|-------|--------|
 | F1 Device Lifecycle | specs/006 | ✅ **Выполнено 2026-10-01** — 47/47 задач. US1: единый источник устройств + транзакция жизненного цикла, форма `/devices/save` с обязательным источником; US2: мастер на реальных данных источника, `ManifestStore` в core, идентичность в запросах UI, `discovery.html` без дублей; US3: синк сводится с единым хранилищем (без дублей), `removed_from_ha` снимает автоматику, сбой не теряет данные; US4: каскадное удаление + `DELETE /api/v1/devices/{id}` + действие в UI. **Проверено:** 1559 passed / 9 skipped / 0 failed, mypy --strict ✅, run_checks exit 0, quickstart 1–6 и 9 вживую (Traceback 0); покрытие: `device_lifecycle` 93%, `manifest_store` 96%, `discovery_service` 91%, `routes_discovery` 95%, `event_router` 95% | spec (4 US, 30 FR, 10 SC), research, plan, data-model, 2 контракта, quickstart (9 сценариев + фактические результаты), tasks.md (47) |
 | F2 Live FSM Statuses | specs/007 | ✅ **Выполнено 2026-10-01** — 71/71 задач. US1: переходы публикуются и доходят до подписчиков, состояния переживают перезапуск, команды доходят до диспетчера; US2: `GET /api/fsm/state` + `fsm`/`automation` в устройстве с разграничением прав; US3: живой канал устройств вместо мёртвого `/ws/live`, диаграмма как схема, подсветка состояния; US4: графики по фактическим данным, выдумка удалена. **Проверено:** 1725 passed / 9 skipped / 0 failed, Playwright 23 passed (2 предсуществующих падения — Known Issue #15), mypy --strict 0 ошибок, run_checks exit 0, покрытие 93.4%. Попутно устранены 7 дефектов вне буквального объёма (диспетчер/хранилище движка, двойная загрузка модулей, неразбираемый Mermaid, скрытый контейнер отрисовки, утечка прав, перепутанная ось времени, 500 на ответе подсказки) | spec (4 US, 39 FR, 17 SC), research (11 решений), plan (6 волн), data-model (7 сущностей), contracts (2), quickstart (11 сценариев + фактические результаты), tasks.md (71, все выполнены) | Переходы публикуются, состояния переживают перезапуск, команды доходят до диспетчера US1: публикация переходов FSM в шину + единая шина для WebUI + подписка `handle_state_change` + восстановление состояний при перезапуске; US2: `GET /api/fsm/state` + реальный `state` в списке устройств; US3: живые обновления с правами доступа, переподключение, починенный рендер диаграмм, подсветка текущего состояния; US4: запись переходов и событий в `EventStore`, удаление mock-данных → «данных нет». **План:** 6 волн (фундамент → US1 → US2 → US3 → US4 → полировка), Constitution Check PASS, 11 решений в research, 6 рисков с mitigation. **Tasks:** 71 задача, 7 фаз (Setup 3, Foundational 11, US1 14, US2 8, US3 14, US4 10, Polish 11), 34 параллельные; Foundational блокирует всё; US3 и US4 параллельны после US1 | spec (4 US, 39 FR, 17 SC, 22 edge cases), research (11 решений), plan (6 волн, 6 рисков), data-model (7 сущностей), contracts (события + REST/WS), quickstart (11 сценариев, 9 без HA), tasks.md (71) |
-| F3 FSM Observability | specs/008 (будет) | ⬜ Не начата |
+| F3 FSM Observability | specs/008 | 🟡 **Спека готова 2026-10-01** — 3 US, 26 FR, 16 SC, 17 наблюдений подтверждены кодом; решения D-1/D-2/D-3 приняты (сторож подключается, метрики на сервере платформы, dashboard-модуль удаляется). Далее: `/speckit-plan` | spec (3 US, 26 FR, 16 SC) |
 | F4 Device E2E | specs/009 (будет) | ⬜ Не начата |
 | ~~US4 Access Control~~ | specs/004 | ✅ Закрыта 2026-09-30 |
 | ~~Device Audit Log~~ | specs/005 | ✅ Закрыта 2026-09-30 |
