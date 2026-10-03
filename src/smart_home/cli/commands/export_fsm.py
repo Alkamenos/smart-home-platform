@@ -19,7 +19,7 @@ import yaml
 
 
 if TYPE_CHECKING:
-    from core.fsm import FSMDefinition
+    from core.fsm.engine import FSMDefinition
 
 
 def load_manifest(manifest_path: str) -> dict[str, Any]:
@@ -55,7 +55,7 @@ def generate_fsms_from_manifest(manifest: dict[str, Any]) -> list[tuple[str, FSM
         List of tuples (device_id, fsm_definition).
     """
     from core.events.event_bus import EventBus
-    from core.fsm import FSMEngine
+    from core.fsm.engine import FSMEngine
     from core.fsm.factory import FSMFactory
     from core.models.manifest import BehaviorConfig
     from core.registry import Registry

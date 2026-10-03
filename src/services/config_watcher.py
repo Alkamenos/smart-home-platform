@@ -39,7 +39,7 @@ from watchdog.observers import Observer
 
 if TYPE_CHECKING:
     from core import Registry
-    from core.fsm import FSMEngine
+    from core.fsm.engine import FSMEngine
     from core.fsm.factory import FSMFactory
     from core.models.manifest import Manifest
 
