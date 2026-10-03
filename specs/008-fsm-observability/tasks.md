@@ -150,7 +150,7 @@ description: "Task list for specs/008-fsm-observability (Observability плат�
 - [X] T040 Зафиксировать в `.ai/01_PROJECT_STATE.md` Known Issues отклонения, сознательно оставленные вне объёма: маршрут `/metrics` открыт, как `/health` (аутентификация — отдельная задача); правило «Services не импортирует Core» в конституции не соответствует коду; `src/dashboard/lovelace_generator.py` недостижим из production-кода; показатели не хранятся исторически; состояния без таймингованных переходов зависанием не считаются по построению; Known Issue #12 (`Task was destroyed`) не изменился
 - [X] T041 Обновить `.ai/BACKLOG.md`: F3 закрыта, статус историй US1–US3, отметить закрытые Known Issue (метрики no-op, watchdog не инстанцируется); выполнить `python3 .ai/scripts/sync_roadmap.py --auto-update`
 - [X] T042 Обновить `.ai/enhancements/INDEX.md` и `.ai/enhancements/07-prometheus-metrics.md`: enhancement 07 перестаёт быть завышенным; чекбокс «скрейпится через `/metrics»` подтверждается кодом либо снимается
-- [ ] T043 Коммит: один коммит на логическую группу задач в формате `type(scope): description`, предварительно убедившись, что `.ai/scripts/run_checks.sh` завершился с кодом 0
+- [X] T043 Коммит: один коммит на логическую группу задач в формате `type(scope): description`, предварительно убедившись, что `.ai/scripts/run_checks.sh` завершился с кодом 0
 
 ---
 

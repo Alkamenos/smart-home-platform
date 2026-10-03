@@ -143,7 +143,7 @@ gantt
 - `/metrics` endpoint on the platform port
 - FSM state changes, rejections, command latency, error rates
 - Files: `src/core/metrics.py`, `src/services/metrics_reporter.py`, `src/webui/routes/__init__.py`, `tests/test_metrics.py`
-- Implementation date: 2026-09-16 (code), 2026-10-02 (actually wired, specs/008)
+- Implementation date: 2026-09-16 (код), 2026-10-02 (фактически подключено, specs/008)
 - ✅ Hot-reload without restart
 - File watcher for manifest changes
 - Graceful FSM migration (unregister old, register new)
