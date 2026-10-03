@@ -281,10 +281,38 @@ class TestDeviceConfigAPI:
         assert response.status_code == 404
 
     def test_execute_command_response_format(self, client):
-        """T044: Ответ команды содержит правильный формат."""
-        # Этот тест проверяет контракт для успешной отправки команды
-        # Структура ответа должна быть: {id, status, created_at, ...}
-        pass
+        """T044: Ответ команды содержит поля контракта.
+
+        Раньше тело теста было `pass` — он проходил, ничего не проверяя, и
+        числился покрытием формата ответа. Теперь контракт проверяется на
+        существующем устройстве с реальными правами: отсутствие нужного поля
+        должно приводить к отказу.
+        """
+        from tests.helpers.device_factory import make_device, seed_device_in_service
+
+        device = make_device(ha_entity_id="light.response_format", name="Формат ответа")
+        seed_device_in_service(client.app.state.device_service, device)
+
+        grant = client.post(
+            f"/api/v1/devices/{device.id}/access",
+            json={"user_id": "response_format_user", "role": "controller"},
+            headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
+        )
+        assert grant.status_code in (200, 201), grant.text
+
+        response = client.post(
+            f"/api/v1/devices/{device.id}/command",
+            json={"command_name": "turn_on"},
+            headers={"X-User-ID": "response_format_user"},
+        )
+        assert response.status_code == 202, response.text
+
+        body = response.json()
+        for field in ("id", "device_id", "command_name", "status", "created_at"):
+            assert field in body, f"в ответе команды нет поля {field}: {body}"
+        assert body["status"] == "executing", f"ожидался статус executing: {body}"
+        assert body["command_name"] == "turn_on"
+        assert body["device_id"] == str(device.id)
 
     def test_get_device_events(self, client):
         """T045: GET /api/v1/devices/{id}/events возвращает историю событий."""

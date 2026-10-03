@@ -14,7 +14,6 @@ import re
 from typing import Any
 
 import pytest
-from src.core.security.encryption import TokenEncryptor
 
 
 class SecurityAnalyzer:
@@ -293,52 +292,10 @@ def test_report_generation(secure_logs):
     assert "РЕЗУЛЬТАТЫ ПРОВЕРОК БЕЗОПАСНОСТИ" in report
 
 
-class TestTokenEncryption:
-    """Тесты шифрования токенов."""
-
-    def test_encrypt_decrypt_token(self):
-        """Проверяет что токены шифруются и расшифровываются правильно."""
-        encryptor = TokenEncryptor()
-        original_token = "test_token_12345"
-
-        # Шифруем
-        encrypted = encryptor.encrypt(original_token)
-        assert encrypted != original_token, "Зашифрованный токен должен отличаться"
-
-        # Дешифруем
-        decrypted = encryptor.decrypt(encrypted)
-        assert decrypted == original_token, "Дешифрованный токен должен совпадать с оригиналом"
-
-    def test_encrypt_produces_different_output(self):
-        """Проверяет что каждое шифрование производит разный вывод (из-за IV)."""
-        encryptor = TokenEncryptor()
-        token = "test_token_12345"
-
-        encrypted1 = encryptor.encrypt(token)
-        encrypted2 = encryptor.encrypt(token)
-
-        # Шифрование должно быть детерминированным для Fernet, но может быть разным
-        # В любом случае, оба должны дешифровываться в исходный токен
-        assert encryptor.decrypt(encrypted1) == token
-        assert encryptor.decrypt(encrypted2) == token
-
-    def test_decrypt_invalid_token_raises_error(self):
-        """Проверяет что дешифрование неверного токена выбрасывает ошибку."""
-        encryptor = TokenEncryptor()
-        invalid_token = "invalid_encrypted_token"
-
-        with pytest.raises(ValueError):
-            encryptor.decrypt(invalid_token)
-
-    def test_encrypt_empty_token(self):
-        """Проверяет шифрование пустого токена."""
-        encryptor = TokenEncryptor()
-        token = ""
-
-        encrypted = encryptor.encrypt(token)
-        decrypted = encryptor.decrypt(encrypted)
-
-        assert decrypted == token
+# Тесты шифрования токенов перенесены в tests/unit/core/test_encryption.py
+# (спека 009, T010): этот файл pytest не собирает — имя не начинается с
+# `test_`, а содержимое находится под `if __name__ == "__main__"`. Тесты были
+# написаны и ни разу не выполнялись.
 
 
 if __name__ == "__main__":
