@@ -1,15 +1,76 @@
 {
     "$schema": "https://opencode.ai/config.json",
+    "shell": "/bin/zsh",
     "lsp": true,
+    "formatter": {
+        "ruff": {
+            "command": ["ruff", "format", "$FILE"]
+        }
+    },
+    "watcher": {
+        "ignore": [
+            ".mypy_cache/**",
+            ".ruff_cache/**",
+            ".pytest_cache/**",
+            ".fsm_output/**",
+            "coverage.xml",
+            "htmlcov/**",
+            "instances/**",
+            "data/**"
+        ]
+    },
     "mcp": {
-        "context7": {
-            "type": "remote",
-            "url": "https://mcp.context7.com/mcp",
-            "headers": {
-                "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+        "servers": {
+            "context7": {
+                "type": "remote",
+                "url": "https://mcp.context7.com/mcp",
+                "headers": {
+                    "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+                }
+            },
+            "pycharm": {
+                "type": "remote",
+                "url": "http://127.0.0.1:64462/stream",
+                "oauth": false
+            },
+            "playwright": {
+                "type": "local",
+                "command": ["npx", "-y", "@playwright/mcp"],
+                "cwd": "."
             }
         }
     },
+    "permissions": [
+        { "action": "shell", "resource": "*", "effect": "ask" },
+
+        { "action": "shell", "resource": "ruff *", "effect": "allow" },
+        { "action": "shell", "resource": "mypy *", "effect": "allow" },
+        { "action": "shell", "resource": "pytest *", "effect": "allow" },
+        { "action": "shell", "resource": "python -m pytest *", "effect": "allow" },
+        { "action": "shell", "resource": "pre-commit *", "effect": "allow" },
+        { "action": "shell", "resource": "coverage *", "effect": "allow" },
+        { "action": "shell", "resource": "make *", "effect": "allow" },
+        { "action": "shell", "resource": "shp *", "effect": "allow" },
+
+        { "action": "shell", "resource": "git status *", "effect": "allow" },
+        { "action": "shell", "resource": "git diff *", "effect": "allow" },
+        { "action": "shell", "resource": "git log *", "effect": "allow" },
+        { "action": "shell", "resource": "git show *", "effect": "allow" },
+        { "action": "shell", "resource": "git branch *", "effect": "allow" },
+        { "action": "shell", "resource": "git add *", "effect": "allow" },
+        { "action": "shell", "resource": "git commit *", "effect": "allow" },
+        { "action": "shell", "resource": "git restore *", "effect": "allow" },
+        { "action": "shell", "resource": "git reset *", "effect": "allow" },
+
+        { "action": "shell", "resource": "git push *", "effect": "ask" },
+        { "action": "shell", "resource": "pip install *", "effect": "ask" },
+        { "action": "shell", "resource": "uv pip *", "effect": "ask" },
+        { "action": "shell", "resource": "rm *", "effect": "ask" },
+        { "action": "shell", "resource": "docker *", "effect": "ask" },
+
+        { "action": "webfetch", "resource": "http://localhost*", "effect": "allow" },
+        { "action": "webfetch", "resource": "http://127.0.0.1*", "effect": "allow" }
+    ],
     "provider": {
         "odirouter": {
             "npm": "@ai-sdk/openai-compatible",
