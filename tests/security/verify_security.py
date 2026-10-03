@@ -13,7 +13,7 @@ import json
 import re
 from typing import Any
 
-import pytest
+import pytest  # noqa: F401 — используется в блоке __main__
 
 
 class SecurityAnalyzer:
@@ -232,70 +232,25 @@ class SecurityAnalyzer:
         return "\n".join(report_lines)
 
 
-# Tests
+# Тесты вынесены в tests/security/test_log_security.py (спека 009, T011a).
+# Прежние 6 проверок жили здесь и выполнялись только при явном указании пути:
+# pytest не собирает файл, потому что его имя не матчит `test_*.py`. То есть
+# проверки безопасности токенов в логах не происходили ни в одном обычном
+# прогоне.
+#
+# При переносе добавлена обратная сторона каждой проверки: анализатор,
+# который всегда возвращал бы True, прошёл бы и прежние тесты.
 
 
-@pytest.fixture
-def secure_logs():
-    """Пример безопасных логов."""
-    return """{"timestamp": "2026-09-29T10:00:00Z", "level": "INFO", "component": "sources", "message": "Создан источник", "context": {"operation_type": "add_source", "source_id": "550e8400", "token": "***REDACTED***", "result": "success"}}
-{"timestamp": "2026-09-29T10:00:01Z", "level": "ERROR", "component": "auth", "message": "Ошибка аутентификации", "context": {"operation_type": "sync_devices", "result": "error", "error_message": "Invalid token (first 8 chars: eyJhbGc)"}}
-{"timestamp": "2026-09-29T10:00:02Z", "level": "INFO", "component": "access", "message": "Доступ изменен", "context": {"operation_type": "change_access", "user_id": "user123", "result": "success"}}"""
-
-
-@pytest.fixture
-def insecure_logs():
-    """Пример логов с проблемами безопасности."""
-    return """{"timestamp": "2026-09-29T10:00:00Z", "level": "INFO", "component": "sources", "message": "Создан источник с токеном eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", "context": {"operation_type": "add_source", "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", "result": "success"}}"""
-
-
-def test_no_plaintext_tokens_secure(secure_logs):
-    """Проверяет отсутствие открытых токенов в безопасных логах."""
-    analyzer = SecurityAnalyzer(secure_logs)
-    is_valid, message = analyzer.check_no_plaintext_tokens()
-    assert is_valid, message
-
-
-def test_no_plaintext_tokens_insecure(insecure_logs):
-    """Проверяет обнаружение открытых токенов в ненадежных логах."""
-    analyzer = SecurityAnalyzer(insecure_logs)
-    is_valid, message = analyzer.check_no_plaintext_tokens()
-    assert not is_valid, "Должны быть обнаружены открытые токены"
-
-
-def test_sensitive_fields_masked(secure_logs):
-    """Проверяет маскирование чувствительных полей."""
-    analyzer = SecurityAnalyzer(secure_logs)
-    is_valid, message = analyzer.check_sensitive_fields_masked()
-    assert is_valid, message
-
-
-def test_error_messages_safe(secure_logs):
-    """Проверяет безопасность сообщений об ошибках."""
-    analyzer = SecurityAnalyzer(secure_logs)
-    is_valid, message = analyzer.check_error_messages_safe()
-    assert is_valid, message
-
-
-def test_exception_safety(secure_logs):
-    """Проверяет безопасность исключений."""
-    analyzer = SecurityAnalyzer(secure_logs)
-    is_valid, message = analyzer.check_exception_safety()
-    assert is_valid, message
-
-
-def test_report_generation(secure_logs):
-    """Проверяет генерацию отчета."""
-    analyzer = SecurityAnalyzer(secure_logs)
-    report = analyzer.generate_report()
-    assert "ОТЧЕТ О ПРОВЕРКЕ БЕЗОПАСНОСТИ" in report
-    assert "РЕЗУЛЬТАТЫ ПРОВЕРОК БЕЗОПАСНОСТИ" in report
-
-
-# Тесты шифрования токенов перенесены в tests/unit/core/test_encryption.py
-# (спека 009, T010): этот файл pytest не собирает — имя не начинается с
-# `test_`, а содержимое находится под `if __name__ == "__main__"`. Тесты были
-# написаны и ни разу не выполнялись.
+# Тесты перенесены в собираемые pytest файлы (спека 009):
+#
+# - шифрование токенов → `tests/unit/core/test_encryption.py` (T010)
+# - проверки безопасности логов → `tests/security/test_log_security.py` (T011a)
+#
+# Здесь остаётся сам `SecurityAnalyzer` — он нужен как скрипт ручной проверки
+# журналов. Файл не собирается pytest: имя не начинается с `test_`. Именно этим
+# свойством были скрыты обе группы тестов — они выполнялись только при явном
+# указании пути и никогда в обычном прогоне.
 
 
 if __name__ == "__main__":

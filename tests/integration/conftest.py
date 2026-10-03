@@ -75,6 +75,9 @@ MANIFEST_RELPATH = Path("instances") / "leonids_house" / "manifest.yaml"
 #: Идентификатор пользователя без каких-либо прав.
 NO_RIGHTS_USER_ID = "user_without_rights"
 
+#: Идентификатор пользователя для сценариев доступа и событий.
+REGULAR_USER_ID = "regular_user"
+
 #: Идентификатор пользователя с ролью только для чтения.
 VIEWER_USER_ID = "user_viewer"
 
@@ -221,6 +224,20 @@ def admin_headers(admin_user_id: str) -> dict[str, str]:
         Заголовки, передаваемые в клиент по умолчанию.
     """
     return _headers(admin_user_id, is_admin=True)
+
+
+@pytest.fixture
+def regular_user_id() -> str:
+    """Идентификатор обычного пользователя.
+
+    Имена прежних фикстур (`regular_user_id`, `another_user_id`) жили в самих
+    тестовых файлах. Сведение идентичностей в `conftest.py` означает, что
+    удаление одного файла больше не оставляет тесты без фикстуры.
+
+    Returns:
+        Идентификатор пользователя без административных прав.
+    """
+    return REGULAR_USER_ID
 
 
 @pytest.fixture
