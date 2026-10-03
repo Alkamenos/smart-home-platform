@@ -37,6 +37,35 @@ import pytest
 from smart_home.cli.main import main
 
 
+@pytest.fixture(autouse=True)
+def loguru_follows_current_stderr():
+    """Перенаправляет журналирование на актуальный поток ошибок.
+
+    Loguru захватывает `sys.stderr` в момент первого импорта и держит ссылку
+    навсегда. Pytest подменяет `sys.stderr` на свой буфер для каждого теста и
+    закрывает его по завершении. Поэтому обработчик loguru продолжает писать
+    в уже закрытый буфер, каждая запись роняет `ValueError: I/O operation on
+    closed file`, а loguru печатает служебный шум с трассировками в настоящий
+    stderr — прямо в вывод теста.
+
+    Симптом проявлялся только при запуске файла в одиночку: если loguru
+    импортируется раньше (на этапе сбора другого файла), обработчик привязывается
+    к настоящему stderr и шума нет. То есть поведение зависело от порядка
+    сбора — неприемлемо.
+
+    Returns:
+        None.
+    """
+    from loguru import logger
+
+    logger.remove()
+    logger.add(sys.stderr)
+
+    yield
+
+    logger.remove()
+
+
 @pytest.fixture
 def run_cli(monkeypatch, capsys):
     """Выполняет команду через штатную точку входа и возвращает результат.
@@ -111,7 +140,12 @@ def scripted_input(monkeypatch):
         asked: list[str] = []
 
         def _input(prompt: str = "") -> str:
-            """Отвечает на один вопрос.
+            """Отвечает на один вопрос, печатая его как настоящий `input()`.
+
+            Промпт печатается намеренно: `input()` пишет вопрос в stdout, и
+            тесты, проверяющие порядок или наличие вопроса, читают вывод.
+            Подмена, молчащая о вопросе, делала бы вывод неузнаваемым
+            относительно того, что видит пользователь.
 
             Args:
                 prompt: Текст вопроса.
@@ -120,6 +154,7 @@ def scripted_input(monkeypatch):
                 Подготовленный ответ либо пустая строка.
             """
             asked.append(prompt)
+            print(prompt, end="")
             if not pending:
                 return ""
             return pending.pop(0)
@@ -174,18 +209,47 @@ def broken_manifest(tmp_path) -> Path:
     return path
 
 
+class FakeWebSocketClient:
+    """Заглушка WebSocket-клиента внешней системы."""
+
+    def __init__(self, states: list[dict[str, Any]]) -> None:
+        """Инициализирует клиент.
+
+        Args:
+            states: Состояния устройств, которые вернёт обход.
+        """
+        self._states = states
+        self.get_states_calls = 0
+
+    async def get_states(self) -> list[dict[str, Any]]:
+        """Возвращает подготовленные состояния.
+
+        Returns:
+            Список состояний устройств.
+        """
+        self.get_states_calls += 1
+        return self._states
+
+
 class FakeHAAdapter:
     """Заглушка адаптера внешней системы для командной строки.
 
-    `bulk-import` создаёт `HAAdapter(mode="websocket", ...)` и вызывает
-    `start()`/`stop()`. Подмена класса целиком исключает и сетевой вызов, и
-    чтение токена из окружения.
+    `bulk-import` создаёт `HAAdapter(mode="websocket", ...)`, вызывает
+    `start()`/`stop()` и передаёт его в `DeviceDiscoveryService`. Обход
+    (`DeviceDiscoveryService.scan_devices`, строка 136) требует два условия:
+    публичного свойства `is_connected` и непустого `_ws_client`, из которого
+    читается `get_states()`. Заглушка выполняет оба — иначе обход отверг бы
+    подключение и проверка не дошла бы до вывода команды.
 
     Attributes:
-        devices: Устройства, которые вернёт обход.
+        states: Состояния, которые вернёт обход.
+        connected: Выдавать ли подключение успешным.
         start_calls: Сколько раз вызвали `start`.
         stop_calls: Сколько раз вызвали `stop`.
     """
+
+    states: list[dict[str, Any]] = []
+    connected: bool = True
 
     def __init__(self, mode: str = "websocket", ws_url: str = "", token: str = "") -> None:
         """Инициализирует заглушку.
@@ -195,9 +259,26 @@ class FakeHAAdapter:
             ws_url: Адрес внешней системы — принимается и игнорируется.
             token: Токен — принимается и игнорируется.
         """
-        self.devices: list[dict[str, Any]] = []
         self.start_calls = 0
         self.stop_calls = 0
+
+    @property
+    def is_connected(self) -> bool:
+        """Сообщает, установлено ли подключение.
+
+        Returns:
+            True, если подключение смоделировано успешным.
+        """
+        return self.connected
+
+    @property
+    def _ws_client(self) -> FakeWebSocketClient:
+        """Возвращает клиента обхода.
+
+        Returns:
+            Заглушка WebSocket-клиента.
+        """
+        return FakeWebSocketClient(type(self).states)
 
     async def start(self) -> None:
         """Имитирует запуск."""
@@ -207,24 +288,40 @@ class FakeHAAdapter:
         """Имитирует остановку."""
         self.stop_calls += 1
 
-    async def get_states(self) -> list[dict[str, Any]]:
-        """Возвращает подготовленные состояния.
-
-        Returns:
-            Список состояний устройств.
-        """
-        return self.devices
-
 
 @pytest.fixture
 def fake_ha(monkeypatch) -> type[FakeHAAdapter]:
     """Подменяет класс адаптера внешней системы.
 
+    Аргументы — на уровне класса, потому что команда создаёт экземпляр
+    сама, и до её запуска тест должен задать набор устройств и режим
+    подключения.
+
     Args:
         monkeypatch: Фикстура подмены.
 
     Returns:
-        Класс заглушки — им можно задать набор устройств перед запуском.
+        Класс заглушки — его атрибуты `states` и `connected` задаются тестом.
     """
+    FakeHAAdapter.states = []
+    FakeHAAdapter.connected = True
     monkeypatch.setattr("src.adapters.ha_adapter.HAAdapter", FakeHAAdapter)
     return FakeHAAdapter
+
+
+def make_state(entity_id: str, friendly_name: str, **attributes: Any) -> dict[str, Any]:
+    """Строит состояние сущности внешней системы для обхода.
+
+    Args:
+        entity_id: Идентификатор сущности.
+        friendly_name: Человекочитаемое имя.
+        **attributes: Дополнительные атрибуты.
+
+    Returns:
+        Состояние в формате Home Assistant.
+    """
+    return {
+        "entity_id": entity_id,
+        "state": "on",
+        "attributes": {"friendly_name": friendly_name, **attributes},
+    }
