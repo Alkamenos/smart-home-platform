@@ -140,10 +140,10 @@ gantt
 - Files: `src/webui/app.py`, `src/webui/routes.py`, `src/webui/models.py`, `tests/test_webui.py`
 - Implementation date: 2026-09-17
 - ✅ Prometheus metrics export
-- `/metrics` endpoint
-- FSM state changes, command latency, error rates
-- Files: `core/metrics.py`, `tests/test_metrics.py`
-- Implementation date: 2026-09-16
+- `/metrics` endpoint on the platform port
+- FSM state changes, rejections, command latency, error rates
+- Files: `src/core/metrics.py`, `src/services/metrics_reporter.py`, `src/webui/routes/__init__.py`, `tests/test_metrics.py`
+- Implementation date: 2026-09-16 (code), 2026-10-02 (actually wired, specs/008)
 - ✅ Hot-reload without restart
 - File watcher for manifest changes
 - Graceful FSM migration (unregister old, register new)
@@ -200,10 +200,11 @@ gantt
 **Status:** COMPLETED: 2026-09-19
 
 - ✅ Prometheus / OpenTelemetry Metrics
-- Files: `core/metrics.py`, `services/metrics_server.py`
+- Files: `src/core/metrics.py`, `src/services/metrics_reporter.py`, `src/webui/routes/__init__.py`
 - Detail: `.ai/enhancements/07-prometheus-metrics.md`
 - Priority: HIGH
 - Effort: 1-2 days
+- Done: 2026-10-02 (specs/008) — сборщик инициализируется при старте, `/metrics` отвечает на порту платформы, переходы/отказы/восстановления учитываются, число серий ограничено. Отдельный сервер на порту 9090 не поднимается по решению D-2
 - ✅ Circuit Breaker Pattern
 - File: `adapters/ha_adapter.py`
 - Detail: `.ai/enhancements/08-circuit-breaker.md`

@@ -24,7 +24,7 @@
 | [04](04-scene-manager.md) | Scene Manager / Flow Engine | ✅ Реализовано | HIGH | Core Features |
 | [05](05-room-aggregation.md) | Room Aggregation & Policies | ✅ Реализовано | MEDIUM | Core Features |
 | [06](06-digital-twin.md) | Digital Twin / Simulator | ✅ Реализовано | MEDIUM | Core Features |
-| [07](07-prometheus-metrics.md) | Prometheus / OpenTelemetry Metrics | ✅ Реализовано | HIGH | Observability |
+| [07](07-prometheus-metrics.md) | Prometheus / OpenTelemetry Metrics | ✅ Реализовано (specs/008, 2026-10-02; до этого было помечено выполненным при неработающем сборе) | HIGH | Observability |
 | [08](08-circuit-breaker.md) | Circuit Breaker Pattern | ✅ Реализовано | HIGH | Observability |
 | [09](09-secrets-management.md) | Secrets Management | ⚠️ Реализовано¹ | MEDIUM | Observability |
 | [10](10-llm-nlp-adapter.md) | LLM / NLP Adapter | ⬜ Бэклог | LOW | Advanced Features |

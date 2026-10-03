@@ -1,7 +1,19 @@
-"""Генератор дашбордов для Home Assistant Lovelace."""
+"""Генератор дашбордов для Home Assistant Lovelace.
+
+⚠️ **Мёртвый код.** Генератор недостижим из production-пути: его создаёт
+только ``tests/test_lovelace_generator.py``, платформа его не вызывает.
+Удаление не санкционировано решением D-3 фичи наблюдаемости (оно называло
+модуль ``DashboardIntegration``, а не генератор), поэтому FR-025 закрывается
+явной пометкой. Кандидат на удаление — см. Known Issues в
+``.ai/01_PROJECT_STATE.md``.
+
+Зеркалирование состояний автоматов в Home Assistant выполняется отдельно, в
+``services/fsm_state_bridge.py`` (specs/007); этот генератор к состояниям
+автоматов отношения не имеет.
 
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
+"""
 
 from __future__ import annotations
 

@@ -136,7 +136,7 @@ smart-home-platform/
 │   │   ├── guards/            # Guard functions (composite, numeric)
 │   │   └── models/            # Domain models
 │   ├── cli/                   # CLI entry point (shp): bulk-import, export-fsm, shell
-│   ├── services/              # Config watcher, backup, watchdog, metrics server
+│   ├── services/              # Config watcher, backup, watchdog, FSM state bridge
 │   ├── dashboard/             # Lovelace dashboard generator
 │   ├── webui/                 # Web UI (FastAPI + HTMX): discovery, FSM view
 │   ├── features/              # YAML behavior templates (lighting, climate, ...)
