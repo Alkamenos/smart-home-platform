@@ -114,14 +114,17 @@ run-mock:
 # Alias for run-mock
 
 # WebUI
+# ASGI-цель -- фабрика create_app: модульного `app` в src/webui/app.py нет
+# (он объявлен только в src/main.py), поэтому прежняя цель `src.webui.app:app`
+# завершалась ошибкой «Attribute "app" not found» (BACKLOG B10).
 run-webui:
 	@echo "🌐 Starting WebUI server..."
 	@echo "Open http://localhost:8000 in your browser"
-	uvicorn src.webui.app:app --reload --host 0.0.0.0 --port 8000
+	uvicorn src.webui.app:create_app --factory --reload --host 0.0.0.0 --port 8000
 
 run-webui-prod:
 	@echo "🌐 Starting WebUI server (production mode)..."
-	uvicorn src.webui.app:app --host 0.0.0.0 --port 8000 --workers 4
+	uvicorn src.webui.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 4
 
 run-simulator: run-mock
 

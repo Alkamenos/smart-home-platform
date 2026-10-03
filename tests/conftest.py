@@ -102,65 +102,15 @@ def browser_context_args():
     }
 
 
-@pytest.fixture(scope="session", autouse=True)
-def webui_server():
-    """Start Web UI server for testing.
-
-    Yields control after server is ready, then stops it after tests complete.
-    """
-    import socket
-    import subprocess
-    import time
-
-    # Check if server is already running
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    result = sock.connect_ex(("127.0.0.1", 8125))
-    sock.close()
-
-    if result == 0:
-        # Server already running, don't manage it
-        yield "http://127.0.0.1:8125"
-        return
-
-    # Start Web UI server
-    project_root = Path(__file__).parent.parent
-    env = {
-        "PYTHONPATH": str(project_root),
-        "MANIFEST_PATH": str(project_root / "instances" / "leonids_house" / "manifest.yaml"),
-    }
-
-    process = subprocess.Popen(
-        [
-            "python",
-            "-m",
-            "uvicorn",
-            "src.webui.app:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8125",
-        ],
-        cwd=str(project_root),
-        env={**subprocess.os.environ, **env},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    # Wait for server to start
-    max_retries = 30
-    for _i in range(max_retries):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        result = sock.connect_ex(("127.0.0.1", 8125))
-        sock.close()
-        if result == 0:
-            break
-        time.sleep(0.5)
-
-    yield "http://127.0.0.1:8125"
-
-    # Cleanup
-    process.terminate()
-    try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        process.kill()
+# Фикстура `webui_server` удалена 2026-10-03 (BACKLOG B10).
+#
+# Она была `autouse=True`, то есть запускалась на каждой pytest-сессии, при этом:
+#   - не была запрошена ни одним тестом;
+#   - поднимала процесс на ASGI-цели `src.webui.app:app`, которой в модуле нет
+#     (модульный `app` объявлен только в `src/main.py`), поэтому процесс всегда
+#     падал с кодом 3;
+#   - ждала готовности порта 15 секунд, игнорируя результат.
+#
+# Итог: ~15 секунд напрасного ожидания и мёртвый процесс на каждый прогон.
+# Рабочий вариант для E2E — собственная фикстура `start_webui_server` в
+# `tests/test_webui_playwright.py` на фабрике `tests.e2e_app:create_e2e_app`.
