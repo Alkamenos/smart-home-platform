@@ -28,6 +28,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -35,6 +36,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -45,6 +47,10 @@ from playwright.sync_api import Page, expect
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 8125
 SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
+
+# Идентичность для запросов к API: устройства и источники отдаются
+# авторизованному пользователю (DeviceAccessMiddleware).
+E2E_USER_ID = "e2e_admin"
 SERVER_START_TIMEOUT_SEC = 30.0
 DEFAULT_ACTION_TIMEOUT_MS = 10_000
 
@@ -141,6 +147,64 @@ def start_webui_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str
             process.wait(timeout=10)
 
 
+def _ensure_ha_source_exists() -> str:
+    """Создать источник Home Assistant, если его ещё нет.
+
+    Вызывается только теми тестами, которые сохраняют устройство. Источник
+    обязателен в форме (F1, specs/006): без него устройство не с чем
+    синхронизировать, и браузер отклоняет отправку формы ещё до запроса на
+    сервер (``required`` на ``source_id``).
+
+    Источник создаётся точечно, а не на всю сессию: общее состояние для всех
+    тестов файла меняет поведение поздних сценариев (дашборд, discovery) и
+    делает их зависимыми от порядка прогона.
+
+    Returns:
+        Идентификатор созданного или найденного источника.
+    """
+    existing = _request_json("GET", "/api/v1/devices/sources")
+    if isinstance(existing, list) and existing:
+        return str(existing[0].get("id", ""))
+
+    created = _request_json(
+        "POST",
+        "/api/v1/devices/sources",
+        {
+            "name": "E2E Home Assistant",
+            "url": "http://homeassistant.local:8123",
+            "token": "e2e-token-not-used-without-realsync",
+        },
+    )
+    return str(created.get("id", ""))
+
+
+def _request_json(method: str, path: str, payload: dict | None = None) -> dict | list:
+    """Выполнить JSON-запрос к API платформы от имени администратора.
+
+    Args:
+        method: HTTP-метод.
+        path: Путь относительно базового адреса.
+        payload: Тело запроса для методов с телом.
+
+    Returns:
+        Разобранный ответ сервера.
+    """
+    data = json.dumps(payload).encode() if payload is not None else None
+    request = urllib.request.Request(  # noqa: S310 - адрес локальный и фиксирован
+        f"{SERVER_URL}{path}",
+        data=data,
+        method=method,
+        headers={
+            "Content-Type": "application/json",
+            "X-User-ID": E2E_USER_ID,
+            "X-Is-Admin": "true",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+        body = response.read().decode()
+    return json.loads(body) if body else {}
+
+
 def _open_index(page: Page) -> None:
     """Открывает главную страницу и дожидается готовности к взаимодействию.
 
@@ -167,6 +231,22 @@ def _open_device_form(page: Page) -> None:
     """
     page.locator(DEVICE_EDIT_BUTTON).first.click()
     expect(page.locator('input[name="device_id"]')).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+
+
+def _select_source(page: Page) -> None:
+    """Выбрать источник Home Assistant в форме устройства.
+
+    Источник обязателен (F1, specs/006): без него устройство не с чем
+    синхронизировать, поэтому браузер не отправляет форму. Пока пользователь
+    явно не выбрал источник, select остаётся на пустой заглушке, и клик
+    «Save Device» не делает ничего.
+
+    Args:
+        page: Playwright page.
+    """
+    source_select = page.locator('select[name="source_id"]')
+    source_select.select_option(index=1)
+    expect(source_select).not_to_have_value("")
 
 
 class TestWebUIBasics:
@@ -298,7 +378,12 @@ class TestDeviceManagement:
     def test_change_device_room(self, page: Page):
         """Test changing device to different room."""
         _open_index(page)
+        # Источник создаётся до открытия формы: список источников
+        # подгружается вместе с формой, и созданный позже источник в select
+        # не появится.
+        _ensure_ha_source_exists()
         _open_device_form(page)
+        _select_source(page)
 
         room_select = page.locator('select[name="room_id"]')
         current_room = room_select.input_value()
@@ -322,6 +407,7 @@ class TestDeviceManagement:
     def test_add_device_to_room(self, page: Page):
         """Test adding new device to a room."""
         _open_index(page)
+        _ensure_ha_source_exists()
 
         page.locator(DEVICE_ADD_BUTTON).first.click()
         expect(page.locator('input[name="device_id"]')).to_be_visible(
@@ -330,6 +416,7 @@ class TestDeviceManagement:
 
         # Fill device form
         page.locator('input[name="device_id"]').fill("test.newdevice")
+        _select_source(page)
         page.locator('select[name="device_type"]').select_option("light")
         page.locator('input[name="device_name"]').fill("Test Device")
 
