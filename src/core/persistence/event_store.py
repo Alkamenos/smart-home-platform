@@ -14,6 +14,12 @@ HOURS_PER_DAY = 24
 # Сколько дней недели учитывает карта активности.
 ACTIVITY_DAYS = 7
 
+# Статусы, которые хранилище умеет записывать в ai_suggestions.status.
+# Словарь хранилища — источник истины: его же перечисляет схема
+# (.ai/enhancements/26-extend-web-ui.md:183 — 'pending', 'applied', 'dismissed',
+# 'snoozed') и по нему фильтрует get_suggestions.
+SUGGESTION_STATUSES: frozenset[str] = frozenset({"applied", "dismissed", "snoozed"})
+
 
 @dataclass
 class FsmTransition:
@@ -375,8 +381,30 @@ class EventStore:
         conn.close()
         return suggestion_id if suggestion_id is not None else 0
 
-    def update_suggestion_status(self, suggestion_id: int, status: str):
-        """Обновить статус AI предложения."""
+    def update_suggestion_status(self, suggestion_id: int, status: str) -> None:
+        """Обновить статус AI предложения.
+
+        Args:
+            suggestion_id: Идентификатор предложения.
+            status: Новый статус: ``applied``, ``dismissed`` или ``snoozed``.
+
+        Raises:
+            ValueError: Если статус не входит в ``SUGGESTION_STATUSES``.
+
+        Returns:
+            None.
+        """
+        if status not in SUGGESTION_STATUSES:
+            # Раньше неизвестный статус просто не попадал ни в одну ветку, а
+            # commit() выполнялся: UPDATE не проходил, эндпоинт отвечал
+            # успехом, а решение пользователя терялось без единой ошибки.
+            # Молчаливый успех здесь — тот же класс дефекта, поэтому проверка
+            # поднимает ошибку до открытия соединения.
+            raise ValueError(
+                f"Неизвестный статус AI предложения: {status!r}; "
+                f"допустимые — {sorted(SUGGESTION_STATUSES)}"
+            )
+
         conn = self._get_connection()
         cursor = conn.cursor()
         now = time.time()

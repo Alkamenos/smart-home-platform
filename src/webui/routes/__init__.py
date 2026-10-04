@@ -584,14 +584,14 @@ async def respond_to_suggestion(suggestion_id: str, request: Request) -> Any:
         if action not in ["accept", "reject"]:
             return {"error": "Action must be 'accept' or 'reject'"}, 400
 
-        # Update suggestion status in EventStore
-        new_status = "accepted" if action == "accept" else "rejected"
+        # Словарь маршрута — словарь хранилища: "accepted"/"rejected" в
+        # ai_suggestions.status не существуют, UPDATE не проходил, а ответ
+        # был "success" (Known Issue #45). Принятие — это applied, отклонение —
+        # dismissed; "snoozed" хранилище тоже понимает, но действие в UI
+        # для него не предусмотрено (dashboard.html:569-570).
+        new_status = "applied" if action == "accept" else "dismissed"
         # Лишний аргумент responded_at приводил к TypeError и ответу 500:
         # метод такого параметра не принимает (spec 007, FR-036).
-        # ИЗВЕСТНЫЙ БАГ (поведение здесь не меняем): маршрут шлёт status
-        # "accepted"/"rejected", а update_suggestion_status обрабатывает только
-        # "applied"/"dismissed"/"snoozed" — ни одна ветка не срабатывает,
-        # и UPDATE не выполняется вовсе, хотя эндпоинт отвечает "success".
         # cast(): suggestion_id приходит из пути как str, а метод ждёт int;
         # приведение не делаем — это изменило бы поведение при нечисловом id.
         event_store.update_suggestion_status(

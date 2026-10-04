@@ -90,25 +90,41 @@ class ManifestAutomationGenerator:
                         from_state="OFF",
                         to_state="ON_SCHEDULE",
                         trigger="schedule_on",
-                        guard=lambda ctx, r=room, d=device: self._is_schedule_time(ctx, d),
+                        guard=lambda _state, ctx, r=room, d=device: self._is_schedule_time(ctx, d),
                     ),
                     # Выключение по расписанию
                     Transition(
                         from_state="ON_SCHEDULE",
                         to_state="OFF",
                         trigger="schedule_off",
-                        guard=lambda ctx, r=room, d=device: not self._is_schedule_time(ctx, d),
+                        guard=lambda _state, ctx, r=room, d=device: (
+                            not self._is_schedule_time(ctx, d)
+                        ),
                     ),
-                    # Включение по движению
+                    # Включение по движению — из OFF
                     Transition(
-                        # БАГ: движок сравнивает from_state со строкой состояния
-                        # (engine.py: `transition.from_state == state.current_state`),
-                        # поэтому кортеж никогда не совпадёт и переход недостижим.
-                        # Тип здесь не «чиним» — это правка поведения.
-                        from_state=("OFF", "ON_SCHEDULE"),  # type: ignore[arg-type]
+                        from_state="OFF",
                         to_state="ON_MOTION",
                         trigger="motion_detected",
-                        guard=lambda ctx, r=room: ctx.get(f"{r}_motion_sensor", False),
+                        guard=lambda _state, ctx, r=room: ctx.get(f"{r}_motion_sensor", False),
+                        timeout_sec=motion_timeout,
+                    ),
+                    # Включение по движению — из ON_SCHEDULE
+                    #
+                    # Раньше здесь был один переход с from_state=("OFF",
+                    # "ON_SCHEDULE") — кортежем. Движок сравнивает
+                    # `transition.from_state == state.current_state`
+                    # (core/fsm/engine.py:428, :651), а кортеж никогда не равен
+                    # строке, поэтому переход по движению был недостижим из
+                    # обоих состояний: освещение не включалось по движению.
+                    # Transition.from_state объявлен как str (definitions.py:31),
+                    # то есть несколько исходных состояний — это несколько
+                    # переходов, а не кортеж в одном.
+                    Transition(
+                        from_state="ON_SCHEDULE",
+                        to_state="ON_MOTION",
+                        trigger="motion_detected",
+                        guard=lambda _state, ctx, r=room: ctx.get(f"{r}_motion_sensor", False),
                         timeout_sec=motion_timeout,
                     ),
                     # Таймаут без движения
@@ -131,7 +147,7 @@ class ManifestAutomationGenerator:
                         from_state="MANUAL",
                         to_state="OFF",
                         trigger="timeout",
-                        guard=lambda ctx, r=room: self._check_manual_timeout(ctx, r),
+                        guard=lambda _state, ctx, r=room: self._check_manual_timeout(ctx, r),
                     ),
                 ),
             )
@@ -203,7 +219,7 @@ class ManifestAutomationGenerator:
                         from_state="IDLE",
                         to_state="HEATING",
                         trigger="temp_low",
-                        guard=lambda ctx, r=room, t=target, h=hysteresis: (
+                        guard=lambda _state, ctx, r=room, t=target, h=hysteresis: (
                             ctx.get(f"{r}_temp_current", 0) < t - h
                             and ctx.get(f"{r}_mode", "auto") in ("heat", "auto")
                         ),
@@ -213,14 +229,16 @@ class ManifestAutomationGenerator:
                         from_state="HEATING",
                         to_state="IDLE",
                         trigger="temp_reached",
-                        guard=lambda ctx, r=room, t=target: ctx.get(f"{r}_temp_current", 0) >= t,
+                        guard=lambda _state, ctx, r=room, t=target: (
+                            ctx.get(f"{r}_temp_current", 0) >= t
+                        ),
                     ),
                     # Включение охлаждения
                     Transition(
                         from_state="IDLE",
                         to_state="COOLING",
                         trigger="temp_high",
-                        guard=lambda ctx, r=room, t=target, h=hysteresis: (
+                        guard=lambda _state, ctx, r=room, t=target, h=hysteresis: (
                             ctx.get(f"{r}_temp_current", 0) > t + h
                             and ctx.get(f"{r}_mode", "auto") in ("cool", "auto")
                         ),
@@ -230,7 +248,9 @@ class ManifestAutomationGenerator:
                         from_state="COOLING",
                         to_state="IDLE",
                         trigger="temp_reached",
-                        guard=lambda ctx, r=room, t=target: ctx.get(f"{r}_temp_current", 0) <= t,
+                        guard=lambda _state, ctx, r=room, t=target: (
+                            ctx.get(f"{r}_temp_current", 0) <= t
+                        ),
                     ),
                     # Режим отсутствия
                     Transition(
@@ -318,7 +338,7 @@ class ManifestAutomationGenerator:
                         from_state="OFF",
                         to_state="ON_HUMIDITY",
                         trigger="humidity_high",
-                        guard=lambda ctx, r=room, t=humidity_threshold: (
+                        guard=lambda _state, ctx, r=room, t=humidity_threshold: (
                             ctx.get(f"{r}_humidity", 0) > t
                         ),
                         priority=20,
@@ -340,7 +360,7 @@ class ManifestAutomationGenerator:
                         from_state="ON_HUMIDITY",
                         to_state="OFF",
                         trigger="humidity_low",
-                        guard=lambda ctx, r=room, t=humidity_threshold: (
+                        guard=lambda _state, ctx, r=room, t=humidity_threshold: (
                             ctx.get(f"{r}_humidity", 0) < t - 5  # гистерезис 5%
                         ),
                         priority=20,

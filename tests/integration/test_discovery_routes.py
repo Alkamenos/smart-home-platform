@@ -392,14 +392,44 @@ class TestDiscoveryRouteErrors:
         assert response.status_code == 500
 
     def test_bulk_apply_error_should_return_500(self, client: TestClient) -> None:
-        """Ошибка массового применения возвращается с кодом 500."""
+        """Неожиданная ошибка массового применения возвращается с кодом 500.
+
+        Раньше здесь подставлялся `RuntimeError("нет адаптера")` и ожидался 500,
+        то есть тест закреплял сам дефект: «Home Assistant не настроен» — это
+        503, как и на `/discovery/scan` (см. `test_scan_failure_should_return_error`).
+        Неожиданная ошибка проверена `ValueError`, как у соседних тестов.
+        """
         service = _discovery_module()._discovery_service
-        with patch.object(
-            service, "scan_devices", new=AsyncMock(side_effect=RuntimeError("нет адаптера"))
-        ):
+        with patch.object(service, "scan_devices", new=AsyncMock(side_effect=ValueError("сбой"))):
             response = client.post("/discovery/apply", data={"include_all": "true"})
 
         assert response.status_code == 500
+
+    def test_bulk_apply_unavailable_home_assistant_should_return_503(
+        self, client: TestClient
+    ) -> None:
+        """Недоступный Home Assistant при массовом применении — 503, не 500."""
+        service = _discovery_module()._discovery_service
+        with patch.object(
+            service,
+            "scan_devices",
+            new=AsyncMock(side_effect=RuntimeError("HA WebSocket client not connected")),
+        ):
+            response = client.post("/discovery/apply", data={"include_all": "true"})
+
+        assert response.status_code == 503
+
+    def test_stats_unavailable_home_assistant_should_return_503(self, client: TestClient) -> None:
+        """Недоступный Home Assistant в статистике — 503, не 500."""
+        service = _discovery_module()._discovery_service
+        with patch.object(
+            service,
+            "scan_devices",
+            new=AsyncMock(side_effect=RuntimeError("HA WebSocket client not connected")),
+        ):
+            response = client.get("/discovery/stats")
+
+        assert response.status_code == 503
 
     def test_apply_selective_error_should_return_500(self, client: TestClient) -> None:
         """Ошибка выборочного применения возвращается с кодом 500."""

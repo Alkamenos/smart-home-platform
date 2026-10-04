@@ -132,8 +132,13 @@ class DeviceDiscoveryService:
         filter_area: str | None = None,
     ) -> dict:
         """Сканировать устройства с пагинацией."""
-        # Проверяем подключение через публичный property is_connected
-        if not self._ha_adapter.is_connected:
+        # Проверяем подключение через публичный property is_connected.
+        #
+        # getattr, а не прямое чтение: Container.adapter отдаёт MockAdapter
+        # без HA_TOKEN, и init_discovery_routes объявляет параметр как
+        # HAAdapter, поэтому тип здесь не защищает. Адаптер без свойства
+        # считается неподключённым — «закрытый» отказ (503), а не 500.
+        if not getattr(self._ha_adapter, "is_connected", False):
             raise RuntimeError("HA WebSocket client not connected")
 
         ws_client = getattr(self._ha_adapter, "_ws_client", None)

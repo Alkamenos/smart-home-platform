@@ -136,6 +136,11 @@ async def bulk_apply(
 
         result = await _discovery_service.bulk_apply(request_model, _manifest_path)
         return JSONResponse(content=result)
+    except RuntimeError as e:
+        # Тот же «HA недоступен», что и в /discovery/scan: сервис исправен,
+        # недоступна зависимость. Без этой ветки массовое применение
+        # отвечало 500 на «Home Assistant не настроен».
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Bulk apply failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -205,6 +210,9 @@ async def get_stats() -> JSONResponse:
                 "auto_apply_stats": result["auto_apply_stats"],
             }
         )
+    except RuntimeError as e:
+        # Тот же «HA недоступен», что и в /discovery/scan (см. bulk_apply).
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Stats fetch failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

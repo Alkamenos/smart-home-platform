@@ -114,7 +114,7 @@ format:
 	ruff format src/ tests/
 
 type-check:
-	mypy src/ --ignore-missing-imports
+	@mypy src/
 
 # Development
 clean:

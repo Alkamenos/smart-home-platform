@@ -48,6 +48,21 @@ class MockAdapter:
         self._started: bool = False
         self.log = logger.bind(component="mock_adapter")
 
+    @property
+    def is_connected(self) -> bool:
+        """Сообщает состояние подключения к Home Assistant.
+
+        Всегда ``False``: заглушка ни к чему не подключается, её ``start()``
+        — no-op с тем же смыслом. Здесь важна честность, а не удобство:
+        ``DeviceDiscoveryService.scan_devices`` обязан отличать «Home
+        Assistant не настроен» от «подключено, но устройств нет», поэтому
+        отсутствующее подключение не выдаётся за успешное.
+
+        Returns:
+            Всегда ``False`` — внешнего подключения нет и не будет.
+        """
+        return False
+
     async def start(self) -> None:
         """Start the adapter (no-op — mock mode has no external connection).
 

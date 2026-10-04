@@ -127,7 +127,15 @@ class TestLightingFSMGeneration:
         assert schedule_off_transitions[0].from_state == "ON_SCHEDULE"
 
     def test_fsm_has_motion_detected_transition(self):
-        """Should have transition to ON_MOTION on motion_detected trigger"""
+        """Should have transition to ON_MOTION on motion_detected trigger.
+
+        Переходов два, а не один: движение включает освещение и из OFF, и из
+        ON_SCHEDULE. Раньше это выражалось одним переходом с
+        from_state=("OFF", "ON_SCHEDULE"), но движок сравнивает from_state со
+        строкой состояния, поэтому кортеж не совпадал никогда и переход был
+        недостижим (Known Issue #45). Несколько исходных состояний — это
+        несколько переходов.
+        """
         manifest = {"devices": {"lighting": [{"id": "light.kitchen", "room": "kitchen"}]}}
         generator = ManifestAutomationGenerator(manifest)
         result = generator.generate_all()
@@ -138,8 +146,9 @@ class TestLightingFSMGeneration:
             for t in fsm.transitions
             if t.trigger == "motion_detected" and t.to_state == "ON_MOTION"
         ]
-        assert len(motion_transitions) == 1
-        assert motion_transitions[0].timeout_sec is not None
+        assert len(motion_transitions) == 2
+        assert {t.from_state for t in motion_transitions} == {"OFF", "ON_SCHEDULE"}
+        assert all(t.timeout_sec is not None for t in motion_transitions)
 
     def test_fsm_has_timeout_transition(self):
         """Should have transition from ON_MOTION to OFF on timeout"""
@@ -729,3 +738,84 @@ class TestEdgeCases:
         context = motion_mapping.context_builder({"new_state": {"state": "on"}})
         assert "kitchen_motion_sensor" in context
         assert context["kitchen_motion_sensor"] is True
+
+
+class TestMotionTransitionIsReachable:
+    """Переход по движению должен реально срабатывать в движке.
+
+    Раньше переход объявлялся одним объектом с ``from_state=("OFF",
+    "ON_SCHEDULE")`` — кортежем. Движок сравнивает
+    ``transition.from_state == state.current_state``
+    (``core/fsm/engine.py:428, :651``), а кортеж никогда не равен строке,
+    поэтому переход был недостижим из обоих состояний и освещение не
+    включалось по движению. Проверка списка переходов на наличие кортежа
+    была бы бесполезной: кортеж там был и выглядел правильно.
+    """
+
+    @staticmethod
+    def _definition(device_id: str = "light.kitchen"):
+        manifest = {"devices": {"lighting": [{"id": device_id, "room": "kitchen"}]}}
+        result = ManifestAutomationGenerator(manifest).generate_all()
+        definitions = [d for d in result.lighting_definitions if d.entity_id == device_id]
+        assert definitions, "генератор должен был вернуть определение для устройства"
+        return definitions[0]
+
+    @pytest.mark.asyncio
+    async def test_motion_turns_on_from_off(self) -> None:
+        """Из выключенного состояния движение включает освещение."""
+        from core import FSMEngine
+
+        definition = self._definition()
+        engine = FSMEngine()
+        engine.register_definition(definition)
+
+        await engine.trigger(
+            definition.entity_id, "motion_detected", {"kitchen_motion_sensor": True}
+        )
+
+        state = engine.get_state(definition.entity_id)
+        assert state.current_state == "ON_MOTION", (
+            f"ожидался переход в ON_MOTION, получено {state.current_state}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_motion_turns_on_from_on_schedule(self) -> None:
+        """Из состояния по расписанию движение тоже включает освещение.
+
+        Второе исходное состояние было недостижимо по той же причине, что и
+        первое: один кортеж покрывал оба, а сравнение со строкой не проходило.
+        """
+        from core import FSMEngine
+
+        definition = self._definition()
+        engine = FSMEngine()
+        engine.register_definition(definition)
+
+        await engine.trigger(
+            definition.entity_id,
+            "schedule_on",
+            {"kitchen_schedule": True},
+        )
+        before = engine.get_state(definition.entity_id)
+        assert before.current_state == "ON_SCHEDULE", (
+            f"ожидался переход в ON_SCHEDULE, получено {before.current_state}"
+        )
+
+        await engine.trigger(
+            definition.entity_id, "motion_detected", {"kitchen_motion_sensor": True}
+        )
+
+        state = engine.get_state(definition.entity_id)
+        assert state.current_state == "ON_MOTION", (
+            f"ожидался переход в ON_MOTION из ON_SCHEDULE, получено {state.current_state}"
+        )
+
+    def test_no_transition_has_coroutine_from_state(self) -> None:
+        """Ни один переход не должен иметь кортеж в from_state."""
+        definition = self._definition()
+
+        for transition in definition.transitions:
+            assert isinstance(transition.from_state, str), (
+                f"from_state должен быть строкой, а не {type(transition.from_state).__name__}: "
+                f"{transition.from_state!r} — кортеж никогда не совпадёт со строкой состояния"
+            )

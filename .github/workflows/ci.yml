@@ -17,7 +17,7 @@ jobs:
           cache: 'pip'
       - run: pip install -e ".[dev,webui]"
       - run: ruff check src/ tests/ examples/
-      - run: mypy src/ --ignore-missing-imports
+      - run: mypy src/
 
   # 3.11 -> 3.12: 3.11 нерабочий, на нём падает СБОР КОЛЛЕКЦИИ pytest
   # (src/webui/app.py:130, PEP 695 `def _run_coroutine[T](...)`).
