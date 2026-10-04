@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict
+from typing import Any
 from uuid import UUID
 
 from core.models.device import Device
@@ -139,7 +140,14 @@ class IndexManager:
                 # тот же объект, который лежит в self._devices, поэтому old_device is device.
                 # Поэтому удаляем устройство из ВСЕХ бакетов по его id, а не только из
                 # бакетов, вычисленных по текущим полям.
-                for index in (self._by_source_id, self._by_device_type, self._by_status):
+                # Явная аннотация: без неё mypy склеивает типы ключей трёх
+                # разнородных defaultdict в object. Поведение не меняется.
+                indexes: tuple[defaultdict[Any, set[UUID]], ...] = (
+                    self._by_source_id,
+                    self._by_device_type,
+                    self._by_status,
+                )
+                for index in indexes:
                     for key in list(index.keys()):
                         index[key].discard(device.id)
                         if not index[key]:

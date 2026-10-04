@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 # Дни недели в порядке отображения карты активности.
@@ -250,7 +251,9 @@ class EventStore:
         cursor = conn.cursor()
 
         query = "SELECT * FROM events WHERE 1=1"
-        params = []
+        # Параметры запроса разнородные (str / float / int), поэтому
+        # список типизирован как list[Any], а не выводится из первого append.
+        params: list[Any] = []
 
         if entity_id:
             query += " AND entity_id = ?"

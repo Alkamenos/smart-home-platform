@@ -7,7 +7,7 @@ API маршруты для управления устройствами.
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response, status
@@ -35,9 +35,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
 # Требуемые роли на операции (contracts §1, data-model иерархия)
-_ROLE_VIEWER = "viewer"
-_ROLE_CONTROLLER = "controller"
-_ROLE_ADMIN = "admin"
+# Literal-типизация: DeviceService принимает роли как Literal["viewer", ...],
+# а значения ниже — единственные, которые вообще передаются в проверку доступа.
+_ROLE_VIEWER: Literal["viewer"] = "viewer"
+_ROLE_CONTROLLER: Literal["controller"] = "controller"
+_ROLE_ADMIN: Literal["admin"] = "admin"
 
 
 def _is_admin_request(request: Request) -> bool:
@@ -62,7 +64,7 @@ def _is_admin_request(request: Request) -> bool:
 async def _require_access_or_403(
     request: Request,
     device_id: UUID,
-    required_role: str,
+    required_role: Literal["viewer", "controller", "admin"],
 ) -> None:
     """Проверяет роль пользователя на операцию над устройством (US1/T006).
 
@@ -351,9 +353,9 @@ async def delete_device(request: Request, device_id: UUID) -> Response:
 class UpdateDeviceConfigRequest(BaseModel):
     """Запрос на обновление конфигурации устройства."""
 
-    display_name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = Field(None, max_length=1000)
-    location: str | None = Field(None, max_length=255)
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=1000)
+    location: str | None = Field(default=None, max_length=255)
     tags: list[str] | None = Field(None)
 
 
@@ -464,13 +466,17 @@ class CommandRequest(BaseModel):
     - сервисный: ``service`` + ``data``.
     """
 
-    name: str | None = Field(None, min_length=1, max_length=255, description="Имя команды T054")
+    name: str | None = Field(
+        default=None, min_length=1, max_length=255, description="Имя команды T054"
+    )
     command_name: str | None = Field(
         None, min_length=1, max_length=255, description="Имя команды (алиас)"
     )
-    parameters: dict | None = Field(None, description="Параметры команды (обязательны с name)")
-    service: str | None = Field(None, description="Сервис HA (domain.service)")
-    data: dict | None = Field(None, description="Данные сервиса")
+    parameters: dict | None = Field(
+        default=None, description="Параметры команды (обязательны с name)"
+    )
+    service: str | None = Field(default=None, description="Сервис HA (domain.service)")
+    data: dict | None = Field(default=None, description="Данные сервиса")
 
     @model_validator(mode="after")
     def _validate_command_identity(self) -> "CommandRequest":
@@ -735,10 +741,12 @@ class DeviceSelection(BaseModel):
     device_type: str | None = Field(
         None, description="Тип устройства; по умолчанию — домен из entity_id"
     )
-    name: str | None = Field(None, description="Имя устройства; по умолчанию — entity_id")
-    target_room: str | None = Field(None, description="Целевая комната для устройства")
-    behavior_template: str | None = Field(None, description="Рекомендуемый шаблон поведения")
-    ha_area_id: str | None = Field(None, description="ID области в HA")
+    name: str | None = Field(default=None, description="Имя устройства; по умолчанию — entity_id")
+    target_room: str | None = Field(default=None, description="Целевая комната для устройства")
+    behavior_template: str | None = Field(
+        default=None, description="Рекомендуемый шаблон поведения"
+    )
+    ha_area_id: str | None = Field(default=None, description="ID области в HA")
     behaviors: list[BehaviorSelection] | None = Field(
         None, description="Поведения устройства; при отсутствии — рекомендованный шаблон"
     )
@@ -774,8 +782,8 @@ class ApplyDevicesResponse(BaseModel):
         default_factory=list, description="Устройства, которые не удалось применить"
     )
     dry_run: bool = Field(default=False, description="Был ли это тестовый запуск")
-    would_add: int | None = Field(None, description="Сколько устройств было бы добавлено")
-    errors: list[str] | None = Field(None, description="Человекочитаемые ошибки")
+    would_add: int | None = Field(default=None, description="Сколько устройств было бы добавлено")
+    errors: list[str] | None = Field(default=None, description="Человекочитаемые ошибки")
 
 
 @router.post("/apply", status_code=status.HTTP_201_CREATED)

@@ -101,7 +101,11 @@ class ManifestAutomationGenerator:
                     ),
                     # Включение по движению
                     Transition(
-                        from_state=("OFF", "ON_SCHEDULE"),
+                        # БАГ: движок сравнивает from_state со строкой состояния
+                        # (engine.py: `transition.from_state == state.current_state`),
+                        # поэтому кортеж никогда не совпадёт и переход недостижим.
+                        # Тип здесь не «чиним» — это правка поведения.
+                        from_state=("OFF", "ON_SCHEDULE"),  # type: ignore[arg-type]
                         to_state="ON_MOTION",
                         trigger="motion_detected",
                         guard=lambda ctx, r=room: ctx.get(f"{r}_motion_sensor", False),
@@ -145,24 +149,34 @@ class ManifestAutomationGenerator:
                 entity_id = device["id"]
                 room = device.get("room", entity_id.split(".")[-1])
 
-                # Датчик движения on
+                # Датчик движения on.
+                # Именованная функция с явной аннотацией вместо лямбды:
+                # mypy не может вывести тип лямбды с параметром по умолчанию
+                # из контекста вызова (ошибка "Cannot infer type of lambda").
+                def builder_on(event: dict[str, Any], r: str = room) -> dict[str, Any]:
+                    return {f"{r}_motion_sensor": True}
+
                 mappings.append(
                     TriggerMapping(
                         source_entity=motion_sensor,
                         source_value="on",
                         target_entity=entity_id,
                         trigger="motion_detected",
-                        context_builder=lambda e, r=room: {f"{r}_motion_sensor": True},
+                        context_builder=builder_on,
                     )
                 )
+
                 # Датчик движения off
+                def builder_off(event: dict[str, Any], r: str = room) -> dict[str, Any]:
+                    return {f"{r}_motion_sensor": False}
+
                 mappings.append(
                     TriggerMapping(
                         source_entity=motion_sensor,
                         source_value="off",
                         target_entity=entity_id,
                         trigger="motion_cleared",
-                        context_builder=lambda e, r=room: {f"{r}_motion_sensor": False},
+                        context_builder=builder_off,
                     )
                 )
 
@@ -268,15 +282,16 @@ class ManifestAutomationGenerator:
                 room = device.get("room", entity_id.split(".")[-1])
 
                 # Маппинг температуры
+                def builder_temp(event: dict[str, Any], r: str = room) -> dict[str, Any]:
+                    return {f"{r}_temp_current": float(event.get("new_state", {}).get("state", 0))}
+
                 mappings.append(
                     TriggerMapping(
                         source_entity=sensor,
                         source_value="*",  # Любое значение
                         target_entity=entity_id,
                         trigger="temperature_changed",
-                        context_builder=lambda e, r=room: {
-                            f"{r}_temp_current": float(e.get("new_state", {}).get("state", 0))
-                        },
+                        context_builder=builder_temp,
                     )
                 )
 
@@ -362,15 +377,16 @@ class ManifestAutomationGenerator:
                 device.get("humidity_threshold", 65)
 
                 # Маппинг влажности
+                def builder_humidity(event: dict[str, Any], r: str = room) -> dict[str, Any]:
+                    return {f"{r}_humidity": float(event.get("new_state", {}).get("state", 0))}
+
                 mappings.append(
                     TriggerMapping(
                         source_entity=sensor,
                         source_value="*",
                         target_entity=entity_id,
                         trigger="humidity_changed",
-                        context_builder=lambda e, r=room: {
-                            f"{r}_humidity": float(e.get("new_state", {}).get("state", 0))
-                        },
+                        context_builder=builder_humidity,
                     )
                 )
 

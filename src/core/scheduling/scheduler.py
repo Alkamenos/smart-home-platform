@@ -123,7 +123,9 @@ class Scheduler:
 
         cancelled_count = 0
         for scheduled_task in tasks_to_cancel:
-            if scheduled_task.is_active():
+            # is_active() возвращает False, если task is None, поэтому проверка
+            # task is not None здесь лишь сужает тип для mypy и не меняет поведение.
+            if scheduled_task.is_active() and scheduled_task.task is not None:
                 scheduled_task.task.cancel()
                 cancelled_count += 1
 

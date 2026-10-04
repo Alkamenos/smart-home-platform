@@ -24,8 +24,8 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import TYPE_CHECKING, Any, cast
 
 import aiohttp
 
@@ -44,18 +44,22 @@ class SimpleHAWebSocketClient:
       4. Server sends {"type": "auth_ok"} or {"type": "auth_invalid"}
     """
 
-    def __init__(self, url: str, token: str, session=None):
+    def __init__(self, url: str, token: str, session: Any = None) -> None:
         self.url = url
         self.token = token
         self.session = session
-        self.ws = None
+        # Тип соединения определяется локальным импортом ``websockets`` внутри
+        # connect(), поэтому имя типа здесь недоступно: атрибут помечается Any.
+        # Без аннотации mypy выводил бы None из инициализатора и ругался на
+        # каждый .recv()/.send()/.close() (attr-defined).
+        self.ws: Any = None
         self.connected = False
         self._msg_id = 0
-        self._handlers: dict[int, Callable] = {}
-        self._event_handler: Callable | None = None
-        self._listen_task = None
+        self._handlers: dict[int, Callable[..., Any]] = {}
+        self._event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+        self._listen_task: asyncio.Task[None] | None = None
 
-    async def connect(self):
+    async def connect(self) -> None:
         if self.ws is not None:
             await self.close()
             self.ws = None
@@ -97,7 +101,7 @@ class SimpleHAWebSocketClient:
             logger.warning(f"WebSocket connection failed: {e}")
             self.connected = False
 
-    async def _listen_loop(self):
+    async def _listen_loop(self) -> None:
         try:
             async for raw in self.ws:
                 try:
@@ -121,7 +125,7 @@ class SimpleHAWebSocketClient:
             self.connected = False
             logger.warning(f"HAAdapter: listen loop terminated: {e}")
 
-    async def close(self):
+    async def close(self) -> None:
         if self._listen_task:
             self._listen_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -130,7 +134,11 @@ class SimpleHAWebSocketClient:
             await self.ws.close()
         self.connected = False
 
-    async def subscribe(self, handler, filter_dict):
+    async def subscribe(
+        self,
+        handler: Callable[[dict[str, Any]], Awaitable[None]],
+        filter_dict: dict[str, Any],
+    ) -> None:
         if self.ws and self.connected:
             self._msg_id += 1
             self._event_handler = handler
@@ -141,16 +149,16 @@ class SimpleHAWebSocketClient:
             }
             await self.ws.send(json.dumps(sub_msg))
 
-    async def get_states(self):
+    async def get_states(self) -> Any:
         if not self.ws or not self.connected:
             return []
 
         self._msg_id += 1
         msg_id = self._msg_id
         loop = asyncio.get_event_loop()
-        result_future: asyncio.Future = loop.create_future()
+        result_future: asyncio.Future[Any] = loop.create_future()
 
-        def on_result(msg):
+        def on_result(msg: dict[str, Any]) -> None:
             if not result_future.done():
                 result_future.set_result(msg)
 
@@ -171,7 +179,13 @@ class SimpleHAWebSocketClient:
         except TimeoutError:
             return []
 
-    async def call_service(self, domain, service, service_data=None, return_response=True):
+    async def call_service(
+        self,
+        domain: str,
+        service: str,
+        service_data: dict[str, Any] | None = None,
+        return_response: bool = True,
+    ) -> Any:
         if not self.ws or not self.connected:
             return None
 
@@ -188,9 +202,9 @@ class SimpleHAWebSocketClient:
 
         if return_response:
             loop = asyncio.get_event_loop()
-            result_future: asyncio.Future = loop.create_future()
+            result_future: asyncio.Future[Any] = loop.create_future()
 
-            def on_result(msg):
+            def on_result(msg: dict[str, Any]) -> None:
                 if not result_future.done():
                     result_future.set_result(msg)
 
@@ -209,7 +223,10 @@ class SimpleHAWebSocketClient:
 
 # Always use SimpleHAWebSocketClient (no external dependency)
 HAS_WS_LIBRARY = True
-HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
+# Псевдоним класса для читаемости аннотаций; присваивание само по себе
+# корректно, поэтому подавлять здесь нечего (прежний ``# type: ignore`` был
+# лишним — mypy сообщал unused-ignore).
+HomeAssistantWS = SimpleHAWebSocketClient
 
 
 if TYPE_CHECKING:
@@ -251,7 +268,7 @@ class HAAdapter:
         self._ws_client: HomeAssistantWS | None = None
         self._session: aiohttp.ClientSession | None = None
         self._shutdown_event = asyncio.Event()
-        self._reconnect_task: asyncio.Task | None = None
+        self._reconnect_task: asyncio.Task[None] | None = None
         self._reconnect_attempt = 0
         self._connected_once = False
         self._trace_callbacks: list[
@@ -268,14 +285,14 @@ class HAAdapter:
 
         logger.info(f"HAAdapter initialized in '{mode}' mode")
 
-    def set_fsm_engine(self, engine) -> None:
+    def set_fsm_engine(self, engine: Any) -> None:
         """Set the FSM engine reference (called by Container.build())."""
         self._fsm_engine = engine
 
     def _generate_trace_id(self) -> str:
         return str(uuid.uuid4())[:8]
 
-    def _get_logger(self, trace_id: str) -> logging.LoggerAdapter:
+    def _get_logger(self, trace_id: str) -> logging.LoggerAdapter[logging.Logger]:
         """Get a logger with trace_id context."""
         return logging.LoggerAdapter(logger, {"trace_id": trace_id})
 
@@ -474,9 +491,13 @@ class HAAdapter:
                 self._session = aiohttp.ClientSession()
 
                 # Создаём клиент
+                # cast, а не проверка: __init__ уже отвергает режим websocket
+                # без ws_url/token, поэтому значения здесь заведомо не None.
+                # Проверка в рантайме изменила бы поведение, а сужение через
+                # атрибут mypy между методами не переносит.
                 self._ws_client = HomeAssistantWS(
-                    url=self._ws_url,
-                    token=self._token,
+                    url=cast(str, self._ws_url),
+                    token=cast(str, self._token),
                     session=self._session,
                 )
 

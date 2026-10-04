@@ -9,7 +9,7 @@ import copy
 import json
 from collections.abc import Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 import yaml
@@ -22,10 +22,11 @@ from core.models.device import Device
 from core.models.manifest import BehaviorConfig
 from core.persistence.manifest_store import ManifestStore
 
-from .models import ManifestModel
+from .models import InstanceConfig, ManifestModel
 
 
 if TYPE_CHECKING:
+    from adapters.ha_adapter import HAAdapter
     from core.container import Container
     from services.device_service import DeviceService
 
@@ -341,7 +342,18 @@ def create_app(
             _ = _container.build()  # Trigger initialization
             logger.info("Created new container instance for discovery routes")
 
-        init_discovery_routes(_container.adapter, manifest_path, manifest_store=manifest_store)
+        # ИЗВЕСТНЫЙ БАГ (не исправлен здесь — только типы): Container.adapter
+        # возвращает MockAdapter, если переменная HA_TOKEN не задана, а
+        # init_discovery_routes ожидает HAAdapter. При этом у MockAdapter нет
+        # property is_connected, который читает DeviceDiscoveryService.scan_devices,
+        # поэтому /discovery/* завершится AttributeError -> HTTP 500.
+        # cast() ничего не меняет во время выполнения.
+        # HAAdapter импортирован только под TYPE_CHECKING, поэтому cast()
+        # получает имя строкой: иначе подстановка обратилась бы к
+        # несуществующему в рантайме имени и упала бы с NameError.
+        init_discovery_routes(
+            cast("HAAdapter", _container.adapter), manifest_path, manifest_store=manifest_store
+        )
         logger.info("Discovery routes initialized with shared adapter")
     except Exception as e:
         logger.warning(f"Could not initialize discovery routes: {e}")
@@ -457,29 +469,34 @@ def create_app(
         except Exception as e:
             logger.error(f"Failed to load manifest: {e}")
             manifest_store.current = ManifestModel(
-                instance={
-                    "id": "error",
-                    "name": "Error loading",
-                    "owner": "unknown",
-                    "created_at": "",
-                },
+                # Экземпляр InstanceConfig собирается явно (а не из dict):
+                # все четыре поля — строки без валидаторов, результат
+                # идентичен словарю, который раньше принимал pydantic.
+                instance=InstanceConfig(
+                    id="error",
+                    name="Error loading",
+                    owner="unknown",
+                    created_at="",
+                ),
                 version=1,
                 rooms=[],
             )
 
         # Calculate stats
-        total_devices = sum(len(room.devices) for room in manifest_store.current.rooms)
+        # cast() — чисто типовое действие (подставляет значение как есть):
+        # к этому моменту current гарантированно заполнен — либо load()
+        # отработал, либо в except подставлена запасная модель.
+        current_manifest = cast(Any, manifest_store.current)
+        total_devices = sum(len(room.devices) for room in current_manifest.rooms)
         total_behaviors = sum(
-            len(device.behaviors)
-            for room in manifest_store.current.rooms
-            for device in room.devices
+            len(device.behaviors) for room in current_manifest.rooms for device in room.devices
         )
 
         return templates.TemplateResponse(
             request,
             "index.html",
             {
-                "manifest": manifest_store.current,
+                "manifest": current_manifest,
                 "has_unsaved_changes": manifest_store.has_unsaved_changes,
                 "total_devices": total_devices,
                 "total_behaviors": total_behaviors,
@@ -710,16 +727,19 @@ def create_app(
             _sync_manifest_store(manifest_store, lifecycle_service.manifest)
             manifest_store.mark_changed()
 
+            # _sync_manifest_store() выше гарантированно заполнил current,
+            # поэтому тип-уровневое уточнение через cast() ничего не меняет.
+            current_manifest = cast(Any, manifest_store.current)
             index = (
                 room_id
-                if 0 <= room_id < len(manifest_store.current.rooms)
-                else len(manifest_store.current.rooms) - 1
+                if 0 <= room_id < len(current_manifest.rooms)
+                else len(current_manifest.rooms) - 1
             )
             logger.info(f"Устройство {device_entity_id} удалено из комнаты {room_id}")
             return templates.TemplateResponse(
                 request,
                 "partials/room_card.html",
-                {"room": manifest_store.current.rooms[index], "room_index": index},
+                {"room": current_manifest.rooms[index], "room_index": index},
             )
         except HTTPException:
             raise
@@ -782,10 +802,11 @@ def create_app(
             if manifest_store.current is None:
                 manifest_store.load()
 
-            if room_id >= len(manifest_store.current.rooms):
+            current_manifest = cast(Any, manifest_store.current)
+            if room_id >= len(current_manifest.rooms):
                 raise HTTPException(status_code=404, detail="Room not found")
 
-            room = manifest_store.current.rooms[room_id]
+            room = current_manifest.rooms[room_id]
             device = None
             device_index = -1
             for idx, dev in enumerate(room.devices):
@@ -826,7 +847,7 @@ def create_app(
                     "device_index": device_index,
                     "room_index": room_id,
                     "current_room_id": room.id,
-                    "available_rooms": manifest_store.current.rooms,
+                    "available_rooms": cast(Any, manifest_store.current).rooms,
                     "available_templates": template_list,
                     "available_sources": _load_sources_for_form(
                         getattr(request.app.state, "persistence", None)
@@ -927,7 +948,8 @@ def create_app(
             form_data = await request.form()
             room_idx = int(room_index)
 
-            if room_idx >= len(manifest_store.current.rooms):
+            current_manifest = cast(Any, manifest_store.current)
+            if room_idx >= len(current_manifest.rooms):
                 raise HTTPException(status_code=404, detail="Room not found")
 
             if not source_id:
@@ -946,9 +968,7 @@ def create_app(
                 for behavior in behaviors
             ]
 
-            target_room_id = (
-                form_data.get("room_id", "") or manifest_store.current.rooms[room_idx].id
-            )
+            target_room_id = form_data.get("room_id", "") or current_manifest.rooms[room_idx].id
 
             lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
             if lifecycle_service is None:

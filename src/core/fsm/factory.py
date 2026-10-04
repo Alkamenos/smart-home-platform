@@ -99,7 +99,11 @@ class FSMFactory:
         self._registry = registry
         self._features_dir = _resolve_features_dir(features_dir)
         self._template_cache: dict[str, dict[str, Any]] = {}
-        self._event_bus = event_bus
+        # Хранится как Any, а не Any | None: подписка на сенсоры в
+        # create_from_manifest уже защищена проверкой `is not None`, но mypy
+        # не сужает тип атрибута через границу метода. Аннотация ничего
+        # не меняет во время выполнения.
+        self._event_bus: Any = event_bus
 
     def _load_template(self, template_name: str) -> dict[str, Any]:
         """

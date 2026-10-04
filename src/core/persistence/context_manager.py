@@ -19,9 +19,11 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import time
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -65,8 +67,11 @@ class ContextManager:
         self._fsm_engine = fsm_engine
         self._logger = logger
 
-        # Контекст по комнатам/зонам
-        self._context: dict[str, dict] = {}
+        # Контекст по комнатам/зонам.
+        # Значения — произвольные значения контекста: для сенсоров и расписаний
+        # это bool (см. _on_ha_state_change и _update_schedule_context),
+        # для set_context() — любое значение, переданное вызывающим кодом.
+        self._context: dict[str, Any] = {}
 
         # Подписки на сенсоры: entity_id -> context_key
         self._sensor_subscriptions: dict[str, str] = {}
@@ -76,6 +81,10 @@ class ContextManager:
 
         # Таймер для периодической проверки расписаний
         self._schedule_check_interval = 60  # секунд
+
+        # Фоновая задача проверки расписаний (None, если ещё не запущена).
+        # Атрибут инициализируется явно, чтобы не полагаться на hasattr().
+        self._schedule_checker_task: asyncio.Task[Any] | None = None
 
         # Подписываемся на события HA
         event_bus.subscribe("ha.state_changed", self._on_ha_state_change)
@@ -134,7 +143,7 @@ class ContextManager:
             # Триггерим обновление для всех автоматов которые используют этот контекст
             self._trigger_affected_fsms(context_key, value)
 
-    def _ha_state_to_bool(self, state: str) -> bool:
+    def _ha_state_to_bool(self, state: str | None) -> bool:
         """Преобразует состояние HA в boolean"""
         if state is None:
             return False
@@ -203,8 +212,6 @@ class ContextManager:
         Использует task.unique() для безопасного управления жизненным циклом в PyScript.
         При каждом вызове старая задача автоматически отменяется перед созданием новой.
         """
-        import asyncio
-
         # Проверяем доступность task.unique() (PyScript-specific)
         pyscript_task_available = False
         with contextlib.suppress(ImportError):
@@ -234,7 +241,9 @@ class ContextManager:
             try:
                 loop = asyncio.get_running_loop()
                 # Отменяем предыдущую задачу если есть
-                if hasattr(self, "_schedule_checker_task") and self._schedule_checker_task:
+                # hasattr() заменён на явную инициализацию атрибута в __init__,
+                # поэтому проверка полностью эквивалентна прежней.
+                if self._schedule_checker_task is not None:
                     self._schedule_checker_task.cancel()
 
                 self._schedule_checker_task = loop.create_task(check_schedules())

@@ -13,14 +13,14 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
 from adapters.ha_adapter import HAAdapter
 from adapters.mock_adapter import MockAdapter
 from core.action_handlers import register_all_actions
-from core.commands.dispatcher import CommandDispatcher
+from core.commands.dispatcher import CommandDispatcher, HAAdapterProtocol
 from core.commands.middleware import ManualLockoutMiddleware
 from core.control_tracker import ControlTracker
 from core.events.event_bus import EventBus
@@ -210,7 +210,12 @@ class Container:
     def dispatcher(self) -> CommandDispatcher:
         """Get or create CommandDispatcher instance (depends on adapter)."""
         if self._dispatcher is None:
-            self._dispatcher = CommandDispatcher(ha_adapter=self.adapter, middlewares=[])
+            # MockAdapter.call_service возвращает None, а HAAdapterProtocol объявляет bool;
+            # dispatcher результат вызова игнорирует (dispatcher.py:192), поэтому
+            # расхождение безвредно. cast() ничего не меняет во время выполнения.
+            self._dispatcher = CommandDispatcher(
+                ha_adapter=cast(HAAdapterProtocol, self.adapter), middlewares=[]
+            )
             # Add middleware if available
             self._dispatcher.add_middleware(self.middleware)
         return self._dispatcher

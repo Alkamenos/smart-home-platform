@@ -199,7 +199,7 @@ class ControlTracker:
 
         return mins < minutes
 
-    def clear(self, entity_id: str = None) -> None:
+    def clear(self, entity_id: str | None = None) -> None:
         """
         Очистить историю.
 

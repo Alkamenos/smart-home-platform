@@ -47,8 +47,8 @@ class PluginInfo:
     module_path: str
     """Full module path (e.g., 'my_plugin.module:ClassName')."""
 
-    plugin_class: type
-    """The plugin class type."""
+    plugin_class: type | None
+    """The plugin class type (None if the plugin is discovered but not yet loaded)."""
 
     instance: Any | None = None
     """Loaded plugin instance (None if not yet instantiated)."""

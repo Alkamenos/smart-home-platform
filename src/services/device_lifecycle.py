@@ -365,14 +365,21 @@ class DeviceLifecycleService:
         Returns:
             True, если устройство было удалено или уже отсутствовало.
         """
-        device = device_or_id
+        device: Device
         if isinstance(device_or_id, UUID):
-            device = await self.device_service.get_device(device_or_id)
-            if device is None:
+            found = await self.device_service.get_device(device_or_id)
+            if found is None:
                 logger.info(
                     f"Удаление отсутствующего устройства {device_or_id}: успех без изменений"
                 )
                 return True
+            device = found
+        else:
+            # Ветка нужна для сужения типа: mypy не выводит Device из
+            # isinstance-ветки обратно в «иначе», поэтому без неё переменная
+            # остаётся Device | UUID и все обращения к .id/.ha_entity_id
+            # ниже считаются union-attr.
+            device = device_or_id
 
         before = self._snapshot(
             device, self._behaviors_from_manifest(self._room_of(device), device.ha_entity_id)

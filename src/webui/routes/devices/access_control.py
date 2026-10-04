@@ -5,6 +5,7 @@ Endpoints для назначения, обновления и отзыва до
 """
 
 import logging
+from typing import Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -15,6 +16,9 @@ from webui.routes.devices.deps import get_device_service, record_sync_event
 
 
 logger = logging.getLogger(__name__)
+
+DeviceRole = Literal["viewer", "controller", "admin"]
+"""Набор ролей доступа, принимаемых DeviceService."""
 
 # Инициализируем router
 router = APIRouter(prefix="/api/v1/devices", tags=["access-control"])
@@ -118,10 +122,12 @@ async def grant_device_access(
             None,
         )
 
+        # _VALID_ROLES отсекает посторонние значения выше, поэтому
+        # здесь роль уже гарантированно принадлежит Literal-набору.
         access = await service.grant_access(
             device_id=device_id,
             user_id=request.user_id,
-            role=request.role,
+            role=cast(DeviceRole, request.role),
             granted_by=current_user,
         )
 

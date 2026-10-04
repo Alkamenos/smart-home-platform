@@ -67,7 +67,7 @@ class FSMPersistence:
 
         self._logger.info("FSMPersistence initialized")
 
-    def enable_for_entity(self, entity_id: str, storage_key: str = None) -> None:
+    def enable_for_entity(self, entity_id: str, storage_key: str | None = None) -> None:
         """
         Включить персистентность для автомата
 

@@ -5,7 +5,7 @@ REST клиент для подключения к Home Assistant API.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 from pydantic import HttpUrl
@@ -28,6 +28,18 @@ class HARestClient:
         self.token = token
         self.session: aiohttp.ClientSession | None = None
         self._connected = False
+
+    def _active_session(self) -> aiohttp.ClientSession:
+        """Возвращает HTTP-сессию, игнорируя опциональность атрибута.
+
+        Инвариант класса: ``_connected`` выставляется в ``True`` только внутри
+        ``connect_to_ha()``, который непосредственно перед этим создаёт
+        сессию, а ``__aexit__`` обнуляет и сессию, и флаг одновременно.
+        Поэтому состояние «подключён, но сессии нет» недостижимо, а mypy
+        не умеет связывать два атрибута. ``cast`` фиксирует инвариант
+        статически и не добавляет ни одной проверки в рантайме.
+        """
+        return cast(aiohttp.ClientSession, self.session)
 
     async def __aenter__(self) -> "HARestClient":
         """Контекст менеджер для автоматического управления сессией."""
@@ -93,13 +105,13 @@ class HARestClient:
                 "Content-Type": "application/json",
             }
 
-            async with self.session.get(
+            async with self._active_session().get(
                 f"{self.base_url}/api/states",
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
                 if resp.status == 200:
-                    states = await resp.json()
+                    states: list[dict[str, Any]] = await resp.json()
                     logger.info(f"Получено {len(states)} состояний из Home Assistant")
                     return states
                 else:
@@ -128,13 +140,13 @@ class HARestClient:
                 "Content-Type": "application/json",
             }
 
-            async with self.session.get(
+            async with self._active_session().get(
                 f"{self.base_url}/api/config/area_registry",
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 if resp.status == 200:
-                    areas = await resp.json()
+                    areas: list[dict[str, Any]] = await resp.json()
                     logger.info(f"Получено {len(areas)} областей из Home Assistant")
                     return areas
                 elif resp.status == 404:
@@ -169,13 +181,13 @@ class HARestClient:
                 "Content-Type": "application/json",
             }
 
-            async with self.session.get(
+            async with self._active_session().get(
                 f"{self.base_url}/api/config/device_registry",
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 if resp.status == 200:
-                    devices = await resp.json()
+                    devices: list[dict[str, Any]] = await resp.json()
                     logger.info(f"Получено {len(devices)} устройств из реестра Home Assistant")
                     return devices
                 elif resp.status == 404:
@@ -213,7 +225,7 @@ class HARestClient:
                 "Content-Type": "application/json",
             }
 
-            async with self.session.post(
+            async with self._active_session().post(
                 f"{self.base_url}/api/services/{domain}/{service}",
                 headers=headers,
                 json=service_data,

@@ -127,7 +127,10 @@ async def create_source(request: Request, req: CreateSourceRequest) -> SourceRes
         source = HASource(
             id=uuid4(),
             name=req.name,
-            url=str(req.url),
+            # req.url уже HttpUrl; HASource.url тоже HttpUrl. Прежний str(req.url)
+            # pydantic всё равно разбирал обратно в тот же самый HttpUrl,
+            # поэтому передаём значение напрямую.
+            url=req.url,
             token=req.token,
             # Статус не переопределяем: HASource по умолчанию "disconnected" —
             # источник создан, но ещё не проверен подключением к HA

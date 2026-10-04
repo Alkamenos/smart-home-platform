@@ -129,6 +129,8 @@ async def example_persistence_integration():
     """Пример интеграции с персистентностью."""
     from uuid import uuid4
 
+    from pydantic import HttpUrl
+
     from core.models.device import Device
     from core.models.ha_source import HASource
     from core.persistence.devices import DevicePersistence
@@ -145,7 +147,9 @@ async def example_persistence_integration():
     source = HASource(
         id=uuid4(),
         name="Main Home Assistant",
-        url="http://192.168.1.100:8123",
+        # HASource.url — HttpUrl; pydantic разбирает строку в тот же объект,
+        # поэтому значение создаётся явно того же типа.
+        url=HttpUrl("http://192.168.1.100:8123"),
         token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
         status="connected",
     )

@@ -102,7 +102,10 @@ class BackupService:
                 if response.status == 204:  # No content
                     return None
 
-                return await response.json()
+                # response.json() типизирован как Any; фиксируем ожидаемую
+                # форму ответа, иначе возвращается Any (no-any-return).
+                payload: dict[str, Any] | list[dict[str, Any]] | None = await response.json()
+                return payload
 
         except aiohttp.ClientError as e:
             msg = f"Failed to connect to HA: {e}"
@@ -493,7 +496,7 @@ class BackupService:
         Returns:
             Validation results dictionary.
         """
-        results = {
+        results: dict[str, Any] = {
             "valid": False,
             "errors": [],
             "warnings": [],

@@ -113,23 +113,24 @@ disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
 mypy_path = "src"
+# ОТКЛЮЧЕНЫ ТОЛЬКО КОДЫ ПОЛНОТЫ АННОТАЦИЙ — это качество документации кода,
+# а не ловля багов: `dict` вместо `dict[str, Any]`, отсутствие аннотации
+# возврата. Таких ошибок 289, их разбор — отдельная работа по объёму.
+#
+# Коды корректности (attr-defined, union-attr, index, assignment, arg-type,
+# call-arg, has-type, misc) ВКЛЮЧЕНЫ намеренно. Отключение attr-defined
+# позволяло месяцами проходить `from core.fsm import FSMEngine` — неверному
+# пути импорта под TYPE_CHECKING (Known Issue про export_fsm). Включение
+# нашло три настоящих бага приложения — см. Known Issue #45.
 disable_error_code = [
-    "misc",
     "no-untyped-def",
     "no-any-return",
     "type-arg",
-    "assignment",
-    "attr-defined",
-    "union-attr",
-    "arg-type",
-    "call-arg",
-    "has-type",
     "var-annotated",
     "valid-type",
     "unused-ignore",
     "no-untyped-call",
-    "index",
-    "untyped-decorator",   # ← добавлено: FastAPI-декораторы
+    "untyped-decorator",   # FastAPI-декораторы
 ]
 
 [[tool.mypy.overrides]]

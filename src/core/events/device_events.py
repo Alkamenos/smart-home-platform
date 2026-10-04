@@ -30,7 +30,7 @@ class DeviceConfigChangedEvent:
     device_id: UUID
     changed_fields: dict[str, Any]
     changed_by: str | None = None  # Пользователь или система
-    timestamp: datetime = None
+    timestamp: datetime | None = None
     metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -61,7 +61,7 @@ class DeviceAccessChangedEvent:
     role: Literal["viewer", "controller", "admin"] | None = None  # Новая роль (при granted/updated)
     previous_role: Literal["viewer", "controller", "admin"] | None = None  # Предыдущая роль
     granted_by: str | None = None  # Администратор который совершил действие
-    timestamp: datetime = None
+    timestamp: datetime | None = None
     metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:

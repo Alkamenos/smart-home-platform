@@ -304,8 +304,10 @@ class TemplateLoader:
         details = match.group(3) or description
 
         # Extract default and example from details
-        default = None
-        example = None
+        # Значение default зависит от param_type: int / float / str.
+        # Аннотация объединённого типа отражает реальное поведение парсера.
+        default: int | float | str | None = None
+        example: str | None = None
 
         # Look for "(optional: default_value)"
         default_match = re.search(r"\(optional:\s*([^,)]+)", details)

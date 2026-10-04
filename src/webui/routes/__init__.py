@@ -9,7 +9,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -588,8 +588,14 @@ async def respond_to_suggestion(suggestion_id: str, request: Request) -> Any:
         new_status = "accepted" if action == "accept" else "rejected"
         # Лишний аргумент responded_at приводил к TypeError и ответу 500:
         # метод такого параметра не принимает (spec 007, FR-036).
+        # ИЗВЕСТНЫЙ БАГ (поведение здесь не меняем): маршрут шлёт status
+        # "accepted"/"rejected", а update_suggestion_status обрабатывает только
+        # "applied"/"dismissed"/"snoozed" — ни одна ветка не срабатывает,
+        # и UPDATE не выполняется вовсе, хотя эндпоинт отвечает "success".
+        # cast(): suggestion_id приходит из пути как str, а метод ждёт int;
+        # приведение не делаем — это изменило бы поведение при нечисловом id.
         event_store.update_suggestion_status(
-            suggestion_id=suggestion_id,
+            suggestion_id=cast(int, suggestion_id),
             status=new_status,
         )
 

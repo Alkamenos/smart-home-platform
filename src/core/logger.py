@@ -109,7 +109,7 @@ class Logger:
         """Ошибка"""
         self._write(self._format_log("ERROR", message, **context))
 
-    def get_logs(self, level: str = None) -> list[dict]:
+    def get_logs(self, level: str | None = None) -> list[dict]:
         """Получить все логи (для тестов)"""
         if level is None:
             return list(self._logs)

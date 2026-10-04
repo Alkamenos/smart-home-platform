@@ -72,10 +72,17 @@ class DeviceService:
             event_router: Маршрутизатор событий — перестраивается после снятия.
         """
         self.event_bus = event_bus
-        self.persistence = persistence_module
-        self.ha_adapter = ha_adapter
-        self._engine = engine
-        self._event_router = event_router
+        # Четыре зависимости ниже — «утиные» объекты без общего протокола:
+        # персистентность (модуль/менеджер), HA-адаптер, движок машин состояний
+        # и маршрутизатор событий. Они подставляются контейнером и в тестах
+        # (MagicMock/None), поэтому типизируем их как Any: аннотация object
+        # ломала бы любой доступ к атрибутам (attr-defined), а Protocol здесь
+        # невыгоден — HAAdapter.call_service принимает **kwargs и через
+        # Protocol не проходит структурную проверку.
+        self.persistence: Any = persistence_module
+        self.ha_adapter: Any = ha_adapter
+        self._engine: Any = engine
+        self._event_router: Any = event_router
         self._devices: dict[UUID, Device] = {}
         self._sources: dict[UUID, HASource] = {}
         # Удалённые устройства: по ним отличаем «уже удалено» от «неизвестно»,
@@ -84,7 +91,7 @@ class DeviceService:
         self._deleted_devices: set[UUID] = set()
         self._commands: dict[UUID, dict[str, Any]] = {}  # Хранилище статусов команд
         self._unavailable_timers: dict[
-            UUID, asyncio.Task
+            UUID, asyncio.Task[None]
         ] = {}  # Таймеры для отслеживания unavailable
         self._metrics = get_metrics_collector()  # Получить единый экземпляр метрик
 
@@ -418,7 +425,7 @@ class DeviceService:
         """
         # Проверяем кэш
         cache_key = f"device:{device_id}"
-        cached_device = self._cache.get(cache_key)
+        cached_device: Device | None = self._cache.get(cache_key)
         if cached_device is not None:
             logger.debug(f"Устройство найдено в кэше: {device_id}")
             return cached_device
@@ -606,7 +613,7 @@ class DeviceService:
         """
         # Проверяем кэш по префиксу источника
         cache_key = f"source:{source_id}"
-        cached_devices = self._cache.get(cache_key)
+        cached_devices: list[Device] | None = self._cache.get(cache_key)
         if cached_devices is not None:
             logger.debug(f"Устройства источника найдены в кэше: {source_id}")
             return cached_devices
@@ -626,7 +633,7 @@ class DeviceService:
 
         return devices
 
-    async def update_device_state(self, device_id: UUID, new_state: dict) -> None:
+    async def update_device_state(self, device_id: UUID, new_state: dict[str, Any]) -> None:
         """Обновляет состояние устройства и инвалидирует кэш.
 
         Args:
@@ -646,7 +653,7 @@ class DeviceService:
             # Обновляем метрики доступности
             self._update_device_availability_metrics()
 
-    def parse_devices(self, ha_states: list[dict]) -> list[Device]:
+    def parse_devices(self, ha_states: list[dict[str, Any]]) -> list[Device]:
         """Преобразует состояния из Home Assistant в модели Device.
 
         Args:
@@ -850,9 +857,9 @@ class DeviceService:
         self,
         device_id: UUID,
         user_id: str,
-        action: str,
-        role: str | None = None,
-        previous_role: str | None = None,
+        action: Literal["granted", "revoked", "updated"],
+        role: Literal["viewer", "controller", "admin"] | None = None,
+        previous_role: Literal["viewer", "controller", "admin"] | None = None,
         granted_by: str | None = None,
     ) -> None:
         """T070: Публикует событие изменения доступа через EventBus.
@@ -985,7 +992,9 @@ class DeviceService:
             previous_access = await self.persistence.device_access.load_access_for_user_device(
                 device_id, user_id
             )
-            previous_role = previous_access.role if previous_access else None
+            previous_role: Literal["viewer", "controller", "admin"] | None = (
+                previous_access.role if previous_access else None
+            )
 
             # Удаляем существующий доступ если есть
             if previous_access:
@@ -1000,7 +1009,7 @@ class DeviceService:
             await self.persistence.device_access.save_access(access)
 
             # T070: Публикуем событие изменения доступа
-            action = "updated" if previous_role else "granted"
+            action: Literal["granted", "updated"] = "updated" if previous_role else "granted"
             await self._publish_access_changed_event(
                 device_id=device_id,
                 user_id=user_id,
@@ -1037,7 +1046,7 @@ class DeviceService:
             # Получаем запись доступа перед удалением (для события)
             access = await self.persistence.device_access.load_access(access_id)
 
-            result = await self.persistence.device_access.delete_access(access_id)
+            result: bool = await self.persistence.device_access.delete_access(access_id)
 
             if result and access:
                 # T070: Публикуем событие отзыва доступа
@@ -1070,7 +1079,10 @@ class DeviceService:
                 logger.warning("Persistence модуль не имеет device_access")
                 return []
 
-            return await self.persistence.device_access.load_accesses_for_device(device_id)
+            loaded: list[
+                DeviceAccess
+            ] = await self.persistence.device_access.load_accesses_for_device(device_id)
+            return loaded
 
         except Exception as e:
             logger.error(f"Ошибка получения доступов к устройству {device_id}: {e}")
@@ -1175,7 +1187,7 @@ class DeviceService:
         self._cancel_unavailable_timer(device_id)
 
         # Создаем новый таймер
-        async def mark_unavailable():
+        async def mark_unavailable() -> None:
             await asyncio.sleep(60)
             device = await self.get_device(device_id)
             if device and device.status == "available":
@@ -1240,7 +1252,7 @@ class DeviceService:
             self._metrics.record_command_sent(source_id_str, device_type, command_name)
 
             # Создаем запись о команде
-            command_record = {
+            command_record: dict[str, Any] = {
                 "id": command_id,
                 "device_id": device_id,
                 "command_name": command_name,

@@ -3,6 +3,7 @@
 """
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from core.persistence.devices import (
     DeviceAccessPersistence,
@@ -12,13 +13,19 @@ from core.persistence.devices import (
 from core.persistence.sources import HASourcePersistence
 
 
+if TYPE_CHECKING:
+    # Импорт только для типов: TokenEncryptor создаётся ниже в try/except
+    # ImportError, и на верхнем уровне зависимость была бы обязательной.
+    from core.security.encryption import TokenEncryptor
+
+
 class PersistenceManager:
     """Менеджер для управления всеми слоями персистентности."""
 
     def __init__(
         self,
         data_dir: Path | str = "data",
-        encryptor: object | None = None,
+        encryptor: "TokenEncryptor | None" = None,
     ) -> None:
         """Инициализация менеджера.
 

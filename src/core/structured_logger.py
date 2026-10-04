@@ -376,6 +376,9 @@ def create_structured_logger(
         logger.addFilter(SensitiveDataFilter())
 
     # Console handler
+    # Явная аннотация: ниже в ветках присваиваются два разных класса,
+    # и без неё mypy берёт тип из первого присваивания.
+    console_handler: logging.Handler
     if enable_console:
         if colored_console:
             # Use colored console handler with human-readable format

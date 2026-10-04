@@ -213,7 +213,7 @@ class DeviceCache:
 
             return len(keys_to_remove)
 
-    def extend_ttl(self, key: str, additional_seconds: int = None) -> bool:
+    def extend_ttl(self, key: str, additional_seconds: int | None = None) -> bool:
         """
         Продлить TTL записи.
 

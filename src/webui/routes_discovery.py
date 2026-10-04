@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -178,7 +178,11 @@ async def get_rooms() -> JSONResponse:
         if _manifest_store.current is None:
             _manifest_store.load()
 
-        rooms = [{"id": room.id, "name": room.name} for room in _manifest_store.current.rooms]
+        # cast() — только типовое уточнение: load() выше гарантирует,
+        # что current заполнен.
+        rooms = [
+            {"id": room.id, "name": room.name} for room in cast(Any, _manifest_store.current).rooms
+        ]
         return JSONResponse(content={"rooms": rooms})
     except Exception as e:
         logger.error(f"Failed to get rooms: {e}")

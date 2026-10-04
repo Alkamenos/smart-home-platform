@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from typing import Any
 
 
 class BaseAdapter(ABC):
@@ -39,7 +40,9 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
-    def send_command(self, entity_id: str, command: str, attributes: dict = None) -> bool:
+    def send_command(
+        self, entity_id: str, command: str, attributes: dict[str, Any] | None = None
+    ) -> bool:
         """
         Отправить команду устройству
 

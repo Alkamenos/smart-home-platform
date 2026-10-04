@@ -22,7 +22,7 @@ class SimulationEvent(BaseModel):
     event_type: str = Field(..., description="Тип события (sensor.update, command.execute)")
     source: str = Field(..., description="Источник события")
     payload: dict[str, Any] = Field(default_factory=dict, description="Данные события")
-    room_id: str | None = Field(None, description="ID комнаты")
+    room_id: str | None = Field(default=None, description="ID комнаты")
 
     class Config:
         arbitrary_types_allowed = True
@@ -35,8 +35,8 @@ class SimulationState(BaseModel):
     current_time: datetime = Field(
         default_factory=datetime.now, description="Текущее время симуляции"
     )
-    start_time: datetime | None = Field(None, description="Время начала симуляции")
-    end_time: datetime | None = Field(None, description="Время окончания симуляции")
+    start_time: datetime | None = Field(default=None, description="Время начала симуляции")
+    end_time: datetime | None = Field(default=None, description="Время окончания симуляции")
     mode: SimulationMode = Field(default=SimulationMode.REAL_TIME, description="Режим симуляции")
     speed_multiplier: float = Field(
         default=1.0, ge=0.1, le=1000.0, description="Множитель скорости"
@@ -52,7 +52,7 @@ class SensorSimulationConfig(BaseModel):
     """Конфигурация симуляции сенсора."""
 
     sensor_id: str = Field(..., description="ID сенсора")
-    initial_value: Any = Field(None, description="Начальное значение")
+    initial_value: Any = Field(default=None, description="Начальное значение")
     variation_pattern: str = Field(default="constant", description="Паттерн изменения значения")
     variation_params: dict[str, Any] = Field(default_factory=dict, description="Параметры вариации")
     update_interval: float = Field(
@@ -74,16 +74,18 @@ class ScenarioStep(BaseModel):
     actions: list[dict[str, Any]] = Field(
         default_factory=list, description="Действия для выполнения"
     )
-    conditions: dict[str, Any] | None = Field(None, description="Условия выполнения шага")
-    description: str | None = Field(None, description="Описание шага")
+    conditions: dict[str, Any] | None = Field(default=None, description="Условия выполнения шага")
+    description: str | None = Field(default=None, description="Описание шага")
 
 
 class SimulationScenario(BaseModel):
     """Сценарий симуляции."""
 
     name: str = Field(..., description="Название сценария")
-    description: str | None = Field(None, description="Описание сценария")
-    duration: float | None = Field(None, ge=0, description="Длительность сценария в секундах")
+    description: str | None = Field(default=None, description="Описание сценария")
+    duration: float | None = Field(
+        default=None, ge=0, description="Длительность сценария в секундах"
+    )
     steps: list[ScenarioStep] = Field(default_factory=list, description="Шаги сценария")
     sensor_configs: list[SensorSimulationConfig] = Field(
         default_factory=list, description="Конфигурации сенсоров"
