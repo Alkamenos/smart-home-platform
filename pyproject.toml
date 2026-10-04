@@ -3,7 +3,7 @@ name = "smart-home-fsm-platform"
 version = "3.0.0"
 description = "Smart Home FSM Platform - State machine based automation for smart homes"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [
     { name = "Smart Home Team", email = "team@smarthome.local" }

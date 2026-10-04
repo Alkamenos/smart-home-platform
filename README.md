@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Alkamenos/smart-home-platform/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/Alkamenos/smart-home-platform/branch/main/graph/badge.svg?token=LZKK1NU0WC)](https://codecov.io/github/Alkamenos/smart-home-platform)
-![Python Versions](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue)
+![Python Versions](https://img.shields.io/badge/python-3.12-blue)
 [![License](https://img.shields.io/github/license/Alkamenos/smart-home-platform)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Version](https://img.shields.io/badge/version-3.0.0-blue)](CHANGELOG.md)
 
-A modern, state-machine based automation platform for smart home systems. This platform provides a robust framework for defining, managing, and executing complex home automation scenarios using finite state machines (FSM). Built with Python 3.10+, it features strict schema validation via Pydantic, declarative configuration support through YAML, structured logging with Loguru, and comprehensive testing capabilities.
+A modern, state-machine based automation platform for smart home systems. This platform provides a robust framework for defining, managing, and executing complex home automation scenarios using finite state machines (FSM). Built with Python 3.12+, it features strict schema validation via Pydantic, declarative configuration support through YAML, structured logging with Loguru, and comprehensive testing capabilities.
 
 > 📚 **Документация:** [docs/README.md](docs/README.md) · 🔧 **Разработка:** [.ai/00_START_HERE.md](.ai/00_START_HERE.md) · 📋 **Конституция:** [CLAUDE.md](CLAUDE.md)
 

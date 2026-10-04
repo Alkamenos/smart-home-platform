@@ -19,11 +19,15 @@ jobs:
       - run: ruff check src/ tests/ examples/
       - run: mypy src/ --ignore-missing-imports
 
+  # 3.11 -> 3.12: 3.11 нерабочий, на нём падает СБОР КОЛЛЕКЦИИ pytest
+  # (src/webui/app.py:130, PEP 695 `def _run_coroutine[T](...)`).
+  # Нужен один прогон на реально поддерживаемой версии, а не два,
+  # один из которых всегда красный.
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.11', '3.12' ]
+        python-version: [ '3.12' ]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,3 +41,159 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  # Ловит возврат рассинхрона: requires-python ниже, чем реальный синтаксис
+  # кода. История: при requires-python = ">=3.10" проект печатал PEP 695
+  # (src/webui/app.py:130 `def _run_coroutine[T](...)`, 3.12+) и enum.StrEnum
+  # (3.11+), то есть 3.11 был нерабочим на уровне СБОРА КОЛЛЕКЦИИ pytest —
+  # падал не отдельный тест, а коллекция. Ни ruff, ни mypy такое не видят:
+  # у них свой парсер грамматики, а не интерпретатор хоста, поэтому
+  # pre-commit на 3.11 проходил зелёным. Нужен настоящий интерпретатор
+  # минимума, иначе рассинхрон вернётся через полгода.
+  #
+  # Схема проверки границы: версия для установки ВЫЧИСЛЯЕТСЯ из
+  # requires-python, поэтому валидность не зашита константой "3.12" и не может
+  # стать вхолостую: опустили requires-python до 3.10/3.11 — компилировать будет
+  # 3.10/3.11, и PEP 695 даст SyntaxError; подняли выше правды — споткнётся
+  # статическая сверка (mypy/ruff/матрица ещё на 3.12), и job останется зелёным
+  # только после того, как все четверо договорятся.
+  #
+  # Именно число, а не спецификатор: `python-version-file: pyproject.toml`
+  # передаёт в setup-python строку `>=3.12` как есть, а диапазон разрешается
+  # в ПОСЛЕДНУЮ доступную версию (на ubuntu-latest это 3.13/3.14), то есть
+  # проверяла бы код более новым компилятором, чем объявленный минимум, и
+  # пропустила бы ровно тот дефект, ради которого создана. Этот вариант был
+  # написан и исправлен после разбора: константа убрана, но диапазон даёт
+  # тот же класс разъезда — молча.
+  #
+  # Плюс статическая сверка requires-python ↔ mypy ↔ ruff ↔ матрица тестов,
+  # чтобы рассинхрон ловился ещё ДО установки второй версии.
+  syntax-floor:
+    name: Синтаксис не новее requires-python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Интерпретатор нужен только чтобы ПРОВЕРИТЬ границу: код не
+      # исполняется, зависимости проекта не ставятся.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Только ради чтения матрицы из этого же ci.yml (pyyaml уже в
+      # зависимостях проекта). Без него шаг упал бы с ImportError —
+      # тоже громко, но невнятно.
+      - run: pip install pyyaml
+
+      - name: Сверить requires-python, цели ruff/mypy и матрицу тестов
+        run: |
+          python - <<'EOF'
+          import re
+          import sys
+          import tomllib
+
+          import yaml
+
+          data = tomllib.load(open("pyproject.toml", "rb"))
+          required = str(data["project"]["requires-python"])
+          mypy_v = str(data["tool"]["mypy"]["python_version"])
+          ruff_v = str(data["tool"]["ruff"]["target-version"])
+          ci = yaml.safe_load(open(".github/workflows/ci.yml", encoding="utf-8"))
+          try:
+              matrix = ci["jobs"]["test"]["strategy"]["matrix"]["python-version"]
+          except (KeyError, TypeError):
+              sys.exit("РАСИНХРОН: не найдена jobs.test.strategy.matrix.python-version")
+
+          def minor(value):
+              """'3.12' / 3.12 / '>=3.12' -> (3, 12); иначе None."""
+              m = re.match(r"(\d+)\.(\d+)", str(value).strip().lstrip(">="))
+              return (int(m[1]), int(m[2])) if m else None
+
+          floor = minor(required)
+          print("requires-python:", required, "-> минимум:", floor)
+          print("mypy.python_version:", mypy_v)
+          print("ruff.target-version:", ruff_v)
+          print("матрица тестов:", matrix)
+          if floor is None:
+              sys.exit(f"РАСИНХРОН: не разобрать requires-python={required!r}")
+
+          errors = []
+          if minor(mypy_v) != floor:
+              errors.append(f"mypy.python_version={mypy_v} != минимум {floor[0]}.{floor[1]}")
+          expected_ruff = f"py{floor[0]}{floor[1]}"
+          if ruff_v != expected_ruff:
+              errors.append(f"ruff.target-version={ruff_v!r} != {expected_ruff!r}")
+          tested = [minor(v) for v in matrix]
+          if any(v is None for v in tested):
+              errors.append(f"нераспознанные версии в матрице: {matrix}")
+          below = [f"{v[0]}.{v[1]}" for v in tested if v is not None and v < floor]
+          if below:
+              errors.append(f"матрица тестирует НИЖЕ минимума: {below}")
+          if tested and floor not in tested:
+              errors.append(
+                  f"минимум {floor[0]}.{floor[1]} не тестируется ни в одной версии: {matrix}"
+              )
+          if errors:
+              print("РАСИНХРОН ВЕРСИЙ:", file=sys.stderr)
+              for line in errors:
+                  print(f"  - {line}", file=sys.stderr)
+              sys.exit(1)
+          print("OK: requires-python, ruff, mypy и матрица тестов согласованы")
+          EOF
+
+      # Версия ставится ЧИСЛОМ, вычисленным из requires-python предыдущим шагом,
+      # а не самим спецификатором.
+      #
+      # Почему не python-version-file: этот вход передаёт в setup-python строку
+      # `>=3.12` как есть, а диапазон по документации самого экшена
+      # разрешается в ПОСЛЕДНУЮ доступную версию, то есть на ubuntu-latest это
+      # 3.13 или 3.14 — НЕ нижняя граница. Такая проверка компилировала бы код
+      # более новым компилятором, чем тот, который объявлен минимумом, и пропустила
+      # бы ровно тот дефект, ради которого создана: синтаксис новее объявленного
+      # минимума. Константа "3.12" в workflow давала бы ту же проблему, только
+      # молча, поэтому версия берётся из pyproject.toml, но именно как число.
+      - name: Вычислить версию для установки
+        id: floor
+        run: |
+          FLOOR=$(python3 -c "import re,sys;t=open('pyproject.toml').read();m=re.search(r'requires-python\s*=\s*\">=(\d+)\.(\d+)\"',t);sys.exit('не разобрано' if not m else print(f'{m[1]}.{m[2]}'))")
+          echo "version=$FLOOR" >> "$GITHUB_OUTPUT"
+          echo "Ставим Python $FLOOR — нижняя граница requires-python"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.floor.outputs.version }}
+
+      # Самопроверка: если setup-python когда-нибудь подставит не ту версию,
+      # шаг упадёт, а не пройдёт вхолостую. tomllib здесь не используется
+      # намеренно: если минимум опущен до 3.10, скрипт обязан сказать про
+      # рассинхрон понятной строкой, а не упасть с ModuleNotFoundError.
+      - name: Проверить, что скомпилирует ровно заявленный минимум
+        run: |
+          python -VV
+          python - <<'EOF'
+          import pathlib
+          import re
+          import sys
+
+          text = pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          found = re.search(r'requires-python\s*=\s*"([^"]+)"', text)
+          if found is None:
+              sys.exit("СТОП: в pyproject.toml нет requires-python")
+          parsed = re.match(r">=\s*(\d+)\.(\d+)", found.group(1))
+          if parsed is None:
+              sys.exit(f"СТОП: не разобрать requires-python={found.group(1)!r}")
+          floor = (int(parsed[1]), int(parsed[2]))
+          running = (sys.version_info[0], sys.version_info[1])
+          print(
+              f"объявлено {found.group(1)} (минимум {floor[0]}.{floor[1]}), "
+              f"компилирует {running[0]}.{running[1]}"
+          )
+          if running != floor:
+              sys.exit(
+                  f"СТОП: компилирует {running[0]}.{running[1]}, а объявленный минимум "
+                  f"{floor[0]}.{floor[1]} — проверка недействительна"
+              )
+          print("OK: компилятор совпадает с объявленным минимумом")
+          EOF
+
+      - name: Скомпилировать весь src/ и tests/ версией из requires-python
+        run: python -m compileall -q -f src/ tests/

@@ -12,5 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          # 3.11 -> 3.12 для единообразия с остальным CI (min = 3.12).
+          # ВАЖНО: это НЕ было падением. ruff и mypy разбирают PEP 695
+          # (def _run_coroutine[T](...) в src/webui/app.py) своим парсером,
+          # а не интерпретатором хоста, поэтому на 3.11 job проходил успешно.
+          # Настоящую границу синтаксиса проверяет job `syntax-floor` в ci.yml.
+          python-version: '3.12'
       - uses: pre-commit/action@v3.0.1

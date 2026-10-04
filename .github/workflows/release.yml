@@ -12,9 +12,38 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          # 3.10 -> 3.12. Самая опасная из трёх правок (ci.yml, pre-commit.yml,
+          # release.yml), потому что ЗДЕСЬ НИЧЕГО НЕ ПАДАЕТ.
+          # `python -m build` (hatchling) не импортирует и не компилирует
+          # src/: он просто раскладывает файлы и подставляет метаданные из
+          # requires-python. Поэтому сборка на 3.10 успешна при ЛЮБОМ
+          # синтаксисе в коде — зелёный job не значит «артефакт рабочий».
+          # Реальный минимум проекта — 3.12: src/webui/app.py:130 использует
+          # PEP 695 (def _run_coroutine[T](...)) — SyntaxError на ≤3.11, а
+          # src/core/discovery/models.py и src/core/models/simulation.py
+          # импортируют enum.StrEnum (3.11+). Сегодня в wheel попадает только
+          # src/smart_home (8 файлов), который случайно парсится на 3.10, —
+          # но это ловушка: одна строка PEP 695/StrEnum в публикуемом коде
+          # уедет на PyPI и сломается у всех, кроме 3.12, при зелёной сборке.
+          python-version: '3.12'
           cache: 'pip'
       - run: pip install build
+      - name: Проверить, что публикуемый код парсится версией сборки
+        # Разбор без записи .pyc (в отличие от compileall), чтобы не оставлять
+        # __pycache__ в дереве, из которого тут же собирается sdist/wheel.
+        run: |
+          python - <<'EOF'
+          import pathlib, sys
+          bad = 0
+          for path in sorted(pathlib.Path("src/smart_home").rglob("*.py")):
+              try:
+                  compile(path.read_text(encoding="utf-8"), str(path), "exec")
+              except SyntaxError as exc:
+                  bad += 1
+                  print(f"SyntaxError в {path}:{exc.lineno}: {exc.msg}", file=sys.stderr)
+          print(f"python={sys.version.split()[0]}, проверен src/smart_home, ошибок: {bad}")
+          sys.exit(1 if bad else 0)
+          EOF
       - run: python -m build
       - uses: actions/upload-artifact@v4
         with:
@@ -32,7 +61,11 @@ jobs:
           path: dist/
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          # 3.10 -> 3.12: тот же аргумент, что в job `build`. Здесь версия
+          # влияет только на pip/twine, но оставлять 3.10 значило бы
+          # публиковать артефакт из интерпретатора, который не может
+          # разобрать собственный код проекта.
+          python-version: '3.12'
       - run: pip install twine
       - run: twine upload --repository testpypi dist/*
         env:

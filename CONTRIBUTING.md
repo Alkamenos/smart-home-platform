@@ -14,7 +14,7 @@ Thank you for your interest in contributing to the Smart Home FSM Platform! This
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.12 or higher
 - Git
 - pip or poetry for dependency management
 
@@ -148,7 +148,7 @@ Configuration in `pyproject.toml`:
 ```toml
 [tool.black]
 line-length = 100
-target-version = ['py310', 'py311', 'py312']
+target-version = ['py312']
 ```
 
 ### Import Sorting
@@ -161,7 +161,7 @@ isort --profile black src/ tests/
 
 ### Type Hints
 
-**Type hints are mandatory everywhere.** Use Python 3.10+ syntax:
+**Type hints are mandatory everywhere.** Use Python 3.12+ syntax:
 
 ```python
 from typing import Optional, Any

@@ -3,8 +3,8 @@
 ## Prerequisites
 
 ```bash
-# Install Python 3.10+
-python --version  # Should be 3.10 or higher
+# Install Python 3.12+
+python --version  # Should be 3.12 or higher
 
 # Install dependencies
 pip install -e ".[dev]"
