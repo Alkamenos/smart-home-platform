@@ -1,5 +1,7 @@
 # Production Dockerfile для Behavioral Platform
-FROM python:3.11-slim
+# ВАЖНО: требуется Python >= 3.12 — src/webui/app.py использует PEP 695
+# (def _run_coroutine[T](...)), который не парсится на 3.11 (SyntaxError).
+FROM python:3.12-slim
 
 # Аргументы сборки
 ARG BUILD_ENV=production

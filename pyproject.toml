@@ -22,7 +22,8 @@ dependencies = [
     "python-multipart>=0.0.9",
     "prometheus-client>=0.19",
     "cryptography>=42.0",
-
+    # Требуется src/services/config_watcher.py (hot reload конфигурации)
+    "watchdog>=4.0",
 ]
 
 [project.optional-dependencies]
