@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -176,8 +176,28 @@ class TestAvailabilityTimers:
 
     @pytest.mark.asyncio
     async def test_cancel_timer_should_tolerate_missing_timer(self, service: DeviceService) -> None:
-        """Отмена несуществующего таймера безопасна."""
-        service._cancel_unavailable_timer(uuid4())  # noqa: SLF001
+        """Отмена несуществующего таймера безопасна и не трогает чужие таймеры."""
+        tracked = _device("light.tracked")
+        await service.add_device(tracked)
+        service._reset_unavailable_timer(tracked.id)  # noqa: SLF001 — внутренний таймер
+        missing = uuid4()
+        before = dict(service._unavailable_timers)  # noqa: SLF001
+
+        service._cancel_unavailable_timer(missing)  # noqa: SLF001
+        service._cancel_unavailable_timer(missing)  # noqa: SLF001
+
+        # Карта таймеров не изменилась: ни фантомной записи, ни потери чужой.
+        assert service._unavailable_timers == before  # noqa: SLF001
+        assert missing not in service._unavailable_timers  # noqa: SLF001
+        assert not before[tracked.id].cancelled(), "таймер другого устройства не отменяется"
+
+        # Контроль: таймер, который есть, метод обязан отменить. Без этой части
+        # проверка выше была бы верна и для кода, который ничего не делает.
+        service._cancel_unavailable_timer(tracked.id)  # noqa: SLF001
+
+        assert tracked.id not in service._unavailable_timers  # noqa: SLF001
+        await asyncio.sleep(0)
+        assert before[tracked.id].cancelled(), "отменённый таймер должен быть отменён"
 
 
 class TestAvailabilityMetrics:
@@ -204,13 +224,22 @@ class TestAvailabilityMetrics:
 
     @pytest.mark.asyncio
     async def test_metrics_failure_should_not_escape(self, service: DeviceService) -> None:
-        """Ошибка метрик не прерывает работу сервиса."""
+        """Ошибка метрик не прерывает работу сервиса: попытка есть, сбой проглочен."""
         service._metrics = MagicMock()  # noqa: SLF001
         service._metrics.set_devices_available.side_effect = RuntimeError("registry")
-        await service.add_device(_device("light.metrics"))
+        device = _device("light.metrics")
+        await service.add_device(device)
 
         service._update_device_availability_metrics()  # noqa: SLF001
         service.update_sources_connected_count(2)
+
+        # Метрика доступности считалась по данным сервиса, а не по пустому месту
+        service._metrics.set_devices_available.assert_called_once_with(  # noqa: SLF001
+            str(device.source_id), "light", 1
+        )
+        # Реестр устройств не пострадал, следующая метрика тоже ушла
+        assert [d.ha_entity_id for d in await service.get_all_devices()] == ["light.metrics"]
+        service._metrics.set_sources_connected_count.assert_called_once_with(2)  # noqa: SLF001
 
     def test_cache_and_index_helpers_should_report_stats(self, service: DeviceService) -> None:
         """Служебные методы кэша и индекса отвечают без ошибок."""
@@ -296,17 +325,33 @@ class TestConfigAndCacheInvalidation:
     async def test_state_change_for_unknown_device_should_not_fail(
         self, service: DeviceService
     ) -> None:
-        """Событие неизвестного устройства не поднимает исключений."""
-        await service.handle_state_change(
-            {
-                "event_type": "state_changed",
-                "data": {
-                    "entity_id": "light.unknown",
-                    "new_state": {"state": "on", "attributes": {}},
-                    "old_state": {"state": "off", "attributes": {}},
-                },
-            }
-        )
+        """Событие неизвестного устройства игнорируется: реестр и шина не меняются."""
+        known = _device("light.known")
+        await service.add_device(known)
+        service.event_bus.publish = AsyncMock()
+
+        with patch("src.services.device_service.logger") as mock_logger:
+            await service.handle_state_change(
+                {
+                    "event_type": "state_changed",
+                    "data": {
+                        "entity_id": "light.unknown",
+                        "new_state": {"state": "on", "attributes": {}},
+                        "old_state": {"state": "off", "attributes": {}},
+                    },
+                }
+            )
+
+            # Устройство опознано как неизвестное, а не обработано «вхолостую»
+            assert any(
+                "light.unknown" in str(call.args) for call in mock_logger.debug.call_args_list
+            )
+
+        assert [d.ha_entity_id for d in await service.get_all_devices()] == ["light.known"]
+        assert service.find_device_by_ha_entity_id("light.unknown") is None
+        assert known.state == {}, "Состояние известного устройства не должно меняться"
+        service.event_bus.publish.assert_not_called()
+        assert service._unavailable_timers == {}  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_command_status_should_be_available(self, service: DeviceService) -> None:

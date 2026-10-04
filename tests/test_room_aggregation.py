@@ -13,6 +13,7 @@ Tests cover:
 from __future__ import annotations
 
 from freezegun import freeze_time
+from loguru import logger
 from src.core.models.room import (
     RoomAggregationConfig,
     RoomConfig,
@@ -246,9 +247,42 @@ class TestRoomManager:
     def test_update_unknown_room(self) -> None:
         """Test updating sensor state for unknown room."""
         manager = RoomManager()
+        # Зарегистрированная комната нужна, чтобы отличить «ничего не создано»
+        # от «сломано состояние чужой комнаты».
+        manager.register_room(RoomConfig(id="bedroom", name="Bedroom"))
 
-        # Should not raise, just log warning
-        manager.update_sensor_state("unknown_room", "motion", "sensor.motion", True)
+        rooms_before = manager.list_rooms()
+        states_before = {
+            room_id: manager.get_room_state(room_id).model_dump() for room_id in rooms_before
+        }
+
+        # Предупреждение — второй наблюдаемый след вызова: состояние реестра при
+        # неизвестной комнате не меняется, и без журнала пустое тело метода было
+        # бы неотличимо от штатной отработки.
+        warnings: list[str] = []
+        sink_id = logger.add(
+            lambda message: warnings.append(message.record["message"]), level="WARNING"
+        )
+        try:
+            manager.update_sensor_state("unknown_room", "motion", "sensor.motion", True)
+        finally:
+            logger.remove(sink_id)
+
+        # Неизвестная комната не завелась: ни в реестре комнат, ни в состояниях.
+        assert manager.list_rooms() == rooms_before == ["bedroom"]
+        assert manager.get_room_state("unknown_room") is None
+
+        # Состояние зарегистрированной комнаты не тронуто.
+        states_after = {
+            room_id: manager.get_room_state(room_id).model_dump()
+            for room_id in manager.list_rooms()
+        }
+        assert states_after == states_before
+        assert manager.get_room_state("bedroom").occupancy is False
+
+        # Отказ виден в журнале: иначе вызов для несуществующей комнаты выглядел
+        # бы как успешное обновление.
+        assert any("room not found: unknown_room" in message for message in warnings)
 
     def test_get_aggregated_state(self) -> None:
         """Test getting aggregated state dictionary."""

@@ -17,6 +17,8 @@ Specification:
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
 
+import asyncio
+import contextlib
 import time
 from unittest.mock import MagicMock, patch
 
@@ -350,12 +352,73 @@ class TestGetContext:
 class TestOnPlatformStarted:
     """Тесты метода _on_platform_started()."""
 
+    def test_platform_started_handler_is_registered(self, mock_event_bus, context_manager):
+        """На platform.started подписан именно _on_platform_started, а не обработчик сенсоров."""
+        handlers = {call[0][0]: call[0][1] for call in mock_event_bus.subscribe.call_args_list}
+
+        assert handlers["platform.started"] == context_manager._on_platform_started
+        assert handlers["ha.state_changed"] == context_manager._on_ha_state_change
+
     def test_starts_schedule_checker_on_platform_start(self, context_manager):
-        """Запуск проверки расписаний при старте платформы."""
+        """Обработчик platform.started запускает проверку расписаний."""
+        # Проверяем сам факт вызова: _on_platform_started синхронен и обязан дойти
+        # до _start_schedule_checker, иначе фоновой проверки расписаний не будет.
+        with patch.object(ContextManager, "_start_schedule_checker") as mock_start:
+            context_manager._on_platform_started("platform.started", {})
+
+        # Явные утверждения о результате: вызов ровно один и без аргументов
+        # (в том числе без неявно передаваемого self)
+        assert mock_start.call_count == 1
+        assert mock_start.call_args.args == ()
+        mock_start.assert_called_once_with()
+
+    def test_ha_state_changed_does_not_start_schedule_checker(self, context_manager):
+        """ha.state_changed не запускает проверку расписаний — маршрутизация событий различает их."""
+        with patch.object(ContextManager, "_start_schedule_checker") as mock_start:
+            context_manager._on_ha_state_change(
+                "ha.state_changed",
+                {"entity_id": "binary_sensor.living_room_motion", "new_state": "on"},
+            )
+
+        assert mock_start.call_count == 0
+        mock_start.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_schedule_checker_task_created_on_running_loop(
+        self, context_manager, mock_logger
+    ):
+        """
+        Наблюдаемый побочный эффект: при работающем event loop создаётся живая фоновая задача.
+
+        В синхронном тесте event loop нет, и `_start_schedule_checker()` лишь пишет
+        предупреждение в лог — вот почему «просто вызвать и забыть» ничего не проверяет.
+        Здесь тест асинхронный, поэтому проверяем настоящий результат: задача создана,
+        не завершилась с ошибкой и действительно спит (значит, ждёт следующей проверки),
+        а по отмене корректно выходит из цикла.
+        """
         context_manager._on_platform_started("platform.started", {})
 
-        # Проверяем что метод _start_schedule_checker был вызван
-        # (тестирование асинхронной логики через моки)
+        task = context_manager._schedule_checker_task
+        assert isinstance(task, asyncio.Task)
+        mock_logger.info.assert_any_call("Schedule checker started with create_task()")
+
+        # Даём задаче войти в цикл и уснуть на asyncio.sleep(интервал) — без этого
+        # отменённая до первого шага задача не выполнит тело и не попадёт в обработчик.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        # Задача жива (не упала сразу и не схлопнулась), но и не завершена — ждёт интервал
+        assert not task.done()
+        assert not task.cancelled()
+
+        task.cancel()
+        # check_schedules() ловит CancelledError и выходит из цикла, поэтому await
+        # не бросает исключение — но подавляем его на случай иного поведения.
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        assert task.done()
+        mock_logger.info.assert_any_call("Schedule checker cancelled")
 
 
 class TestIntegrationScenarios:

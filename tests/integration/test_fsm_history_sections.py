@@ -236,21 +236,80 @@ class TestDeviceEventRecording:
         assert events[0].new_state == "on"
 
     def test_should_not_break_transition_when_recording_fails(self, tmp_path: Path) -> None:
-        """Ошибка записи в журнал не влияет на обработку события."""
+        """Сбой записи в журнал не отменяет переход автомата.
+
+        Проверяется не «не бросило исключение», а результат: событие датчика дошло
+        до автомата и сменило его состояние, хотя запись в журнал упала. Поэтому
+        цепочка настоящая — ``state_change`` от датчика, подписка фабрики на него,
+        переход движка и мост, пишущий в журнал. Мост подключён последним, чтобы
+        его сбой наступил после того, как остальные подписчики уже отработали.
+        """
         import asyncio
         from unittest.mock import MagicMock
 
         from src.core.events.event_bus import EventBus
+        from src.core.fsm.engine import FSMDefinition, FSMEngine, Transition
+        from src.core.fsm.factory import FSMFactory
+        from src.core.registry import Registry
         from src.services.fsm_state_bridge import FSMStateBridge
+
+        fsm_entity_id = "light.kitchen_lighting_10"
+        motion_sensor = "binary_sensor.kitchen_motion"
+
+        bus = EventBus()
+        engine = FSMEngine(event_bus=bus)
+        factory = FSMFactory(engine, Registry(), event_bus=bus)
+        # Подписка фабрики на событие датчика: именно она превращает
+        # ``state_change`` в срабатывание автомата.
+        factory._subscribe_to_sensor_events(
+            device_id="light.kitchen",
+            fsm_entity_id=fsm_entity_id,
+            params={"motion_sensor": motion_sensor},
+            template_name="lighting",
+        )
+        engine.register_definition(
+            FSMDefinition(
+                entity_id=fsm_entity_id,
+                initial_state="OFF",
+                states=("OFF", "ON"),
+                transitions=(
+                    Transition(from_state="OFF", to_state="ON", trigger="motion_detected"),
+                ),
+                target_device_id="light.kitchen",
+            )
+        )
 
         store = MagicMock()
         store.save_sensor_event.side_effect = RuntimeError("db locked")
-        bus = EventBus()
+        store.save_fsm_transition.side_effect = RuntimeError("db locked")
         FSMStateBridge(event_bus=bus, dispatcher=None, event_store=store)
 
-        asyncio.run(
-            bus.publish(
-                "state_change",
-                {"entity_id": "light.kitchen", "old_state": "off", "new_state": "on"},
-            )
-        )
+        assert engine.get_state(fsm_entity_id).current_state == "OFF"
+
+        async def scenario() -> None:
+            await bus.publish("state_change", {"entity_id": motion_sensor, "new_state": "on"})
+            # Переход публикуется отдельной задачей; без неё проверка была бы
+            # проверкой неполного наблюдения.
+            await engine._drain_publish_tasks()
+
+        asyncio.run(scenario())
+
+        # Переход состоялся, хотя запись в журнал упала.
+        state = engine.get_state(fsm_entity_id)
+        assert state is not None
+        assert state.current_state == "ON"
+
+        # Запись в журнал была предпринята — молчаливый отказ от журнала тоже
+        # не считается выполненной работой.
+        store.save_sensor_event.assert_called_once()
+        saved_event = store.save_sensor_event.call_args.args[0]
+        assert saved_event.entity_id == motion_sensor
+        assert saved_event.new_state == "on"
+
+        # Переход автомата тоже дошёл до журнала (он публикуется после смены
+        # состояния, поэтому к моменту проверки задача уже отработала).
+        store.save_fsm_transition.assert_called_once()
+        saved_transition = store.save_fsm_transition.call_args.args[0]
+        assert saved_transition.entity_id == "light.kitchen"
+        assert saved_transition.to_state == "ON"
+        assert saved_transition.success is True

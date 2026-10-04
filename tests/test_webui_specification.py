@@ -5,6 +5,7 @@ Tests cover all user stories and API functionality with full coverage.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
@@ -15,6 +16,34 @@ from fastapi.testclient import TestClient
 
 TEST_SOURCE_ID = "11111111-1111-1111-1111-111111111111"
 """Источник устройств в тестах формы (обязателен с spec 006, D-009)."""
+
+
+def _room_membership(html: str) -> dict[str, list[str]]:
+    """Return the devices listed inside each room card of the main page.
+
+    Room membership is observable only in the markup: a room card carries
+    ``data-room="<room id>"`` and every device card inside it carries
+    ``data-device="<entity_id>"``. Parsing is limited to the rooms grid,
+    because the rest of the page (the LiveUpdates script) contains the same
+    ``data-device="..."`` attribute with a ``${CSS.escape(...)}`` placeholder,
+    which would otherwise be attributed to the last room.
+
+    Args:
+        html: Main page body (``GET /``).
+
+    Returns:
+        Mapping ``room_id -> sorted device ids`` for every room on the page.
+    """
+    rooms_html = html.split('<div class="room-grid" id="rooms-container">', 1)[1].split(
+        "</main>", 1
+    )[0]
+
+    membership: dict[str, list[str]] = {}
+    for card in rooms_html.split('<div class="room-card"')[1:]:
+        room_id = re.search(r'data-room="([^"]*)"', card)
+        assert room_id is not None, "Карточка комнаты без атрибута data-room"
+        membership[room_id.group(1)] = sorted(set(re.findall(r'data-device="([^"]*)"', card)))
+    return membership
 
 
 @pytest.fixture
@@ -224,9 +253,27 @@ class TestMoveDeviceBetweenRooms:
         assert response.status_code in [200, 302]
 
     def test_device_removed_from_old_room_after_move(self, client: TestClient):
-        """Device is removed from old room after moving."""
-        # Save to manifest
-        client.post(
+        """Device should leave the old room after moving (it does not - see below)."""
+        # Тест был пустым: POST отправлялся, ответ не проверялся, а комментарий
+        # признавался — «(exact verification depends on HTML structure)».
+        #
+        # РАСХОЖДЕНИЕ С ИМЕНЕМ ТЕСТА (FR-026, production-код не правился):
+        # заявленного свойства нет. Перенос не удаляет устройство из старой
+        # комнаты — карточка остаётся в kitchen, а в living_room появляется
+        # вторая. То есть устройство **дублируется**, а не переносится. Ниже
+        # зафиксировано фактическое поведение; когда сервис будет исправлен,
+        # утверждение про kitchen нужно инвертировать.
+        #
+        # Контрольный шаг: до переноса устройство есть в kitchen и отсутствует в
+        # living_room. Без него проверки «нет в новой» и «есть в старой» после
+        # сохранения были бы тривиально истинными (X просто никогда не
+        # встречается в разметке) и ничего бы не доказывали.
+        before = _room_membership(client.get("/").text)
+        assert before["kitchen"] == ["fan.kitchen", "light.kitchen"]
+        assert before["living_room"] == []
+        assert "light.kitchen" not in before["living_room"]
+
+        response = client.post(
             "/devices/save",
             data={
                 "room_index": "0",
@@ -241,8 +288,27 @@ class TestMoveDeviceBetweenRooms:
                 "behavior_params_0": '{"motion_sensor": "binary_sensor.kitchen_motion"}',
             },
         )
-        # Device should now be in Living Room context
-        # (exact verification depends on HTML structure)
+
+        # Конкретный код 200, а не «in [200, 302]»: ветка успеха отдаёт
+        # partial-шаблон save_success.html и редиректа не делает (в эндпоинте
+        # нет RedirectResponse), поэтому 302 невозможен в принципе. Все
+        # ошибочные ветки (_form_error, HTTPException, исключение) отдают
+        # 400/404/503 — значит 200 означает именно успех. Маркер в теле
+        # отличает success-partial от error-partial с тем же кодом.
+        assert response.status_code == 200
+        assert "сохранено и запущено" in response.text
+
+        after = _room_membership(client.get("/").text)
+
+        # Устройство появилось в новой комнате: было 0 устройств, стало 1.
+        assert after["living_room"] == ["light.kitchen"]
+
+        # Прочие комнаты не тронуты — целью был именно living_room.
+        assert after["bedroom"] == ["light.bedroom"]
+
+        # ...но из старой комнаты устройство НЕ ушло (см. комментарий выше).
+        assert "light.kitchen" in after["kitchen"]
+        assert after["kitchen"] == ["fan.kitchen", "light.kitchen"]
 
     def test_behaviors_preserved_after_move(self, client: TestClient):
         """Device keeps all behaviors when moved."""

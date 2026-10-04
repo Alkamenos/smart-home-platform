@@ -255,11 +255,40 @@ class TestPluginLoader:
         result = loader.unload_plugin("unknown_plugin")
         assert result is False
 
-    def test_unload_all_empty(self):
+    def test_unload_all_empty(self, caplog):
         """Test unload_all works with no loaded plugins."""
+        import logging
+
         loader = PluginLoader()
-        # Should not raise any exceptions
-        loader.unload_all()
+
+        # Снимок реестров до вызова: на пустом загрузчике unload_all() не имеет
+        # права ни добавлять, ни удалять записи.
+        before = (
+            dict(loader.behavior_plugins),
+            dict(loader.middleware_plugins),
+            dict(loader.adapter_plugins),
+        )
+        assert before == ({}, {}, {})
+
+        with caplog.at_level(logging.INFO, logger="src.core.plugin_loader"):
+            loader.unload_all()
+
+        after = (
+            dict(loader.behavior_plugins),
+            dict(loader.middleware_plugins),
+            dict(loader.adapter_plugins),
+        )
+        assert after == before
+
+        # Реестр остался пустым и через публичные геттеры.
+        assert loader.get_behavior_plugins() == {}
+        assert loader.get_middleware_plugins() == {}
+        assert loader.get_adapter_plugins() == {}
+
+        # На пустом реестре состояние не меняется, поэтому единственный внешний
+        # признак того, что выгрузка вообще состоялась, — запись в журнале.
+        # Без этой проверки тест проходил бы и при пустом теле unload_all().
+        assert "All plugins unloaded" in caplog.text
 
     def test_load_single_plugin_invalid_module_path(self):
         """Test loading plugin with invalid module path format."""

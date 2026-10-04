@@ -7,8 +7,18 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from loguru import logger
 
 from core.events.event_bus import EventBus
+
+
+@pytest.fixture
+def log_records():
+    """Собирает записи журнала loguru, не меняя настройки других sinks."""
+    records = []
+    sink_id = logger.add(lambda message: records.append(message.record), level="DEBUG")
+    yield records
+    logger.remove(sink_id)
 
 
 class TestEventBusInitialization:
@@ -104,22 +114,58 @@ class TestUnsubscribe:
         assert handler2 in bus._subscribers["motion_detected"]
 
     def test_unsubscribe_nonexistent_event_type(self):
-        """Should not raise error when unsubscribing from nonexistent event type."""
+        """Should not raise error when unsubscribing from nonexistent event type.
+
+        Отписка от несуществующего типа события обязана быть полным no-op: реестр
+        подписчиков не меняется, чужой тип не появляется, а отфильтрованная
+        подписка с тем же обработчиком (но другим типом события) остаётся на
+        месте — сравнение идёт и по типу события, и по ссылке на обработчик.
+        """
         bus = EventBus()
         handler = AsyncMock()
+        keeper = AsyncMock()
+
+        bus.subscribe("motion_detected", keeper)
+        bus.subscribe_with_filter("state_changed", {"device_id": "sensor.motion_1"}, handler)
+        subscribers_before = {event: list(handlers) for event, handlers in bus._subscribers.items()}
+        filtered_before = list(bus._filtered_subscribers)
 
         # Should not raise any exception
         bus.unsubscribe("nonexistent_event", handler)
 
+        assert bus._subscribers == subscribers_before
+        assert "nonexistent_event" not in bus._subscribers
+        assert bus._subscribers["motion_detected"] == [keeper]
+        assert bus._filtered_subscribers == filtered_before
+
+        # Контроль: та же отписка для существующей подписки реестр обязана менять,
+        # иначе утверждения выше были бы вакуумными.
+        bus.subscribe("nonexistent_event", keeper)
+        bus.unsubscribe("nonexistent_event", keeper)
+        assert keeper not in bus._subscribers["nonexistent_event"]
+
     def test_unsubscribe_handler_not_subscribed(self):
-        """Should not raise error when unsubscribing handler that wasn't subscribed."""
+        """Should not raise error when unsubscribing handler that wasn't subscribed.
+
+        Отписка обработчика, которого нет в списке, не должна выкашивать список:
+        остальные подписчики того же события сохраняются вместе с порядком.
+        """
         bus = EventBus()
         handler1 = AsyncMock()
         handler2 = AsyncMock()
+        stranger = AsyncMock()
         bus.subscribe("motion_detected", handler1)
+        bus.subscribe("motion_detected", handler2)
 
         # Should not raise any exception
-        bus.unsubscribe("motion_detected", handler2)
+        bus.unsubscribe("motion_detected", stranger)
+
+        assert bus._subscribers["motion_detected"] == [handler1, handler2]
+        assert stranger not in bus._subscribers["motion_detected"]
+
+        # Контроль: настоящая отписка сокращает список ровно на одну запись.
+        bus.unsubscribe("motion_detected", handler1)
+        assert bus._subscribers["motion_detected"] == [handler2]
 
 
 class TestSubscribeWithFilter:
@@ -389,12 +435,30 @@ class TestPublish:
         failing_handler.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_publishes_to_no_subscribers(self):
-        """Should handle publishing when there are no subscribers."""
+    async def test_publishes_to_no_subscribers(self, log_records):
+        """Should handle publishing when there are no subscribers.
+
+        У EventBus нет счётчика доставок и истории событий, поэтому единственное
+        наблюдаемое следствие публикации в пустую шину — запись в журнале: она
+        доказывает, что метод отработал, а не выше сразу.
+        """
         bus = EventBus()
 
         # Should not raise any exception
-        await bus.publish("nonexistent_event", {"data": "value"})
+        result = await bus.publish("nonexistent_event", {"data": "value"}, trace_id="empty-bus")
+
+        assert result is None
+        # Публикация не создаёт подписок: шина осталась пустой
+        assert bus._subscribers == {}
+        assert bus._filtered_subscribers == []
+        # Событие без подписчиков всё равно попало в журнал с trace_id (R-05)
+        published = [
+            record
+            for record in log_records
+            if "Publishing event: nonexistent_event" in record["message"]
+        ]
+        assert len(published) == 1
+        assert published[0]["extra"]["trace_id"] == "empty-bus"
 
     @pytest.mark.asyncio
     async def test_handler_without_trace_id_support(self):

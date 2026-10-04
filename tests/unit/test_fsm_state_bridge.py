@@ -113,18 +113,42 @@ class TestHomeAssistantMirror:
         dispatcher.submit.assert_not_awaited()
 
     async def test_should_not_raise_when_dispatcher_fails(
-        self, bridge: FSMStateBridge, dispatcher: MagicMock
+        self, bridge: FSMStateBridge, dispatcher: MagicMock, event_store: MagicMock
     ) -> None:
-        """Ошибка зеркалирования логируется и не пробрасывается (FR-015)."""
+        """Ошибка зеркалирования логируется и не мешает записи в журнал (FR-015)."""
         dispatcher.submit = AsyncMock(side_effect=RuntimeError("adapter down"))
 
         await bridge.on_transitioned(EVENT_FSM_TRANSITIONED, TRANSITION_PAYLOAD)
 
+        # Отправка была предпринята и упала на настоящем намерении, а не была
+        # пропущена: иначе «сбой диспетчера» ничего не проверял бы.
+        dispatcher.submit.assert_awaited_once()
+        intent = dispatcher.submit.await_args.args[0]
+        assert intent.data["value"] == "ON_MOTION"
+        assert intent.device_id == TRANSITION_PAYLOAD["fsm_id"]
+
+        # Главное: сбой зеркала не отменяет запись перехода в журнал.
+        event_store.save_fsm_transition.assert_called_once()
+        saved = event_store.save_fsm_transition.call_args.args[0]
+        assert saved.entity_id == "light.kitchen"
+        assert saved.to_state == "ON_MOTION"
+        assert saved.success is True
+
     async def test_should_not_raise_when_dispatcher_absent(self) -> None:
-        """Без диспетчера (автономный режим) мост работает."""
-        bridge = FSMStateBridge(event_bus=EventBus(), dispatcher=None, event_store=MagicMock())
+        """Без диспетчера (автономный режим) переход всё равно попадает в журнал."""
+        event_store = MagicMock()
+        bridge = FSMStateBridge(event_bus=EventBus(), dispatcher=None, event_store=event_store)
 
         await bridge.on_transitioned(EVENT_FSM_TRANSITIONED, TRANSITION_PAYLOAD)
+
+        # Журнал не зависит от наличия диспетчера: отсутствие зеркала не должно
+        # превращать переход в незаписанный.
+        event_store.save_fsm_transition.assert_called_once()
+        saved = event_store.save_fsm_transition.call_args.args[0]
+        assert saved.entity_id == "light.kitchen"
+        assert saved.from_state == "OFF"
+        assert saved.to_state == "ON_MOTION"
+        assert saved.success is True
 
     async def test_should_skip_mirror_when_required_fields_absent(
         self, bridge: FSMStateBridge, dispatcher: MagicMock
@@ -163,18 +187,41 @@ class TestTransitionLog:
         assert saved.success is False
 
     async def test_should_not_raise_when_event_store_fails(
-        self, bridge: FSMStateBridge, event_store: MagicMock
+        self, bridge: FSMStateBridge, dispatcher: MagicMock, event_store: MagicMock
     ) -> None:
-        """Ошибка записи в журнал не влияет на переход (FR-003)."""
+        """Ошибка записи в журнал не влияет на переход и зеркалирование (FR-003)."""
         event_store.save_fsm_transition.side_effect = RuntimeError("db locked")
 
         await bridge.on_transitioned(EVENT_FSM_TRANSITIONED, TRANSITION_PAYLOAD)
 
+        # Попытка записи была, и она упала на корректно собранной записи
+        # успешного перехода.
+        event_store.save_fsm_transition.assert_called_once()
+        saved = event_store.save_fsm_transition.call_args.args[0]
+        assert saved.success is True
+        assert saved.to_state == "ON_MOTION"
+
+        # Зеркалирование состояния при этом состоялось.
+        dispatcher.submit.assert_awaited_once()
+        intent = dispatcher.submit.await_args.args[0]
+        assert intent.device_id == TRANSITION_PAYLOAD["fsm_id"]
+        assert intent.data["value"] == "ON_MOTION"
+
     async def test_should_not_raise_when_event_store_absent(self) -> None:
-        """Без журнала мост продолжает работать."""
-        bridge = FSMStateBridge(event_bus=EventBus(), dispatcher=None, event_store=None)
+        """Без журнала и диспетчера переход всё равно доходит до клиентов."""
+        broadcaster = AsyncMock()
+        bridge = FSMStateBridge(
+            event_bus=EventBus(),
+            dispatcher=None,
+            event_store=None,
+            broadcaster=broadcaster,
+        )
 
         await bridge.on_transitioned(EVENT_FSM_TRANSITIONED, TRANSITION_PAYLOAD)
+
+        # Живое обновление — независимое действие: без журнала и без Home
+        # Assistant подключённые клиенты всё равно получают переход.
+        broadcaster.assert_awaited_once_with(TRANSITION_PAYLOAD)
 
 
 class TestEndToEndViaBus:

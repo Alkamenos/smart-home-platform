@@ -384,13 +384,69 @@ class TestHAAdapterWebSocketLifecycle:
 
     @pytest.mark.asyncio
     async def test_start_pyscript_mode_is_noop(self):
-        """start() should be no-op in pyscript mode."""
+        """start() should be no-op in pyscript mode, and start() works otherwise.
+
+        Тест был пустым: `await adapter.start()` и комментарий «Should complete
+        immediately without creating tasks». Проверки отсутствовали, поэтому
+        тест проходил бы и при совершенно пустом теле `start()`.
+
+        Теперь отсутствие побочных эффектов проверяется явно: не создаётся
+        фоновая задача, не поднимается WebSocket-клиент, `hass` не трогается.
+        Контрольная половина — тот же самый `start()` в режиме `websocket` —
+        лежит в этом же тесте: без неё утверждения «задач не появилось» и
+        «клиент не поднялся» неотличимы от кода с пустым телом.
+        """
         hass_mock = MagicMock()
         adapter = HAAdapter(mode="pyscript", engine=None, hass=hass_mock)
 
-        await adapter.start()
+        tasks_before = asyncio.all_tasks()
+        with patch.object(adapter, "_connect_websocket", new_callable=AsyncMock) as mock_connect:
+            await adapter.start()
+            tasks_after = asyncio.all_tasks()
 
-        # Should complete immediately without creating tasks
+            # Фоновая задача не создана — множество задач цикла не изменилось.
+            assert tasks_after == tasks_before
+            assert adapter._reconnect_task is None
+
+            # WebSocket-клиент не поднимался ни напрямую, ни в задаче.
+            mock_connect.assert_not_called()
+            mock_connect.assert_not_awaited()
+            assert adapter._ws_client is None
+            assert adapter._session is None
+
+            # Обращений к hass (websocket-путь к нему и не должен ходить).
+            assert hass_mock.method_calls == []
+
+        # --- Контрольная половина: тот же start() в режиме websocket задачу
+        # создаёт. Событие ставится внутри фоновой задачи, поэтому ожидание
+        # точное: sleep(0.1) из соседнего теста не нужен.
+        ws_adapter = HAAdapter(
+            mode="websocket",
+            ws_url="ws://localhost:8123",
+            token="test_token",
+        )
+        connect_started = asyncio.Event()
+
+        async def fake_connect():
+            connect_started.set()
+
+        mock_ws_connect = AsyncMock(side_effect=fake_connect)
+        ws_tasks_before = asyncio.all_tasks()
+
+        with patch.object(ws_adapter, "_connect_websocket", new=mock_ws_connect):
+            await ws_adapter.start()
+
+            # Снимок сделан сразу после start(): сам start() ничего не ждёт,
+            # поэтому задача уже создана, но ещё не выполнялась и видна в
+            # all_tasks() — ожидание через sleep не требуется.
+            new_tasks = asyncio.all_tasks() - ws_tasks_before
+            assert new_tasks == {ws_adapter._reconnect_task}
+            assert ws_adapter._reconnect_task is not None
+
+            await asyncio.wait_for(connect_started.wait(), timeout=1.0)
+            await asyncio.wait_for(ws_adapter._reconnect_task, timeout=1.0)
+
+        mock_ws_connect.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_start_websocket_mode_creates_task(self):

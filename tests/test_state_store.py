@@ -6,9 +6,12 @@ Tests for State Store implementations
 #  SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import contextlib
 import json
 import tempfile
+import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -18,6 +21,73 @@ from core import (
     InputTextStateStore,
     MemoryStateStore,
 )
+from core.persistence import state_store as state_store_module
+
+
+# ============================================
+# Детерминированное управление фоновой задачей дебаунса
+# ============================================
+
+
+class _ManualDebounceClock:
+    """
+    Управляемое ожидание для фоновой задачи DebouncedStateStore.
+
+    Задача `_background_flush()` крутится в бесконечном цикле
+    `while True: await asyncio.sleep(self._debounce_sec)`. Реальный сон сделал бы
+    тест зависимым от времени (и заставил бы ждать), поэтому вместо него используется
+    шлюз: пока тест не вызвал `expire_debounce()`, фоновая задача спит и ничего не пишет.
+    """
+
+    def __init__(self):
+        self.requested_delays: list[float] = []
+        self._gate = asyncio.Event()
+
+    async def sleep(self, delay: float) -> None:
+        """Вместо ожидания debounce_sec — ожидание сигнала от теста."""
+        self.requested_delays.append(delay)
+        await self._gate.wait()
+        # Шлюз сбрасываем, иначе бесконечный цикл крутился бы вхолостую.
+        self._gate.clear()
+        await asyncio.sleep(0)
+
+    def expire_debounce(self) -> None:
+        """Смоделировать истечение дебаунса."""
+        self._gate.set()
+
+
+class _AsyncioWithManualSleep:
+    """
+    Прокси над модулем asyncio, в котором подменён только sleep.
+
+    Подмена действует исключительно на модуль `core.persistence.state_store`
+    (её видит только фоновая задача дебаунса), остальной код получает настоящий
+    asyncio: Lock, create_task и прочее не подменяются.
+    """
+
+    def __init__(self, real_asyncio, fake_sleep):
+        self._real = real_asyncio
+        self._fake_sleep = fake_sleep
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def sleep(self, delay: float):
+        return self._fake_sleep(delay)
+
+
+async def _drain_until(predicate, max_yields: int = 100) -> bool:
+    """
+    Детерминированно дренировать очередь событийного цикла, пока предикат не станет истинным.
+
+    Никакого реального ожидания: только `asyncio.sleep(0)` — отдача управления планировщику.
+    Ограничение по числу итераций превращает зависание в понятный провал.
+    """
+    for _ in range(max_yields):
+        await asyncio.sleep(0)
+        if predicate():
+            return True
+    return False
 
 
 # ============================================
@@ -213,20 +283,49 @@ class TestFileStateStore:
 
     @pytest.mark.asyncio
     async def test_debounce(self, temp_file):
-        """Дебаунс работает"""
-        store = FileStateStore(temp_file, debounce_sec=1.0)
+        """
+        Три быстрых сохранения не создают файл сразу; на диск попадают все три записи.
+
+        ФАКТИЧЕСКОЕ ПОВЕДЕНИЕ (расхождение с именем теста, FR-026 — production-код не правим):
+        в FileStateStore дебаунс НЕ реализован вообще. `save()` только складывает состояние
+        в `_cache` и `_pending_writes`; фоновой задачи и таймера нет, а параметр
+        `debounce_sec` не читается ни в одном методе. Записать файл можно только явно —
+        через `flush()` (или `clear()`). Поэтому «истечение дебаунса» моделируется не
+        ожиданием времени, а вызовом flush(), а отсутствие автозаписи доказывается
+        подменой часов: даже через час после сохранения файл не появляется.
+        """
+        store = FileStateStore(temp_file, debounce_sec=0.05)
 
         # Быстрые сохранения
         await store.save("light.one", {"current": "ON"})
         await store.save("light.two", {"current": "OFF"})
         await store.save("light.three", {"current": "AUTO"})
 
-        # Сразу после сохранения файл может ещё не существовать
-        # 因为 дебаунс
-        await asyncio.sleep(0.1)
+        # Первая половина: на диске ничего нет, всё в очереди pending
+        assert not Path(temp_file).exists()
+        assert store._pending_writes == {"light.one", "light.two", "light.three"}
+        # Данные при этом уже видны через load() — кэш обновляется сразу
+        assert (await store.load("light.two"))["current"] == "OFF"
 
-        # Файл может ещё не быть записан
-        # Это ожидаемое поведение дебаунса
+        # Истечение дебаунса не приходит само: время уходит на час вперёд, а записи нет.
+        # (реальный сон заменён подменой часов — детерминированно и мгновенно)
+        with patch("core.persistence.state_store.time.time", return_value=time.time() + 3600):
+            await store.save("light.one", {"current": "ON_UPDATED"})
+
+        assert not Path(temp_file).exists()
+        assert store._pending_writes == {"light.one", "light.two", "light.three"}
+
+        # Контрольная половина: запись вообще работает — после flush() в файле ВСЕ три записи.
+        # Без неё проверка «файла нет» проходила бы и на коде, который никогда не пишет.
+        await store.flush()
+
+        assert Path(temp_file).exists()
+        data = json.loads(Path(temp_file).read_text())
+        assert set(data["states"]) == {"light.one", "light.two", "light.three"}
+        assert data["states"]["light.one"]["current"] == "ON_UPDATED"
+        assert data["states"]["light.two"]["current"] == "OFF"
+        assert data["states"]["light.three"]["current"] == "AUTO"
+        assert store._pending_writes == set()
 
     @pytest.mark.asyncio
     async def test_version_check(self, temp_file):
@@ -368,12 +467,46 @@ class TestDebouncedStateStore:
         assert loaded is not None
 
     @pytest.mark.asyncio
-    async def test_delays_write(self, debounced_store):
-        """Не пишет если дебаунс не истёк"""
-        await debounced_store.save("light.test", {"current": "ON"})
+    async def test_delays_write(self, inner_store):
+        """
+        save() НЕ пишет в обёрнутое хранилище сразу: запись появляется после дебаунса.
 
-        # Сразу после save данные могут быть в pending
-        # Это ожидаемое поведение
+        Проверяется именно «задержка», а не «наличие данных»: состояние после save()
+        доступно через сам DebouncedStateStore (он отдаёт pending), поэтому берём
+        обёрнутое хранилище напрямую — там до дебаунса должно быть пусто.
+
+        Детерминированность: реальное ожидание не используется. `asyncio.sleep` в
+        фоновой задаче `_background_flush()` подменён шлюзом, который открывает тест
+        (см. _ManualDebounceClock), поэтому «истечение дебаунса» наступает по команде.
+        """
+        clock = _ManualDebounceClock()
+        store = DebouncedStateStore(inner_store, debounce_sec=0.1)
+
+        with patch.object(
+            state_store_module, "asyncio", _AsyncioWithManualSleep(asyncio, clock.sleep)
+        ):
+            await store.save("light.test", {"current": "ON"})
+
+            # Первая половина: сразу после save() в обёрнутое хранилище ничего не ушло
+            assert await inner_store.load("light.test") is None
+            assert store._pending == {"light.test": {"current": "ON"}}
+
+            # Фоновая задача стартует и запрашивает паузу длиной ровно в debounce_sec
+            assert await _drain_until(lambda: bool(clock.requested_delays)) is True
+            assert clock.requested_delays == [0.1]
+
+            # Контрольная половина: пускаем дебаунс и убеждаемся, что запись появилась.
+            # Без неё первая половина была бы тривиальной (тест прошёл бы на коде,
+            # который никогда не пишет).
+            clock.expire_debounce()
+            assert await _drain_until(lambda: "light.test" in inner_store._store) is True
+            assert await inner_store.load("light.test") == {"current": "ON"}
+            assert store._pending == {}
+
+            # Гасим фоновую задачу, чтобы она не осталась жить до конца прогона
+            store._flush_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await store._flush_task
 
     @pytest.mark.asyncio
     async def test_flush_writes_all_pending(self, debounced_store):

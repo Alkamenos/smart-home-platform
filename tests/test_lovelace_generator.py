@@ -19,7 +19,7 @@ from dashboard import LovelaceGenerator
 
 
 @pytest.fixture
-def test_manifest_with_behaviors(tmp_path):
+def manifest_with_behaviors(tmp_path):
     """Создать тестовый манифест с устройствами и поведениями."""
     manifest_content = """
 version: 1
@@ -124,35 +124,35 @@ def generator():
 class TestLovelaceGenerator:
     """Тесты для LovelaceGenerator."""
 
-    def test_generate_returns_dict(self, generator, test_manifest_with_behaviors):
+    def test_generate_returns_dict(self, generator, manifest_with_behaviors):
         """Проверка, что generate возвращает dict."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
         assert isinstance(result, dict)
 
-    def test_generate_has_title(self, generator, test_manifest_with_behaviors):
+    def test_generate_has_title(self, generator, manifest_with_behaviors):
         """Проверка, что дашборд имеет заголовок из манифеста."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
         assert result["title"] == "Test Dashboard"
 
-    def test_generate_has_views(self, generator, test_manifest_with_behaviors):
+    def test_generate_has_views(self, generator, manifest_with_behaviors):
         """Проверка, что дашборд имеет вкладки."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
         assert "views" in result
         assert isinstance(result["views"], list)
         # Должно быть 3 вкладки (по количеству зон)
         assert len(result["views"]) == 3
 
-    def test_views_have_zone_titles(self, generator, test_manifest_with_behaviors):
+    def test_views_have_zone_titles(self, generator, manifest_with_behaviors):
         """Проверка, что вкладки имеют названия зон."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
         view_titles = [view["title"] for view in result["views"]]
         assert "Kitchen" in view_titles
         assert "Living Room" in view_titles
         assert "Bathroom" in view_titles
 
-    def test_views_have_zone_paths(self, generator, test_manifest_with_behaviors):
+    def test_views_have_zone_paths(self, generator, manifest_with_behaviors):
         """Проверка, что вкладки имеют пути zone.id."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
         view_paths = [view["path"] for view in result["views"]]
         assert "kitchen" in view_paths
         assert "living_room" in view_paths
@@ -163,15 +163,15 @@ class TestLovelaceGenerator:
         assert "Living Room" in view_titles
         assert "Bathroom" in view_titles  # комната называется "Bathroom"
 
-    def test_kitchen_view_has_device_cards(self, generator, test_manifest_with_behaviors):
+    def test_kitchen_view_has_device_cards(self, generator, manifest_with_behaviors):
         """Проверка, что вкладка кухни имеет карточку устройства."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
         kitchen_view = next(v for v in result["views"] if v["path"] == "kitchen")
         assert len(kitchen_view["cards"]) > 0
 
-    def test_device_control_card_exists(self, generator, test_manifest_with_behaviors):
+    def test_device_control_card_exists(self, generator, manifest_with_behaviors):
         """Проверка, что для каждого устройства создана карточка управления."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
 
         # Проверяем каждую зону
         for view in result["views"]:
@@ -185,9 +185,9 @@ class TestLovelaceGenerator:
         thermostat_cards = [c for c in living_room_view["cards"] if c.get("type") == "thermostat"]
         assert len(thermostat_cards) >= 1
 
-    def test_behavior_indicators_exist(self, generator, test_manifest_with_behaviors):
+    def test_behavior_indicators_exist(self, generator, manifest_with_behaviors):
         """Проверка, что для каждого behavior создан индикатор активности."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
 
         # Считаем количество behavior indicator карточек
         behavior_indicators = []
@@ -202,9 +202,9 @@ class TestLovelaceGenerator:
         # - Bathroom Fan: humidity_control (1)
         assert len(behavior_indicators) == 4
 
-    def test_behavior_indicator_has_priority(self, generator, test_manifest_with_behaviors):
+    def test_behavior_indicator_has_priority(self, generator, manifest_with_behaviors):
         """Проверка, что индикатор поведения содержит информацию о приоритете."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
 
         for view in result["views"]:
             for card in view["cards"]:
@@ -212,9 +212,9 @@ class TestLovelaceGenerator:
                     name = card.get("name", "")
                     assert "приоритет" in name or "priority" in name.lower()
 
-    def test_yaml_serializable(self, generator, test_manifest_with_behaviors):
+    def test_yaml_serializable(self, generator, manifest_with_behaviors):
         """Проверка, что результат может быть сериализован в YAML."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
         yaml_output = yaml.dump(result, default_flow_style=False, allow_unicode=True)
         assert yaml_output is not None
         assert len(yaml_output) > 0
@@ -223,9 +223,9 @@ class TestLovelaceGenerator:
         parsed = yaml.safe_load(yaml_output)
         assert parsed == result
 
-    def test_all_devices_have_cards(self, generator, test_manifest_with_behaviors):
+    def test_all_devices_have_cards(self, generator, manifest_with_behaviors):
         """Проверка, что все устройства из манифеста имеют карточки."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
 
         # Собираем все названия устройств из карточек
         device_names_in_cards = set()
@@ -278,9 +278,9 @@ class TestLovelaceGenerator:
         # В пустой зоне должна быть markdown карточка
         assert any(c.get("type") == "markdown" for c in empty_view["cards"])
 
-    def test_entity_id_generation(self, generator, test_manifest_with_behaviors):
+    def test_entity_id_generation(self, generator, manifest_with_behaviors):
         """Проверка корректной генерации entity_id."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
 
         # Проверяем, что entity_id имеют правильный формат
         for view in result["views"]:
@@ -294,9 +294,9 @@ class TestLovelaceGenerator:
                     entity_id = card.get("entity", "")
                     assert "." in entity_id
 
-    def test_complete_dashboard_structure(self, generator, test_manifest_with_behaviors):
+    def test_complete_dashboard_structure(self, generator, manifest_with_behaviors):
         """Проверка полной структуры дашборда."""
-        result = generator.generate(test_manifest_with_behaviors)
+        result = generator.generate(manifest_with_behaviors)
 
         # Проверка верхнеуровневой структуры
         assert "title" in result

@@ -111,6 +111,21 @@ def make_watchdog(
     )
 
 
+def _no_task_creation(coroutine: Any, *_args: Any, **_kwargs: Any) -> Any:
+    """Отказать в создании задачи, закрыв корутину, чтобы она не текла.
+
+    Args:
+        coroutine: Корутина, которую сторож хочет запустить задачей.
+        *_args: Прочие позиционные аргументы create_task.
+        **_kwargs: Прочие именованные аргументы create_task.
+
+    Raises:
+        RuntimeError: Всегда — задачу создать не удалось.
+    """
+    coroutine.close()
+    raise RuntimeError("no running event loop")
+
+
 class TestSnapshot:
     """Снимок состояний (FR-012)."""
 
@@ -454,11 +469,39 @@ class TestWatchdogLifecycle:
     async def test_should_not_raise_when_stopped_without_start(
         self, engine: FSMEngine, metrics: MetricsCollector
     ) -> None:
-        """Остановка без запуска безопасна."""
+        """Остановка без запуска безопасна и снимает отметку о запуске (FR-017)."""
         watchdog = make_watchdog(engine, metrics)
+        tasks_before = len(asyncio.all_tasks())
 
         await watchdog.stop()
         await watchdog.stop()
+
+        assert watchdog._running is False
+        assert watchdog._task is None
+        assert len(asyncio.all_tasks()) == tasks_before, "stop() не должен запускать задач"
+        assert metrics.registry.get_sample_value("watchdog_checks_total", {"result": "ok"}) is None
+
+        # Сторож помечается запущенным до создания задачи, поэтому сбой создания
+        # задачи оставляет его «запущенным» без задачи. stop() обязан снять эту
+        # отметку, иначе сторож не запустится больше никогда.
+        with (
+            patch.object(asyncio, "create_task", side_effect=_no_task_creation),
+            pytest.raises(RuntimeError),
+        ):
+            watchdog.start()
+        assert watchdog._running is True, "start() помечает сторожа запущенным до создания задачи"
+
+        await watchdog.stop()
+
+        assert watchdog._running is False
+        assert watchdog._task is None
+
+        watchdog.start()
+        await asyncio.sleep(0.05)
+        await watchdog.stop()
+
+        checks = metrics.registry.get_sample_value("watchdog_checks_total", {"result": "ok"})
+        assert checks is not None and checks >= 1, "после досрочной остановки сторож запускается"
 
     async def test_should_survive_check_failure_in_loop(
         self, engine: FSMEngine, metrics: MetricsCollector

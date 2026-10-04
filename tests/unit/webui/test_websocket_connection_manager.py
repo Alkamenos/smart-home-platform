@@ -5,7 +5,7 @@
 событие не отправляется, а отключившиеся соединения отключаются (FR-025).
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from src.webui.routes.devices.websocket import WebSocketConnectionManager
@@ -62,8 +62,21 @@ class TestConnectionLifecycle:
     def test_should_not_raise_when_disconnecting_unknown_connection(
         self, manager: WebSocketConnectionManager
     ) -> None:
-        """Отключение неизвестного соединения безопасно."""
-        manager.disconnect(make_socket())
+        """Отключение неизвестного соединения не меняет реестр."""
+        known = make_socket()
+        manager.active_connections.append(known)
+        manager.register_identity(known, "user-1")
+        identities_before = dict(manager._identities)  # noqa: SLF001
+        unknown = make_socket()
+
+        manager.disconnect(unknown)
+
+        # Реестр ровно прежний: чужое не удалено, лишнее не добавлено
+        assert manager.active_connections == [known]
+        assert unknown not in manager.active_connections
+        assert manager._identities == identities_before  # noqa: SLF001
+        # Известное соединение осталось аутентифицированным и рабочим
+        assert manager.is_authenticated(known) is True
 
 
 class TestIdentityAndSubscriptions:
@@ -110,8 +123,25 @@ class TestIdentityAndSubscriptions:
     def test_should_not_raise_when_removing_unknown_subscription(
         self, manager: WebSocketConnectionManager
     ) -> None:
-        """Отписка от неизвестного устройства безопасна."""
-        manager.remove_subscription(make_socket(), "device-1")
+        """Отписка от неизвестного устройства безопасна и не портит подписки."""
+        socket = make_socket()
+        manager.register_identity(socket, "user-1")
+        manager.add_subscription(socket, "device-1")
+        # Подписка, попавшая в реестр помимо add_subscription (например, восстановленная)
+        manager._identities[socket]["devices"].add("device-legacy")  # noqa: SLF001
+        unknown = make_socket()
+
+        manager.remove_subscription(socket, "device-2")
+        manager.remove_subscription(socket, "device-legacy")
+        manager.remove_subscription(unknown, "device-1")
+
+        assert manager.is_subscribed(socket, "device-2") is False
+        # Подписка из реестра убрана, своя не тронута
+        assert manager.is_subscribed(socket, "device-legacy") is False
+        assert manager.is_subscribed(socket, "device-1") is True
+        # Неизвестное соединение не получает запись об идентичности
+        assert unknown not in manager._identities  # noqa: SLF001
+        assert set(manager._identities) == {socket}  # noqa: SLF001
 
 
 class TestAccessCheck:
@@ -276,8 +306,23 @@ class TestBroadcastAllAndPersonal:
     async def test_should_not_raise_when_personal_send_fails(
         self, manager: WebSocketConnectionManager
     ) -> None:
-        """Ошибка личной отправки не поднимается."""
-        socket = make_socket()
-        socket.send_json = AsyncMock(side_effect=RuntimeError("closed"))
+        """Сбой личной отправки не отключает клиента и не мешает доставке остальным."""
+        broken = make_socket()
+        broken.send_json = AsyncMock(side_effect=RuntimeError("closed"))
+        healthy = make_socket()
+        await manager.connect(broken)
+        await manager.connect(healthy)
 
-        await manager.send_personal(socket, {"type": "pong"})
+        with patch("src.webui.routes.devices.websocket.logger") as mock_logger:
+            await manager.send_personal(broken, {"type": "pong"})
+
+            assert mock_logger.error.call_count == 1
+
+        # Отправка была предпринята и сбой проглочен, а не передан вызывающему
+        broken.send_json.assert_awaited_once_with({"type": "pong"})
+        # В отличие от broadcast, личная отправка реестр не чистит
+        assert manager.active_connections == [broken, healthy]
+        # Сбой одного получателя не мешает общей рассылке остальным
+        await manager.broadcast({"type": "ping"})
+
+        healthy.send_json.assert_awaited_once_with({"type": "ping"})

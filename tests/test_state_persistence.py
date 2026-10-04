@@ -246,9 +246,27 @@ class TestClearState:
     def test_no_error_for_nonexistent_entity(self, persistence_with_data):
         """clear_state не вызывает ошибок для несуществующего entity"""
         persistence = persistence_with_data
+        path = Path(persistence.storage_path)
 
-        # Не должно вызывать исключений
+        # Снимок файла до вызова: для отсутствующего идентификатора у метода нет
+        # повода ничего переписывать, и это видно по байтам, а не по «не упало».
+        before = path.read_bytes()
+
         persistence.clear_state("light.nonexistent")
+
+        after = path.read_bytes()
+
+        # Состояние несуществующего идентификатора не появилось в хранилище, а
+        # существующие состояния не пострадали.
+        assert after == before
+        data = json.loads(after)
+        assert "light.nonexistent" not in data
+        assert data == {
+            "light.one": {"state": "ON", "context": {}},
+            "light.two": {"state": "OFF", "context": {}},
+        }
+        assert persistence.load_state("light.nonexistent") is None
+        assert persistence.load_state("light.one") == ("ON", {})
 
 
 class TestClearAll:
@@ -285,9 +303,15 @@ class TestClearAll:
         os.unlink(path)
 
         persistence = StatePersistence(path)
+        assert not persistence.storage_path.exists()
 
-        # Не должно вызывать исключений
         persistence.clear_all()
+
+        # Фактическое поведение: clear_all только удаляет файл, поэтому и при
+        # отсутствующем файле он не появляется. Проверяется не «не упало», а
+        # состояние хранилища: файла нет и ни одного состояния не читается.
+        assert not persistence.storage_path.exists()
+        assert persistence.load_state("light.one") is None
 
 
 class TestSaveAll:

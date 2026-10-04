@@ -15,6 +15,7 @@
 #  SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import logging
 import time
 
 import pytest
@@ -374,21 +375,130 @@ class TestWebSocketEventBatcher:
         assert received_batch is not None
 
     @pytest.mark.asyncio
-    async def test_callback_exception_handling(self, batcher):
-        """Исключения в callback не ломают батчер."""
+    async def test_callback_exception_handling(self, batcher, monkeypatch, caplog):
+        """Исключения в callback не ломают батчер.
+
+        Тест был пустым: подменённый callback бросал ValueError, три события
+        добавлялись, затем шёл `asyncio.sleep(0.1)` и не было НИ ОДНОЙ
+        проверки. Комментарий «Батч должен всё же быть создан» описывал
+        утверждение, которого в тесте не было.
+
+        Фактическое поведение production-кода (`_flush_batch`):
+
+        * async-callback **не awaited**, а запускается через
+          `asyncio.create_task`, поэтому исключение всплывает уже в этой
+          задаче и **не доходит** до вызывающего `add_event`/`flush`;
+        * `try/except` вокруг вызова **не логирует** исключение async-callback:
+          тело корутины выполняется позже, вне блока try. Логируется только
+          исключение синхронного callback (отдельный тест ниже);
+        * батч при этом считается созданным: буфер очищен, статистика учтена,
+          а батчер остаётся рабочим — следующие события не теряются.
+
+        Ожидание детерминированное: задача callback перехватывается перехватом
+        `asyncio.create_task` и awaited напрямую, поэтому `asyncio.sleep` не
+        нужен — пауза была бы единственным способом узнать, что исключение
+        «не мешает», и делала бы проверку зависимой от тайминга.
+        """
+        created: list[tuple[str, asyncio.Task[None]]] = []
+        real_create_task = asyncio.create_task
+
+        def recording_create_task(coro, **kwargs):
+            task = real_create_task(coro, **kwargs)
+            created.append((getattr(coro, "__qualname__", ""), task))
+            return task
+
+        monkeypatch.setattr(asyncio, "create_task", recording_create_task)
+
+        calls: list[WebSocketBatch] = []
 
         async def bad_callback(batch):
+            calls.append(batch)
             raise ValueError("Тестовая ошибка")
 
         batcher.on_batch_ready = bad_callback
 
-        # Добавляем событие (должно не упасть)
-        for i in range(3):
-            event = WebSocketEvent(device_id=f"light.room{i}", state="ON")
-            await batcher.add_event(event)
+        with caplog.at_level(logging.ERROR, logger="core.persistence.websocket_batcher"):
+            for i in range(3):
+                event = WebSocketEvent(device_id=f"light.room{i}", state="ON")
+                await batcher.add_event(event)
 
-        # Батч должен всё же быть создан
-        await asyncio.sleep(0.1)  # Даём время на срабатывание
+        # Подмена больше не нужна: дальше работаем с настоящим create_task.
+        monkeypatch.undo()
+
+        # Батч создан несмотря на исключение: буфер очищен, статистика учтена.
+        assert batcher.get_batch_size() == 0
+        stats = batcher.get_statistics()
+        assert stats["total_events"] == 3
+        assert stats["total_batches"] == 1
+
+        # Callback выполнен в собственной задаче — ровно в одной. Если бы его
+        # awaited на месте, ValueError вылетел бы из add_event и тест упал бы
+        # ещё на строках выше.
+        callback_tasks = [task for name, task in created if name.endswith("bad_callback")]
+        assert len(callback_tasks) == 1
+        callback_task = callback_tasks[0]
+
+        # Исключение действительно было, и оно ушло в задачу, а не к вызывающему.
+        with pytest.raises(ValueError, match="Тестовая ошибка"):
+            await callback_task
+
+        # Только теперь coroutine отработала: батч дошёл до callback целиком.
+        assert len(calls) == 1
+        assert calls[0].size() == 3
+
+        # РАСХОЖДЕНИЕ: батчер не залогировал исключение async-callback — блок
+        # try/except в _flush_batch не покрывает тело запущенной корутины.
+        assert "Ошибка в callback батча" not in caplog.text
+
+        # Батчер жив: следующий батч собирается и доставляется нормально,
+        # предыдущие события не потеряны и не пересобираются.
+        delivered: list[WebSocketBatch] = []
+
+        def sync_good_callback(batch):
+            delivered.append(batch)
+
+        batcher.on_batch_ready = sync_good_callback
+
+        event = WebSocketEvent(device_id="light.after_failure", state="OFF")
+        await batcher.add_event(event)
+        batch = await batcher.flush()
+
+        assert batch is not None
+        assert [item.device_id for item in delivered[0].get_events_list()] == [
+            "light.after_failure"
+        ]
+        stats = batcher.get_statistics()
+        assert stats["total_events"] == 4
+        assert stats["total_batches"] == 2
+
+    @pytest.mark.asyncio
+    async def test_sync_callback_exception_is_logged(self, batcher, caplog):
+        """Исключение синхронного callback перехватывается и попадает в журнал.
+
+        Контрольная половина к `test_callback_exception_handling`: там
+        утверждается, что исключение async-callback **не** логируется, и без
+        этой проверки отрицание было бы пустым — сломанный `except` в
+        `_flush_batch` прошёл бы незамеченным.
+        """
+
+        def bad_sync_callback(batch):
+            raise ValueError("Ошибка синхронного callback")
+
+        batcher.on_batch_ready = bad_sync_callback
+
+        with caplog.at_level(logging.ERROR, logger="core.persistence.websocket_batcher"):
+            event = WebSocketEvent(device_id="light.kitchen", state="ON")
+            await batcher.add_event(event)
+            batch = await batcher.flush()
+
+        # Исключение не пробрасывается вызывающему — flush отработал нормально.
+        assert batch is not None
+        assert batch.size() == 1
+        assert batcher.get_batch_size() == 0
+
+        # ...но батчер его поймал и записал в журнал.
+        assert "Ошибка в callback батча" in caplog.text
+        assert "Ошибка синхронного callback" in caplog.text
 
     @pytest.mark.asyncio
     async def test_performance_many_events(self, batcher):

@@ -114,8 +114,19 @@ class TestBackupServiceSession:
     @pytest.mark.asyncio
     async def test_close_without_session(self, backup_service):
         """Test closing when no session exists."""
-        # Should not raise
-        await backup_service.close()
+        # Предусловие: сессии ещё нет.
+        assert backup_service._session is None
+
+        # close() не имеет права создавать сессию «на всякий случай»: незакрытая
+        # ClientSession держит коннектор, и её появление в атрибуте означает, что
+        # сервис остался с открытым ресурсом. Поэтому проверяется не «не упало»,
+        # а состояние: сессии нет ни до, ни после вызова, и ни одна не создана.
+        with patch("src.services.backup_service.aiohttp.ClientSession") as session_cls:
+            await backup_service.close()
+
+            session_cls.assert_not_called()
+
+        assert backup_service._session is None
 
 
 class TestBackupServiceRequest:

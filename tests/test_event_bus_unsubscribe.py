@@ -78,12 +78,42 @@ class TestEventBusFilteredUnsubscribe:
     async def test_unsubscribe_with_filter_should_be_noop_when_not_subscribed(
         self, bus: EventBus
     ) -> None:
-        """Отписка несуществующей подписки не должна поднимать исключение."""
+        """Отписка несуществующей подписки не должна поднимать исключение.
+
+        Совпадение ищется по тройке (тип события, фильтр, обработчик), поэтому
+        чужие записи — с другим фильтром, другим типом события или той же
+        функцией — должны уцелеть (FR-008).
+        """
+        calls: list[str] = []
 
         async def handler(event_type: str, payload: dict, trace_id: str | None = None) -> None:
-            return None
+            calls.append("handler")
+
+        async def same_handler_other_event(
+            event_type: str, payload: dict, trace_id: str | None = None
+        ) -> None:
+            calls.append("other_event")
+
+        bus.subscribe_with_filter("state_change", {"entity_id": "binary_sensor.motion"}, handler)
+        bus.subscribe_with_filter("other_event", {"entity_id": "nope"}, handler)
+        bus.subscribe_with_filter("other_event", {"entity_id": "nope"}, same_handler_other_event)
+        filtered_before = list(bus._filtered_subscribers)
 
         bus.unsubscribe_with_filter("state_change", {"entity_id": "nope"}, handler)
+
+        assert bus._filtered_subscribers == filtered_before
+
+        # Уцелевшие подписки продолжают получать события.
+        await bus.publish("other_event", {"entity_id": "nope"})
+        assert calls == ["handler", "other_event"]
+
+        # Контроль: отписка с точным совпадением тройки реестр обязана менять,
+        # иначе утверждение выше было бы вакуумным.
+        bus.unsubscribe_with_filter("other_event", {"entity_id": "nope"}, handler)
+        assert bus._filtered_subscribers == [
+            ("state_change", {"entity_id": "binary_sensor.motion"}, handler),
+            ("other_event", {"entity_id": "nope"}, same_handler_other_event),
+        ]
 
     async def test_unsubscribe_should_remove_filtered_subscription_by_handler(
         self, bus: EventBus

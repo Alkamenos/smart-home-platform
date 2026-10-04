@@ -135,10 +135,23 @@ class TestMetricsReporterTransition:
     async def test_should_ignore_transition_when_collector_not_initialized(
         self, bus: EventBus, registry: CollectorRegistry
     ) -> None:
-        """Неинициализированный сборщик не приводит к исключению."""
-        reporter = MetricsReporter(bus, MetricsCollector(registry=registry))
+        """Неинициализированный сборщик: запись предпринята, но ничего не учтено.
+
+        Ядро не должно зависеть от наличия коллектора (конституция I, FR-001),
+        поэтому проверяются обе стороны: подписчик действительно передал событие
+        в сборщик, а тот молча ничего не записал.
+        """
+        collector = MetricsCollector(registry=registry)
+        metrics = MagicMock(spec=MetricsCollector, wraps=collector)
+        reporter = MetricsReporter(bus, metrics)
 
         await reporter.handle(EVENT_FSM_TRANSITIONED, transition_payload())
+
+        metrics.record_fsm_transition.assert_called_once_with(
+            fsm_name=FSM_ID, from_state="off", to_state="on", device=DEVICE
+        )
+        assert collector.is_initialized() is False
+        assert list(registry.collect()) == [], "Неинициализированный сборщик ничего не регистрирует"
 
 
 class TestMetricsReporterRejection:
@@ -226,16 +239,26 @@ class TestMetricsReporterResilience:
 
         assert mock_logger.warning.called
 
-    async def test_should_not_raise_when_collector_fails(
-        self, bus: EventBus, registry: CollectorRegistry
-    ) -> None:
-        """Ошибка записи в показатели не прерывает обработку события (FR-008)."""
+    async def test_should_not_raise_when_collector_fails(self, bus: EventBus) -> None:
+        """Ошибка записи гасится и не выключает подписчика (FR-008)."""
         metrics = MagicMock(spec=MetricsCollector)
-        metrics.is_initialized.return_value = True
         metrics.record_fsm_transition.side_effect = RuntimeError("boom")
         reporter = MetricsReporter(bus, metrics)
 
-        await reporter.handle(EVENT_FSM_TRANSITIONED, transition_payload())
+        with patch("services.metrics_reporter.logger") as mock_logger:
+            await reporter.handle(EVENT_FSM_TRANSITIONED, transition_payload(), "trace-9")
+
+        metrics.record_fsm_transition.assert_called_once_with(
+            fsm_name=FSM_ID, from_state="off", to_state="on", device=DEVICE
+        )
+        assert mock_logger.warning.call_count == 1
+        assert "trace-9" in str(mock_logger.warning.call_args)
+        # Следующее событие обрабатывается штатно: сбой не отключил подписчика
+        await reporter.handle(EVENT_FSM_REJECTED, rejection_payload())
+
+        metrics.record_fsm_rejection.assert_called_once_with(
+            fsm_name=FSM_ID, reason=REASON_DEBOUNCED
+        )
 
 
 class TestMetricsReporterSubscriptions:

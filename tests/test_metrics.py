@@ -13,6 +13,8 @@ the collector degrades to a no-op when the library is unavailable (FR-008).
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -299,42 +301,162 @@ class TestMetricsCardinalityLimit:
 
 
 class TestMetricsRecordingWithoutPrometheus:
-    """Test that metrics recording is no-op when prometheus_client is unavailable."""
+    """Платформа обязана переживать отсутствие prometheus_client (FR-008).
 
-    def test_should_not_raise_when_recording_fsm_transition(self) -> None:
-        """Test recording FSM transition without prometheus_client."""
-        collector = MetricsCollector()
-        collector.record_fsm_transition("fsm", "a", "b", "device")
+    Проверяется не «забытый» вызов ``initialize()``, а реальная деградация:
+    библиотека недоступна в момент регистрации метрик, поэтому коллектор
+    переходит в no-op и все методы записи обязаны остаться холостыми.
 
-    def test_should_not_raise_when_recording_rejection(self) -> None:
-        """Rejection recording must stay silent without the library."""
-        collector = MetricsCollector()
-        collector.record_fsm_rejection("fsm", "debounced")
+    Холостой вызов должен быть холостым *наблюдаемо*: ни одна метрика не
+    появляется, внутренний учёт наборов меток не пополняется, состояние
+    коллектора не меняется. Одних этих утверждений мало — в no-op они
+    выполняются и для метода, который не делает вообще ничего. Поэтому
+    каждый тест двусторонний: он же проверяет, что с доступной библиотекой
+    тот же вызов записывает ровно одно наблюдение. Единственный способ
+    отличить «защищённый» метод от «мёртвого» — сравнить оба состояния.
+    """
 
-    def test_should_not_raise_when_recording_restored(self) -> None:
-        """Restored recording must stay silent without the library."""
-        collector = MetricsCollector()
-        collector.record_fsm_state_restored("fsm")
+    @pytest.fixture
+    def collector_without_prometheus(self) -> Iterator[MetricsCollector]:
+        """Коллектор, у которого prometheus_client недоступен при регистрации.
 
-    def test_should_not_raise_when_recording_event_latency(self) -> None:
-        """Test recording latency without prometheus_client."""
-        collector = MetricsCollector()
-        collector.record_event_latency("event", "component", 0.1)
+        ``sys.modules["prometheus_client"] = None`` превращает ``import
+        prometheus_client`` в ``ImportError`` — тот же сбой, что и отсутствие
+        библиотеки в окружении, и вторая ветка ``except`` в ``initialize()``.
 
-    def test_should_not_raise_when_recording_connection_error(self) -> None:
-        """Test recording connection error without prometheus_client."""
-        collector = MetricsCollector()
-        collector.record_ha_connection_error("timeout")
+        Подмена снимается сразу после ``initialize()``: деградация — это
+        свойство экземпляра (метрики не созданы, сбор выключен), а не только
+        подмены в ``sys.modules``. Методы записи в ``sys.modules`` не ходят и
+        опираются на ``_initialized`` и на сами объекты метрик, поэтому
+        no-op сохраняется. Благодаря этому в том же тесте доступен коллектор
+        с библиотекой — для контрольной половины.
+        """
+        with patch.dict("sys.modules", {"prometheus_client": None}):
+            collector = MetricsCollector()
+            collector.initialize()
+        yield collector
 
-    def test_should_not_raise_when_setting_gauge(self) -> None:
-        """Test setting gauge without prometheus_client."""
-        collector = MetricsCollector()
-        collector.set_active_fsm_count("leonids_house", 5)
+    @pytest.mark.parametrize(
+        ("method_name", "call_args", "metric_attr", "sample_name", "sample_labels", "expected"),
+        [
+            pytest.param(
+                "record_fsm_transition",
+                ("night_light", "off", "on", "light.bedroom"),
+                "_fsm_transitions_total",
+                "fsm_transitions_total",
+                {
+                    "fsm_name": "night_light",
+                    "from_state": "off",
+                    "to_state": "on",
+                    "device": "light.bedroom",
+                },
+                1,
+                id="fsm_transition",
+            ),
+            pytest.param(
+                "record_fsm_rejection",
+                ("night_light", "debounced"),
+                "_fsm_rejections_total",
+                "fsm_rejections_total",
+                {"fsm_name": "night_light", "reason": "debounced"},
+                1,
+                id="fsm_rejection",
+            ),
+            pytest.param(
+                "record_fsm_state_restored",
+                ("night_light",),
+                "_fsm_states_restored_total",
+                "fsm_states_restored_total",
+                {"fsm_name": "night_light"},
+                1,
+                id="fsm_state_restored",
+            ),
+            pytest.param(
+                "record_event_latency",
+                ("motion_detected", "event_router", 0.05),
+                "_event_processing_latency",
+                # Сумма, а не счётчик: сумма доказывает и сам факт наблюдения,
+                # и переданное значение — иначе «неверная величина» прошла бы.
+                "event_processing_latency_seconds_sum",
+                {"event_type": "motion_detected", "component": "event_router"},
+                0.05,
+                id="event_latency",
+            ),
+            pytest.param(
+                "record_ha_connection_error",
+                ("timeout",),
+                "_ha_connection_errors_total",
+                "ha_adapter_connection_errors_total",
+                {"error_type": "timeout"},
+                1,
+                id="ha_connection_error",
+            ),
+            pytest.param(
+                "set_active_fsm_count",
+                ("leonids_house", 5),
+                "_active_fsm_instances",
+                "active_fsm_instances",
+                {"manifest_name": "leonids_house"},
+                5.0,
+                id="active_fsm_count",
+            ),
+            pytest.param(
+                "record_collection_error",
+                ("scrape",),
+                "_metrics_collection_errors_total",
+                "metrics_collection_errors_total",
+                {"stage": "scrape"},
+                1,
+                id="collection_error",
+            ),
+        ],
+    )
+    def test_should_stay_noop_without_prometheus_and_record_with_library(
+        self,
+        collector_without_prometheus: MetricsCollector,
+        collector: MetricsCollector,
+        registry: CollectorRegistry,
+        method_name: str,
+        call_args: tuple[str, ...],
+        metric_attr: str,
+        sample_name: str,
+        sample_labels: dict[str, str],
+        expected: float,
+    ) -> None:
+        """Метод записи обязан быть заглушенным, а не мёртвым.
 
-    def test_should_not_raise_when_recording_collection_error(self) -> None:
-        """Test recording a collection error without prometheus_client."""
-        collector = MetricsCollector()
-        collector.record_collection_error("initialize")
+        Без prometheus вызов не оставляет следов: снимок состояния коллектора
+        должен совпасть до и после. С доступной библиотекой тот же вызов
+        обязан дать ровно одно наблюдение — иначе защита не отличает «нет
+        библиотеки» от «метод ничего не делает».
+        """
+        disabled = collector_without_prometheus
+
+        # Предусловие сценария: сбор действительно отключён, метрика метода
+        # не зарегистрирована. Если деградация перестанет отключать сбор,
+        # тест упадёт здесь, до проверки холостого вызова.
+        assert not disabled.is_initialized()
+        assert getattr(disabled, metric_attr) is None
+
+        before = deepcopy(vars(disabled))
+        getattr(disabled, method_name)(*call_args)
+
+        assert not disabled.is_initialized()
+        assert getattr(disabled, metric_attr) is None
+        # Учёт наборов меток — единственное внутреннее состояние, которое
+        # пишет ``record_fsm_transition``; в no-op оно обязано остаться пустым.
+        assert disabled._seen_series == {}
+        # Снимок состояния ловит любое появление нового поля, в том числе
+        # будущую «собственную» накопительную статистику без prometheus.
+        assert vars(disabled) == before
+
+        # Контрольная половина: с библиотекой вызов не холостой. Метод, у
+        # которого тело заменено на ``pass``, падает именно здесь.
+        getattr(collector, method_name)(*call_args)
+
+        # Счётчики дают 1, шкала — заданное значение (метод не инкрементит,
+        # а выставляет), гистограмма — сумму переданных величин.
+        assert registry.get_sample_value(sample_name, sample_labels) == expected
 
 
 class TestGetMetricsCollector:
