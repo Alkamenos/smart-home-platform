@@ -16,10 +16,10 @@ import time
 from typing import Any
 
 import pytest
-from src.core.events.event_bus import EventBus
-from src.core.events.fsm_events import EVENT_FSM_TRANSITIONED
 
 from core import FSMDefinition, FSMEngine, Transition
+from core.events.event_bus import EventBus
+from core.events.fsm_events import EVENT_FSM_TRANSITIONED
 
 
 FSM_ID = "light.kitchen_lighting_10"

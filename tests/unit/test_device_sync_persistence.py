@@ -4,8 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from src.core.models.device_sync_event import DeviceSyncEvent
-from src.core.persistence.devices import DeviceSyncEventPersistence
+from core.models.device_sync_event import DeviceSyncEvent
+from core.persistence.devices import DeviceSyncEventPersistence
 
 
 class TestAppendAndList:

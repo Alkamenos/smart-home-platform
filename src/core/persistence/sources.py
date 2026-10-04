@@ -10,8 +10,8 @@ import logging
 from pathlib import Path
 from uuid import UUID
 
-from src.core.models.ha_source import HASource
-from src.core.security.encryption import TokenEncryptor
+from core.models.ha_source import HASource
+from core.security.encryption import TokenEncryptor
 
 
 logger = logging.getLogger(__name__)

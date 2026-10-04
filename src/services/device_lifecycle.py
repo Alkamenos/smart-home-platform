@@ -21,18 +21,18 @@ from uuid import UUID
 
 from loguru import logger
 
-from src.core.models.device import Device
-from src.core.models.device_sync_event import DeviceSyncEvent
-from src.core.models.manifest import BehaviorConfig, DeviceConfig, RoomConfig
+from core.models.device import Device
+from core.models.device_sync_event import DeviceSyncEvent
+from core.models.manifest import BehaviorConfig, DeviceConfig, RoomConfig
 
 
 if TYPE_CHECKING:
-    from src.core.events.event_router import EventRouter
-    from src.core.fsm.engine import FSMEngine
-    from src.core.fsm.factory import FSMFactory
-    from src.core.models.manifest import Manifest
-    from src.core.persistence.manager import PersistenceManager
-    from src.services.device_service import DeviceService
+    from core.events.event_router import EventRouter
+    from core.fsm.engine import FSMEngine
+    from core.fsm.factory import FSMFactory
+    from core.models.manifest import Manifest
+    from core.persistence.manager import PersistenceManager
+    from services.device_service import DeviceService
 
 
 DEFAULT_USER_ID = "admin_user"

@@ -446,7 +446,7 @@ class TestDeviceEventDeliveryRights:
             # ВАЖНО: импорт из того же модуля, который использует приложение.
             # Разные имена (`webui.*` и `src.webui.*`) дают разные экземпляры
             # модуля и, следовательно, разные connection_manager.
-            from src.webui.routes.devices.websocket import broadcast_state_change
+            from webui.routes.devices.websocket import broadcast_state_change
 
             with client.websocket_connect("/api/v1/ws/devices") as ws:
                 ws.send_json({"type": "auth", "user_id": regular_user_id})
@@ -500,9 +500,9 @@ class TestAccessPersistenceAcrossRestarts:
         import asyncio
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.persistence.manager import PersistenceManager
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.persistence.manager import PersistenceManager
+        from services.device_service import DeviceService
 
         device_id = uuid4()
 

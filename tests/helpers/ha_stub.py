@@ -166,7 +166,7 @@ class HAStub:
         Returns:
             Dotted-путь до метода установки подключения.
         """
-        return "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha"
+        return "adapters.home_assistant.rest_client.HARestClient.connect_to_ha"
 
 
 @contextmanager
@@ -206,11 +206,11 @@ def stub_ha(
     with (
         patch(stub.client_patch_target(), new=connect),
         patch(
-            "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+            "adapters.home_assistant.rest_client.HARestClient.fetch_devices",
             new=async_value(stub.states_response()),
         ),
         patch(
-            "src.adapters.home_assistant.rest_client.HARestClient.fetch_areas",
+            "adapters.home_assistant.rest_client.HARestClient.fetch_areas",
             new=async_value(stub.areas),
         ),
     ):

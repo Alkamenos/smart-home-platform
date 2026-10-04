@@ -15,10 +15,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-from src.core.discovery.discovery_service import DeviceDiscoveryService
-from src.core.models.device import Device
-from src.core.models.ha_source import HASource
-from src.services.device_service import DeviceService
+
+from core.discovery.discovery_service import DeviceDiscoveryService
+from core.models.device import Device
+from core.models.ha_source import HASource
+from services.device_service import DeviceService
 
 
 def _device(entity_id: str = "light.sync_a", source_id: UUID | None = None) -> Device:
@@ -97,9 +98,9 @@ def _patch_ha(states: list[dict], connected: bool = True) -> object:
         return []
 
     with (
-        patch("src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha", new=_connect),
-        patch("src.adapters.home_assistant.rest_client.HARestClient.fetch_devices", new=_devices),
-        patch("src.adapters.home_assistant.rest_client.HARestClient.fetch_areas", new=_areas),
+        patch("adapters.home_assistant.rest_client.HARestClient.connect_to_ha", new=_connect),
+        patch("adapters.home_assistant.rest_client.HARestClient.fetch_devices", new=_devices),
+        patch("adapters.home_assistant.rest_client.HARestClient.fetch_areas", new=_areas),
     ):
         yield
 
@@ -116,7 +117,7 @@ class TestSyncFailurePaths:
             side_effect=RuntimeError("storage unavailable")
         )
 
-        with patch("src.adapters.home_assistant.rest_client.HARestClient") as client_class:
+        with patch("adapters.home_assistant.rest_client.HARestClient") as client_class:
             client = AsyncMock()
             client.connect_to_ha = AsyncMock(return_value=True)
             client.fetch_devices = AsyncMock(
@@ -137,7 +138,7 @@ class TestSyncFailurePaths:
         service = _service_with_source(source_id)
         service.grant_access = AsyncMock(side_effect=RuntimeError("denied"))
 
-        with patch("src.adapters.home_assistant.rest_client.HARestClient") as client_class:
+        with patch("adapters.home_assistant.rest_client.HARestClient") as client_class:
             client = AsyncMock()
             client.connect_to_ha = AsyncMock(return_value=True)
             client.fetch_devices = AsyncMock(
@@ -168,7 +169,7 @@ class TestSyncFailurePaths:
         service.persistence.devices.load_devices_by_source = AsyncMock(return_value=[known])
         await service.add_device(known)
 
-        with patch("src.adapters.home_assistant.rest_client.HARestClient") as client_class:
+        with patch("adapters.home_assistant.rest_client.HARestClient") as client_class:
             client = AsyncMock()
             client.connect_to_ha = AsyncMock(return_value=True)
             client.fetch_devices = AsyncMock(return_value=[])
@@ -194,7 +195,7 @@ class TestSyncFailurePaths:
         broken_engine.get_entities_by_device.side_effect = RuntimeError("engine down")
         service._engine = broken_engine  # noqa: SLF001 — проверка пути отказа
 
-        with patch("src.adapters.home_assistant.rest_client.HARestClient") as client_class:
+        with patch("adapters.home_assistant.rest_client.HARestClient") as client_class:
             client = AsyncMock()
             client.connect_to_ha = AsyncMock(return_value=True)
             client.fetch_devices = AsyncMock(return_value=[])

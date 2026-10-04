@@ -18,7 +18,7 @@ ADMIN = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}
 @pytest.fixture
 def client():
     """Клиент приложения от администратора."""
-    from src.main import app
+    from main import app
 
     return TestClient(app, headers=ADMIN)
 
@@ -26,7 +26,7 @@ def client():
 @pytest.fixture
 def store(tmp_path: Path):
     """Журнал событий в отдельной базе."""
-    from src.core.persistence.event_store import EventStore
+    from core.persistence.event_store import EventStore
 
     return EventStore(db_path=str(tmp_path / "history.db"))
 
@@ -36,7 +36,7 @@ class TestTransitionJournal:
 
     def test_should_aggregate_transitions_by_weekday_and_hour(self, store) -> None:
         """Агрегация считает записи, а не воспроизводит генератор."""
-        from src.core.persistence.event_store import FsmTransition
+        from core.persistence.event_store import FsmTransition
 
         now = time.time()
         for offset_hours in (0, 2, 5):
@@ -66,7 +66,7 @@ class TestTransitionJournal:
 
     def test_should_keep_same_result_for_repeated_queries(self, store) -> None:
         """Два одинаковых запроса дают одинаковый ответ (SC-013)."""
-        from src.core.persistence.event_store import FsmTransition
+        from core.persistence.event_store import FsmTransition
 
         store.save_fsm_transition(
             FsmTransition(
@@ -82,7 +82,7 @@ class TestTransitionJournal:
 
     def test_should_count_events_and_transitions_together(self, store) -> None:
         """Активность учитывает и переходы, и события устройств."""
-        from src.core.persistence.event_store import FsmTransition, SensorEvent
+        from core.persistence.event_store import FsmTransition, SensorEvent
 
         now = time.time()
         store.save_fsm_transition(
@@ -122,7 +122,7 @@ class TestEventHistoryAggregation:
         """
         from datetime import datetime
 
-        from src.core.persistence.event_store import SensorEvent
+        from core.persistence.event_store import SensorEvent
 
         moment = datetime.now().replace(minute=5, second=0, microsecond=0)
         store.save_sensor_event(
@@ -211,9 +211,9 @@ class TestDeviceEventRecording:
         """Изменение состояния устройства записывается в таблицу событий."""
         import asyncio
 
-        from src.core.events.event_bus import EventBus
-        from src.core.persistence.event_store import EventStore
-        from src.services.fsm_state_bridge import FSMStateBridge
+        from core.events.event_bus import EventBus
+        from core.persistence.event_store import EventStore
+        from services.fsm_state_bridge import FSMStateBridge
 
         store = EventStore(db_path=str(tmp_path / "history.db"))
         bus = EventBus()
@@ -247,11 +247,11 @@ class TestDeviceEventRecording:
         import asyncio
         from unittest.mock import MagicMock
 
-        from src.core.events.event_bus import EventBus
-        from src.core.fsm.engine import FSMDefinition, FSMEngine, Transition
-        from src.core.fsm.factory import FSMFactory
-        from src.core.registry import Registry
-        from src.services.fsm_state_bridge import FSMStateBridge
+        from core.events.event_bus import EventBus
+        from core.fsm.engine import FSMDefinition, FSMEngine, Transition
+        from core.fsm.factory import FSMFactory
+        from core.registry import Registry
+        from services.fsm_state_bridge import FSMStateBridge
 
         fsm_entity_id = "light.kitchen_lighting_10"
         motion_sensor = "binary_sensor.kitchen_motion"

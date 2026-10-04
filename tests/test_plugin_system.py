@@ -7,7 +7,8 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
-from src.core.plugin_loader import (
+
+from core.plugin_loader import (
     PluginInfo,
     PluginLoader,
     PluginLoadResult,
@@ -180,7 +181,7 @@ class TestPluginLoader:
         """Test discover_plugins when no entry points are registered."""
         loader = PluginLoader()
 
-        with patch("src.core.plugin_loader.entry_points", return_value=[]):
+        with patch("core.plugin_loader.entry_points", return_value=[]):
             loader.discover_plugins()
 
         assert loader._discovered is True
@@ -208,7 +209,7 @@ class TestPluginLoader:
                 return [mock_middleware_ep]
             return []
 
-        with patch("src.core.plugin_loader.entry_points", side_effect=mock_entry_points):
+        with patch("core.plugin_loader.entry_points", side_effect=mock_entry_points):
             loader.discover_plugins()
 
         assert "mock_behavior" in loader.behavior_plugins
@@ -220,7 +221,7 @@ class TestPluginLoader:
         loader = PluginLoader()
 
         with patch.object(loader, "discover_plugins") as mock_discover:
-            with patch("src.core.plugin_loader.entry_points", return_value=[]):
+            with patch("core.plugin_loader.entry_points", return_value=[]):
                 loader.load_all()
 
             mock_discover.assert_called_once()
@@ -270,7 +271,7 @@ class TestPluginLoader:
         )
         assert before == ({}, {}, {})
 
-        with caplog.at_level(logging.INFO, logger="src.core.plugin_loader"):
+        with caplog.at_level(logging.INFO, logger="core.plugin_loader"):
             loader.unload_all()
 
         after = (
@@ -366,7 +367,7 @@ class TestPluginLoaderIntegration:
         def mock_entry_points(group: str):
             return mock_eps.get(group, [])
 
-        with patch("src.core.plugin_loader.entry_points", side_effect=mock_entry_points):
+        with patch("core.plugin_loader.entry_points", side_effect=mock_entry_points):
             loader.discover_plugins()
 
         assert len(loader.behavior_plugins) == 2

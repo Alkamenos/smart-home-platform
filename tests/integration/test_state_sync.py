@@ -21,9 +21,9 @@ class TestStateSyncIntegration:
         """T046: Состояние устройства синхронизируется за <= 5 секунд."""
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         event_bus = EventBus()
         service = DeviceService(
@@ -67,9 +67,9 @@ class TestStateSyncIntegration:
         """T046: handle_state_change обновляет состояние устройства в сервисе."""
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         event_bus = EventBus()
         service = DeviceService(
@@ -128,9 +128,9 @@ class TestStateSyncIntegration:
         """
         from unittest.mock import patch
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         service = DeviceService(
             event_bus=EventBus(),
@@ -167,7 +167,7 @@ class TestStateSyncIntegration:
             observed_delays.append(delay)
             return await real_sleep(0, *args, **kwargs)
 
-        with patch("src.services.device_service.asyncio.sleep", new=fast_sleep):
+        with patch("services.device_service.asyncio.sleep", new=fast_sleep):
             await service.handle_state_change(state_change)
             # Дать созданной задаче выполниться
             for _ in range(5):
@@ -189,9 +189,9 @@ class TestStateSyncIntegration:
         сбросе таймера — устройство уходило бы в `unavailable` даже при
         регулярных обновлениях.
         """
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         service = DeviceService(
             event_bus=EventBus(),
@@ -248,9 +248,9 @@ class TestCommandExecutionIntegration:
         """T047: Команда успешно отправляется в Home Assistant."""
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         # Mock HA адаптер
         mock_ha_adapter = AsyncMock()
@@ -296,9 +296,9 @@ class TestCommandExecutionIntegration:
         """
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
         mock_ha_adapter.call_service = AsyncMock(side_effect=Exception("HA Service Error"))
@@ -334,9 +334,9 @@ class TestCommandExecutionIntegration:
         """
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
         mock_ha_adapter.call_service = AsyncMock(side_effect=Exception("HA Service Error"))

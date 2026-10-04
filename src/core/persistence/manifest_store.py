@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 from loguru import logger
 
-from src.core.models.manifest import Manifest
+from core.models.manifest import Manifest
 
 
 class ManifestStore:

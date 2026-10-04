@@ -17,8 +17,8 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from src.core.persistence.event_store import EventStore
-from src.webui.models import build_all_fsm_state_views
+from core.persistence.event_store import EventStore
+from webui.models import build_all_fsm_state_views
 
 
 if TYPE_CHECKING:

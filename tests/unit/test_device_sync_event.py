@@ -5,7 +5,8 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-from src.core.models.device_sync_event import DeviceSyncEvent
+
+from core.models.device_sync_event import DeviceSyncEvent
 
 
 class TestDeviceSyncEventModel:

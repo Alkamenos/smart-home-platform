@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Клиент приложения от администратора."""
-    from src.main import app
+    from main import app
 
     return TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
 
@@ -59,7 +59,7 @@ class TestDiagramFormat:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Недоступная платформа — 503, а не пустая схема."""
-        from src.main import app
+        from main import app
 
         monkeypatch.setattr(app.state, "container", None, raising=False)
 

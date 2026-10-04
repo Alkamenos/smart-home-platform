@@ -15,10 +15,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from src.core.events.event_bus import EventBus
-from src.core.persistence.state_persistence import StatePersistence
 
 from core import FSMDefinition, FSMEngine, Transition
+from core.events.event_bus import EventBus
+from core.persistence.state_persistence import StatePersistence
 
 
 FSM_ID = "light.kitchen_lighting_10"

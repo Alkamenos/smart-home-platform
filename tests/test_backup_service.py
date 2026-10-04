@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
-from src.services.backup_service import BackupService
+
+from services.backup_service import BackupService
 
 
 @pytest.fixture
@@ -121,7 +122,7 @@ class TestBackupServiceSession:
         # ClientSession держит коннектор, и её появление в атрибуте означает, что
         # сервис остался с открытым ресурсом. Поэтому проверяется не «не упало»,
         # а состояние: сессии нет ни до, ни после вызова, и ни одна не создана.
-        with patch("src.services.backup_service.aiohttp.ClientSession") as session_cls:
+        with patch("services.backup_service.aiohttp.ClientSession") as session_cls:
             await backup_service.close()
 
             session_cls.assert_not_called()

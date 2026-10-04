@@ -19,11 +19,12 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from src.core.events.event_bus import EventBus
-from src.core.models.device import Device
-from src.core.models.device_access import DeviceAccess
-from src.core.models.device_config import DeviceConfig
-from src.services.device_service import (
+
+from core.events.event_bus import EventBus
+from core.models.device import Device
+from core.models.device_access import DeviceAccess
+from core.models.device_config import DeviceConfig
+from services.device_service import (
     EVENT_DEVICE_ACCESS_CHANGED,
     EVENT_DEVICE_CONFIG_CHANGED,
     EVENT_DEVICE_LOADED,
@@ -34,7 +35,7 @@ from src.services.device_service import (
 
 
 # Имя журнала DeviceService: модуль использует стандартный logging, а не loguru
-SERVICE_LOGGER_NAME = "src.services.device_service"
+SERVICE_LOGGER_NAME = "services.device_service"
 
 
 # ============================================================================
@@ -541,7 +542,7 @@ class TestSyncDevicesFromSource:
         """Проверяет успешную синхронизацию с устройствами."""
         from unittest.mock import AsyncMock, patch
 
-        from src.core.models.ha_source import HASource
+        from core.models.ha_source import HASource
 
         source_id = uuid4()
         source = HASource(
@@ -567,9 +568,7 @@ class TestSyncDevicesFromSource:
             },
         ]
 
-        with patch(
-            "src.adapters.home_assistant.rest_client.HARestClient"
-        ) as mock_rest_client_class:
+        with patch("adapters.home_assistant.rest_client.HARestClient") as mock_rest_client_class:
             mock_rest_client = AsyncMock()
             mock_rest_client.connect_to_ha = AsyncMock(return_value=True)
             mock_rest_client.fetch_devices = AsyncMock(return_value=mock_ha_states)
@@ -595,7 +594,7 @@ class TestSyncDevicesFromSource:
         """Проверяет что синхронизация публикует device.loaded для каждого устройства."""
         from unittest.mock import AsyncMock, patch
 
-        from src.core.models.ha_source import HASource
+        from core.models.ha_source import HASource
 
         source_id = uuid4()
         source = HASource(
@@ -619,9 +618,7 @@ class TestSyncDevicesFromSource:
             },
         ]
 
-        with patch(
-            "src.adapters.home_assistant.rest_client.HARestClient"
-        ) as mock_rest_client_class:
+        with patch("adapters.home_assistant.rest_client.HARestClient") as mock_rest_client_class:
             mock_rest_client = AsyncMock()
             mock_rest_client.connect_to_ha = AsyncMock(return_value=True)
             mock_rest_client.fetch_devices = AsyncMock(return_value=mock_ha_states)
@@ -645,7 +642,7 @@ class TestSyncDevicesFromSource:
         """Проверяет обработку ошибки подключения."""
         from unittest.mock import AsyncMock, patch
 
-        from src.core.models.ha_source import HASource
+        from core.models.ha_source import HASource
 
         source_id = uuid4()
         source = HASource(
@@ -657,9 +654,7 @@ class TestSyncDevicesFromSource:
 
         mock_persistence.sources.load_source.return_value = source
 
-        with patch(
-            "src.adapters.home_assistant.rest_client.HARestClient"
-        ) as mock_rest_client_class:
+        with patch("adapters.home_assistant.rest_client.HARestClient") as mock_rest_client_class:
             mock_rest_client = AsyncMock()
             mock_rest_client.connect_to_ha = AsyncMock(return_value=False)
             mock_rest_client.__aenter__ = AsyncMock(return_value=mock_rest_client)

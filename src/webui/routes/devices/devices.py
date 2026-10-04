@@ -13,16 +13,16 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, model_validator
 
-from src.core.models.device import Device
-from src.core.models.device_sync_event import DeviceSyncEvent
-from src.core.models.manifest import BehaviorConfig
-from src.webui.models import (
+from core.models.device import Device
+from core.models.device_sync_event import DeviceSyncEvent
+from core.models.manifest import BehaviorConfig
+from webui.models import (
     AutomationInfo,
     FSMStateView,
     build_all_fsm_state_views,
     build_automation_info,
 )
-from src.webui.routes.devices.deps import (
+from webui.routes.devices.deps import (
     get_device_service,
     get_lifecycle_service,
     get_sync_history,

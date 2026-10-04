@@ -14,14 +14,15 @@ from __future__ import annotations
 
 from freezegun import freeze_time
 from loguru import logger
-from src.core.models.room import (
+
+from core.models.room import (
     RoomAggregationConfig,
     RoomConfig,
     RoomPolicy,
     RoomPolicyAction,
     RoomState,
 )
-from src.core.room_manager import RoomManager
+from core.room_manager import RoomManager
 
 
 class TestRoomModels:

@@ -547,9 +547,9 @@ class TestHAAdapterWebSocketLifecycle:
 
         with (
             patch.object(adapter, "_get_logger", return_value=MagicMock()),
-            patch("src.adapters.ha_adapter.HomeAssistantWS", return_value=failing_client),
-            patch("src.adapters.ha_adapter.aiohttp.ClientSession"),
-            patch("src.adapters.ha_adapter.asyncio.sleep", new=counting_sleep),
+            patch("adapters.ha_adapter.HomeAssistantWS", return_value=failing_client),
+            patch("adapters.ha_adapter.aiohttp.ClientSession"),
+            patch("adapters.ha_adapter.asyncio.sleep", new=counting_sleep),
         ):
             await adapter._connect_websocket()
 
@@ -765,7 +765,7 @@ class TestSimpleHAWebSocketClient:
 
         try:
             with patch(
-                "src.adapters.ha_adapter.asyncio.wait_for",
+                "adapters.ha_adapter.asyncio.wait_for",
                 new=shortened_wait_for,
             ):
                 states = await client.get_states()
@@ -811,7 +811,7 @@ class TestSimpleHAWebSocketClient:
 
         try:
             with patch(
-                "src.adapters.ha_adapter.asyncio.wait_for",
+                "adapters.ha_adapter.asyncio.wait_for",
                 new=shortened_wait_for,
             ):
                 assert await client.get_states() == []

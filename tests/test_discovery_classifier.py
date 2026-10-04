@@ -1,7 +1,7 @@
 """Tests for DeviceClassifier."""
 
-from src.core.discovery.classifier import DeviceClassifier
-from src.core.discovery.models import DeviceCategory
+from core.discovery.classifier import DeviceClassifier
+from core.discovery.models import DeviceCategory
 
 
 class TestDeviceClassifier:

@@ -17,9 +17,9 @@ class TestCommandsIntegration:
     @pytest.mark.asyncio
     async def test_send_command_and_track_status(self):
         """T047: Отправка команды и отслеживание статуса выполнения."""
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         # Mock HA адаптер
         mock_ha_adapter = AsyncMock()
@@ -62,9 +62,9 @@ class TestCommandsIntegration:
     @pytest.mark.asyncio
     async def test_command_with_parameters(self):
         """T047: Команда с параметрами передается в HA корректно."""
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
         mock_ha_adapter.call_service = AsyncMock()
@@ -105,9 +105,9 @@ class TestCommandsIntegration:
         независимо от того, выполнилась команда или нет. Теперь утверждается
         результат, а превышение таймаута проверяется отдельным тестом ниже.
         """
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
 
@@ -155,9 +155,9 @@ class TestCommandsIntegration:
         это поведение не проверялось нигде — таймаут «проверялся» подавлением
         исключения, то есть не проверялся вовсе.
         """
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
 
@@ -201,9 +201,9 @@ class TestCommandsIntegration:
         """
         from unittest.mock import patch
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
 
@@ -234,7 +234,7 @@ class TestCommandsIntegration:
             observed.append(timeout)
             return await real_wait_for(awaitable, timeout)
 
-        with patch("src.services.device_service.asyncio.wait_for", new=recording_wait_for):
+        with patch("services.device_service.asyncio.wait_for", new=recording_wait_for):
             await service.execute_command(
                 device_id=device.id,
                 command_name="set_temperature",
@@ -249,9 +249,9 @@ class TestCommandsIntegration:
         """Таймаут меньше 300 секунд передаётся без изменений."""
         from unittest.mock import patch
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
 
@@ -282,7 +282,7 @@ class TestCommandsIntegration:
             observed.append(timeout)
             return await real_wait_for(awaitable, timeout)
 
-        with patch("src.services.device_service.asyncio.wait_for", new=recording_wait_for):
+        with patch("services.device_service.asyncio.wait_for", new=recording_wait_for):
             await service.execute_command(
                 device_id=device.id,
                 command_name="set_temperature",
@@ -295,9 +295,9 @@ class TestCommandsIntegration:
     @pytest.mark.asyncio
     async def test_command_error_propagation(self):
         """T047: Ошибки при выполнении команды правильно обработаны."""
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         mock_ha_adapter = AsyncMock()
         mock_ha_adapter.call_service = AsyncMock(side_effect=RuntimeError("Service call failed"))
@@ -330,9 +330,9 @@ class TestCommandsIntegration:
     @pytest.mark.asyncio
     async def test_get_command_status(self):
         """T056: Получение статуса выполненной команды."""
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         event_bus = EventBus()
         service = DeviceService(

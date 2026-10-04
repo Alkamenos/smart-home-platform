@@ -19,7 +19,7 @@ from services.config_watcher import create_watcher, hot_reload_enabled
 # остальными импортами веб-слоя). Импорт через верхнеуровневый `webui` создавал
 # второй экземпляр модулей с собственным менеджером WebSocket-соединений, и
 # раздача живых обновлений уходила «в никуда» (spec 007, FR-024).
-from src.webui.app import create_app
+from webui.app import create_app
 
 
 # Настройка loguru с цветным выводом для Docker

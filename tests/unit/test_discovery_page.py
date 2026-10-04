@@ -41,7 +41,7 @@ def client() -> Iterator[TestClient]:
         )
         os.chdir(work_dir)
 
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         app = create_app(str(Path(work_dir) / "manifest.yaml"))
         yield TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
@@ -94,7 +94,7 @@ class TestDiscoveryMarkup:
 
     def test_page_should_offer_only_platform_templates(self, page: str) -> None:
         """Шаблоны поведений приходят от платформы, а не зашиты в JavaScript."""
-        from src.webui.template_loader import get_template_loader
+        from webui.template_loader import get_template_loader
 
         expected = sorted(get_template_loader().load_all().keys())
         rendered = re.search(r"const TEMPLATES = (\[.*?\]);", page, re.S)

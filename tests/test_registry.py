@@ -14,7 +14,8 @@ Tests for Registry - Тесты реестра для регистрации gua
 #  SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from src.core.registry import Registry
+
+from core.registry import Registry
 
 
 class TestRegistryGuards:

@@ -5,7 +5,7 @@ Smart Home Platform - Интеграция с Home Assistant.
 """
 
 try:
-    from src.core.security.encryption import TokenEncryptor, generate_encryption_key
+    from core.security.encryption import TokenEncryptor, generate_encryption_key
 except ImportError:
     # cryptography может быть не установлен - это опционально
     TokenEncryptor = None

@@ -12,8 +12,8 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, HttpUrl
 
-from src.core.models.ha_source import HASource
-from src.services.device_service import DeviceService
+from core.models.ha_source import HASource
+from services.device_service import DeviceService
 
 
 logger = logging.getLogger(__name__)
@@ -348,7 +348,7 @@ async def _fetch_discovery_data(source: HASource) -> DiscoveryData:
     Returns:
         Данные для мастера; при недоступном источнике — с заполненной причиной.
     """
-    from src.adapters.home_assistant.rest_client import HARestClient
+    from adapters.home_assistant.rest_client import HARestClient
 
     async with HARestClient(source.url, source.token) as rest_client:
         if not await rest_client.connect_to_ha():

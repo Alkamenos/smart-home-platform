@@ -126,7 +126,7 @@ def temp_manifest():
 @pytest.fixture
 def client(temp_manifest):
     """Create test client with temporary manifest."""
-    from src.webui.app import create_app
+    from webui.app import create_app
 
     app = create_app(manifest_path=temp_manifest)
     return TestClient(app)
@@ -635,7 +635,7 @@ class TestSaveManifestChanges:
 
     def test_save_device_creates_backup(self, temp_manifest):
         """Saving device creates backup file."""
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         app = create_app(manifest_path=temp_manifest)
         client = TestClient(app)
@@ -700,7 +700,7 @@ class TestSaveManifestChanges:
 
     def test_manifest_file_updated(self, temp_manifest):
         """Manifest YAML file is updated on save."""
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         app = create_app(manifest_path=temp_manifest)
         client = TestClient(app)

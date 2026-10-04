@@ -7,11 +7,12 @@ from datetime import datetime, time
 from unittest.mock import MagicMock, patch
 
 import pytest
-from src.core.guards.base import BaseGuard
-from src.core.guards.composite_guard import CompositeGuard
-from src.core.guards.numeric_guard import NumericGuard
-from src.core.guards.state_guard import StateGuard
-from src.core.guards.time_guard import TimeGuard
+
+from core.guards.base import BaseGuard
+from core.guards.composite_guard import CompositeGuard
+from core.guards.numeric_guard import NumericGuard
+from core.guards.state_guard import StateGuard
+from core.guards.time_guard import TimeGuard
 
 
 class TestBaseGuard:
@@ -266,7 +267,7 @@ class TestStateGuard:
 class TestTimeGuard:
     """Test suite for TimeGuard class."""
 
-    @patch("src.core.guards.time_guard.datetime")
+    @patch("core.guards.time_guard.datetime")
     def test_init_parses_time_range(self, mock_datetime: MagicMock) -> None:
         """Test initialization parses time range correctly."""
         mock_datetime.now.return_value = datetime(2024, 1, 1, 10, 0)
@@ -278,7 +279,7 @@ class TestTimeGuard:
         assert guard._start == time(8, 0)
         assert guard._end == time(18, 0)
 
-    @patch("src.core.guards.time_guard.datetime")
+    @patch("core.guards.time_guard.datetime")
     def test_evaluate_within_normal_range(self, mock_datetime: MagicMock) -> None:
         """Test evaluation when current time is within normal range."""
         mock_datetime.now.return_value = datetime(2024, 1, 1, 10, 0)
@@ -288,7 +289,7 @@ class TestTimeGuard:
         result = guard.evaluate(state=None, context={})
         assert result is True
 
-    @patch("src.core.guards.time_guard.datetime")
+    @patch("core.guards.time_guard.datetime")
     def test_evaluate_outside_normal_range(self, mock_datetime: MagicMock) -> None:
         """Test evaluation when current time is outside normal range."""
         mock_datetime.now.return_value = datetime(2024, 1, 1, 20, 0)
@@ -298,7 +299,7 @@ class TestTimeGuard:
         result = guard.evaluate(state=None, context={})
         assert result is False
 
-    @patch("src.core.guards.time_guard.datetime")
+    @patch("core.guards.time_guard.datetime")
     def test_evaluate_at_start_boundary(self, mock_datetime: MagicMock) -> None:
         """Test evaluation at start boundary."""
         mock_datetime.now.return_value = datetime(2024, 1, 1, 8, 0)
@@ -308,7 +309,7 @@ class TestTimeGuard:
         result = guard.evaluate(state=None, context={})
         assert result is True
 
-    @patch("src.core.guards.time_guard.datetime")
+    @patch("core.guards.time_guard.datetime")
     def test_evaluate_at_end_boundary(self, mock_datetime: MagicMock) -> None:
         """Test evaluation at end boundary."""
         mock_datetime.now.return_value = datetime(2024, 1, 1, 18, 0)
@@ -318,7 +319,7 @@ class TestTimeGuard:
         result = guard.evaluate(state=None, context={})
         assert result is True
 
-    @patch("src.core.guards.time_guard.datetime")
+    @patch("core.guards.time_guard.datetime")
     def test_evaluate_midnight_crossing_during_range(self, mock_datetime: MagicMock) -> None:
         """Test evaluation during midnight-crossing range (e.g., 23:00-07:00)."""
         mock_datetime.now.return_value = datetime(2024, 1, 1, 23, 30)
@@ -328,7 +329,7 @@ class TestTimeGuard:
         result = guard.evaluate(state=None, context={})
         assert result is True
 
-    @patch("src.core.guards.time_guard.datetime")
+    @patch("core.guards.time_guard.datetime")
     def test_evaluate_midnight_crossing_early_morning(self, mock_datetime: MagicMock) -> None:
         """Test evaluation in early morning during midnight-crossing range."""
         mock_datetime.now.return_value = datetime(2024, 1, 1, 6, 0)
@@ -338,7 +339,7 @@ class TestTimeGuard:
         result = guard.evaluate(state=None, context={})
         assert result is True
 
-    @patch("src.core.guards.time_guard.datetime")
+    @patch("core.guards.time_guard.datetime")
     def test_evaluate_midnight_crossing_daytime(self, mock_datetime: MagicMock) -> None:
         """Test evaluation during daytime for midnight-crossing range."""
         mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0)

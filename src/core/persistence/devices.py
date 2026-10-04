@@ -10,10 +10,10 @@ import logging
 from pathlib import Path
 from uuid import UUID
 
-from src.core.models.device import Device
-from src.core.models.device_access import DeviceAccess
-from src.core.models.device_config import DeviceConfig
-from src.core.models.device_sync_event import DeviceSyncEvent
+from core.models.device import Device
+from core.models.device_access import DeviceAccess
+from core.models.device_config import DeviceConfig
+from core.models.device_sync_event import DeviceSyncEvent
 
 
 logger = logging.getLogger(__name__)

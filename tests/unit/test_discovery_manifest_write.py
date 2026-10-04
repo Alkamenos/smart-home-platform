@@ -20,7 +20,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 import yaml
-from src.core.discovery.discovery_service import DeviceDiscoveryService
+
+from core.discovery.discovery_service import DeviceDiscoveryService
 
 
 @pytest.fixture
@@ -147,7 +148,7 @@ class TestDiscoveryManifestWrite:
     @pytest.mark.asyncio
     async def test_apply_should_use_injected_store(self, manifest_path: Path) -> None:
         """Применение обновляет переданное хранилище, а не отдельную копию файла."""
-        from src.core.persistence.manifest_store import ManifestStore
+        from core.persistence.manifest_store import ManifestStore
 
         store = ManifestStore(str(manifest_path))
         store.load()
@@ -190,7 +191,7 @@ class TestDiscoveryManifestWrite:
     @pytest.mark.asyncio
     async def test_sensor_slot_should_not_be_overwritten(self, manifest_path: Path) -> None:
         """Занятый слот датчика не перетирается вторым устройством."""
-        from src.core.models.manifest import Manifest
+        from core.models.manifest import Manifest
 
         service = DeviceDiscoveryService(AsyncMock())
         store = service._store_for(str(manifest_path))  # noqa: SLF001 — проверка внутреннего пути
@@ -224,7 +225,7 @@ def _bulk_request() -> Any:
     Returns:
         Запрос массового применения.
     """
-    from src.core.discovery.models import BulkApplyRequest
+    from core.discovery.models import BulkApplyRequest
 
     return BulkApplyRequest(
         include_all=False,

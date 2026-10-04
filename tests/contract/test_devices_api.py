@@ -17,7 +17,7 @@ def client():
     US4 (spec 004): device-endpoints требуют идентификацию (middleware) —
     клиент по умолчанию действует как администратор (X-User-ID/X-Is-Admin).
     """
-    from src.main import app
+    from main import app
 
     return TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
 

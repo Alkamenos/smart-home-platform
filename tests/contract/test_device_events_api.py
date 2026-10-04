@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
-    from src.main import app
+    from main import app
 
     return TestClient(app)
 
@@ -52,8 +52,8 @@ def viewer_access(client, sample_device, admin_user_id, viewer_user_id):
     """
     from uuid import UUID as _UUID
 
-    from src.core.models.device_access import DeviceAccess
-    from src.main import app
+    from core.models.device_access import DeviceAccess
+    from main import app
 
     access = DeviceAccess(
         device_id=_UUID(sample_device),
@@ -77,7 +77,7 @@ def recorded_events(client, sample_device, admin_user_id):
     Независимость от US2/US3: чтение проверяется без выполнения операций
     через API. Очистка — в teardown (удаление своих записей из файла).
     """
-    from src.main import app
+    from main import app
 
     persistence = app.state.persistence.device_sync_events
     events = [
@@ -102,7 +102,7 @@ def recorded_events(client, sample_device, admin_user_id):
         },
     ]
 
-    from src.core.models.device_sync_event import DeviceSyncEvent
+    from core.models.device_sync_event import DeviceSyncEvent
 
     created = [DeviceSyncEvent(**e) for e in events]
     for event in created:

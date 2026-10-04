@@ -15,9 +15,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from src.core.events.event_bus import EventBus
-from src.core.events.fsm_events import EVENT_FSM_REJECTED, EVENT_FSM_TRANSITIONED
-from src.services.fsm_state_bridge import FSMStateBridge
+
+from core.events.event_bus import EventBus
+from core.events.fsm_events import EVENT_FSM_REJECTED, EVENT_FSM_TRANSITIONED
+from services.fsm_state_bridge import FSMStateBridge
 
 
 TRANSITION_PAYLOAD: dict[str, Any] = {

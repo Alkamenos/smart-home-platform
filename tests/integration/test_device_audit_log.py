@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Фикстура для тестирования API."""
-    from src.main import app
+    from main import app
 
     return TestClient(app)
 
@@ -50,7 +50,7 @@ def cleanup_history():
     created_device_ids: list[str] = []
     yield created_device_ids
 
-    from src.main import app
+    from main import app
 
     persistence = app.state.persistence.device_sync_events
     if not persistence.events_file.exists():
@@ -104,7 +104,7 @@ class TestConfigChangeRecorded:
         self, client, sample_device, admin_access, admin_user_id
     ):
         """Сценарий 6 (FR-009): недоступная история не фейлит операцию."""
-        from src.main import app
+        from main import app
 
         saved_persistence = app.state.persistence
         try:
@@ -138,7 +138,7 @@ class TestHistorySurvivesRestart:
         assert put_response.status_code == 200, put_response.text
 
         # «Рестарт»: полностью новое приложение на том же data-каталоге
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         restarted_client = TestClient(create_app())
         events_response = restarted_client.get(

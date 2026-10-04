@@ -208,9 +208,9 @@ class TestTimeoutHandling:
         from unittest.mock import AsyncMock
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         adapter = AsyncMock()
 
@@ -254,9 +254,9 @@ class TestTimeoutHandling:
         from unittest.mock import AsyncMock
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         adapter = AsyncMock()
 
@@ -298,9 +298,9 @@ class TestTimeoutHandling:
         from unittest.mock import AsyncMock
         from uuid import UUID
 
-        from src.core.events.event_bus import EventBus
-        from src.core.models.device import Device
-        from src.services.device_service import DeviceService
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
 
         adapter = AsyncMock()
 

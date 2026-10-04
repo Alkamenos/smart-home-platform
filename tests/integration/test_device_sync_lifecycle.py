@@ -75,7 +75,7 @@ def client() -> Iterator[TestClient]:
         shutil.copy(project_root / "instances" / "leonids_house" / "manifest.yaml", manifest)
         os.chdir(work_dir)
 
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         app = create_app(str(manifest))
         yield TestClient(app, headers=HEADERS)
@@ -119,15 +119,15 @@ def _sync(client: TestClient, source_id: str, stub: _HAStub) -> Any:
     """
     with (
         patch(
-            "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
+            "adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
             new=_async_value(stub.connected),
         ),
         patch(
-            "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+            "adapters.home_assistant.rest_client.HARestClient.fetch_devices",
             new=_async_value(stub.states or []),
         ),
         patch(
-            "src.adapters.home_assistant.rest_client.HARestClient.fetch_areas",
+            "adapters.home_assistant.rest_client.HARestClient.fetch_areas",
             new=_async_value([{"area_id": "kitchen", "name": "Kitchen"}]),
         ),
     ):

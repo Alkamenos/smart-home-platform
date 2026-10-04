@@ -26,15 +26,16 @@ from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
-from src.core.models.device import Device
-from src.core.models.device_access import DeviceAccess
-from src.core.models.device_command import (
+
+from core.models.device import Device
+from core.models.device_access import DeviceAccess
+from core.models.device_command import (
     CommandExecutionRequest,
     CommandExecutionResponse,
     DeviceCommand,
 )
-from src.core.models.device_config import DeviceConfig
-from src.core.models.ha_source import HASource
+from core.models.device_config import DeviceConfig
+from core.models.ha_source import HASource
 
 
 # ============================================================================

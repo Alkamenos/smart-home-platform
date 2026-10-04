@@ -17,17 +17,17 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from src.core.events.event_bus import EventBus
-from src.core.persistence.event_store import EventStore, FsmTransition
-from src.services.fsm_state_bridge import FSMStateBridge
 
 from core import FSMDefinition, FSMEngine, Transition
+from core.events.event_bus import EventBus
 from core.events.fsm_events import (
     EVENT_FSM_REJECTED,
     EVENT_FSM_TRANSITIONED,
     EVENT_PLATFORM_STARTED,
 )
+from core.persistence.event_store import EventStore, FsmTransition
 from core.persistence.state_persistence import StatePersistence
+from services.fsm_state_bridge import FSMStateBridge
 
 
 FSM_ID = "light.kitchen_lighting_10"

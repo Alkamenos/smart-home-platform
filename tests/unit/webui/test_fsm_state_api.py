@@ -15,10 +15,10 @@ import asyncio
 from datetime import datetime
 
 import pytest
-from src.core.events.event_bus import EventBus
-from src.webui.models import AutomationInfo, FSMStateView, build_all_fsm_state_views
 
 from core import FSMDefinition, FSMEngine, State, Transition
+from core.events.event_bus import EventBus
+from webui.models import AutomationInfo, FSMStateView, build_all_fsm_state_views
 
 
 FSM_ID = "light.kitchen_lighting_10"
@@ -200,14 +200,14 @@ def build_state_view(
     state: State | None,
 ) -> FSMStateView:
     """Собрать представление состояния автомата (вспомогательная функция теста)."""
-    from src.webui.models import build_fsm_state_view
+    from webui.models import build_fsm_state_view
 
     return build_fsm_state_view(engine, fsm_id, device_id, to_state, state)
 
 
 def build_all_state_views(engine: FSMEngine, allowed_devices: set[str]) -> list[FSMStateView]:
     """Собрать представления состояний с фильтрацией по устройствам."""
-    from src.webui.models import build_all_fsm_state_views
+    from webui.models import build_all_fsm_state_views
 
     return build_all_fsm_state_views(engine, allowed_devices)
 

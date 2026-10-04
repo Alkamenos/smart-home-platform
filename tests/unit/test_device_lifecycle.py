@@ -14,13 +14,14 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from src.core.action_handlers import register_all_actions
-from src.core.events.event_bus import EventBus
-from src.core.events.event_router import EventRouter
-from src.core.fsm.engine import FSMEngine
-from src.core.fsm.factory import FSMFactory
-from src.core.models.device import Device
-from src.core.models.manifest import (
+
+from core.action_handlers import register_all_actions
+from core.events.event_bus import EventBus
+from core.events.event_router import EventRouter
+from core.fsm.engine import FSMEngine
+from core.fsm.factory import FSMFactory
+from core.models.device import Device
+from core.models.manifest import (
     AutomationDomainRules,
     AutomationRules,
     BehaviorConfig,
@@ -30,11 +31,10 @@ from src.core.models.manifest import (
     Manifest,
     RoomConfig,
 )
-from src.core.persistence.manager import PersistenceManager
-from src.core.registry import Registry
-from src.services.device_lifecycle import DeviceLifecycleService
-from src.services.device_service import DeviceService
-
+from core.persistence.manager import PersistenceManager
+from core.registry import Registry
+from services.device_lifecycle import DeviceLifecycleService
+from services.device_service import DeviceService
 from tests.helpers.device_factory import make_device, make_source
 
 

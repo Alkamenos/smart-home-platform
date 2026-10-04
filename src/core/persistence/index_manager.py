@@ -17,7 +17,7 @@ import threading
 from collections import defaultdict
 from uuid import UUID
 
-from src.core.models.device import Device
+from core.models.device import Device
 
 
 logger = logging.getLogger(__name__)

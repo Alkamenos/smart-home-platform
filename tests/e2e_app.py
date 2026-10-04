@@ -17,7 +17,8 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI
-from src.webui.app import create_app
+
+from webui.app import create_app
 
 
 def create_e2e_app() -> FastAPI:

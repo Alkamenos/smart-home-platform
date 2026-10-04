@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 async def example_migrations():
     """Пример использования миграций."""
-    from src.core.persistence.migrations.migrations_runner import MigrationsRunner
+    from core.persistence.migrations.migrations_runner import MigrationsRunner
 
     print("\n=== Пример: Миграции ===")
 
@@ -42,7 +42,7 @@ async def example_migrations():
 
 async def example_index_manager():
     """Пример использования менеджера индексов."""
-    from src.core.persistence.migrations.index_manager import IndexManager
+    from core.persistence.migrations.index_manager import IndexManager
 
     print("\n=== Пример: Управление индексами ===")
 
@@ -102,7 +102,7 @@ async def example_index_manager():
 
 async def example_db_init():
     """Пример использования инициализации БД."""
-    from src.core.persistence.migrations.db_init import (
+    from core.persistence.migrations.db_init import (
         initialize_database,
         print_migration_status,
         verify_migrations,
@@ -129,11 +129,11 @@ async def example_persistence_integration():
     """Пример интеграции с персистентностью."""
     from uuid import uuid4
 
-    from src.core.models.device import Device
-    from src.core.models.ha_source import HASource
-    from src.core.persistence.devices import DevicePersistence
-    from src.core.persistence.migrations.index_manager import IndexManager
-    from src.core.persistence.sources import HASourcePersistence
+    from core.models.device import Device
+    from core.models.ha_source import HASource
+    from core.persistence.devices import DevicePersistence
+    from core.persistence.migrations.index_manager import IndexManager
+    from core.persistence.sources import HASourcePersistence
 
     print("\n=== Пример: Интеграция персистентности с индексами ===")
 

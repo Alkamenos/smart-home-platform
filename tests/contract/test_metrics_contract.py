@@ -15,8 +15,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prometheus_client import CollectorRegistry
-from src.core.events.event_bus import EventBus
 
+from core.events.event_bus import EventBus
 from core.events.fsm_events import OUTCOME_TRANSITIONED, build_transition_payload
 from core.metrics import MetricsCollector, get_metrics_collector
 from services.metrics_reporter import MetricsReporter
@@ -44,7 +44,7 @@ def registry() -> CollectorRegistry:
 @pytest.fixture
 def client(registry: CollectorRegistry) -> TestClient:
     """Приложение с подключённым сборщиком показателей."""
-    from src.webui.routes import router
+    from webui.routes import router
 
     metrics = MetricsCollector(registry=registry)
     metrics.initialize()
@@ -127,7 +127,7 @@ class TestMetricsEndpointDegradation:
         Пустой ответ 200 мониторинг принял бы за «показатели собираются и их
         ноль» (FR-002, контракт §1.5).
         """
-        from src.webui.routes import router
+        from webui.routes import router
 
         app = FastAPI()
         app.include_router(router)
@@ -141,7 +141,7 @@ class TestMetricsEndpointDegradation:
 
     def test_should_explain_when_collection_disabled(self) -> None:
         """Отключённая настройка — 200 с пояснением, а не тишина."""
-        from src.webui.routes import router
+        from webui.routes import router
 
         metrics = MetricsCollector()
         app = FastAPI()
@@ -164,7 +164,7 @@ class TestMetricsEndpointCollectionError:
         self, registry: CollectorRegistry
     ) -> None:
         """Сбой выдачи не приводит к молчаливому успеху (FR-008)."""
-        from src.webui.routes import router
+        from webui.routes import router
 
         metrics = MetricsCollector(registry=registry)
         metrics.initialize()
@@ -176,7 +176,7 @@ class TestMetricsEndpointCollectionError:
         # Подменяем именно формирование документа, а не сборщик целиком.
         with pytest.MonkeyPatch.context() as monkeypatch:
             monkeypatch.setattr(
-                "src.webui.routes.generate_latest",
+                "webui.routes.generate_latest",
                 lambda *a, **k: (_ for _ in ()).throw(RuntimeError()),
             )
             response = client.get("/metrics")

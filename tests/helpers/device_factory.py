@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from src.core.models.device import Device
-from src.core.models.ha_source import HASource
-from src.core.models.manifest import BehaviorConfig, DeviceConfig, RoomConfig
+from core.models.device import Device
+from core.models.ha_source import HASource
+from core.models.manifest import BehaviorConfig, DeviceConfig, RoomConfig
 
 
 def make_device(
@@ -132,7 +132,7 @@ def make_persistence(data_dir: Path | str) -> Any:
     Returns:
         Экземпляр ``PersistenceManager`` (импорт локальный ради изоляции тестов).
     """
-    from src.core.persistence.manager import PersistenceManager
+    from core.persistence.manager import PersistenceManager
 
     return PersistenceManager(data_dir=data_dir)
 

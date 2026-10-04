@@ -305,7 +305,7 @@ def fake_ha(monkeypatch) -> type[FakeHAAdapter]:
     """
     FakeHAAdapter.states = []
     FakeHAAdapter.connected = True
-    monkeypatch.setattr("src.adapters.ha_adapter.HAAdapter", FakeHAAdapter)
+    monkeypatch.setattr("adapters.ha_adapter.HAAdapter", FakeHAAdapter)
     return FakeHAAdapter
 
 

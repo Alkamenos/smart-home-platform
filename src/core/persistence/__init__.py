@@ -9,8 +9,8 @@
 - WebSocket batch обработка
 """
 
-from src.core.persistence.cache import DeviceCache
-from src.core.persistence.index_manager import IndexManager
+from core.persistence.cache import DeviceCache
+from core.persistence.index_manager import IndexManager
 
 
 __all__ = [

@@ -14,8 +14,8 @@ from loguru import logger
 
 
 if TYPE_CHECKING:
-    from src.adapters.ha_adapter import HAAdapter
-    from src.core.persistence.manifest_store import ManifestStore
+    from adapters.ha_adapter import HAAdapter
+    from core.persistence.manifest_store import ManifestStore
 
 router = APIRouter()
 
@@ -38,7 +38,7 @@ def init_discovery_routes(
             применение из мастера обновляло то же состояние, что и веб-интерфейс.
     """
     global _discovery_service, _manifest_path, _manifest_store
-    from src.core.discovery.discovery_service import DeviceDiscoveryService
+    from core.discovery.discovery_service import DeviceDiscoveryService
 
     _discovery_service = DeviceDiscoveryService(ha_adapter, manifest_store=manifest_store)
     _manifest_path = manifest_path
@@ -63,8 +63,8 @@ async def discovery_page(request: Request) -> HTMLResponse:
     template_dir = Path(__file__).parent / "templates"
     from fastapi.templating import Jinja2Templates
 
-    from src.core.discovery.classifier import DeviceClassifier
-    from src.webui.template_loader import get_template_loader
+    from core.discovery.classifier import DeviceClassifier
+    from webui.template_loader import get_template_loader
 
     templates = Jinja2Templates(directory=str(template_dir))
     template_names = sorted(get_template_loader().load_all().keys())
@@ -124,7 +124,7 @@ async def bulk_apply(
         raise HTTPException(status_code=503, detail="Discovery service not initialized")
 
     try:
-        from src.core.discovery.models import BulkApplyRequest
+        from core.discovery.models import BulkApplyRequest
 
         request_model = BulkApplyRequest(
             include_all=include_all,

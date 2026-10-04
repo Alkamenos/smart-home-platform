@@ -22,7 +22,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import yaml
 from fastapi.testclient import TestClient
-from src.core.persistence.manifest_store import ManifestStore
+
+from core.persistence.manifest_store import ManifestStore
 
 
 HEADERS = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}
@@ -59,7 +60,7 @@ def client(workdir: Path) -> Iterator[TestClient]:
     Yields:
         HTTP-клиент теста.
     """
-    from src.webui.app import create_app
+    from webui.app import create_app
 
     app = create_app(str(workdir / "manifest.yaml"))
     yield TestClient(app, headers=HEADERS)
@@ -71,7 +72,7 @@ def _discovery_module() -> object:
     Returns:
         Модуль ``src.webui.routes_discovery``.
     """
-    import src.webui.routes_discovery as module
+    import webui.routes_discovery as module
 
     return module
 

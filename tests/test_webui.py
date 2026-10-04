@@ -15,7 +15,7 @@ def client(tmp_path):
     Web UI сохраняет манифест на диск (/devices/save), поэтому тесты работают
     с копией в tmp_path, а не с реальным instances/leonids_house/manifest.yaml.
     """
-    from src.webui.app import create_app
+    from webui.app import create_app
 
     manifest_copy = tmp_path / "manifest.yaml"
     shutil.copy("instances/leonids_house/manifest.yaml", manifest_copy)

@@ -88,7 +88,7 @@ class TestFullConfigEditFlow:
         отдаёт то, что только что записал в память. Настоящая перезагрузка —
         новое приложение на том же каталоге данных.
         """
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         manifest = str(isolated_workdir / "manifest.yaml")
         headers = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}

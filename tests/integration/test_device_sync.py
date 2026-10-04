@@ -260,7 +260,7 @@ class TestSyncPersistence:
         одним и тем же клиентом и сравнивал длины двух пустых списков. Такая
         проверка не может упасть при любом состоянии кода.
         """
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         manifest = str(isolated_workdir / "manifest.yaml")
         headers = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}
@@ -294,7 +294,7 @@ class TestSyncPersistence:
 
     def test_source_survives_application_restart(self, isolated_workdir):
         """Источник и его токен переживают перезапуск."""
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         manifest = str(isolated_workdir / "manifest.yaml")
         headers = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}
@@ -326,7 +326,7 @@ class TestSyncPersistence:
         повторная синхронизация после перезапуска обязана обновить существующие
         записи, а не создать новые.
         """
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         manifest = str(isolated_workdir / "manifest.yaml")
         headers = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}

@@ -8,7 +8,8 @@ from __future__ import annotations
 import time
 
 import pytest
-from src.core.circuit_breaker import (
+
+from core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
     CircuitBreakerError,

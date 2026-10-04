@@ -15,7 +15,8 @@ from typing import Any
 
 import pytest
 from loguru import logger
-from src.core.events.event_bus import EventBus
+
+from core.events.event_bus import EventBus
 
 
 @pytest.fixture

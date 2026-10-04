@@ -13,7 +13,8 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
-from src.cli.health_check import build_url, run_health_check
+
+from cli.health_check import build_url, run_health_check
 
 
 class _HealthHandler(BaseHTTPRequestHandler):

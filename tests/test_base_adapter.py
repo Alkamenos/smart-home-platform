@@ -8,7 +8,8 @@ Tests for Base Adapter - abstract base class tests
 from __future__ import annotations
 
 import pytest
-from src.adapters.base import BaseAdapter
+
+from adapters.base import BaseAdapter
 
 
 class ConcreteTestAdapter(BaseAdapter):

@@ -10,8 +10,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from src.services.device_service import DeviceService
-from src.webui.routes.devices.deps import get_device_service, record_sync_event
+from services.device_service import DeviceService
+from webui.routes.devices.deps import get_device_service, record_sync_event
 
 
 logger = logging.getLogger(__name__)

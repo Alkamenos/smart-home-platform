@@ -49,8 +49,8 @@ async def handle_bulk_import_command(args: argparse.Namespace) -> int:
 
 async def _handle_discover(args: argparse.Namespace, manifest_path: str) -> int:
     """Discover devices from Home Assistant."""
-    from src.adapters.ha_adapter import HAAdapter
-    from src.core.discovery.discovery_service import DeviceDiscoveryService
+    from adapters.ha_adapter import HAAdapter
+    from core.discovery.discovery_service import DeviceDiscoveryService
 
     # Initialize HA adapter
     ws_url = args.ws_url or "ws://localhost:8123/api/websocket"
@@ -92,9 +92,9 @@ async def _handle_discover(args: argparse.Namespace, manifest_path: str) -> int:
 
 async def _handle_apply(args: argparse.Namespace, manifest_path: str) -> int:
     """Apply selected devices to manifest."""
-    from src.adapters.ha_adapter import HAAdapter
-    from src.core.discovery.discovery_service import DeviceDiscoveryService
-    from src.core.discovery.models import BulkApplyRequest
+    from adapters.ha_adapter import HAAdapter
+    from core.discovery.discovery_service import DeviceDiscoveryService
+    from core.discovery.models import BulkApplyRequest
 
     # Verify manifest exists
     if not Path(manifest_path).exists():
@@ -310,8 +310,8 @@ def _get_room_choice(device: dict, existing_rooms: list[dict]) -> str:
 
 async def _handle_interactive(args: argparse.Namespace, manifest_path: str) -> int:
     """Interactive mode for selecting devices and rooms."""
-    from src.adapters.ha_adapter import HAAdapter
-    from src.core.discovery.discovery_service import DeviceDiscoveryService
+    from adapters.ha_adapter import HAAdapter
+    from core.discovery.discovery_service import DeviceDiscoveryService
 
     # Verify manifest exists
     if not Path(manifest_path).exists():

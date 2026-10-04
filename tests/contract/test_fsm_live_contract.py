@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Клиент, действующий от администратора."""
-    from src.main import app
+    from main import app
 
     return TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
 
@@ -21,7 +21,7 @@ def client():
 @pytest.fixture
 def anonymous_client():
     """Клиент без идентификации пользователя."""
-    from src.main import app
+    from main import app
 
     return TestClient(app)
 
@@ -67,9 +67,8 @@ class TestFSMStateEndpoint:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Без автоматов — 200 и пустой список, а не ошибка (FR-021)."""
-        from src.main import app
-
         from core import FSMEngine
+        from main import app
 
         container = app.state.container
         empty_engine = FSMEngine()
@@ -84,7 +83,7 @@ class TestFSMStateEndpoint:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Недоступность сервиса — 503 с описанием, а не пустой список (FR-020)."""
-        from src.main import app
+        from main import app
 
         monkeypatch.setattr(app.state, "container", None, raising=False)
 
@@ -165,7 +164,7 @@ class TestFSMStateAccessIsolation:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Пустой список прав означает пустой раздел, а не отказ от фильтрации."""
-        from src.main import app
+        from main import app
 
         container = app.state.container
         assert container is not None

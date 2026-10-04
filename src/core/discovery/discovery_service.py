@@ -21,8 +21,8 @@ from .models import BulkApplyRequest, DiscoveredDevice
 
 
 if TYPE_CHECKING:
-    from src.adapters.ha_adapter import HAAdapter
-    from src.core.persistence.manifest_store import ManifestStore
+    from adapters.ha_adapter import HAAdapter
+    from core.persistence.manifest_store import ManifestStore
 
 
 SYSTEM_DOMAINS = {
@@ -75,7 +75,7 @@ class DeviceDiscoveryService:
         Returns:
             Хранилище манифеста с уже загруженным состоянием.
         """
-        from src.core.persistence.manifest_store import ManifestStore
+        from core.persistence.manifest_store import ManifestStore
 
         if self._manifest_store is None or self._manifest_store.path != manifest_path:
             self._manifest_store = ManifestStore(manifest_path)
@@ -94,7 +94,7 @@ class DeviceDiscoveryService:
         Returns:
             Модель комнаты.
         """
-        from src.core.models.manifest import RoomConfig
+        from core.models.manifest import RoomConfig
 
         room = next((r for r in manifest.rooms if r.id == target_room), None)
         if room is None:
@@ -323,7 +323,7 @@ class DeviceDiscoveryService:
             True, если устройство добавлено; False, если уже было или это датчик без
             свободного слота в комнате.
         """
-        from src.core.models.manifest import BehaviorConfig, DeviceConfig
+        from core.models.manifest import BehaviorConfig, DeviceConfig
 
         if DeviceDiscoveryService._already_present(room, entity_id):
             return False

@@ -21,13 +21,14 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
-from src.core.models.scene import (
+
+from core.models.scene import (
     SceneAction,
     SceneConfig,
     SceneManagerConfig,
     SceneTrigger,
 )
-from src.core.scene_manager import SceneManager
+from core.scene_manager import SceneManager
 
 
 def _freeze_scene_manager_clock(
@@ -58,7 +59,7 @@ def _freeze_scene_manager_clock(
             """Вернуть замороженное время вместо системного."""
             return frozen_now
 
-    monkeypatch.setattr("src.core.scene_manager.datetime", _FrozenDatetime)
+    monkeypatch.setattr("core.scene_manager.datetime", _FrozenDatetime)
     return frozen_now
 
 

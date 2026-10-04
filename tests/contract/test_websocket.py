@@ -17,7 +17,7 @@ class TestWebSocketContract:
     @pytest.mark.asyncio
     async def test_websocket_subscribe_to_state_changes(self):
         """T043: WebSocket может подписаться на события state_changed."""
-        from src.adapters.home_assistant.websocket_client import HAWebSocketClient
+        from adapters.home_assistant.websocket_client import HAWebSocketClient
 
         client = HAWebSocketClient(
             base_url="http://localhost:8123",
@@ -40,7 +40,7 @@ class TestWebSocketContract:
     @pytest.mark.asyncio
     async def test_websocket_receives_state_changed_event(self):
         """T043: WebSocket получает и обрабатывает события state_changed."""
-        from src.adapters.home_assistant.websocket_client import HAWebSocketClient
+        from adapters.home_assistant.websocket_client import HAWebSocketClient
 
         received_events = []
 
@@ -100,7 +100,7 @@ class TestWebSocketContract:
     @pytest.mark.asyncio
     async def test_websocket_handles_connection_errors(self):
         """T043: WebSocket корректно обрабатывает ошибки соединения."""
-        from src.adapters.home_assistant.websocket_client import HAWebSocketClient
+        from adapters.home_assistant.websocket_client import HAWebSocketClient
 
         client = HAWebSocketClient(
             base_url="http://localhost:8123",
@@ -130,7 +130,7 @@ class TestWebSocketContract:
 
     def test_websocket_subscription_message_format(self):
         """T043: WebSocket отправляет правильный формат сообщения подписки."""
-        from src.adapters.home_assistant.websocket_client import HAWebSocketClient
+        from adapters.home_assistant.websocket_client import HAWebSocketClient
 
         client = HAWebSocketClient(
             base_url="http://localhost:8123",

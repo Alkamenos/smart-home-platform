@@ -18,16 +18,16 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from src.core.models.device import Device
-from src.core.models.manifest import BehaviorConfig
-from src.core.persistence.manifest_store import ManifestStore
+from core.models.device import Device
+from core.models.manifest import BehaviorConfig
+from core.persistence.manifest_store import ManifestStore
 
 from .models import ManifestModel
 
 
 if TYPE_CHECKING:
-    from src.core.container import Container
-    from src.services.device_service import DeviceService
+    from core.container import Container
+    from services.device_service import DeviceService
 
 
 DEFAULT_USER_ID = "admin_user"
@@ -272,7 +272,7 @@ def create_app(
     # US4/T004: регистрация middleware контроля доступа (идентификация на
     # device-endpoints). Регистрируется ДО включения маршрутов — действует
     # на все пути, но проверяет только область /api/v1/devices/**
-    from src.webui.middleware_access_control import DeviceAccessMiddleware
+    from webui.middleware_access_control import DeviceAccessMiddleware
 
     app.add_middleware(DeviceAccessMiddleware)
 
@@ -328,7 +328,7 @@ def create_app(
     # The adapter is already connected in main.py via ctx.adapter.start()
     _container = None
     try:
-        from src.core.container import Container
+        from core.container import Container
 
         from .routes_discovery import init_discovery_routes
 
@@ -351,9 +351,9 @@ def create_app(
 
     # Initialize device management services (T049-T060)
     try:
-        from src.core.events.event_bus import EventBus
-        from src.services.device_service import DeviceService
-        from src.webui.routes.devices.websocket import make_fsm_broadcaster
+        from core.events.event_bus import EventBus
+        from services.device_service import DeviceService
+        from webui.routes.devices.websocket import make_fsm_broadcaster
 
         # Одна шина событий на процесс: веб-слой и ядро должны видеть одни и те
         # же события, иначе переходы автоматов не доходят до интерфейса, а все
@@ -362,7 +362,7 @@ def create_app(
         persistence = None
 
         try:
-            from src.core.persistence.manager import PersistenceManager
+            from core.persistence.manager import PersistenceManager
 
             persistence = PersistenceManager(data_dir="data")
         except ImportError as e:
@@ -400,7 +400,7 @@ def create_app(
         lifecycle_service = None
         if _container is not None:
             try:
-                from src.services.device_lifecycle import DeviceLifecycleService
+                from services.device_lifecycle import DeviceLifecycleService
 
                 lifecycle_service = DeviceLifecycleService(
                     manifest=_container.manifest,

@@ -10,7 +10,7 @@ Tests for Manifest Schema - Тесты схемы манифеста платф�
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
 
-from src.core.manifest_schema import MANIFEST_SCHEMA, get_schema
+from core.manifest_schema import MANIFEST_SCHEMA, get_schema
 
 
 class TestManifestSchemaStructure:

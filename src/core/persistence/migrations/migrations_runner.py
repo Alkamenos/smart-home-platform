@@ -35,8 +35,8 @@ class MigrationsRunner:
         self.migrations_package = migrations_package
 
         # Импортируем миграции динамически (модули с именами, начинающимися на цифры)
-        migration_001 = importlib.import_module("src.core.persistence.migrations.001_init_sources")
-        migration_002 = importlib.import_module("src.core.persistence.migrations.002_init_devices")
+        migration_001 = importlib.import_module("core.persistence.migrations.001_init_sources")
+        migration_002 = importlib.import_module("core.persistence.migrations.002_init_devices")
 
         self.available_migrations = [
             migration_001.Migration001InitSources(data_dir),

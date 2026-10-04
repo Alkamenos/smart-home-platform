@@ -13,9 +13,9 @@ from typing import Any
 
 from fastapi import HTTPException, Request, status
 
-from src.core.models.device_sync_event import DeviceSyncEvent, SyncAction
-from src.core.persistence.devices import DeviceSyncEventPersistence
-from src.services.device_service import DeviceService
+from core.models.device_sync_event import DeviceSyncEvent, SyncAction
+from core.persistence.devices import DeviceSyncEventPersistence
+from services.device_service import DeviceService
 
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,8 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from src.core.deployment_manager import (
+
+from core.deployment_manager import (
     DeploymentManager,
     DeploymentMode,
     DeploymentState,

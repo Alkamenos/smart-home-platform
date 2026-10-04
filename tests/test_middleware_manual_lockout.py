@@ -243,7 +243,7 @@ class TestManualLockoutMiddleware:
         def mock_time():
             return time_container["base"]
 
-        with patch("src.core.control_tracker.time.time", mock_time):
+        with patch("core.control_tracker.time.time", mock_time):
             # Manual control of ventilation
             vent_manual = CommandIntent(
                 device_id="fan.bathroom",

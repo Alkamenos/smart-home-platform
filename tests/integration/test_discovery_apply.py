@@ -42,7 +42,7 @@ def client() -> Iterator[TestClient]:
         )
         os.chdir(work_dir)
 
-        from src.webui.app import create_app
+        from webui.app import create_app
 
         app = create_app(os.path.join(work_dir, "manifest.yaml"))
         yield TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
@@ -102,15 +102,15 @@ class TestWizardApply:
         """Выбранные устройства применяются, невыбранные — нет (FR-012)."""
         with (
             patch(
-                "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
+                "adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
                 return_value=True,
             ),
             patch(
-                "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+                "adapters.home_assistant.rest_client.HARestClient.fetch_devices",
                 return_value=_ha_states(),
             ),
             patch(
-                "src.adapters.home_assistant.rest_client.HARestClient.fetch_areas",
+                "adapters.home_assistant.rest_client.HARestClient.fetch_areas",
                 return_value=[
                     {"area_id": "hall", "name": "Hall"},
                     {"area_id": "garage", "name": "Garage"},

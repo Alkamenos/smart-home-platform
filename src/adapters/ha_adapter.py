@@ -443,7 +443,7 @@ class HAAdapter:
             reason: Причина обрыва (для лога).
             delay: Задержка перед следующей попыткой восстановления, сек.
         """
-        from src.core.metrics import get_metrics_collector
+        from core.metrics import get_metrics_collector
 
         self._reconnect_attempt += 1
         if not self._connected_once:

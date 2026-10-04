@@ -14,10 +14,10 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from src.core.events.event_bus import EventBus
-from src.core.models.device import Device
-from src.services.device_service import DeviceService
 
+from core.events.event_bus import EventBus
+from core.models.device import Device
+from services.device_service import DeviceService
 from tests.helpers.device_factory import make_device, make_persistence, seed_persistence
 
 

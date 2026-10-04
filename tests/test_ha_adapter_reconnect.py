@@ -17,9 +17,10 @@ import logging
 import time
 
 import pytest
-import src.adapters.ha_adapter as ha_adapter_module
-import src.core.metrics as core_metrics_module
-from src.adapters.ha_adapter import HAAdapter
+
+import adapters.ha_adapter as ha_adapter_module
+import core.metrics as core_metrics_module
+from adapters.ha_adapter import HAAdapter
 
 
 LISTEN_DIE_DELAY = 0.05
@@ -201,7 +202,7 @@ async def test_disconnect_logs_attempt_number_and_backoff(
 ) -> None:
     """Обрыв — WARNING с номером попытки и задержкой, успех — INFO о сбросе backoff."""
     adapter = _make_adapter()
-    with caplog.at_level(logging.INFO, logger="src.adapters.ha_adapter"):
+    with caplog.at_level(logging.INFO, logger="adapters.ha_adapter"):
         await adapter.start()
         try:
             assert await _wait_until(lambda: fake_ws.connect_calls >= 2)

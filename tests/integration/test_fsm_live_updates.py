@@ -19,7 +19,7 @@ ADMIN = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}
 @pytest.fixture
 def client():
     """Клиент приложения."""
-    from src.main import app
+    from main import app
 
     with TestClient(app) as test_client:
         yield test_client
@@ -50,7 +50,7 @@ class TestFSMTransitionMessage:
 
     def test_should_include_contract_fields_when_transition_broadcast(self) -> None:
         """Сообщение содержит поля контракта."""
-        from src.webui.routes.devices.websocket import build_fsm_transition_message
+        from webui.routes.devices.websocket import build_fsm_transition_message
 
         payload = {
             "fsm_id": "light.kitchen_lighting_10",
@@ -80,7 +80,7 @@ class TestFSMTransitionMessage:
 
     def test_should_use_empty_from_state_when_first_entry(self) -> None:
         """Первый вход в состояние не имеет прежнего состояния."""
-        from src.webui.routes.devices.websocket import build_fsm_transition_message
+        from webui.routes.devices.websocket import build_fsm_transition_message
 
         message = build_fsm_transition_message(
             {
@@ -98,7 +98,7 @@ class TestFSMTransitionMessage:
 
     def test_should_return_none_when_device_id_missing(self) -> None:
         """Без идентификатора устройства сообщение не формируется."""
-        from src.webui.routes.devices.websocket import build_fsm_transition_message
+        from webui.routes.devices.websocket import build_fsm_transition_message
 
         assert (
             build_fsm_transition_message(
@@ -115,8 +115,8 @@ class TestEntityIdResolution:
         """Entity_id автомата разрешается в идентификатор устройства."""
         import asyncio
 
-        from src.main import app
-        from src.webui.routes.devices.websocket import resolve_device_uuid
+        from main import app
+        from webui.routes.devices.websocket import resolve_device_uuid
 
         devices = asyncio.run(app.state.device_service.get_all_devices())
         assert devices, "в хранилище должны быть устройства"
@@ -128,8 +128,8 @@ class TestEntityIdResolution:
 
     def test_should_return_none_for_unknown_entity_id(self, client: TestClient) -> None:
         """Неизвестный entity_id не приводит к исключению."""
-        from src.main import app
-        from src.webui.routes.devices.websocket import resolve_device_uuid
+        from main import app
+        from webui.routes.devices.websocket import resolve_device_uuid
 
         resolved = client.portal.call(
             resolve_device_uuid, app.state.device_service, "light.unknown"
@@ -145,8 +145,8 @@ class TestSingleModuleInstance:
         self, client: TestClient
     ) -> None:
         """Приложение и модуль раздачи используют один менеджер соединений."""
-        from src.webui.app import create_app
-        from src.webui.routes.devices.websocket import connection_manager
+        from webui.app import create_app
+        from webui.routes.devices.websocket import connection_manager
 
         assert app_module_manager_is_same(connection_manager), (
             "приложение и модуль раздачи должны использовать один connection_manager"
@@ -165,7 +165,13 @@ def app_module_manager_is_same(manager: object) -> bool:
     """
     import sys
 
-    return "webui.routes.devices.websocket" not in sys.modules
+    # Проверяется отсутствие ВТОРОГО экземпляра модуля. Раньше веб-слой
+    # импортировался двумя способами (`webui.*` в src/ и `src.webui.*` в
+    # тестах), поэтому проверялось отсутствие `webui.*` при импортированном
+    # `src.webui.*`. Теперь стиль импорта один, и такой тест стал бы
+    # заведомо ложным: сам тест импортирует `webui.routes.devices.websocket`.
+    # Проверять надо, что дубля под именем `src.` не загружено.
+    return "src.webui.routes.devices.websocket" not in sys.modules
 
 
 class TestDeliveryByAccess:
@@ -177,7 +183,7 @@ class TestDeliveryByAccess:
         user_id = str(uuid4())
         grant_access(client, device_id, user_id)
 
-        from src.webui.routes.devices.websocket import (
+        from webui.routes.devices.websocket import (
             build_fsm_transition_message,
             connection_manager,
         )
@@ -211,7 +217,7 @@ class TestDeliveryByAccess:
         user_id = str(uuid4())
         access_id = grant_access(client, device_id, user_id)
 
-        from src.webui.routes.devices.websocket import (
+        from webui.routes.devices.websocket import (
             build_fsm_transition_message,
             connection_manager,
         )
@@ -247,7 +253,7 @@ class TestDeliveryByAccess:
         user_id = str(uuid4())
         grant_access(client, device_id, user_id)
 
-        from src.webui.routes.devices.websocket import (
+        from webui.routes.devices.websocket import (
             build_fsm_transition_message,
             connection_manager,
         )
@@ -291,8 +297,8 @@ class TestBridgeBroadcast:
         import asyncio
         from unittest.mock import AsyncMock, MagicMock
 
-        from src.core.events.event_bus import EventBus
-        from src.services.fsm_state_bridge import FSMStateBridge
+        from core.events.event_bus import EventBus
+        from services.fsm_state_bridge import FSMStateBridge
 
         broadcaster = AsyncMock()
         bus = EventBus()
@@ -319,7 +325,7 @@ class TestEndToEndDelivery:
 
     def test_should_deliver_real_transition_to_subscriber(self, client: TestClient) -> None:
         """Настоящее событие перехода доходит до подписанного клиента."""
-        from src.main import app
+        from main import app
 
         devices = asyncio.run(app.state.device_service.get_all_devices())
         assert devices, "нужно хотя бы одно устройство в хранилище"

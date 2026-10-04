@@ -21,8 +21,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from prometheus_client import CollectorRegistry
-from src.core.events.event_bus import EventBus
 
+from core.events.event_bus import EventBus
 from core.events.fsm_events import EVENT_PLATFORM_PROBLEM
 from core.fsm.engine import FSMDefinition, FSMEngine, Transition
 from core.metrics import MetricsCollector

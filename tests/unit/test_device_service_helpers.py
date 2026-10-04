@@ -16,9 +16,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from src.core.models.device import Device
-from src.core.models.device_access import DeviceAccess
-from src.services.device_service import DeviceService
+
+from core.models.device import Device
+from core.models.device_access import DeviceAccess
+from services.device_service import DeviceService
 
 
 @pytest.fixture
@@ -330,7 +331,7 @@ class TestConfigAndCacheInvalidation:
         await service.add_device(known)
         service.event_bus.publish = AsyncMock()
 
-        with patch("src.services.device_service.logger") as mock_logger:
+        with patch("services.device_service.logger") as mock_logger:
             await service.handle_state_change(
                 {
                     "event_type": "state_changed",

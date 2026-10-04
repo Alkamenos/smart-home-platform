@@ -14,9 +14,10 @@ import time
 from uuid import uuid4
 
 import pytest
-from src.core.models.device import Device
-from src.core.persistence.cache import DeviceCache
-from src.core.persistence.index_manager import IndexManager
+
+from core.models.device import Device
+from core.persistence.cache import DeviceCache
+from core.persistence.index_manager import IndexManager
 
 
 # ============================================================================

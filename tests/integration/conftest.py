@@ -46,7 +46,7 @@ R-02, R-03, R-04. Фичи F4.
 
 - `os.chdir` — процессно-глобальный, а не потокобезопасный. Приём пригоден,
   пока тесты выполняются последовательно (текущий режим pytest).
-- `os.chdir` **не действует на `from src.main import app`**: этот объект
+- `os.chdir` **не действует на `from main import app`**: этот объект
   создаётся при импорте модуля и замыкает пути. Изолированные фикстуры
   поэтому собирают приложение через `create_app`, а не берут синглтон.
 """
@@ -201,7 +201,7 @@ def isolated_app(isolated_workdir: Path) -> Any:
     Returns:
         Приложение FastAPI.
     """
-    from src.webui.app import create_app
+    from webui.app import create_app
 
     return create_app(str(isolated_workdir / "manifest.yaml"))
 
@@ -413,6 +413,6 @@ def ha_client(isolated_app: Any) -> Any:
     Returns:
         Экземпляр ``HARestClient``.
     """
-    from src.adapters.home_assistant.rest_client import HARestClient
+    from adapters.home_assistant.rest_client import HARestClient
 
     return HARestClient("http://ha.invalid:8123", "client_token_12345")

@@ -4,12 +4,12 @@
 
 from pathlib import Path
 
-from src.core.persistence.devices import (
+from core.persistence.devices import (
     DeviceAccessPersistence,
     DevicePersistence,
     DeviceSyncEventPersistence,
 )
-from src.core.persistence.sources import HASourcePersistence
+from core.persistence.sources import HASourcePersistence
 
 
 class PersistenceManager:
@@ -33,7 +33,7 @@ class PersistenceManager:
         # Пытаемся использовать encryptor если он передан или доступен
         try:
             if not encryptor:
-                from src.core.security.encryption import TokenEncryptor
+                from core.security.encryption import TokenEncryptor
 
                 encryptor = TokenEncryptor()
         except ImportError:

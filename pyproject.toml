@@ -106,14 +106,13 @@ python_version = "3.12"
 strict = true
 explicit_package_bases = true
 namespace_packages = true
-ignore_missing_imports = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
-mypy_path = "."
+mypy_path = "src"
 disable_error_code = [
     "misc",
     "no-untyped-def",
@@ -139,13 +138,25 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = false
 
+# Внешние пакеты без type-информации. Держать точечно: глобальный
+# ignore_missing_imports скрывал бы и настоящие ошибки импорта внутри проекта.
+# pyscript здесь легитимно — он опциональный импорт под contextlib.suppress
+# в src/core/persistence/context_manager.py, в зависимостях не объявлен.
 [[tool.mypy.overrides]]
-module = ["fastapi.*", "starlette.*"]
+module = ["fastapi.*", "starlette.*", "pyscript.*"]
 ignore_missing_imports = true
 
+# mypy_path = "src" обязателен и связан с единым стилем импорта.
+# Раньше был mypy_path = "." при 52 импортах `core.*` и 44 `src.core.*`
+# одновременно. Двойное имя файла (core.X и src.core.X) давало либо
+# "Source file found twice", либо требовало глобального ignore_missing_imports,
+# который отключал анализ примерно половины собственного кода.
+
+# FastAPI-декораторы не типизированы — снимаем проверку для веб-слоя.
 [[tool.mypy.overrides]]
-module = ["src.webui.*"]
+module = ["webui.*"]
 disallow_untyped_decorators = false
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

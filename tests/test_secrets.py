@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from src.core.secrets import (
+
+from core.secrets import (
     SecretsResolver,
     get_resolver,
     resolve_secrets,
@@ -344,7 +345,7 @@ class TestGlobalFunctions:
         monkeypatch.setenv("GLOBAL_TOKEN", "global123")
 
         # Reset global resolver
-        import src.core.secrets as secrets_module
+        import core.secrets as secrets_module
 
         secrets_module._resolver = None
 
@@ -355,7 +356,7 @@ class TestGlobalFunctions:
     def test_validate_secrets_function(self) -> None:
         """Test validate_secrets convenience function."""
         # Reset global resolver
-        import src.core.secrets as secrets_module
+        import core.secrets as secrets_module
 
         secrets_module._resolver = None
 

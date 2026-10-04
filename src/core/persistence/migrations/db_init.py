@@ -9,7 +9,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from src.core.persistence.migrations.migrations_runner import (
+from core.persistence.migrations.migrations_runner import (
     MigrationsRunner,
     check_migrations_status,
     init_migrations,

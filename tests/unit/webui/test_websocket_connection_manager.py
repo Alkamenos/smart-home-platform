@@ -8,7 +8,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from src.webui.routes.devices.websocket import WebSocketConnectionManager
+
+from webui.routes.devices.websocket import WebSocketConnectionManager
 
 
 @pytest.fixture
@@ -313,7 +314,7 @@ class TestBroadcastAllAndPersonal:
         await manager.connect(broken)
         await manager.connect(healthy)
 
-        with patch("src.webui.routes.devices.websocket.logger") as mock_logger:
+        with patch("webui.routes.devices.websocket.logger") as mock_logger:
             await manager.send_personal(broken, {"type": "pong"})
 
             assert mock_logger.error.call_count == 1

@@ -191,7 +191,7 @@ class ValidationReport:
 @pytest.fixture
 def client():
     """Клиент для тестирования API."""
-    from src.main import app
+    from main import app
 
     return TestClient(app)
 

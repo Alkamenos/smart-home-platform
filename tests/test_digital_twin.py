@@ -4,13 +4,14 @@ import asyncio
 from datetime import datetime, timedelta
 
 import pytest
-from src.core.models.simulation import (
+
+from core.models.simulation import (
     ScenarioStep,
     SensorSimulationConfig,
     SimulationMode,
     SimulationScenario,
 )
-from src.core.simulator import DigitalTwin, SensorSimulator
+from core.simulator import DigitalTwin, SensorSimulator
 
 
 class TestSensorSimulator:

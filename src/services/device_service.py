@@ -13,20 +13,20 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from src.core.events.device_events import (
+from core.events.device_events import (
     DeviceAccessChangedEvent,
     DeviceConfigChangedEvent,
     DeviceStateChangedEvent,
 )
-from src.core.events.event_bus import EventBus
-from src.core.metrics import get_metrics_collector
-from src.core.models.device import Device
-from src.core.models.device_access import DeviceAccess
-from src.core.models.device_command import CommandExecutionResponse
-from src.core.models.device_config import DeviceConfig
-from src.core.models.ha_source import HASource
-from src.core.persistence.cache import DeviceCache
-from src.core.persistence.index_manager import IndexManager
+from core.events.event_bus import EventBus
+from core.metrics import get_metrics_collector
+from core.models.device import Device
+from core.models.device_access import DeviceAccess
+from core.models.device_command import CommandExecutionResponse
+from core.models.device_config import DeviceConfig
+from core.models.ha_source import HASource
+from core.persistence.cache import DeviceCache
+from core.persistence.index_manager import IndexManager
 
 
 logger = logging.getLogger(__name__)
@@ -276,7 +276,7 @@ class DeviceService:
         Raises:
             RuntimeError: Если подключиться к источнику не удалось.
         """
-        from src.adapters.home_assistant.rest_client import HARestClient
+        from adapters.home_assistant.rest_client import HARestClient
 
         async with HARestClient(source.url, source.token) as rest_client:
             if not await rest_client.connect_to_ha():
@@ -1389,7 +1389,7 @@ class DeviceService:
             device: Загруженное устройство
         """
         try:
-            from src.core.events.device_events import DeviceLoadedEvent
+            from core.events.device_events import DeviceLoadedEvent
 
             event = DeviceLoadedEvent(
                 device_id=device.id,

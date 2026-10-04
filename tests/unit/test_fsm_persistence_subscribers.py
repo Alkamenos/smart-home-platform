@@ -18,8 +18,9 @@ from unittest.mock import MagicMock
 
 import pytest
 from loguru import logger
-from src.core.events.event_bus import EventBus
-from src.core.events.fsm_events import EVENT_FSM_TRANSITIONED, EVENT_PLATFORM_STARTED
+
+from core.events.event_bus import EventBus
+from core.events.fsm_events import EVENT_FSM_TRANSITIONED, EVENT_PLATFORM_STARTED
 
 
 class TestFSMPersistenceSubscriber:
@@ -27,7 +28,7 @@ class TestFSMPersistenceSubscriber:
 
     def test_should_subscribe_to_transitioned_event_when_initialized(self) -> None:
         """Подписка выполняется на fsm.transitioned, а не на непубликуемое имя."""
-        from src.core.fsm.persistence import FSMPersistence
+        from core.fsm.persistence import FSMPersistence
 
         bus = EventBus()
 
@@ -42,7 +43,7 @@ class TestFSMPersistenceSubscriber:
 
     def test_should_not_subscribe_to_unpublished_legacy_event_when_initialized(self) -> None:
         """Имя fsm.transition больше не используется (различало бы успех и отказ)."""
-        from src.core.fsm.persistence import FSMPersistence
+        from core.fsm.persistence import FSMPersistence
 
         bus = EventBus()
 
@@ -57,7 +58,7 @@ class TestFSMPersistenceSubscriber:
 
     async def test_should_deliver_without_false_error_when_transition_published(self) -> None:
         """Публикация перехода не порождает ошибку доставки."""
-        from src.core.fsm.persistence import FSMPersistence
+        from core.fsm.persistence import FSMPersistence
 
         bus = EventBus()
         persistence = FSMPersistence(
@@ -87,7 +88,7 @@ class TestFSMPersistenceSubscriber:
         self,
     ) -> None:
         """Обработчик читает fsm_id и to_state — ключи контракта события."""
-        from src.core.fsm.persistence import FSMPersistence
+        from core.fsm.persistence import FSMPersistence
 
         bus = EventBus()
         persistence = FSMPersistence(
@@ -114,7 +115,7 @@ class TestContextManagerSubscriber:
 
     async def test_should_deliver_without_false_error_when_platform_started_published(self) -> None:
         """Публикация platform.started не порождает ошибку доставки."""
-        from src.core.persistence.context_manager import ContextManager
+        from core.persistence.context_manager import ContextManager
 
         bus = EventBus()
         manager = ContextManager(event_bus=bus, fsm_engine=MagicMock(), logger=logger)
@@ -133,7 +134,7 @@ class TestContextManagerSubscriber:
 
     async def test_should_update_context_when_state_change_published(self) -> None:
         """Синхронный подписчик обрабатывает изменение состояния сенсора."""
-        from src.core.persistence.context_manager import ContextManager
+        from core.persistence.context_manager import ContextManager
 
         bus = EventBus()
         manager = ContextManager(event_bus=bus, fsm_engine=MagicMock(), logger=logger)
@@ -154,7 +155,7 @@ class TestNewSubscribersAreAsync:
 
     def test_bridge_handlers_should_be_coroutine_functions(self) -> None:
         """Обработчики моста состояний — async с контрактной сигнатурой."""
-        from src.services.fsm_state_bridge import FSMStateBridge
+        from services.fsm_state_bridge import FSMStateBridge
 
         bridge_handlers = [
             FSMStateBridge.on_transitioned,

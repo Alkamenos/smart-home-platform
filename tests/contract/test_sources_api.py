@@ -18,7 +18,7 @@ def client():
     US4 (spec 004): device-endpoints требуют идентификацию (middleware) —
     клиент по умолчанию действует как администратор (X-User-ID/X-Is-Admin).
     """
-    from src.webui.app import create_app
+    from webui.app import create_app
 
     app = create_app()
     return TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
@@ -178,11 +178,11 @@ class TestSourcesAPI:
         ]
         with (
             patch(
-                "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
+                "adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
                 return_value=True,
             ),
             patch(
-                "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+                "adapters.home_assistant.rest_client.HARestClient.fetch_devices",
                 return_value=mock_devices,
             ),
         ):
@@ -249,11 +249,11 @@ class TestSourceDiscoveryData:
         """Доступные устройства источника попадают в ответ (FR-010)."""
         with (
             patch(
-                "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
+                "adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
                 return_value=True,
             ),
             patch(
-                "src.adapters.home_assistant.rest_client.HARestClient.fetch_devices",
+                "adapters.home_assistant.rest_client.HARestClient.fetch_devices",
                 return_value=[
                     {
                         "entity_id": "light.hall",
@@ -271,7 +271,7 @@ class TestSourceDiscoveryData:
                 ],
             ),
             patch(
-                "src.adapters.home_assistant.rest_client.HARestClient.fetch_areas",
+                "adapters.home_assistant.rest_client.HARestClient.fetch_areas",
                 return_value=[{"area_id": "hall", "name": "Hall"}],
             ),
         ):
@@ -292,7 +292,7 @@ class TestSourceDiscoveryData:
     def test_discovery_data_should_report_reason_when_source_unavailable(self, client, source_id):
         """При недоступном источнике возвращается причина, а не «устройств нет» (FR-013)."""
         with patch(
-            "src.adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
+            "adapters.home_assistant.rest_client.HARestClient.connect_to_ha",
             return_value=False,
         ):
             response = client.get(f"/api/v1/devices/sources/{source_id}/discovery-data")

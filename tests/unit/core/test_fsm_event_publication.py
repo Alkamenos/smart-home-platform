@@ -15,8 +15,10 @@ from datetime import datetime
 from typing import Any
 
 import pytest
-from src.core.events.event_bus import EventBus
-from src.core.events.fsm_events import (
+
+from core import FSMDefinition, FSMEngine, Transition
+from core.events.event_bus import EventBus
+from core.events.fsm_events import (
     EVENT_FSM_REJECTED,
     EVENT_FSM_TRANSITIONED,
     REASON_DEBOUNCED,
@@ -26,8 +28,6 @@ from src.core.events.fsm_events import (
     REASON_UNKNOWN_ENTITY,
     TIMESTAMP_FORMAT,
 )
-
-from core import FSMDefinition, FSMEngine, Transition
 
 
 FSM_ID = "light.kitchen_lighting_10"
@@ -148,7 +148,7 @@ class TestSuccessfulTransition:
         """Время перехода — настенное ISO-8601, разбираемое datetime."""
         from datetime import datetime
 
-        from src.core.events.fsm_events import TIMESTAMP_FORMAT
+        from core.events.fsm_events import TIMESTAMP_FORMAT
 
         engine.register_definition(make_definition())
 
@@ -299,7 +299,7 @@ class TestTransitionSource:
         """Все триггеры из шаблонов классифицируются по соглашению об именах."""
         from pathlib import Path
 
-        from src.core.events.fsm_events import SOURCE_AUTOMATIC, SOURCE_MANUAL, classify_source
+        from core.events.fsm_events import SOURCE_AUTOMATIC, SOURCE_MANUAL, classify_source
 
         features_dir = Path("src/features")
         triggers: set[str] = set()
