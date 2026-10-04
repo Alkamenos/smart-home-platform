@@ -213,8 +213,8 @@ HomeAssistantWS = SimpleHAWebSocketClient  # type: ignore
 
 
 if TYPE_CHECKING:
-    from src.core.event_router import EventRouter
-    from src.core.middleware import ManualLockoutMiddleware
+    from core.commands.middleware import ManualLockoutMiddleware
+    from core.events.event_router import EventRouter
 
 
 class HAAdapter:

@@ -21,7 +21,7 @@ from core.models.scene import SceneAction, SceneConfig, SceneManagerConfig
 
 
 if TYPE_CHECKING:
-    from src.event_bus import EventBus
+    from core.events.event_bus import EventBus
 
 
 class SceneManager:
