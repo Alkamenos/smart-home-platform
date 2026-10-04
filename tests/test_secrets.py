@@ -257,12 +257,39 @@ class TestSecretsResolverValidation:
         assert len(errors) == 1
 
 
+@pytest.fixture
+def require_dotenv() -> None:
+    """Явное требование dev-зависимости python-dotenv.
+
+    Раньше здесь стоял ``pytest.importorskip("dotenv")``, но это самопропуск:
+    ``python-dotenv`` объявлен в ``[project.optional-dependencies].dev``,
+    то есть в тестовом окружении присутствует по определению. Отсутствие
+    библиотеки — ошибка настройки окружения, а не повод тихо пропустить тест.
+
+    Проверка обязательна ещё и потому, что production-код перехватывает
+    ``ImportError`` (``SecretsResolver._load_env_file``) и лишь пишет warning:
+    без этой фикстуры тест падал бы с невнятным
+    ``ValueError: Environment variable '...' is not set`` — виноватым выглядел бы
+    ``resolve()``, а не отсутствующая зависимость.
+    """
+    try:
+        import dotenv  # noqa: F401  (проверяем только наличие)
+    except ImportError:
+        pytest.fail(
+            "Отсутствует python-dotenv — это dev-зависимость "
+            "[project.optional-dependencies].dev. Установите окружение: "
+            "pip install -e '.[dev]'",
+            pytrace=False,
+        )
+
+
 class TestSecretsResolverEnvFile:
     """Test .env file loading."""
 
-    def test_load_env_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_load_env_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, require_dotenv: None
+    ) -> None:
         """Test loading environment from .env file."""
-        pytest.importorskip("dotenv")  # <--- Тест скипнется, если библиотеки нет
         # Create .env file first
         env_file = tmp_path / ".env"
         env_file.write_text("TEST_ENV_VAR=loaded_from_file\n")
@@ -280,9 +307,11 @@ class TestSecretsResolverEnvFile:
         assert result == "loaded_from_file"
 
     def test_load_env_file_explicit_path(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        require_dotenv: None,
     ) -> None:
-        pytest.importorskip("dotenv")  # <--- Тест скипнется, если библиотеки нет
         """Test loading environment from explicit .env file path."""
         # Create .env file first
         env_file = tmp_path / "custom.env"

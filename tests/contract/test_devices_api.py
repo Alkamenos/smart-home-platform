@@ -24,14 +24,28 @@ def client():
 
 @pytest.fixture
 def sample_source(client):
-    """Фикстура для создания тестового источника."""
+    """Фикстура для создания тестового источника.
+
+    spec 009 (FR-003, R-6): отсутствие предварительного условия — провал, а не
+    повод для пропуска теста. Раньше фикстура молча отдавала ``None`` при любом
+    не-201, и девять тестов превращались в no-op вместо падения. Теперь
+    неудачная подготовка валит прогон с телом ответа сервера.
+    """
     payload = {
         "name": "Test Device Source",
         "url": "http://192.168.1.100:8123",
         "token": "test_device_token",
     }
     response = client.post("/api/v1/devices/sources", json=payload)
-    return response.json() if response.status_code == 201 else None
+
+    assert response.status_code == 201, (
+        f"подготовка не удалась: источник не создан "
+        f"(статус={response.status_code}, тело={response.text})"
+    )
+
+    source = response.json()
+    assert source.get("id"), f"подготовка не удалась: в ответе нет id источника: {source!r}"
+    return source
 
 
 class TestDevicesAPI:
@@ -47,9 +61,6 @@ class TestDevicesAPI:
 
     def test_get_devices_with_filter_by_source(self, client, sample_source):
         """T019: Получение списка устройств с фильтром по источнику."""
-        if not sample_source:
-            pytest.skip("Source creation failed")
-
         # Запрашиваем устройства с фильтром
         response = client.get(f"/api/v1/devices?source_id={sample_source['id']}")
 
@@ -64,20 +75,55 @@ class TestDevicesAPI:
         assert response.status_code == 404
 
     def test_get_device_by_id_success(self, client, sample_source):
-        """T019: Успешное получение информации об устройстве."""
-        if not sample_source:
-            pytest.skip("Source creation failed")
+        """T019: Успешное получение информации об устройстве.
 
-        # Сначала нужно добавить устройство (будет реализовано позже)
-        # Этот тест проверяет контракт для GET /api/v1/devices/{id}
+        Раньше тест брал фикстуру источника, но не использовал её: подставлял
+        случайный ``uuid4()`` — то есть заведомо несуществующее устройство — и
+        допускал ``status_code in [200, 404]``. Такой ассерт не мог упасть: для
+        случайного id сервер всегда отвечал 404, а 200 был недостижим. Тест
+        числился проверкой контракта ``GET /api/v1/devices/{id}`` и не проверял
+        ничего.
 
-        # Используем фиксированный ID для этого теста
-        device_id = uuid4()
-        response = client.get(f"/api/v1/devices/{device_id}")
+        Теперь устройство создаётся каноническим путём ``POST
+        /api/v1/devices/apply`` от созданного источника, а ответ сверяется точно:
+        200 и содержимое именно того устройства, которое создано (Known Issue #35).
+        """
+        apply_response = client.post(
+            "/api/v1/devices/apply",
+            json={
+                "source_id": sample_source["id"],
+                "selections": [
+                    {
+                        "device_entity_id": "light.get_by_id_success",
+                        "device_type": "light",
+                        "name": "Get By Id Success",
+                        "target_room": "living_room",
+                        "behaviors": [{"template": "lighting", "priority": 10, "params": {}}],
+                    }
+                ],
+            },
+        )
+        assert apply_response.status_code == 201, (
+            f"подготовка не удалась: устройство не применено (тело={apply_response.text})"
+        )
+        applied = apply_response.json()["devices"]
+        assert len(applied) == 1, (
+            f"подготовка не удалась: применено не одно устройство: {applied!r}"
+        )
+        created = applied[0]
 
-        # Ожидаем 404 для несуществующего устройства
-        # или 200 с информацией если оно существует
-        assert response.status_code in [200, 404]
+        response = client.get(f"/api/v1/devices/{created['id']}")
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["id"] == created["id"], f"ожидалось устройство {created['id']}: {data}"
+        assert data["ha_entity_id"] == "light.get_by_id_success", data
+        assert data["name"] == "Get By Id Success", data
+        assert data["device_type"] == "light", data
+        assert data["source_id"] == sample_source["id"], data
+        # Ответ устройства обязан совпадать с ответом создания: оба строятся
+        # одним _to_device_response, и расхождение означало бы разные контракты.
+        assert data == created, f"GET устройства вернул не то, что создал apply:\n{data}\n{created}"
 
 
 class TestDeviceConfigAPI:
@@ -89,9 +135,15 @@ class TestDeviceConfigAPI:
 
         spec 006: устройство кладётся в единый источник — DeviceService,
         который читают роуты (временный словарь роутов удалён).
+
+        spec 009 (FR-003, R-6): подготовка проверяется. Раньше фикстура молча
+        отдавала ``None``, и семь тестов ниже превращались в no-op вместо
+        падения. Теперь отсутствие источника или устройства валит прогон с
+        внятным сообщением.
         """
-        if not sample_source:
-            return None
+        assert sample_source.get("id"), (
+            f"подготовка не удалась: источник не создан ({sample_source!r})"
+        )
 
         from tests.helpers.device_factory import make_device, seed_device_in_service
 
@@ -102,6 +154,15 @@ class TestDeviceConfigAPI:
             device_type="light",
         )
         seed_device_in_service(client.app.state.device_service, device)
+
+        # Посев обязан быть виден через публичный API: иначе тесты ниже
+        # проверяли бы контракт 404 вместо контракта устройства.
+        probe = client.get(f"/api/v1/devices/{device.id}")
+        assert probe.status_code == 200, (
+            f"подготовка не удалась: устройство {device.id} не читается через "
+            f"GET /api/v1/devices/{device.id} после посева в DeviceService "
+            f"(статус={probe.status_code}, тело={probe.text})"
+        )
 
         return {
             "id": str(device.id),
@@ -114,9 +175,6 @@ class TestDeviceConfigAPI:
 
     def test_update_device_config_success(self, client, sample_device):
         """T032: Успешное обновление конфигурации устройства."""
-        if not sample_device:
-            pytest.skip("Device creation failed")
-
         device_id = sample_device["id"]
         payload = {
             "display_name": "Updated Light Name",
@@ -136,9 +194,6 @@ class TestDeviceConfigAPI:
 
     def test_update_device_config_validation_display_name_empty(self, client, sample_device):
         """T032: Валидация - display_name не может быть пустым."""
-        if not sample_device:
-            pytest.skip("Device creation failed")
-
         device_id = sample_device["id"]
         payload = {
             "display_name": "",  # Пусто - должна быть ошибка
@@ -150,9 +205,6 @@ class TestDeviceConfigAPI:
 
     def test_update_device_config_validation_display_name_too_long(self, client, sample_device):
         """T032: Валидация - display_name не может быть > 255 символов."""
-        if not sample_device:
-            pytest.skip("Device creation failed")
-
         device_id = sample_device["id"]
         payload = {
             "display_name": "x" * 256,  # Слишком длинно - должна быть ошибка
@@ -164,9 +216,6 @@ class TestDeviceConfigAPI:
 
     def test_update_device_config_validation_description_too_long(self, client, sample_device):
         """T032: Валидация - description не может быть > 1000 символов."""
-        if not sample_device:
-            pytest.skip("Device creation failed")
-
         device_id = sample_device["id"]
         payload = {
             "description": "x" * 1001,  # Слишком длинно - должна быть ошибка
@@ -178,9 +227,6 @@ class TestDeviceConfigAPI:
 
     def test_update_device_config_validation_tags_too_many(self, client, sample_device):
         """T032: Валидация - не может быть > 10 тегов."""
-        if not sample_device:
-            pytest.skip("Device creation failed")
-
         device_id = sample_device["id"]
         payload = {
             "tags": [f"tag_{i}" for i in range(11)]  # 11 тегов - должна быть ошибка
@@ -203,9 +249,6 @@ class TestDeviceConfigAPI:
 
     def test_get_device_with_config_success(self, client, sample_device):
         """T033: Получение устройства с полной конфигурацией."""
-        if not sample_device:
-            pytest.skip("Device creation failed")
-
         device_id = sample_device["id"]
 
         # Сначала обновляем конфигурацию
@@ -236,9 +279,6 @@ class TestDeviceConfigAPI:
 
     def test_get_device_with_empty_config(self, client, sample_device):
         """T033: Получение устройства с пустой конфигурацией."""
-        if not sample_device:
-            pytest.skip("Device creation failed")
-
         device_id = sample_device["id"]
         response = client.get(f"/api/v1/devices/{device_id}")
 

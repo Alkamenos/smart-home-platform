@@ -5,6 +5,10 @@ Tests cover:
 - Parallel and sequential execution
 - Time-based triggers
 - Scene activation scenarios
+
+Time-dependent tests freeze the clock instead of reading the system time: reading
+`datetime.now()` in the test while the production code reads it separately makes the
+result depend on whether a minute boundary is crossed between the two reads (flaky).
 """
 
 #  Copyright 2026 Leonid Artemev
@@ -24,6 +28,38 @@ from src.core.models.scene import (
     SceneTrigger,
 )
 from src.core.scene_manager import SceneManager
+
+
+def _freeze_scene_manager_clock(
+    monkeypatch: pytest.MonkeyPatch, *, hour: int, minute: int
+) -> datetime:
+    """Заморозить часы, которые читает `SceneManager`.
+
+    `src.core.scene_manager` делает `from datetime import datetime` и вызывает
+    `datetime.now()` внутри `check_time_triggers`, поэтому подменяется именно этот
+    символ модуля. Подмена `datetime` в тесте не действовала бы: тест и production-код
+    читали бы два разных источника времени.
+
+    Args:
+        monkeypatch: Фикстура pytest для отката подмены после теста.
+        hour: Час замороженного «сейчас».
+        minute: Минута замороженного «сейчас».
+
+    Returns:
+        Замороженное время, которым пользовался production-код.
+    """
+    frozen_now = datetime(2026, 1, 15, hour, minute)
+
+    class _FrozenDatetime(datetime):
+        """Подкласс datetime с фиксированным now()."""
+
+        @classmethod
+        def now(cls, tz: datetime | None = None) -> datetime:
+            """Вернуть замороженное время вместо системного."""
+            return frozen_now
+
+    monkeypatch.setattr("src.core.scene_manager.datetime", _FrozenDatetime)
+    return frozen_now
 
 
 class TestSceneModels:
@@ -357,14 +393,21 @@ class TestSceneManagerActivation:
         duration = (end_time - start_time).total_seconds()
         assert duration >= 0.1
 
-    def test_check_time_triggers(self) -> None:
-        """Test checking time-based triggers."""
-        current_time = datetime.now().strftime("%H:%M")
+    def test_check_time_triggers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test checking time-based triggers.
+
+        Время заморожено: `SceneManager.check_time_triggers` читает `datetime.now()`
+        внутри `src.core.scene_manager`, поэтому подменяется именно этот символ.
+        Раньше время бралось из `datetime.now()` в самом тесте, и на границе минуты
+        тест мог стать флакующим (или детерминированно красным, если время успеет
+        смениться между созданием сцены и проверкой).
+        """
+        _freeze_scene_manager_clock(monkeypatch, hour=7, minute=30)
 
         scene1 = SceneConfig(
             id="scene1",
             name="Scene 1",
-            triggers=[SceneTrigger(type="time", at=current_time)],
+            triggers=[SceneTrigger(type="time", at="07:30")],
         )
         scene2 = SceneConfig(
             id="scene2",
@@ -382,25 +425,62 @@ class TestSceneManagerActivation:
         assert "scene2" not in triggered
 
     @pytest.mark.asyncio
-    async def test_process_time_triggers(self) -> None:
-        """Test processing time-based triggers and activating scenes."""
-        current_time = datetime.now().strftime("%H:%M")
+    async def test_process_time_triggers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Активация сцен по расписанию проверяется по наблюдаемому результату.
 
-        scene = SceneConfig(
+        Раньше тест заканчивался на `assert True`: он был зелёным даже при пустом
+        теле `process_time_triggers`, то есть проверял ровно то, что запрещено
+        (тест без проверки результата).
+
+        Теперь проверяется наблюдаемое состояние на границе активации:
+        `process_time_triggers` → `activate_scene` → `_execute_action`, а
+        `_execute_action` — последний реально наблюдаемый рубеж, потому что
+        интеграция со слоем управления устройствами в нём ещё не сделана
+        (тело — заглушка с `logger.debug`). Поэтому наблюдаемым результатом
+        активации считается набор выполненных действий.
+
+        Вторая половина — контрольная: сцена со временем, не совпадающим с
+        замороженным «сейчас», не должна выполнить ни одного действия. Без неё
+        проверка не отличала бы «сработало по расписанию» от «сработало всё подряд».
+        """
+        _freeze_scene_manager_clock(monkeypatch, hour=7, minute=30)
+
+        matching = SceneConfig(
             id="timed_scene",
             name="Timed Scene",
-            triggers=[SceneTrigger(type="time", at=current_time)],
-            actions=[SceneAction(device="light.test", service="turn_on")],
+            triggers=[SceneTrigger(type="time", at="07:30")],
+            actions=[
+                SceneAction(device="light.test", service="turn_on"),
+                SceneAction(device="light.test", service="set_brightness", data={"value": 50}),
+            ],
+        )
+        not_matching = SceneConfig(
+            id="later_scene",
+            name="Later Scene",
+            triggers=[SceneTrigger(type="time", at="23:59")],
+            actions=[SceneAction(device="light.later", service="turn_off")],
         )
 
         manager = SceneManager()
-        manager.register_scene(scene)
+        manager.register_scene(matching)
+        manager.register_scene(not_matching)
 
-        # Process time triggers - should activate the scene
+        executed: list[tuple[str, str]] = []
+        original_execute = manager._execute_action
+
+        async def spy_execute(action: SceneAction, context: dict | None = None) -> None:
+            executed.append((action.device, action.service))
+            await original_execute(action, context)
+
+        manager._execute_action = spy_execute  # type: ignore[method-assign]
+
         await manager.process_time_triggers()
 
-        # Verify scene was activated (no exception means success)
-        assert True
+        assert executed == [
+            ("light.test", "turn_on"),
+            ("light.test", "set_brightness"),
+        ], "Сцена, время которой совпадает с текущим, обязана выполнить все свои действия"
+        assert manager.check_time_triggers() == ["timed_scene"]
 
     def test_reload_scenes(self) -> None:
         """Test reloading scenes from new configuration."""

@@ -881,14 +881,29 @@ class TestRoomsFormat:
         assert not any(e.field in ("devices", "zones") for e in errors)
 
     def test_real_instance_manifest_valid(self, validator):
-        """Реальный манифест instances/leonids_house должен валидироваться без ошибок"""
+        """Реальный манифест instances/leonids_house должен валидироваться без ошибок.
+
+        Файл отслеживается git (проверено: `git ls-files instances/leonids_house/manifest.yaml`)
+        и является репозиторным артефактом, а не необязательной внешней зависимостью.
+        Раньше здесь стоял `pytest.skip` на случай отсутствия файла, но такая ветка
+        принципиально недостижима и вдобавок маскировала повреждение состояния
+        репозитория под «проверка не выполнялась». Теперь отсутствие файла — ошибка.
+        Путь строится от корня репозитория (каталога с `tests/`), а не от текущего
+        рабочего каталога, чтобы «файла нет» означало именно повреждение репозитория.
+        """
         from pathlib import Path
 
         import yaml
 
-        path = Path("instances/leonids_house/manifest.yaml")
-        if not path.exists():
-            pytest.skip("instances/leonids_house/manifest.yaml not found")
+        repo_root = Path(__file__).resolve().parents[1]
+        path = repo_root / "instances" / "leonids_house" / "manifest.yaml"
+        assert path.is_file(), (
+            "Отсутствует репозиторный артефакт instances/leonids_house/manifest.yaml. "
+            "Файл отслеживается git и на нём держится проверка реального манифеста, "
+            "поэтому его отсутствие — повреждённое состояние репозитория "
+            "(файл удалён или потерян при переносе), а не повод пропустить тест. "
+            f"Искали по пути: {path}"
+        )
         manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
         errors = validator.validate(manifest)
         assert errors == [], f"Ложные ошибки: {[str(e) for e in errors]}"

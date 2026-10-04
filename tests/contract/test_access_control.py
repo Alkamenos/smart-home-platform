@@ -20,9 +20,22 @@
 Теперь `sample_device` создаёт настоящее устройство, а допуски заменены
 конкретными ожиданиями: разграничение прав проверяется на существующем
 устройстве, где «403» и «404» означают разные вещи.
+
+Что ещё было не так (спека 009, FR-003/R-06)
+------------------------------------------
+Каждый тест файла начинался с само-пропуска по ``if not sample_device``, а
+фикстуры на сбой подготовки отдавали ``None`` молча. При текущем прогоне
+условие ложно всегда, поэтому блоки мёртвые и пропусков не видно — но при
+первом же сбое подготовки одиннадцать тестов тихо стали бы no-op и «прошли»
+бы, ничего не проверив.
+
+Теперь подготовка требовательна: `sample_source` падает с текстом ответа
+сервера, если источник не создан, и читает источник обратно, чтобы
+выдуманный id не прошёл; `sample_device` падает, если сервер не отдаёт
+созданное устройство. Пропусков внутри тестов в файле не осталось.
 """
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -50,19 +63,49 @@ def other_user_id():
 
 @pytest.fixture
 def sample_source(client):
-    """Фикстура для создания тестового источника."""
+    """Настоящий источник Home Assistant, созданный через API.
+
+    Отсутствие источника — это провал подготовки, а не повод пропустить тест
+    (спека 009, FR-003/R-06). Раньше фикстура на любой не-201 ответ отдавала
+    ``None``, и одиннадцать тестов ниже превращались в no-op. Теперь любой
+    сбой подготовки валит прогон, причём с текстом ответа сервера: по нему
+    видно, что именно сервер отверг.
+
+    Returns:
+        Тело ответа на ``POST /api/v1/devices/sources``; содержит ``id``.
+    """
     payload = {
         "name": "Access Control Test Source",
         "url": "http://192.168.1.100:8123",
         "token": "access_control_token",
     }
     response = client.post("/api/v1/devices/sources", json=payload)
-    return response.json() if response.status_code == 201 else None
+    assert response.status_code == 201, (
+        f"источник не создан: {response.status_code} {response.text}"
+    )
+
+    source = response.json()
+    source_id = source.get("id")
+    assert source_id, f"в ответе на создание источника нет идентификатора: {response.text}"
+
+    # «201» сам по себе ничего не гарантирует: подставьте выдуманный id — и
+    # устройство окажется в источнике, которого нет, а весь контракт прав будет
+    # проверять пустышку. Поэтому источник читается обратно через API.
+    fetched = client.get(
+        f"/api/v1/devices/sources/{source_id}",
+        headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
+    )
+    assert fetched.status_code == 200, (
+        f"созданный источник не читается обратно: {fetched.status_code} {fetched.text}"
+    )
+    assert fetched.json().get("id") == source_id, f"обратно пришёл другой источник: {fetched.text}"
+
+    return source
 
 
 @pytest.fixture
 def sample_device(client, sample_source):
-    """Настоящее устройство, посеянное в единый источник.
+    """Настоящее устройство, посеянное в созданный источник.
 
     Прежде фикстура возвращала словарь со случайным `uuid4()`, которого в
     системе не существовало: каждый тест файла получал `404` и проходил по
@@ -71,22 +114,40 @@ def sample_device(client, sample_source):
 
     Args:
         client: HTTP-клиент теста.
-        sample_source: Созданный источник.
+        sample_source: Созданный источник (фикстура уже проверила, что он есть).
 
     Returns:
         Словарь с идентификатором устройства и его полями.
     """
     from tests.helpers.device_factory import make_device, seed_device_in_service
 
-    if not sample_source:
-        return None
-
-    device = make_device(ha_entity_id="light.test_access", name="Test Access Device")
+    source_id = UUID(sample_source["id"])
+    device = make_device(
+        ha_entity_id="light.test_access",
+        source_id=source_id,
+        name="Test Access Device",
+    )
     seed_device_in_service(client.app.state.device_service, device)
+
+    # Посев нельзя считать удавшимся на слово: сервер обязан отдавать устройство.
+    # Прежде фикстура подставляла пустышку, и каждый тест уходил в no-op вместо
+    # падения — этот запрос ловит подготовку, которая ничего не подготовила.
+    seeded = client.get(
+        f"/api/v1/devices/{device.id}",
+        headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
+    )
+    assert seeded.status_code == 200, (
+        f"устройство {device.id} не создано сервером: "
+        f"{seeded.status_code} {seeded.text} (источник {source_id})"
+    )
+    assert seeded.json().get("source_id") == str(source_id), (
+        f"устройство привязано к другому источнику: {seeded.text}"
+    )
+
     return {
         "id": str(device.id),
         "ha_entity_id": device.ha_entity_id,
-        "source_id": sample_source["id"],
+        "source_id": str(source_id),
         "name": device.name,
         "device_type": device.device_type,
         "status": device.status,
@@ -106,9 +167,6 @@ class TestAccessControlAPI:
         происходила вовсе. Теперь устройство существует, поэтому `403` и `404`
         означают разные вещи и выбирать можно ровно один код.
         """
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         response = client.get(f"/api/v1/devices/{device_id}", headers={"X-User-ID": "stranger"})
@@ -119,9 +177,6 @@ class TestAccessControlAPI:
 
     def test_get_device_with_viewer_access(self, client, current_user_id, sample_device):
         """T061: Пользователь с ролью viewer может видеть устройство."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         # Выдаём доступ явно: без него проверка «с доступом» совпадала бы
@@ -143,9 +198,6 @@ class TestAccessControlAPI:
         self, client, other_user_id, sample_device
     ):
         """T061: Отправка команды без прав controller возвращает 403."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         # Пользователь пытается отправить команду без прав
@@ -164,9 +216,6 @@ class TestAccessControlAPI:
 
     def test_execute_command_with_controller_access(self, client, current_user_id, sample_device):
         """T061: Пользователь с ролью controller может отправить команду."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         granted = client.post(
@@ -191,9 +240,6 @@ class TestAccessControlAPI:
 
     def test_grant_access_to_device(self, client, current_user_id, other_user_id, sample_device):
         """T062: Администратор может назначить доступ пользователю."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         # Администратор назначает доступ пользователю
@@ -222,9 +268,6 @@ class TestAccessControlAPI:
         self, client, current_user_id, other_user_id, sample_device
     ):
         """T062: Обычный пользователь не может назначать доступ."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         # Обычный пользователь (не админ) пытается назначить доступ
@@ -241,9 +284,6 @@ class TestAccessControlAPI:
 
     def test_revoke_access(self, client, current_user_id, other_user_id, sample_device):
         """T062: Администратор может отозвать доступ."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
         granted = client.post(
             f"/api/v1/devices/{device_id}/access",
@@ -261,9 +301,6 @@ class TestAccessControlAPI:
 
     def test_get_device_access_list(self, client, current_user_id, other_user_id, sample_device):
         """T062: Получение списка доступа к устройству."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         # Сначала выдаём доступ: проверка непустоты списка без выданного доступа
@@ -296,9 +333,6 @@ class TestAccessControlAPI:
 
     def test_valid_roles(self, client, current_user_id, other_user_id, sample_device):
         """T062: Проверка что система поддерживает роли: viewer, controller, admin."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         # Тестируем все роли
@@ -316,9 +350,6 @@ class TestAccessControlAPI:
 
     def test_invalid_role_returns_400(self, client, current_user_id, other_user_id, sample_device):
         """T062: Некорректная роль возвращает 400 Bad Request."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
 
         # Пытаемся назначить некорректную роль
@@ -337,9 +368,6 @@ class TestAccessControlAPI:
         self, client, current_user_id, other_user_id, sample_device
     ):
         """T008 (spec 004 US2): повторный grant той же паре обновляет роль, дубликатов нет."""
-        if not sample_device:
-            pytest.skip("Sample device creation failed")
-
         device_id = sample_device["id"]
         headers = {"X-User-ID": current_user_id, "X-Is-Admin": "true"}
 
