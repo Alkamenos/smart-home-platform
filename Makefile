@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm
+.PHONY: help test test-verbose test-fast test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm
 
 # Default target
 help:
@@ -11,11 +11,16 @@ help:
 	@echo "  make install-dev   - Install development dependencies"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test          - Run all tests with coverage"
-	@echo "  make test-verbose  - Run tests with verbose output"
+	@echo "  make test          - Run all tests with coverage (full suite)"
+	@echo "  make test-verbose  - Run tests with verbose output + HTML report"
 	@echo "  make test-fast     - Run tests without coverage (faster)"
+	@echo "  make test-browser  - Run browser tests (separate: see note below)"
 	@echo "  make test-integration - Run integration tests with real HA in Docker"
 	@echo "  make watch         - Run tests in watch mode (auto-rerun on changes)"
+	@echo ""
+	@echo "  Note: browser tests (tests/test_webui_playwright.py) are excluded"
+	@echo "  from the full suite because playwright sync API holds a running"
+	@echo "  event loop and breaks subsequent async tests (Known Issue #13)."
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make lint          - Run linter (ruff/flake8)"
@@ -48,14 +53,30 @@ install-dev:
 	pip install ruff black mypy pytest-watch
 
 # Testing
+#
+# Состав набора задаётся в одном месте — pyproject.toml ([tool.pytest] addopts).
+# Собственный --ignore здесь означал бы второй источник правды о том, что
+# запускается, и молча сокращал набор: прежнее исключение tests/integration/
+# убирало 163 теста в 14 файлах (8.4% набора), нигде об этом не сообщая.
+# Исключения с причинами перечислены в specs/009-test-coverage/contracts/verification-funnel.md.
+#
+# Браузерные тесты (tests/test_webui_playwright.py, 25 шт.) исключены из общего
+# прогона: playwright sync API держит running event loop и ломает последующие
+# async-тесты (Known Issue #13). Запускаются отдельной целью `make test-browser`.
+
 test:
-	pytest --cov=. --cov-report=term-missing --ignore=tests/integration/
+	pytest --cov=. --cov-report=term-missing
 
 test-verbose:
-	pytest -v --cov=. --cov-report=term-missing --cov-report=html --ignore=tests/integration/
+	pytest -v --cov=. --cov-report=term-missing --cov-report=html
 
 test-fast:
 	pytest --no-cov
+
+# Браузерные тесты — объявленное исключение, поэтому отдельной целью,
+# а не молчаливым исчезновением из результата.
+test-browser:
+	pytest tests/test_webui_playwright.py -v --no-cov
 
 test-single:
 	@if [ -z "$(FILE)" ]; then \

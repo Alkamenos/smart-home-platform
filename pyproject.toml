@@ -84,6 +84,14 @@ testpaths = ["tests"]
 addopts = "-v --cov=src --import-mode=importlib --ignore=tests/test_webui_playwright.py"
 timeout = 30
 
+# Корень репозитория в sys.path. Без этого `pytest` (консольный скрипт) падал на
+# коллекции с `ModuleNotFoundError: No module named 'src'` в 6 модулях: режим
+# importlib не добавляет корень в путь, а console-script pytest не добавляет и
+# текущий каталог — в отличие от `python -m pytest`. Расхождение обнаружилось
+# при сверке путей проверки (спека 009, US3): `make test` завершался с кодом 2,
+# не выполнив ни одного теста, и это нигде не было видно.
+pythonpath = ["."]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/smart_home"]
 
