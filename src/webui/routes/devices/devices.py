@@ -40,6 +40,25 @@ _ROLE_CONTROLLER = "controller"
 _ROLE_ADMIN = "admin"
 
 
+def _is_admin_request(request: Request) -> bool:
+    """Определяет, помечен ли запрос как пришедший от глобального администратора.
+
+    Единая точка чтения признака для всех device-endpoints: и для одиночных
+    операций (`_require_access_or_403`), и для списка устройств. Берётся из
+    ``request.state`` (заполнил middleware) с фоллбэком на заголовок
+    ``X-Is-Admin`` — сам список middleware не проходит, поэтому заголовок для
+    него остаётся единственным источником.
+
+    Args:
+        request: HTTP запрос
+
+    Returns:
+        True, если запрос помечен как от глобального администратора.
+    """
+    is_admin: bool = getattr(request.state, "is_admin", False)
+    return is_admin or (request.headers.get("X-Is-Admin", "false").lower() == "true")
+
+
 async def _require_access_or_403(
     request: Request,
     device_id: UUID,
@@ -59,10 +78,7 @@ async def _require_access_or_403(
         HTTPException: 403 если доступ не пройден.
     """
     user_id = getattr(request.state, "user_id", None) or request.headers.get("X-User-ID")
-    is_admin = getattr(request.state, "is_admin", False) or (
-        request.headers.get("X-Is-Admin", "false").lower() == "true"
-    )
-    if is_admin:
+    if _is_admin_request(request):
         return
     if not user_id:
         # Middleware уже отбил бы такой запрос; страховка
@@ -116,37 +132,57 @@ async def get_devices(
 ) -> list[DeviceResponse]:
     """Получает список всех доступных пользователю устройств.
 
-    Возвращает только те устройства, к которым пользователь имеет доступ (T069).
-    Если заголовок X-User-ID отсутствует, возвращает пустой список.
+    Видимость определяется признаком администратора и, для остальных, записями
+    о доступе (T069, contracts/access-control-api.md §2):
+
+    - ``X-Is-Admin: true`` → все устройства установки без фильтрации по
+      записям: администратор глобальный, персональные записи ему не нужны
+      (spec 004 spec.md:128, data-model.md:38). Тот же обход, что даёт
+      одиночным операциям `_require_access_or_403` — иначе в одном модуле
+      действовали бы два противоречивых правила «кто имеет право видеть
+      устройство», а дефолтная идентичность WebUI (администратор,
+      ``src/webui/app.py``) получала бы от своего же API пустой список.
+    - иначе — только устройства, к которым у пользователя есть запись о доступе
+      (``get_user_accessible_devices``); без ``X-User-ID`` пустой список.
+
+    Фильтр по ``source_id`` применяется поверх в обоих случаях.
 
     Список берётся из единого источника — DeviceService (spec 006, FR-003):
     раньше роут читал временный словарь, который был пуст после перезапуска
     и не содержал устройств, загруженных синхронизацией.
 
     Args:
-        request: HTTP запрос (для получения DeviceService)
+        request: HTTP запрос (для получения DeviceService и признака админа)
         source_id: Опциональный фильтр по источнику
         x_user_id: ID пользователя из заголовка X-User-ID
 
     Returns:
-        Список устройств доступных пользователю
+        Список устройств, доступных пользователю
     """
     try:
-        # Если нет ID пользователя, возвращаем пустой список
-        if not x_user_id:
-            logger.debug("Запрос GET /api/v1/devices без X-User-ID - возвращаю пустой список")
-            return []
-
         device_service = get_device_service(request)
+        is_admin = _is_admin_request(request)
 
-        # T069: фильтруем по доступу пользователя (важнее source_id)
-        devices = await device_service.get_user_accessible_devices(x_user_id)
+        if is_admin:
+            # Обход администратора: полный список без чтения записей доступа.
+            devices = await device_service.list_devices()
+        else:
+            # Если нет ID пользователя, возвращаем пустой список
+            if not x_user_id:
+                logger.debug("Запрос GET /api/v1/devices без X-User-ID - возвращаю пустой список")
+                return []
+
+            # T069: фильтруем по доступу пользователя (важнее source_id)
+            devices = await device_service.get_user_accessible_devices(x_user_id)
 
         # Фильтруем по source_id если указан (поверх фильтра доступа)
         if source_id:
             devices = [device for device in devices if device.source_id == source_id]
 
-        logger.info(f"Получен список {len(devices)} устройств для пользователя {x_user_id}")
+        logger.info(
+            f"Получен список {len(devices)} устройств для пользователя {x_user_id} "
+            f"(администратор: {is_admin})"
+        )
         fsm_views = _build_device_fsm_views(request, devices)
         return [
             _to_device_response(device, fsm_views.get(device.ha_entity_id, []))
