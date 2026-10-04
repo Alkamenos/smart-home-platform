@@ -3,6 +3,23 @@
 
 Тесты проверяют контракт между клиентом и сервером для операций управления доступом
 на основе ролей пользователей.
+
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+
+Что было не так (спека 009, T028)
+---------------------------------
+Фикстура `sample_device` возвращала словарь со **случайным** `uuid4()`, который
+никогда не создавался в системе. Каждый тест этого файла обращался к
+несуществующему устройству и получал `404`, а ассерты допускали
+`[200, 404]` / `[403, 404]` — то есть проходили независимо от того, работает ли
+разграничение прав. Тесты выглядели как контракт прав, но не проверяли прав:
+отказ по правам и отсутствие устройства давали один и тот же наблюдаемый
+результат.
+
+Теперь `sample_device` создаёт настоящее устройство, а допуски заменены
+конкретными ожиданиями: разграничение прав проверяется на существующем
+устройстве, где «403» и «404» означают разные вещи.
 """
 
 from uuid import uuid4
@@ -45,18 +62,34 @@ def sample_source(client):
 
 @pytest.fixture
 def sample_device(client, sample_source):
-    """Фикстура для создания тестового устройства."""
+    """Настоящее устройство, посеянное в единый источник.
+
+    Прежде фикстура возвращала словарь со случайным `uuid4()`, которого в
+    системе не существовало: каждый тест файла получал `404` и проходил по
+    допуску `[200, 404]`. Теперь устройство реально существует, поэтому отказ по
+    правам (`403`) и его отсутствие (`404`) становятся различимыми.
+
+    Args:
+        client: HTTP-клиент теста.
+        sample_source: Созданный источник.
+
+    Returns:
+        Словарь с идентификатором устройства и его полями.
+    """
+    from tests.helpers.device_factory import make_device, seed_device_in_service
+
     if not sample_source:
         return None
 
-    # Для теста используем фиксированный ID устройства
+    device = make_device(ha_entity_id="light.test_access", name="Test Access Device")
+    seed_device_in_service(client.app.state.device_service, device)
     return {
-        "id": str(uuid4()),
-        "ha_entity_id": "light.test_access",
+        "id": str(device.id),
+        "ha_entity_id": device.ha_entity_id,
         "source_id": sample_source["id"],
-        "name": "Test Access Device",
-        "device_type": "light",
-        "status": "available",
+        "name": device.name,
+        "device_type": device.device_type,
+        "status": device.status,
     }
 
 
@@ -65,16 +98,24 @@ class TestAccessControlAPI:
 
     # T061: Контрактный тест для проверки прав доступа
 
-    def test_get_device_without_access_returns_403(self, client, current_user_id, other_user_id):
-        """T061: Получение устройства без прав доступа возвращает 403."""
-        device_id = str(uuid4())
+    def test_get_device_without_access_returns_403(self, client, current_user_id, sample_device):
+        """T061: Получение существующего устройства без прав возвращает 403.
 
-        # Пользователь пытается получить устройство, к которому нет доступа
-        # (в реальной реализации это будет проверено middleware)
-        response = client.get(f"/api/v1/devices/{device_id}", headers={"X-User-ID": other_user_id})
+        Раньше обращение шло к случайному `uuid4()`, то есть к несуществующему
+        устройству, и допуск `[403, 404]` проходил по `404` — проверка прав не
+        происходила вовсе. Теперь устройство существует, поэтому `403` и `404`
+        означают разные вещи и выбирать можно ровно один код.
+        """
+        if not sample_device:
+            pytest.skip("Sample device creation failed")
 
-        # Должен быть 403 Forbidden или 404 (не видит устройство)
-        assert response.status_code in [403, 404]
+        device_id = sample_device["id"]
+
+        response = client.get(f"/api/v1/devices/{device_id}", headers={"X-User-ID": "stranger"})
+
+        assert response.status_code == 403, (
+            f"ожидался 403 для существующего устройства без доступа: {response.text}"
+        )
 
     def test_get_device_with_viewer_access(self, client, current_user_id, sample_device):
         """T061: Пользователь с ролью viewer может видеть устройство."""
@@ -83,13 +124,20 @@ class TestAccessControlAPI:
 
         device_id = sample_device["id"]
 
-        # Пользователь имеет доступ viewer к устройству
+        # Выдаём доступ явно: без него проверка «с доступом» совпадала бы
+        # с проверкой «без доступа».
+        granted = client.post(
+            f"/api/v1/devices/{device_id}/access",
+            json={"user_id": current_user_id, "role": "viewer"},
+            headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
+        )
+        assert granted.status_code == 201, granted.text
+
         response = client.get(
             f"/api/v1/devices/{device_id}", headers={"X-User-ID": current_user_id}
         )
 
-        # Должен быть 200 или 404 (если устройство не синхронизировано)
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200, f"ожидался 200: {response.text}"
 
     def test_execute_command_without_controller_access_returns_403(
         self, client, other_user_id, sample_device
@@ -109,8 +157,10 @@ class TestAccessControlAPI:
             headers={"X-User-ID": other_user_id},
         )
 
-        # Должен быть 403 Forbidden
-        assert response.status_code in [403, 404]
+        # Устройство существует, поэтому 403 означает именно отказ по правам.
+        assert response.status_code == 403, (
+            f"ожидался 403 для команды без роли controller: {response.text}"
+        )
 
     def test_execute_command_with_controller_access(self, client, current_user_id, sample_device):
         """T061: Пользователь с ролью controller может отправить команду."""
@@ -118,6 +168,13 @@ class TestAccessControlAPI:
             pytest.skip("Sample device creation failed")
 
         device_id = sample_device["id"]
+
+        granted = client.post(
+            f"/api/v1/devices/{device_id}/access",
+            json={"user_id": current_user_id, "role": "controller"},
+            headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
+        )
+        assert granted.status_code == 201, granted.text
 
         # Пользователь с доступом controller отправляет команду
         payload = {"command_name": "turn_on"}
@@ -128,8 +185,7 @@ class TestAccessControlAPI:
             headers={"X-User-ID": current_user_id},
         )
 
-        # Должен быть 200 (успех) или 404 (устройство не найдено)
-        assert response.status_code in [200, 202, 404]
+        assert response.status_code == 202, f"ожидался 202 для роли controller: {response.text}"
 
     # T062: Контрактный тест для управления правами доступа
 
@@ -189,42 +245,54 @@ class TestAccessControlAPI:
             pytest.skip("Sample device creation failed")
 
         device_id = sample_device["id"]
-        access_id = str(uuid4())  # ID записи доступа
-
-        # Администратор отзывает доступ
-        response = client.delete(
-            f"/api/v1/devices/{device_id}/access/{access_id}",
-            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"},
+        granted = client.post(
+            f"/api/v1/devices/{device_id}/access",
+            json={"user_id": other_user_id, "role": "viewer"},
+            headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
         )
+        assert granted.status_code == 201, granted.text
 
-        # Должен быть 204 No Content или 200 OK или 404 (если запись не найдена)
-        assert response.status_code in [200, 204, 404]
+        # Отзывается именно выданная запись, а не случайный идентификатор.
+        revoke = client.delete(
+            f"/api/v1/devices/{device_id}/access/{granted.json()['id']}",
+            headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
+        )
+        assert revoke.status_code == 204, f"ожидался 204: {revoke.text}"
 
-    def test_get_device_access_list(self, client, current_user_id, sample_device):
+    def test_get_device_access_list(self, client, current_user_id, other_user_id, sample_device):
         """T062: Получение списка доступа к устройству."""
         if not sample_device:
             pytest.skip("Sample device creation failed")
 
         device_id = sample_device["id"]
 
+        # Сначала выдаём доступ: проверка непустоты списка без выданного доступа
+        # означала бы «устройства нет», а не «доступы перечисляются».
+        granted = client.post(
+            f"/api/v1/devices/{device_id}/access",
+            json={"user_id": other_user_id, "role": "controller"},
+            headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
+        )
+        assert granted.status_code == 201, granted.text
+
         # Администратор получает список доступа
         response = client.get(
             f"/api/v1/devices/{device_id}/access",
-            headers={"X-User-ID": current_user_id, "X-Is-Admin": "true"},
+            headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
         )
 
         # Должен быть 200 OK
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200, f"ожидался 200 для списка доступа: {response.text}"
 
-        if response.status_code == 200:
-            data = response.json()
-            assert isinstance(data, list)
-            # Каждая запись должна содержать информацию о доступе
-            for access in data:
-                assert "id" in access
-                assert "user_id" in access
-                assert "role" in access
-                assert access["role"] in ["viewer", "controller", "admin"]
+        data = response.json()
+        assert isinstance(data, list)
+        assert data, "у выданного доступа должна быть хотя бы одна запись"
+        # Каждая запись должна содержать информацию о доступе
+        for access in data:
+            assert "id" in access
+            assert "user_id" in access
+            assert "role" in access
+            assert access["role"] in ["viewer", "controller", "admin"]
 
     def test_valid_roles(self, client, current_user_id, other_user_id, sample_device):
         """T062: Проверка что система поддерживает роли: viewer, controller, admin."""
