@@ -14,11 +14,19 @@ These tests verify the adapter's behavior according to specification:
 #  SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from adapters.ha_adapter import HAAdapter, SimpleHAWebSocketClient
+
+
+#: Ожидаемая последовательность пауз экспоненциального отката: старт 1 с,
+#: удвоение до потолка 60 с. Семь значений — при шести последнее равно 32 и
+#: ветка насыщения `min(..., 60.0)` не достигается, поэтому проверка потолка
+#: была бы пустой и тест прошёл бы даже при потолке в 10 секунд.
+EXPECTED_BACKOFF = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0]
 
 
 class TestHAAdapterInitialization:
@@ -441,30 +449,117 @@ class TestHAAdapterWebSocketLifecycle:
 
     @pytest.mark.asyncio
     async def test_connect_websocket_exponential_backoff(self):
-        """WebSocket reconnection should use exponential backoff."""
+        """WebSocket reconnection should use exponential backoff.
+
+        Тест был заглушкой: он объявлял `failing_connect()`, **ни разу её не
+        вызывал** и заканчивался `pass` с комментарием «requires more complex
+        mocking». Экспоненциальный откат не проверялся нигде, хотя он заявлен в
+        описании модуля.
+
+        Проверяется **вся** последовательность задержек: 1, 2, 4, 8, 16, 32, 60.
+        Число попыток взято семь, а не шесть: при шести последняя пауза равна 32,
+        ветка насыщения `min(..., 60.0)` не достигается, и проверка потолка
+        становится пустой — тест прошёл бы и при потолке в 10 секунд.
+
+        Паузы перехватываются, поэтому тест выполняется за миллисекунды и не
+        ждёт реальных пауз.
+        """
         adapter = HAAdapter(
             mode="websocket",
             ws_url="ws://localhost:8123",
             token="test_token",
         )
 
-        # Mock session and ws_client creation
-        with patch("aiohttp.ClientSession") as mock_session_class:
-            mock_session = AsyncMock()
-            mock_session_class.return_value = mock_session
+        observed_delays: list[float] = []
+        # Ссылка на исходный sleep захватывается ДО подмены: патчится атрибут
+        # реального модуля asyncio, иначе получить оригинал уже нельзя.
+        real_sleep = asyncio.sleep
 
-            with patch.object(adapter, "_cleanup_websocket", new_callable=AsyncMock):
-                # Simulate connection failure
-                connect_attempt_count = 0
+        failing_client = AsyncMock()
+        failing_client.connect.side_effect = ConnectionError("Connection failed")
+        failing_client.connected = False
 
-                async def failing_connect():
-                    nonlocal connect_attempt_count
-                    connect_attempt_count += 1
-                    raise ConnectionError("Connection failed")
+        attempts = {"count": 0}
 
-                # This would test the backoff logic in _connect_websocket
-                # Full integration test requires more complex mocking
-                pass
+        async def counting_sleep(delay, *args, **kwargs):
+            """Записывает паузу и останавливает цикл на седьмой попытке."""
+            observed_delays.append(delay)
+            attempts["count"] += 1
+            if attempts["count"] >= len(EXPECTED_BACKOFF):
+                adapter._shutdown_event.set()
+            return await real_sleep(0, *args, **kwargs)
+
+        with (
+            patch.object(adapter, "_get_logger", return_value=MagicMock()),
+            patch("src.adapters.ha_adapter.HomeAssistantWS", return_value=failing_client),
+            patch("src.adapters.ha_adapter.aiohttp.ClientSession"),
+            patch("src.adapters.ha_adapter.asyncio.sleep", new=counting_sleep),
+        ):
+            await adapter._connect_websocket()
+
+        assert observed_delays == EXPECTED_BACKOFF, (
+            f"последовательность пауз должна удваиваться до потолка 60 с, получено {observed_delays}"
+        )
+
+
+#: Таймаут ожидания ответа на команду HA, зашитый в `SimpleHAWebSocketClient`.
+#: Тесты перехватывают `asyncio.wait_for` и проверяют это значение, но никогда
+#: не ждут его по-настоящему.
+HA_RESPONSE_TIMEOUT = 15
+
+
+class FakeHAWebSocket:
+    """Заглушка сокета, повторяющая контракт, который использует клиент.
+
+    `SimpleHAWebSocketClient` читает входящие кадры **только** фоновой задачей
+    `_listen_loop` (`async for raw in self.ws`). Ни `get_states()`, ни
+    `call_service()` не вызывают `recv()`: они регистрируют обработчик в
+    `_handlers[msg_id]` и ждут future, который резолвит `_listen_loop`.
+
+    Поэтому заглушка обязана поддерживать асинхронную итерацию, а подмена
+    `recv` бессмысленна — см. `test_ws_client_get_states_reads_via_listen_loop`.
+
+    Args:
+        responder: Вызывается на каждый отправленный запрос; возвращает кадр,
+            который сервер «шлёт» в ответ (или `None`, чтобы не отвечать).
+    """
+
+    def __init__(self, responder=None):
+        self._incoming: asyncio.Queue[str] = asyncio.Queue()
+        self._responder = responder
+        #: Разобранные запросы, ушедшие через `send()`.
+        self.sent: list[dict] = []
+        #: Вызовы `recv()`: их не должно быть ни одного (см. докстринг).
+        self.recv_calls: list[str] = []
+        self.closed = False
+
+    async def send(self, raw: str) -> None:
+        """Принимает запрос клиента и, если задан `responder`, отвечает на него."""
+        request = json.loads(raw)
+        self.sent.append(request)
+        if self._responder is not None:
+            frame = self._responder(request)
+            if frame is not None:
+                self.push(frame)
+
+    def push(self, message: dict) -> None:
+        """Кладёт кадр во входящую очередь (неблокирующий вызов)."""
+        self._incoming.put_nowait(json.dumps(message))
+
+    async def recv(self) -> str:
+        """Ловушка для `recv`: клиент не должен читать кадры напрямую."""
+        self.recv_calls.append("recv")
+        return await self._incoming.get()
+
+    def __aiter__(self) -> "FakeHAWebSocket":
+        return self
+
+    async def __anext__(self) -> str:
+        """Отдаёт кадр из очереди; при пустой очереди — ждёт нового, как живой сокет."""
+        return await self._incoming.get()
+
+    async def close(self) -> None:
+        self.closed = True
 
 
 class TestSimpleHAWebSocketClient:
@@ -537,44 +632,140 @@ class TestSimpleHAWebSocketClient:
 
     @pytest.mark.asyncio
     async def test_ws_client_get_states_returns_result(self):
-        """get_states() should fetch and return states."""
+        """get_states() returns the exact result delivered by the listen loop.
+
+        Тест был вакуумным: он подменял `ws.recv` (который `get_states()` не
+        вызывает вообще) и проверял лишь `isinstance(states, list)` — то есть
+        проходил и для пустого `[]`, возвращённого по таймауту. 15 секунд
+        ожидания при этом реально тратились.
+
+        Теперь заглушка отвечает на `get_states` так же, как HA: сообщением типа
+        `result` с тем же `id`, а ответ доставляется через настоящий
+        `_listen_loop`. Проверяется посимвольное содержимое ответа и то, что
+        запрос ушёл в сокет в правильном формате протокола.
+        """
+        payload = [
+            {"entity_id": "light.kitchen", "state": "on", "attributes": {"brightness": 255}},
+            {"entity_id": "binary_sensor.motion", "state": "off", "attributes": {}},
+        ]
+
+        def responder(request: dict) -> dict:
+            return {"id": request["id"], "type": "result", "success": True, "result": payload}
+
+        ws = FakeHAWebSocket(responder=responder)
         client = SimpleHAWebSocketClient(
             url="ws://localhost:8123",
             token="test_token",
         )
-        client.ws = AsyncMock()
+        client.ws = ws
         client.connected = True
+        client._listen_task = asyncio.create_task(client._listen_loop())
 
-        # Mock response
-        async def mock_recv():
-            return '{"type": "result", "id": 1, "result": [{"entity_id": "light.kitchen"}]}'
+        try:
+            states = await client.get_states()
+        finally:
+            await client.close()
 
-        client.ws.recv = mock_recv
-
-        states = await client.get_states()
-
-        assert isinstance(states, list)
+        # Запрос отправлен ровно один раз и в формате протокола HA.
+        assert ws.sent == [{"id": 1, "type": "get_states"}]
+        # Ответ разобран по полям, а не «по факту это список».
+        assert states == payload
+        assert [state["entity_id"] for state in states] == [
+            "light.kitchen",
+            "binary_sensor.motion",
+        ]
+        assert states[0]["attributes"]["brightness"] == 255
+        # Обработчик из `_handlers` снят listen loop'ом — ответ доставлен по id.
+        assert client._handlers == {}
+        assert ws.recv_calls == []
 
     @pytest.mark.asyncio
     async def test_ws_client_get_states_timeout(self):
-        """get_states() timeout should return empty list."""
+        """get_states(): молчащий сервер → пустой список, без 15 секунд ожидания.
+
+        Тест ждал настоящий таймаут из production-кода, то есть 15 секунд на
+        каждый прогон. Теперь `asyncio.wait_for` перехватывается: реальная
+        функция вызывается с сокращённым таймаутом, поэтому проверяется подлинный
+        путь отмены future и подлинный `except TimeoutError`, а тест занимает
+        миллисекунды. Значение таймаута из кода при этом фиксируется и
+        сравнивается с ожидаемым.
+        """
+        ws = FakeHAWebSocket()  # сервер не отвечает: responder не задан
         client = SimpleHAWebSocketClient(
             url="ws://localhost:8123",
             token="test_token",
         )
-        client.ws = AsyncMock()
+        client.ws = ws
         client.connected = True
+        client._listen_task = asyncio.create_task(client._listen_loop())
 
-        # Mock timeout
-        async def mock_timeout():
-            await asyncio.sleep(20)
-            return ""
+        real_wait_for = asyncio.wait_for
+        requested_timeouts: list[float] = []
 
-        client.ws.recv = mock_timeout
+        async def shortened_wait_for(awaitable, timeout):
+            """Запоминает таймаут из production-кода и сжимает его до 10 мс."""
+            requested_timeouts.append(timeout)
+            return await real_wait_for(awaitable, timeout=0.01)
 
-        states = await client.get_states()
+        try:
+            with patch(
+                "src.adapters.ha_adapter.asyncio.wait_for",
+                new=shortened_wait_for,
+            ):
+                states = await client.get_states()
+        finally:
+            await client.close()
 
         assert states == []
+        assert requested_timeouts == [HA_RESPONSE_TIMEOUT]
+        # Запрос всё равно ушёл в сокет — таймаут не подменяет отправку.
+        assert ws.sent == [{"id": 1, "type": "get_states"}]
+
+    @pytest.mark.asyncio
+    async def test_ws_client_get_states_reads_via_listen_loop(self):
+        """Фиксирует фактический контракт: `recv()` не вызывается никогда.
+
+        Обе прежние версии тестов подменяли `ws.recv`, считая, что `get_states()`
+        читает ответ сокета напрямую. Он этого не делает: ответ приходит в
+        фоновую `_listen_loop`, которая раздаёт его обработчикам из `_handlers`.
+        Из-за этого подмена `recv` не влияла ни на что, тесты выжидали полный
+        таймаут, а второй был вдобавок пустым по смыслу.
+
+        Тест запускает listen loop **без** ответа сервера и убеждается, что
+        единственный путь к результату — `_handlers`. Если когда-нибудь клиент
+        начнёт читать через `recv`, тест упадёт здесь, а не молча превратится в
+        пустышку.
+
+        Известный побочный дефект (не проверяется намеренно): по таймауту
+        обработчик остаётся в `_handlers` — production-код его не снимает.
+        """
+        ws = FakeHAWebSocket()
+        client = SimpleHAWebSocketClient(
+            url="ws://localhost:8123",
+            token="test_token",
+        )
+        client.ws = ws
+        client.connected = True
+        client._listen_task = asyncio.create_task(client._listen_loop())
+
+        real_wait_for = asyncio.wait_for
+
+        async def shortened_wait_for(awaitable, timeout):
+            return await real_wait_for(awaitable, timeout=0.01)
+
+        try:
+            with patch(
+                "src.adapters.ha_adapter.asyncio.wait_for",
+                new=shortened_wait_for,
+            ):
+                assert await client.get_states() == []
+            # Ни одного прямого чтения сокета — только входящая очередь.
+            assert ws.recv_calls == []
+            assert ws.sent == [{"id": 1, "type": "get_states"}]
+        finally:
+            await client.close()
+
+        assert ws.closed is True
 
     @pytest.mark.asyncio
     async def test_ws_client_close_cleans_up(self):
