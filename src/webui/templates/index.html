@@ -849,6 +849,7 @@
             let socket = null;
             let reconnectDelay = RECONNECT_MIN_MS;
             let devices = [];
+            let deviceStates = {};      // ha_entity_id -> { state, status }
             const fsmStates = {};       // fsm_id -> { state, since }
             let fsmViews = [];           // представления состояний из раздела
 
@@ -884,6 +885,90 @@
                 return grouped;
             }
 
+            // Экранирование вставляемого текста. Функция нужна в этом файле
+            // отдельно: значения приходят из Home Assistant и подставляются в
+            // innerHTML, то есть без неё имя состояния извне стало бы разметкой.
+            function escapeHtml(value) {
+                return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+                })[ch]);
+            }
+
+            // Фактическое состояние устройства: горит ли лампа сейчас.
+            // Отличается от состояния автомата: тот объясняет поведение, это —
+            // реальность. Источник — /api/v1/devices, потому что раздел
+            // состояний отдаёт только автоматы.
+            const DEVICE_STATE_BADGE = {
+                on: { label: 'включено', badge: 'bg-success' },
+                off: { label: 'выключено', badge: 'bg-secondary' },
+                open: { label: 'открыто', badge: 'bg-info' },
+                closed: { label: 'закрыто', badge: 'bg-secondary' },
+                home: { label: 'дома', badge: 'bg-primary' },
+                not_home: { label: 'нет дома', badge: 'bg-secondary' }
+            };
+
+            function deviceStateLabel(rawState) {
+                const value = String(rawState || '').toLowerCase();
+                const known = DEVICE_STATE_BADGE[value];
+                if (known) return known.label;
+                // Неизвестное значение показывается как есть, а не молча
+                // исчезает: у Home Assistant десятки состояний, и новые будут
+                // появляться.
+                return rawState ? String(rawState) : 'нет данных';
+            }
+
+            function deviceStateBadge(rawState, status) {
+                if (status && status !== 'available') return 'bg-warning text-dark';
+                const known = DEVICE_STATE_BADGE[String(rawState || '').toLowerCase()];
+                return known ? known.badge : 'bg-secondary';
+            }
+
+            // Раскладывает устройства по entity_id для отрисовки на карточках.
+            // Отдельный запрос не нужен: /api/v1/devices уже запрашивается в
+            // loadInitialData, второй запрос тратил бы соединение впустую.
+            function groupDeviceStates(list) {
+                const items = Array.isArray(list) ? list : (list.devices || []);
+                const grouped = {};
+                items.forEach((device) => {
+                    if (!device || !device.ha_entity_id) return;
+                    // state бывает объектом {"state": "on"} и строкой — формат
+                    // зависит от источника состояния, и приводится к строке.
+                    const raw = device.state;
+                    grouped[device.ha_entity_id] = {
+                        state: (raw && typeof raw === 'object')
+                            ? (raw.state || raw.value || '')
+                            : raw,
+                        status: device.status || ''
+                    };
+                });
+                return grouped;
+            }
+
+            function renderDeviceState(entityId) {
+                const card = document.querySelector(`.device-card[data-device="${CSS.escape(entityId)}"]`);
+                if (!card) return;
+                let holder = card.querySelector('.device-state');
+                if (!holder) {
+                    holder = document.createElement('div');
+                    holder.className = 'device-state mt-2';
+                    card.querySelector('.device-header').after(holder);
+                }
+                const info = deviceStates[entityId];
+                if (!info) {
+                    holder.innerHTML = '';
+                    return;
+                }
+                const raw = info.state || '';
+                const unavailable = info.status && info.status !== 'available';
+                holder.innerHTML = `
+                    <span class="badge ${deviceStateBadge(raw, info.status)}"
+                          title="Состояние устройства по данным Home Assistant">
+                        ${escapeHtml(deviceStateLabel(raw))}
+                    </span>
+                    ${unavailable ? `<span class="badge bg-warning text-dark ms-1">${escapeHtml(info.status)}</span>` : ''}
+                `;
+            }
+
             // Показать состояние автоматов устройства прямо на карточке (FR-028).
             function renderDeviceStates(entityId, grouped) {
                 const card = document.querySelector(`.device-card[data-device="${CSS.escape(entityId)}"]`);
@@ -911,6 +996,9 @@
                 const grouped = fsmViewsByDevice();
                 document.querySelectorAll('.device-card').forEach(card => {
                     renderDeviceStates(card.dataset.device, grouped);
+                    // Фактическое состояние рисуется рядом: без этого функция
+                    // запрашивает данные и не показывает их.
+                    renderDeviceState(card.dataset.device);
                 });
             }
 
@@ -945,6 +1033,7 @@
                     fetch('/api/fsm/state', { headers: headers() })
                 ]);
                 devices = devicesResponse.ok ? await devicesResponse.json() : [];
+                deviceStates = groupDeviceStates(devices);
                 const states = statesResponse.ok ? await statesResponse.json() : { states: [] };
                 fsmViews = states.states || [];
                 fsmViews.forEach(v => { fsmStates[v.fsm_id] = { state: v.state, since: v.since }; });
