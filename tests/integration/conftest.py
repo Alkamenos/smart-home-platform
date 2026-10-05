@@ -112,12 +112,23 @@ def project_root() -> Path:
 
 
 @pytest.fixture
-def isolated_workdir(project_root: Path) -> Iterator[Path]:
-    """Переводит процесс во временный рабочий каталог с копией манифеста.
+def isolated_workdir(project_root: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """Изолирует файлы данных теста во временном рабочем каталоге.
 
-    Изолирует все файлы данных сразу, потому что `create_app` задаёт
-    `data_dir="data"` относительным путём, который разрешается от текущего
-    каталога при каждой записи.
+    Изоляция задаётся через `DATA_PATH`, потому что это единственный механизм,
+    который работает всегда: `resolve_data_dir()` читает переменную при КАЖДОМ
+    вызове, и путь берётся абсолютный, а не относительный.
+
+    Раньше здесь был только `os.chdir()` в расчёте на то, что `data_dir="data"`
+    — относительный путь, который разрешится от текущего каталога. Эта
+    изоляция оказывалась хрупкой: она не действовала, если `DATA_PATH` задан
+    снаружи (например, в tests/conftest.py ради защиты корня репозитория), и
+    тогда все тесты модуля писали в общий каталог. Именно так проявились 22
+    падения: тесты на синхронизацию видели 12 источников вместо одного, потому
+    что состояние накапливалось между тестами.
+
+    `os.chdir` сохранён: манифест и относительные пути конфигурации тоже
+    разрешаются от него.
 
     Yields:
         Путь к временному рабочему каталогу.
@@ -125,6 +136,7 @@ def isolated_workdir(project_root: Path) -> Iterator[Path]:
     work_dir = Path(tempfile.mkdtemp(prefix="shp_integration_"))
     manifest = project_root / MANIFEST_RELPATH
     shutil.copy(manifest, work_dir / "manifest.yaml")
+    monkeypatch.setenv("DATA_PATH", str(work_dir / "data"))
     previous_cwd = os.getcwd()
     os.chdir(work_dir)
     try:

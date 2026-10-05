@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
+def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """Приложение на временной копии манифеста и в изолированном каталоге данных.
 
     Yields:
@@ -40,6 +40,12 @@ def client() -> Iterator[TestClient]:
             os.path.join(project_root, "instances", "leonids_house", "manifest.yaml"),
             os.path.join(work_dir, "manifest.yaml"),
         )
+        # `DATA_PATH` указывается явно, потому что каталог данных берётся из этой
+        # переменной при каждой записи, и `os.chdir` сам по себе его не изолирует:
+        # если переменная задана снаружи (например, в tests/conftest.py, чтобы
+        # защитить корень репозитория от импорта webui.routes), все тесты модуля
+        # писали бы в общий каталог и видели состояние друг друга.
+        monkeypatch.setenv("DATA_PATH", str(Path(work_dir) / "data"))
         os.chdir(work_dir)
 
         from webui.app import create_app

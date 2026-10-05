@@ -3,6 +3,7 @@ Global test configuration and fixtures for Smart Home FSM Platform tests.
 
 This module sets up:
 - Python path for imports from src/
+- Изоляцию каталога данных: тесты не должны писать в ./data репозитория
 - Common pytest fixtures
 - Mock configurations
 """
@@ -10,7 +11,9 @@ This module sets up:
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -20,6 +23,29 @@ import pytest
 src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
+
+# Изоляция каталога данных.
+#
+# Без этого прогон тестов создавал в корне репозитория настоящий ./data с
+# history.db, sources.json и состояниями автоматов — то есть тесты писали в
+# данные разработчика. Причина в том, что хранилища создаются на уровне модуля
+# (`event_store = EventStore()` в src/webui/routes/__init__.py:36), поэтому
+# каталог появляется уже при ИМПОРТЕ, задолго до какой-либо фикстуры.
+# Минимальное воспроизведение: `PYTHONPATH=src python -c "import webui.routes"`
+# создаёт ./data.
+#
+# Переменная выставляется именно здесь, на этапе импорта conftest, потому что
+# обычная фикстура слишком поздно: сбор тестов импортирует модули раньше, чем
+# фикстуры создаются.
+#
+# setdefault, а не присваивание: если DATA_PATH уже задан снаружи (например,
+# в CI), уважается внешнее значение.
+#
+# Тесты, которым нужен конкретный путь или отсутствие переменной, продолжают
+# управлять ею через monkeypatch.setenv/delenv — им это не мешает.
+_DATA_DIR = tempfile.TemporaryDirectory(prefix="shp-test-data-")
+os.environ.setdefault("DATA_PATH", _DATA_DIR.name)
+
 
 # Import from core module directly (not smart_home package)
 

@@ -157,11 +157,24 @@ class TestStateRestoration:
 class TestStorageLocation:
     """Файл состояний находится в каталоге данных платформы (T013)."""
 
-    def test_should_default_to_data_directory_when_not_configured(self) -> None:
-        """Путь по умолчанию — data/state.json, а не текущий каталог."""
+    def test_should_default_to_data_directory_when_not_configured(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Путь по умолчанию — data/state.json, а не текущий каталог.
+
+        `DATA_PATH` снимается явно: проверяется поведение при незаданной
+        переменной, а tests/conftest.py задаёт её ради изоляции тестов от
+        каталога данных в корне репозитория.
+        """
+        monkeypatch.delenv("DATA_PATH", raising=False)
+        # Рабочий каталог переносится, чтобы относительный путь `data/`
+        # создался во временном каталоге, а не в корне репозитория.
+        monkeypatch.chdir(tmp_path)
+
         persistence = StatePersistence()
 
         assert persistence.storage_path == Path("data") / "state.json"
+        assert (tmp_path / "data").is_dir(), "каталог данных должен создан по умолчанию"
 
     async def test_should_write_file_inside_given_directory(
         self, tmp_path: Path, storage_path: str

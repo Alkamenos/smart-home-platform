@@ -30,7 +30,7 @@ HEADERS = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}
 
 
 @pytest.fixture
-def workdir() -> Iterator[Path]:
+def workdir(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Временная копия манифеста.
 
     Yields:
@@ -41,6 +41,12 @@ def workdir() -> Iterator[Path]:
     shutil.copy(
         project_root / "instances" / "leonids_house" / "manifest.yaml", work_dir / "manifest.yaml"
     )
+    # `DATA_PATH` указывается явно: каталог данных берётся из этой переменной
+    # при каждой записи, и `os.chdir` сам по себе его не изолирует. Если
+    # переменная задана снаружи (например, в tests/conftest.py, чтобы защитить
+    # корень репозитория от импорта webui.routes), все тесты модуля писали бы
+    # в общий каталог и видели состояние друг друга.
+    monkeypatch.setenv("DATA_PATH", str(work_dir / "data"))
     previous_cwd = os.getcwd()
     os.chdir(work_dir)
     try:

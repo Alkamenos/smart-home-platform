@@ -37,15 +37,25 @@ class TestStatePersistenceInitialization:
             assert Path(storage_path).parent.exists()
             assert persistence.storage_path == Path(storage_path)
 
-    def test_default_storage_path(self):
+    def test_default_storage_path(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         """По умолчанию используется data/state.json (T013, FR-015)
 
         Раньше файл создавался в текущем рабочем каталоге, что разводило
         состояния автоматов и остальные файлы данных платформы.
+
+        `DATA_PATH` снимается явно: тест проверяет именно поведение при
+        незаданной переменной, а tests/conftest.py задаёт её ради изоляции
+        тестов от каталога данных в корне репозитория.
         """
+        monkeypatch.delenv("DATA_PATH", raising=False)
+        # Рабочий каталог переносится, чтобы относительный путь `data/`
+        # создался во временном каталоге, а не в корне репозитория.
+        monkeypatch.chdir(tmp_path)
+
         persistence = StatePersistence()
 
         assert persistence.storage_path == Path("data") / "state.json"
+        assert (tmp_path / "data").is_dir(), "каталог данных должен создан по умолчанию"
 
 
 class TestSaveState:
