@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 from loguru import logger
@@ -99,9 +100,45 @@ logging.getLogger("uvicorn.access").addHandler(LoguruHandler())
 logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 
 
-# Module-level app для TestClient-совместимости (tests/contract):
-# create_app() собирает приложение с дефолтным манифестом и сервисами домена.
-app = create_app()
+# `app` для TestClient-совместимости (tests/contract) собирается лениво, по
+# первому обращению.
+#
+# Раньше здесь стоял вызов `app = create_app()` на уровне модуля. Продакшен
+# запускается как `python -m src.main`, то есть **импортирует** модуль, и в этот
+# момент поднималось второе приложение со вторым контейнером, вторым реестром и
+# вторым снимком манифеста — по пути из образа (`/app/instances/...`), а не из
+# тома (`/config/behavioral_platform/...`). Доказано запуском контейнера: при одном
+# старте `Registered 10 action handlers` печатается дважды, а
+# `Discovery routes initialized` — с двумя разными манифестами.
+#
+# Два независимых `ManifestStore` означали, что изменение, сделанное одним
+# экземпляром, не видно другому: `POST /api/v1/devices/apply` не находил комнату,
+# которую `/api/rooms` показывал (Known Issue K7).
+#
+# Ленивая сборка решает это: `run_platform` остаётся единственным местом,
+# собирающим продакшен-приложение, а контрактные тесты продолжают получать
+# `main.app` — по одному общему экземпляру.
+_APP: Any = None
+
+
+def __getattr__(name: str) -> Any:
+    """Ленивая сборка `app` при первом обращении (PEP 562).
+
+    Args:
+        name: Имя атрибута модуля.
+
+    Returns:
+        Собранное приложение для `app`.
+
+    Raises:
+        AttributeError: Для любого другого имени.
+    """
+    global _APP
+    if name == "app":
+        if _APP is None:
+            _APP = create_app()
+        return _APP
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 async def run_platform():
