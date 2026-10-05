@@ -511,6 +511,28 @@ class CommandResponse(BaseModel):
     completed_at: str | None = None
     result: dict | None = None
     error: str | None = None
+    automation_synced: bool = Field(
+        default=False,
+        description=(
+            "Отражена ли команда в состоянии автомата. False означает, что команда "
+            "ушла прямо в Home Assistant: в шаблоне нет ручного перехода, и автомат "
+            "о состоянии устройства не знает (Known Issue #69)."
+        ),
+    )
+
+
+_MANUAL_FSM_EVENTS: dict[str, str] = {
+    "turn_on": "manual_switch_on",
+    "turn_off": "manual_switch_off",
+}
+"""Команды, имеющие событие автомата.
+
+Совпадение имён здесь намеренное: шаблоны объявляют переходы по событиям
+``manual_switch_on``/``manual_switch_off``, и это единственные ручные события,
+объявленные хоть в каком-то шаблоне (`lighting`, `night_light`). Для остальных
+команд события нет — команда уходит в Home Assistant напрямую, и ответ сообщает,
+что состояние автомата не отслежено (Known Issue #69).
+"""
 
 
 @router.post("/{device_id}/command", status_code=status.HTTP_200_OK)
@@ -564,22 +586,45 @@ async def execute_device_command(
 
     logger.info(f"Выполняю команду {service} на устройстве {device_id}")
 
-    try:
-        result = await device_service._call_ha_service(device, service, parameters)
-    except Exception as e:
-        logger.error(f"Команда {service} для {device.ha_entity_id} не выполнена: {e}")
-        await record_sync_event(
-            http_request,
-            device_id,
-            "command_failed",
-            before=None,
-            after=None,
-            data={"command": service, "error": str(e)},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Команда {service} не выполнена: {e}",
-        ) from e
+    # Сначала автомат: он и переключит состояние, и вызовет Home Assistant своим
+    # действием. Прямой вызов HA оставил бы автомат в неведении, и следующее
+    # событие датчика отменило бы ручное действие пользователя.
+    result: dict[str, Any] | None = None
+    fsm_event = _MANUAL_FSM_EVENTS.get(service)
+    handled_by_fsm = False
+    if fsm_event is not None:
+        container = getattr(http_request.app.state, "container", None)
+        if container is not None:
+            for fsm_id in container.fsm.get_entities_by_device(device.ha_entity_id):
+                context = {
+                    "entity_id": device.ha_entity_id,
+                    "target_device_id": device.ha_entity_id,
+                    "source": "manual_command",
+                    **parameters,
+                }
+                if await container.fsm.trigger(fsm_id, fsm_event, context):
+                    handled_by_fsm = True
+                    break
+        if handled_by_fsm:
+            logger.info(f"Команда {service} выполнена через автомат: {fsm_event}")
+
+    if not handled_by_fsm:
+        try:
+            result = await device_service._call_ha_service(device, service, parameters)
+        except Exception as e:
+            logger.error(f"Команда {service} для {device.ha_entity_id} не выполнена: {e}")
+            await record_sync_event(
+                http_request,
+                device_id,
+                "command_failed",
+                before=None,
+                after=None,
+                data={"command": service, "error": str(e)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Команда {service} не выполнена: {e}",
+            ) from e
 
     await record_sync_event(
         http_request,
@@ -587,7 +632,12 @@ async def execute_device_command(
         "command_executed",
         before=None,
         after=None,
-        data={"command": service, "parameters": parameters},
+        data={
+            "command": service,
+            "parameters": parameters,
+            "via_fsm": handled_by_fsm,
+            "fsm_event": fsm_event if handled_by_fsm else None,
+        },
     )
 
     return CommandResponse(
@@ -598,6 +648,7 @@ async def execute_device_command(
         created_at=datetime.utcnow().isoformat(),
         completed_at=datetime.utcnow().isoformat(),
         result=result,
+        automation_synced=handled_by_fsm,
     )
 
 

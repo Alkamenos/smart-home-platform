@@ -10,11 +10,11 @@ Assistant не менялось.
 проверки, закреплявшие их (в `test_devices_api.py`, `test_access_control.py`,
 `test_device_audit_log.py`), обновлены под фактическое поведение.
 
-Маршрут выбран один: команда идёт в Home Assistant через
-`DeviceService._call_ha_service`. Отправка события в автомат — отдельная задача
-(см. #69): пока она не сделана, состояние автомата после ручной команды может
-разойтись с реальным положением вещей, и это нужно закрыть в том же изменении, а
-не молча оставлять здесь.
+Маршрут: команда сначала отдаётся автомату (`manual_switch_on` /
+`manual_switch_off`), и уже при отсутствии такого перехода уходит в Home Assistant
+напрямую через `DeviceService._call_ha_service`. Эти проверки относятся к прямой
+ветке, поэтому используют `toggle` — команды, у которой нет события автомата.
+Проверки связи с автоматом живут в `test_manual_command_fsm.py`.
 """
 
 #  Copyright 2026 Leonid Artemev
@@ -112,12 +112,12 @@ class TestCommandIsExecuted:
         """
         isolated_client.post(
             f"/api/v1/devices/{device}/command",
-            json={"name": "turn_on", "parameters": {}},
+            json={"name": "toggle", "parameters": {}},
         )
 
         assert ha_adapter.call_service.await_count == 1, "сервис HA не был вызван"
         call = ha_adapter.call_service.await_args
-        assert call.kwargs["service"] == "turn_on"
+        assert call.kwargs["service"] == "toggle"
         assert call.kwargs["entity_id"] == "light.command_probe"
 
     def test_should_accept_service_form_with_domain(
@@ -132,12 +132,12 @@ class TestCommandIsExecuted:
         """
         isolated_client.post(
             f"/api/v1/devices/{device}/command",
-            json={"command_name": "light.turn_on"},
+            json={"command_name": "light.toggle"},
         )
 
         call = ha_adapter.call_service.await_args
         assert call is not None
-        assert call.kwargs["service"] == "turn_on", "домен остался в имени сервиса"
+        assert call.kwargs["service"] == "toggle", "домен остался в имени сервиса"
 
     def test_should_pass_parameters_to_service(
         self, isolated_client: TestClient, device: str, ha_adapter: AsyncMock
@@ -151,12 +151,12 @@ class TestCommandIsExecuted:
         """
         isolated_client.post(
             f"/api/v1/devices/{device}/command",
-            json={"name": "turn_on", "parameters": {"brightness": 200}},
+            json={"name": "toggle", "parameters": {"transition": 5}},
         )
 
         call = ha_adapter.call_service.await_args
         assert call is not None
-        assert call.kwargs["brightness"] == 200
+        assert call.kwargs["transition"] == 5
 
 
 class TestCommandReportsRealOutcome:
@@ -174,7 +174,7 @@ class TestCommandReportsRealOutcome:
         """
         response = isolated_client.post(
             f"/api/v1/devices/{device}/command",
-            json={"name": "turn_on", "parameters": {}},
+            json={"name": "toggle", "parameters": {}},
         )
 
         assert response.status_code == 200, response.text
@@ -196,7 +196,7 @@ class TestCommandReportsRealOutcome:
 
         response = isolated_client.post(
             f"/api/v1/devices/{device}/command",
-            json={"name": "turn_off", "parameters": {}},
+            json={"name": "toggle", "parameters": {}},
         )
 
         assert response.status_code == 502, response.text
@@ -214,7 +214,7 @@ class TestCommandReportsRealOutcome:
         """
         response = isolated_client.post(
             f"/api/v1/devices/{device}/command",
-            json={"name": "turn_on", "parameters": {}},
+            json={"name": "toggle", "parameters": {}},
         )
 
         assert response.json()["status"] != "executing", (
