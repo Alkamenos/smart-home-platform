@@ -200,6 +200,137 @@ def release_device(state: Any, context: dict) -> None:
         )
 
 
+def _climate_intent(context: dict[str, Any], service: str, source: str) -> CommandIntent | None:
+    """Собрать команду климатического устройства.
+
+    Args:
+        context: Контекст перехода.
+        service: Услуга Home Assistant.
+        source: Источник для аудита и блокировок.
+
+    Returns:
+        CommandIntent либо ``None``, если устройство не указано.
+    """
+    entity_id = extract_device_id(context)
+    if not entity_id:
+        logger.warning(f"{source}: нет entity_id в контексте")
+        return None
+
+    data: dict[str, Any] = {}
+    target_temperature = context.get("target_temperature")
+    if target_temperature is not None:
+        data["temperature"] = target_temperature
+
+    logger.info(f"Создаю команду {service} для {entity_id}")
+
+    return CommandIntent(
+        device_id=entity_id,
+        domain="climate",
+        service=service,
+        data=data,
+        priority=context.get("priority", 50),
+        source=source,
+    )
+
+
+def climate_heat(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить отопление на заданную температуру.
+
+    Args:
+        state: Текущее состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``target_temperature``.
+
+    Returns:
+        Команда установки температуры либо ``None`` без устройства.
+    """
+    return _climate_intent(context, "set_temperature", "climate_heat")
+
+
+def climate_cool(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить охлаждение на заданную температуру.
+
+    Args:
+        state: Текущее состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``target_temperature``.
+
+    Returns:
+        Команда установки температуры либо ``None`` без устройства.
+    """
+    return _climate_intent(context, "set_temperature", "climate_cool")
+
+
+def climate_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Выключить климатическое устройство.
+
+    Args:
+        state: Текущее состояние автомата (не используется).
+        context: Контекст с ``entity_id``.
+
+    Returns:
+        Команда выключения либо ``None`` без устройства.
+    """
+    return _climate_intent(context, "turn_off", "climate_off")
+
+
+def _fan_intent(context: dict[str, Any], service: str, source: str) -> CommandIntent | None:
+    """Собрать команду вентилятора.
+
+    Args:
+        context: Контекст перехода.
+        service: Услуга Home Assistant.
+        source: Источник для аудита и блокировок.
+
+    Returns:
+        CommandIntent либо ``None``, если устройство не указано.
+    """
+    entity_id = extract_device_id(context)
+    if not entity_id:
+        logger.warning(f"{source}: нет entity_id в контексте")
+        return None
+
+    data: dict[str, Any] = {}
+    for key in ("percentage", "preset_mode"):
+        if context.get(key) is not None:
+            data[key] = context[key]
+
+    logger.info(f"Создаю команду {service} для {entity_id}")
+
+    return CommandIntent(
+        device_id=entity_id,
+        domain="fan",
+        service=service,
+        data=data,
+        priority=context.get("priority", 50),
+        source=source,
+    )
+
+
+def fan_turn_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить вентилятор.
+
+    Args:
+        state: Текущее состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и, необязательно, ``percentage``.
+
+    Returns:
+        Команда включения либо ``None`` без устройства.
+    """
+    return _fan_intent(context, "turn_on", "fan_turn_on")
+
+
+def fan_turn_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Выключить вентилятор.
+
+    Args:
+        state: Текущее состояние автомата (не используется).
+        context: Контекст с ``entity_id``.
+
+    Returns:
+        Команда выключения либо ``None`` без устройства.
+    """
+    return _fan_intent(context, "turn_off", "fan_turn_off")
+
+
 # Dictionary of all available action handlers for easy registration
 ACTION_HANDLERS: dict[str, Any] = {
     "turn_on_light": turn_on_light,
@@ -207,6 +338,14 @@ ACTION_HANDLERS: dict[str, Any] = {
     "turn_on_night_light": turn_on_night_light,
     "turn_off_night_light": turn_off_night_light,
     "release_device": release_device,
+    # Климат и вентиляция. Шаблоны climate_control и humidity_ventilation
+    # ссылались на эти действия, но они не были зарегистрированы: движок
+    # отклонял переход, а платформа выглядела исправной.
+    "climate_heat": climate_heat,
+    "climate_cool": climate_cool,
+    "climate_off": climate_off,
+    "fan_turn_on": fan_turn_on,
+    "fan_turn_off": fan_turn_off,
 }
 
 

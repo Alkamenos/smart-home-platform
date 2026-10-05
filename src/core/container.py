@@ -28,6 +28,7 @@ from core.events.event_router import EventRouter
 from core.events.fsm_events import EVENT_PLATFORM_STARTED
 from core.fsm.engine import FSMEngine
 from core.fsm.factory import FSMFactory
+from core.guards.builtin import register_all_guards
 from core.models.manifest import Manifest, load_manifest
 from core.registry import Registry
 
@@ -232,10 +233,22 @@ class Container:
 
     @property
     def registry(self) -> Registry:
-        """Get or create Registry instance."""
+        """Get or create Registry instance.
+
+        Помимо действий регистрируются встроенные guard'ы. Раньше здесь
+        регистрировались только действия, поэтому все guard'ы из шаблонов
+        (`is_day_time`, `is_manual_override_enabled`, `humidity_above_60`,
+        `humidity_below_60`) отсутствовали в реестре: движок отклонял каждый
+        переход, а платформа выглядела исправной (Known Issue про «Guard not
+        found»).
+
+        Порядок важен: guard'ам нужен `ControlTracker`, который создаётся раньше
+        реестра, а `registry` обращается к нему через ленивое свойство.
+        """
         if self._registry is None:
             self._registry = Registry()
             register_all_actions(self._registry)
+            register_all_guards(self._registry, self.control_tracker)
         return self._registry
 
     @property
