@@ -19,18 +19,47 @@ cd behavioral_platform
 
 ### 2. Настройка переменных окружения
 
+Для Docker-развёртывания файл конфигурации — `deploy/docker/.env`, и он
+**единственный**. Compose читает его и как `env_file`, и для подстановки
+`${...}`, а блок `environment:` в `docker-compose.prod.yml` намеренно не
+дублирует операторские переменные — иначе значение из оболочки молча
+перекрывало бы файл (проверено: `HA_TOKEN=... docker compose up -d` подменял
+токен, и отличить это от значения в `.env` было невозможно).
+
 ```bash
-cp deploy/.env.example .env
-nano .env  # Отредактируйте файл, указав ваш HA_TOKEN
+cp deploy/docker/.env.example deploy/docker/.env
+nano deploy/docker/.env   # укажите HA_TOKEN и HOME_ASSISTANT_ENCRYPTION_KEY
 ```
 
 **Важно:** Получите токен в профиле пользователя HA → "Long-Lived Access Tokens"
 
+**`HOME_ASSISTANT_ENCRYPTION_KEY` обязателен в продакшене.** Без него ключ
+генерируется заново при каждом старте, и сохранённые токены после перезапуска
+не расшифровываются (проверено: два запуска подряд дали разные ключи).
+Сгенерировать:
+
+```bash
+python -c "from core.security.encryption import generate_encryption_key; print(generate_encryption_key())"
+```
+
 ### 3. Создание директорий для данных
 
 ```bash
-mkdir -p deploy/config deploy/data
+mkdir -p deploy/docker/config deploy/docker/data
 ```
+
+Каталоги — именно `deploy/docker/...`, потому что compose монтирует тома
+относительно каталога compose-файла:
+
+| На хосте | В контейнере | Содержимое |
+|---|---|---|
+| `deploy/docker/config` | `/config/behavioral_platform` | `manifest.yaml` — конфигурация |
+| `deploy/docker/data` | `/data/behavioral_platform` | состояния, источники, журнал |
+
+При первом запуске `docker-entrypoint.sh` переносит конфигурацию из образа в
+`deploy/docker/config`, если каталог пуст; последующие запуски её не трогают.
+Каталоги `deploy/docker/config`, `deploy/docker/data` и `deploy/docker/backups`
+в `.gitignore` — это рабочие данные, а не исходный код.
 
 ### 4. Развертывание в Shadow Mode (рекомендуется сначала)
 
@@ -81,15 +110,24 @@ docker logs -f behavioral-platform
 
 ```
 deploy/
-├── config/           # Конфигурационные файлы
-│   ├── manifest.yaml
-│   └── behaviors/
-├── data/             # Данные платформы
-│   ├── states/       # Сохраненные состояния FSM
-│   ├── logs/         # Логи платформы
-│   └── metrics/      # Метрики
-└── backups/          # Автоматические резервные копии
+└── docker/
+    ├── docker-compose.prod.yml
+    ├── docker-entrypoint.sh      # посев конфигурации в том при первом старте
+    ├── .env                      # секреты (НЕ в git)
+    ├── .env.example              # образец .env (в git)
+    ├── config/                   # ТОМ: конфигурация → /config/behavioral_platform
+    │   └── manifest.yaml
+    ├── data/                     # ТОМ: данные → /data/behavioral_platform
+    │   ├── state.json            # состояния FSM
+    │   ├── sources.json          # источники данных
+    │   └── history.db            # журнал переходов
+    └── backups/                  # копии deploy.sh backup
 ```
+
+`CONFIG_PATH` и `DATA_PATH` заданы в `docker-compose.prod.yml` и указывают на
+точки монтирования. Задавать их в `.env` нельзя: значение вне тома означает,
+что данные переживут запуск, но не переживут `docker compose down && up -d` —
+правки конфигурации будут молча откатываться к состоянию из образа.
 
 ## 🛡️ Безопасность
 

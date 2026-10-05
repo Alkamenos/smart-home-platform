@@ -34,7 +34,18 @@ logs
 .env
 .env.*
 docker-compose*.yml
-deploy
+
+# deploy исключён целиком, но deploy/docker/docker-entrypoint.sh нужен в образе:
+# он переносит конфигурацию в том при первом старте.
+#
+# Исключение сделано по содержимому каталога, а не по самому каталогу: если
+# исключить `deploy`, вернуть вложенный файл нельзя — Docker не заходит внутрь
+# исключённого каталога. Проверено сборкой: с `deploy` файл не находился
+# ("not found"), после перечисления ниже — копируется.
+deploy/*
+!deploy/docker/
+deploy/docker/*
+!deploy/docker/docker-entrypoint.sh
 
 .DS_Store
 Thumbs.db

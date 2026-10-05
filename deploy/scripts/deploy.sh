@@ -6,10 +6,28 @@ set -e
 
 # Конфигурация
 PLATFORM_NAME="behavioral-platform"
-CONFIG_DIR="./config"
-DATA_DIR="./data"
 DOCKER_COMPOSE_FILE="./deploy/docker/docker-compose.prod.yml"
-BACKUP_DIR="./backups"
+
+# Каталоги данных и конфигурации задаются ОТНОСИТЕЛЬНО КАТАЛОГА COMPOSE-ФАЙЛА,
+# потому что именно относительно него compose монтирует тома:
+#   volumes: ./config → /config/behavioral_platform
+#            ./data   → /data/behavioral_platform
+# Относительные пути в compose всегда отсчитываются от каталога compose-файла,
+# а не от текущего каталога.
+#
+# Раньше здесь стояло CONFIG_DIR="./config" и DATA_DIR="./data" — от корня
+# репозитория. Последствия были неочевидны:
+#   * каталога ./config в корне репозитория вообще нет, поэтому конфигурация
+#     (manifest.yaml) в резервную копию НЕ ПОПАДАЛА;
+#   * ./data в корне — протухший каталог от локальных запусков, том его не
+#     использует. Бэкап копировал данные, которых нет в работающей платформе,
+#     а rollback восстанавливал их не туда.
+# Проверено запуском `deploy.sh backup`: манифеста в копии не было, состояния
+# были из ./data, тогда как живое состояние лежит в deploy/docker/data.
+COMPOSE_DIR="$(cd "$(dirname "$DOCKER_COMPOSE_FILE")" && pwd)"
+CONFIG_DIR="$COMPOSE_DIR/config"
+DATA_DIR="$COMPOSE_DIR/data"
+BACKUP_DIR="$COMPOSE_DIR/backups"
 SHADOW_MODE="${SHADOW_MODE:-false}"
 
 # Цвета для вывода
@@ -178,6 +196,33 @@ rollback() {
 
     log_warn "Выполняется откат к версии из $backup_path..."
 
+    if [ ! -d "$backup_path/config" ] && [ ! -d "$backup_path/data" ]; then
+        log_error "В $backup_path нет ни конфигурации, ни данных — откат невозможен."
+        log_error "Похоже, копия создана старой версией скрипта (неверные пути)."
+        exit 1
+    fi
+
+    # Сервис останавливается ДО восстановления файлов.
+    #
+    # Раньше порядок был обратным: сначала `rm -rf` каталогов, затем `down`.
+    # Это не проявлялось только потому, что пути указывали на протухший ./data
+    # в корне репозитория, который платформа не использует. С настоящими путями
+    # контейнер продолжал бы писать в уже удалённый каталог, а восстановление
+    # перемешивалось бы с живыми записями (в том числе в SQLite-журнал).
+    log_info "Остановка сервиса перед восстановлением..."
+    if command -v docker-compose &> /dev/null; then
+        docker-compose -f "$DOCKER_COMPOSE_FILE" down
+    else
+        docker compose -f "$DOCKER_COMPOSE_FILE" down
+    fi
+
+    # Откат удаляет данные, поэтому текущее состояние сохраняется отдельно.
+    safety_path="$BACKUP_DIR/pre_rollback_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$safety_path"
+    [ -d "$CONFIG_DIR" ] && cp -r "$CONFIG_DIR" "$safety_path/config"
+    [ -d "$DATA_DIR" ] && cp -r "$DATA_DIR" "$safety_path/data"
+    log_info "Текущее состояние сохранено в $safety_path (откат можно отменить вручную)"
+
     # Восстановление конфигурации
     if [ -d "$backup_path/config" ]; then
         rm -rf "$CONFIG_DIR"
@@ -195,10 +240,8 @@ rollback() {
     # Перезапуск сервиса
     log_info "Перезапуск сервиса..."
     if command -v docker-compose &> /dev/null; then
-        docker-compose -f "$DOCKER_COMPOSE_FILE" down
         docker-compose -f "$DOCKER_COMPOSE_FILE" up -d
     else
-        docker compose -f "$DOCKER_COMPOSE_FILE" down
         docker compose -f "$DOCKER_COMPOSE_FILE" up -d
     fi
 

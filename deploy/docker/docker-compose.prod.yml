@@ -10,8 +10,18 @@ services:
 #        - type=registry
       labels:
         - "build.version=${BUILD_VERSION:-latest}"
+    # ОДИН файл конфигурации — .env. Он же читается Compose для интерполяции
+    # ${...} по умолчанию.
+    #
+    # Раньше стоял env_file: .env.prod, а рядом лежал ещё и .env с ДРУГИМИ
+    # значениями (разные HA_URL). Compose читал .env для интерполяции, а блок
+    # environment: ниже имел приоритет над env_file — то есть в контейнер
+    # попадали значения из .env, а .env.prod был мёртвой конфигурацией.
+    # Проверено запуском: HA_URL в контейнере был 192.168.2.10 (из .env),
+    # хотя в .env.prod стоял 192.168.1.100. Оператор правил .env.prod и не
+    # получал никакого эффекта.
     env_file:
-      - .env.prod
+      - .env
     container_name: behavioral-platform
     restart: unless-stopped
 
@@ -28,18 +38,25 @@ services:
     tty: true
     stdin_open: false
 
-    # Environment variables
+    # Environment variables.
+    #
+    # Здесь только литералы и настройки, НЕ зависящие от оператора.
+    # Переменные конфигурации (HA_URL, HA_WEBSOCKET_URL, HA_TOKEN, SHADOW_MODE,
+    # LOG_LEVEL) намеренно НЕ дублируются через ${...}: такая запись делает
+    # оболочку вторым источником истины, который молча перекрывает файл .env
+    # (проверено: `HA_URL=... docker compose up -d` подменял адрес источника, и
+    # отличить это от значения в .env было невозможно).
+    #
+    # CONFIG_PATH указывает на ТОЧКУ МОНТИРОВАНИЯ тома. Раньше здесь стояло
+    # /app/instances/leonids_house — каталог в слое контейнера, а не в томе.
+    # Правки манифеста из интерфейса при этом молча откатывались при каждом
+    # пересоздании: проверено хешем, d5c0f6… → 743f2a… (правка) → d5c0f6….
     environment:
       - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}  # DEBUG для видимости HA сообщений
       - FORCE_COLOR=1                   # Принудительная раскраска для Docker
       - CLICOLOR_FORCE=1                # Универсальный флаг для CLI
-      - SHADOW_MODE=${SHADOW_MODE:-false}
-      - HA_URL=${HA_URL}
-      - HA_WEBSOCKET_URL=${HA_WEBSOCKET_URL}
-      - HA_TOKEN=${HA_TOKEN}
-      - CONFIG_PATH=${CONFIG_PATH:-/app/instances/leonids_house}
-      - DATA_PATH=${DATA_PATH:-/data/behavioral_platform}
+      - CONFIG_PATH=/config/behavioral_platform
+      - DATA_PATH=/data/behavioral_platform
 
     # Volumes
     volumes:
