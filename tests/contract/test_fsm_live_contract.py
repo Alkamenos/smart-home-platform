@@ -149,12 +149,23 @@ class TestFSMStateAccessControl:
         assert restricted.status_code == 200
         assert len(restricted.json()["states"]) <= len(full_access["states"])
 
-    def test_should_work_without_identity_header(self, anonymous_client: TestClient) -> None:
-        """Эндпоинт доступен и без заголовка: показываются только доступные."""
+    def test_should_refuse_request_without_identity_header(
+        self, anonymous_client: TestClient
+    ) -> None:
+        """Без заголовка идентичности — 401, а не данные всех устройств.
+
+        Раньше здесь стояло `test_should_work_without_identity_header`, и его
+        докстринг обещал «показываются только доступные», хотя проверял ровно
+        противоположное: `_resolve_accessible_device_ids` возвращала `None`
+        («без фильтрации») при отсутствии заголовка, то есть анонимный запрос
+        получал состояния всех устройств. Тест закреплял дефект как норму.
+        """
         response = anonymous_client.get("/api/fsm/state")
 
-        assert response.status_code == 200
-        assert "states" in response.json()
+        assert response.status_code == 401, (
+            "анонимный запрос получил 200: дефолт доступа остался «на отказ»"
+        )
+        assert "states" not in response.json()
 
 
 class TestFSMStateAccessIsolation:

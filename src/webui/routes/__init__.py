@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -287,22 +287,52 @@ async def _resolve_accessible_device_ids(request: Request) -> set[str] | None:
     """Определить устройства, доступные пользователю запроса (FR-038).
 
     Ответ фильтруется по существующей модели доступа: пользователь видит
-    состояния только тех устройств, к которым у него есть права. Если сервис
-    устройств недоступен, фильтрация не применяется — иначе раздел выглядел бы
-    пустым из-за сбоя, а не из-за отсутствия прав.
+    состояния только тех устройств, к которым у него есть права.
+
+    Дефолт — **отказ**, а не разрешение. Раньше здесь стояло ``return None``
+    («без фильтрации») в трёх случаях, и каждый означал доступ ко всем
+    устройствам:
+
+    - заголовок ``X-User-ID`` не передан — запрос вообще без идентичности
+      получал состояния всех устройств;
+    - сервис устройств недоступен — сломанный сервис выдавал больше прав, чем
+      рабочий;
+    - фильтрация упала с исключением — ошибка превращалась в разрешение.
+
+    Третий случай особенно неприятен: он делал отказ в хранилище
+    неотличимым от успеха, и данные отдавались именно тогда, когда права
+    проверить не удалось.
 
     Args:
         request: Входящий HTTP-запрос.
 
     Returns:
-        Множество доступных идентификаторов устройств. ``None`` означает «без
-        фильтрации», а пустое множество — у пользователя нет доступных
-        устройств, поэтому раздел должен быть пуст.
+        ``None`` — без фильтрации (только для администратора).
+        Пустое множество — доступных устройств нет, раздел должен быть пуст.
+        ``None`` также возвращается при недоступном сервисе устройств и при
+        ошибке фильтрации: это отказ, а не повод показать всё. В обоих случаях
+        в журнал пишется причина.
+
+    Raises:
+        HTTPException: 503, если сервис устройств недоступен или фильтрация
+            не удалась, — чтобы вызывающий отличал сбой от отсутствия прав.
     """
     user_id = request.headers.get("X-User-ID")
+    if not user_id:
+        # Анонимный запрос не получает данных: идентичность неизвестна, а
+        # выдавать «видно всё» значило бы считать любого администратором.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-User-ID header",
+        )
+
     device_service = getattr(request.app.state, "device_service", None)
-    if not user_id or device_service is None:
-        return None
+    if device_service is None:
+        logger.warning("Device service unavailable: refusing to return device states")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Device service is not available",
+        )
 
     is_admin = request.headers.get("X-Is-Admin", "false").lower() == "true"
     if is_admin:
@@ -310,9 +340,14 @@ async def _resolve_accessible_device_ids(request: Request) -> set[str] | None:
 
     try:
         devices = await device_service.get_user_accessible_devices(user_id)
-    except Exception as e:  # noqa: BLE001 - фильтрация не должна ломать раздел
+    except Exception as e:  # noqa: BLE001 - причина попадает в журнал и в ответ
+        # Отказ, а не «без фильтрации»: раньше ошибка здесь открывала доступ ко
+        # всем устройствам, то есть сбой хранилища расширял права.
         logger.warning(f"Could not resolve device access for {user_id}: {e}")
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Device access could not be resolved",
+        ) from e
 
     return {device.ha_entity_id for device in devices if device.ha_entity_id}
 
@@ -420,6 +455,13 @@ async def dashboard(request: Request) -> HTMLResponse:
         {
             "title": "Dashboard",
             "devices": devices,
+            # Идентичность передаётся в шаблон, чтобы его fetch-запросы несли
+            # X-User-ID / X-Is-Admin. Раньше эти значения здесь отсутствовали, а
+            # authHeaders() в шаблоне возвращал пустой объект — дашборд работал
+            # только потому, что сервер при отсутствии заголовков отдавал
+            # состояния всех устройств (Known Issue про дефолт «на отказ»).
+            "user_id": getattr(request.app.state, "default_user_id", None) or "admin_user",
+            "user_is_admin": bool(getattr(request.app.state, "default_user_is_admin", False)),
         },
     )
 
