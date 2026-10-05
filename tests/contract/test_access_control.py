@@ -79,7 +79,15 @@ def sample_source(client):
         "url": "http://192.168.1.100:8123",
         "token": "access_control_token",
     }
-    response = client.post("/api/v1/devices/sources", json=payload)
+    # Создание источника — операция администратора (требуется `require_admin`),
+    # поэтому фикстура создаёт его от его имени. Заголовки задаются здесь, а не
+    # в фикстуре `client`: та используется и для проверок прав, и добавление
+    # `X-Is-Admin: true` по умолчанию сделало бы «stranger» администратором.
+    response = client.post(
+        "/api/v1/devices/sources",
+        json=payload,
+        headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"},
+    )
     assert response.status_code == 201, (
         f"источник не создан: {response.status_code} {response.text}"
     )

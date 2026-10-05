@@ -225,17 +225,22 @@ class TestSyncFailure:
         Раньше тест падал здесь, не доходя до своей проверки, и это выглядело
         как «тест красный», а не как «в запросе не хватает заголовка».
         """
-        with TestClient(isolated_app) as anonymous:
-            source = anonymous.post(
-                "/api/v1/devices/sources",
-                json={
-                    "name": "No Identity HA",
-                    "url": "http://ha.invalid:8123",
-                    "token": "no_identity_token_1",
-                },
-            )
-            assert source.status_code == 201
+        # Источник создаётся от имени администратора: создание источника само
+        # требует прав (`require_admin`), и раньше подготовка проходила только
+        # потому, что этот эндпоинт прав не проверял. Проверяется синхронизация
+        # без идентичности, а не отказ на подготовке.
+        admin = TestClient(isolated_app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
+        source = admin.post(
+            "/api/v1/devices/sources",
+            json={
+                "name": "No Identity HA",
+                "url": "http://ha.invalid:8123",
+                "token": "no_identity_token_1",
+            },
+        )
+        assert source.status_code == 201, source.text
 
+        with TestClient(isolated_app) as anonymous:
             response = anonymous.post(f"/api/v1/devices/sources/{source.json()['id']}/sync")
 
         assert response.status_code == 401, (

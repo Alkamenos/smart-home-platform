@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 from core.models.ha_source import HASource
 from services.device_service import DeviceService
+from webui.routes.devices.access_control import require_admin
 
 
 logger = logging.getLogger(__name__)
@@ -78,7 +79,9 @@ def _source_to_response(source: HASource) -> SourceResponse:
 
 
 @router.get("", status_code=status.HTTP_200_OK)
-async def list_sources(request: Request) -> list[SourceResponse]:
+async def list_sources(
+    request: Request, is_admin: bool = Depends(require_admin)
+) -> list[SourceResponse]:
     """Получает список всех источников Home Assistant.
 
     Returns:
@@ -106,7 +109,9 @@ async def list_sources(request: Request) -> list[SourceResponse]:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def create_source(request: Request, req: CreateSourceRequest) -> SourceResponse:
+async def create_source(
+    request: Request, req: CreateSourceRequest, is_admin: bool = Depends(require_admin)
+) -> SourceResponse:
     """Создает новый источник Home Assistant.
 
     Args:
@@ -156,7 +161,9 @@ async def create_source(request: Request, req: CreateSourceRequest) -> SourceRes
 
 
 @router.get("/{source_id}", status_code=status.HTTP_200_OK)
-async def get_source(request: Request, source_id: UUID) -> SourceResponse:
+async def get_source(
+    request: Request, source_id: UUID, is_admin: bool = Depends(require_admin)
+) -> SourceResponse:
     """Получает информацию об источнике.
 
     Args:
@@ -198,7 +205,9 @@ async def get_source(request: Request, source_id: UUID) -> SourceResponse:
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_source(request: Request, source_id: UUID) -> None:
+async def delete_source(
+    request: Request, source_id: UUID, is_admin: bool = Depends(require_admin)
+) -> None:
     """Удаляет источник Home Assistant.
 
     Args:
@@ -244,7 +253,10 @@ async def delete_source(request: Request, source_id: UUID) -> None:
 
 @router.post("/{source_id}/sync", status_code=status.HTTP_200_OK)
 async def sync_source(
-    request: Request, source_id: UUID, device_service: DeviceService = Depends(get_device_service)
+    request: Request,
+    source_id: UUID,
+    device_service: DeviceService = Depends(get_device_service),
+    is_admin: bool = Depends(require_admin),
 ) -> dict:
     """Запускает синхронизацию устройств из источника.
 
@@ -252,6 +264,7 @@ async def sync_source(
         request: FastAPI request
         source_id: ID источника
         device_service: DeviceService для синхронизации
+        is_admin: Требуются права администратора
 
     Returns:
         Статус синхронизации
@@ -432,7 +445,9 @@ def _to_available_device(state: dict[str, Any], area_names: dict[str, str]) -> A
 
 
 @router.get("/{source_id}/discovery-data", status_code=status.HTTP_200_OK)
-async def get_discovery_data(request: Request, source_id: UUID) -> DiscoveryData:
+async def get_discovery_data(
+    request: Request, source_id: UUID, is_admin: bool = Depends(require_admin)
+) -> DiscoveryData:
     """Получает доступные устройства из Home Assistant для помощи при добавлении.
 
     Args:

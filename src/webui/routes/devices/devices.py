@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, model_validator
 
 from core.models.device import Device
@@ -22,6 +22,7 @@ from webui.models import (
     build_all_fsm_state_views,
     build_automation_info,
 )
+from webui.routes.devices.access_control import require_admin
 from webui.routes.devices.deps import (
     get_device_service,
     get_lifecycle_service,
@@ -787,7 +788,11 @@ class ApplyDevicesResponse(BaseModel):
 
 
 @router.post("/apply", status_code=status.HTTP_201_CREATED)
-async def apply_devices(request: Request, body: ApplyDevicesRequest) -> ApplyDevicesResponse:
+async def apply_devices(
+    request: Request,
+    body: ApplyDevicesRequest,
+    is_admin: bool = Depends(require_admin),
+) -> ApplyDevicesResponse:
     """Применяет выбранные устройства из Home Assistant.
 
     Единственная точка применения набора устройств (FR-005). Обработчик
