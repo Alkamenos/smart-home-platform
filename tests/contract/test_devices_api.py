@@ -11,15 +11,19 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client():
+def client(isolated_client: TestClient) -> TestClient:
     """Фикстура для тестирования API.
 
     US4 (spec 004): device-endpoints требуют идентификацию (middleware) —
     клиент по умолчанию действует как администратор (X-User-ID/X-Is-Admin).
-    """
-    from main import app
 
-    return TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
+    Приложение берётся изолированным, а не из синглтона `main.app`: тесты
+    добавляют и удаляют устройства, а с сохранением манифеста (Known Issue #65)
+    операции через API пишут в манифест. Синглтон собран на манифесте
+    репозитория (`instances/leonids_house/manifest.yaml`), поэтому правки
+    устройств утекли бы в отслеживаемый файл и ломали бы `test_bootstrap`.
+    """
+    return isolated_client
 
 
 @pytest.fixture

@@ -11,19 +11,21 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client():
-    """Клиент, действующий от администратора."""
-    from main import app
+def client(isolated_app: object) -> TestClient:
+    """Клиент, действующий от администратора.
 
-    return TestClient(app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
+    Приложение изолированное, а не синглтон `main.app`: с сохранением
+    манифеста (Known Issue #65) операции с устройствами пишут в манифест, а
+    синглтон собран на манифесте репозитория. Здесь тесты только читают, но
+    изоляция нужна и для согласованности с остальными контрактными тестами.
+    """
+    return TestClient(isolated_app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
 
 
 @pytest.fixture
-def anonymous_client():
+def anonymous_client(isolated_app: object) -> TestClient:
     """Клиент без идентификации пользователя."""
-    from main import app
-
-    return TestClient(app)
+    return TestClient(isolated_app)
 
 
 class TestFSMStateEndpoint:
@@ -64,13 +66,15 @@ class TestFSMStateEndpoint:
                 assert parsed.year >= 2024
 
     def test_should_return_empty_list_when_no_fsms_registered(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+        self,
+        client: TestClient,
+        isolated_app: object,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Без автоматов — 200 и пустой список, а не ошибка (FR-021)."""
         from core import FSMEngine
-        from main import app
 
-        container = app.state.container
+        container = isolated_app.state.container
         empty_engine = FSMEngine()
         monkeypatch.setattr(container, "_fsm", empty_engine, raising=False)
 
@@ -80,12 +84,13 @@ class TestFSMStateEndpoint:
         assert response.json() == {"count": 0, "states": []}
 
     def test_should_return_503_with_reason_when_container_unavailable(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+        self,
+        client: TestClient,
+        isolated_app: object,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Недоступность сервиса — 503 с описанием, а не пустой список (FR-020)."""
-        from main import app
-
-        monkeypatch.setattr(app.state, "container", None, raising=False)
+        monkeypatch.setattr(isolated_app.state, "container", None, raising=False)  # type: ignore[attr-defined]
 
         response = client.get("/api/fsm/state")
 
@@ -172,12 +177,13 @@ class TestFSMStateAccessIsolation:
     """Пользователь без прав не получает состояний чужих устройств (FR-038)."""
 
     def test_should_not_leak_states_when_user_has_no_accessible_devices(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+        self,
+        client: TestClient,
+        isolated_app: object,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Пустой список прав означает пустой раздел, а не отказ от фильтрации."""
-        from main import app
-
-        container = app.state.container
+        container = isolated_app.state.container  # type: ignore[attr-defined]
         assert container is not None
         registered = len(container.fsm.get_all_states())
         assert registered > 0, "в контейнере должны быть зарегистрированы автоматы"
@@ -185,7 +191,7 @@ class TestFSMStateAccessIsolation:
         async def no_devices(_user_id: str) -> list:
             return []
 
-        device_service = app.state.device_service
+        device_service = isolated_app.state.device_service  # type: ignore[attr-defined]
         assert device_service is not None
         monkeypatch.setattr(device_service, "get_user_accessible_devices", no_devices)
 

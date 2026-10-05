@@ -78,18 +78,31 @@ class ManifestStore:
         if self.current is None:
             raise ValueError("No manifest loaded")
 
-        # Снимок состояния до записи — основа для отката
+        # Снимок состояния до записи — основа для отката.
+        # allow_unicode в обоих дампах: кириллица в манифесте — норма, а не
+        # редкость, и escape-последовательности делают файл нечитаемым для
+        # человека, хотя валидатор и загрузчик такие последовательности понимают.
         backup_path = f"{self.path}.bak"
         snapshot = self.backup if self.backup else self.current
         atomic_write_text(
             backup_path,
-            yaml.dump(snapshot.model_dump(), default_flow_style=False, sort_keys=False),
+            yaml.dump(
+                snapshot.model_dump(),
+                default_flow_style=False,
+                sort_keys=False,
+                allow_unicode=True,
+            ),
         )
 
         # Актуальное состояние
         atomic_write_text(
             self.path,
-            yaml.dump(self.current.model_dump(), default_flow_style=False, sort_keys=False),
+            yaml.dump(
+                self.current.model_dump(),
+                default_flow_style=False,
+                sort_keys=False,
+                allow_unicode=True,
+            ),
         )
 
         self.backup = copy.deepcopy(self.current)

@@ -427,6 +427,7 @@ def create_app(
                     engine=_container.fsm,
                     event_router=_container.event_router,
                     persistence=persistence,
+                    manifest_store=manifest_store,
                 )
             except Exception as e:
                 logger.warning(f"Device lifecycle service unavailable: {e}")

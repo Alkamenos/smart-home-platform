@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from core.fsm.factory import FSMFactory
     from core.models.manifest import Manifest
     from core.persistence.manager import PersistenceManager
+    from core.persistence.manifest_store import ManifestStore
     from services.device_service import DeviceService
 
 
@@ -53,6 +54,8 @@ class DeviceLifecycleService:
         engine: Движок машин состояний; None в автономном режиме.
         event_router: Маршрутизатор событий; None в автономном режиме.
         persistence: Менеджер хранения для аудита.
+        manifest_store: Хранилище манифеста для записи изменений на диск;
+            None в автономном режиме.
     """
 
     def __init__(
@@ -63,6 +66,7 @@ class DeviceLifecycleService:
         engine: FSMEngine | None = None,
         event_router: EventRouter | None = None,
         persistence: PersistenceManager | None = None,
+        manifest_store: ManifestStore | None = None,
     ) -> None:
         """Создаёт сервис жизненного цикла.
 
@@ -73,6 +77,8 @@ class DeviceLifecycleService:
             engine: Движок машин состояний.
             event_router: Маршрутизатор событий.
             persistence: Менеджер хранения (аудит).
+            manifest_store: Хранилище манифеста; без него изменения манифеста
+                остаются только в памяти процесса.
         """
         self.manifest = manifest
         self.device_service = device_service
@@ -80,6 +86,24 @@ class DeviceLifecycleService:
         self.engine = engine
         self.event_router = event_router
         self.persistence = persistence or device_service.persistence
+        self.manifest_store = manifest_store
+
+    def _save_manifest(self) -> None:
+        """Записывает живой манифест в файл через подключённое хранилище.
+
+        Хранилище и сервис держат **разные** объекты манифеста: приложение
+        загружает состав дома через ``load_manifest()``, а ``ManifestStore``
+        разбирает файл собственным ``load()``. Поэтому перед записью хранилище
+        перенаправляется на тот объект, который правит сервис, — иначе в файл
+        ушёл бы устаревший снимок, и починка молча ничего бы не сохраняла.
+
+        Raises:
+            RuntimeError: Если запись манифеста не удалась.
+        """
+        if self.manifest_store is None:
+            return
+        self.manifest_store.current = self.manifest
+        self.manifest_store.save()
 
     # ============ Добавление и изменение ============
 
@@ -137,6 +161,13 @@ class DeviceLifecycleService:
             msg = f"Не удалось сохранить устройство в постоянном хранилище: {e}"
             raise RuntimeError(msg) from e
 
+        try:
+            self._save_manifest()
+        except Exception as e:
+            self._restore_room(room, snapshot)
+            msg = f"Не удалось сохранить манифест: {e}"
+            raise RuntimeError(msg) from e
+
         await self._ensure_user_access(device, user_id)
         fsm_error = await self._safe_sync_fsm(room, device, behaviors)
         self._rebuild_event_routing()
@@ -187,6 +218,8 @@ class DeviceLifecycleService:
         except Exception as e:
             msg = f"Не удалось сохранить устройство в постоянном хранилище: {e}"
             raise RuntimeError(msg) from e
+
+        self._save_manifest()
 
         fsm_error = await self._safe_sync_fsm(room, device, behaviors)
         self._rebuild_event_routing()
@@ -401,7 +434,9 @@ class DeviceLifecycleService:
         await self.device_service.remove_device(device.id)
 
         # 4. Убрать из манифеста (запись поведений — источник конфигурации)
+        #    и записать на диск: иначе устройство вернулось бы при перезапуске
         self._remove_from_manifest(device.ha_entity_id)
+        self._save_manifest()
 
         # 5. Перестроить маршрутизацию под обновлённый манифест
         self._rebuild_event_routing()
