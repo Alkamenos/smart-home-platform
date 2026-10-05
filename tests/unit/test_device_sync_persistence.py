@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 from core.models.device_sync_event import DeviceSyncEvent
 from core.persistence.devices import DeviceSyncEventPersistence
 
@@ -125,11 +127,25 @@ class TestErrorHandling:
 
         assert await persistence.list_events(uuid4()) == []
 
-    async def test_corrupted_json_returns_empty(self, tmp_path: Path) -> None:
-        """Повреждённый JSON → пустой список + не исключение (research R6)."""
+    async def test_corrupted_json_is_preserved_and_raises(self, tmp_path: Path) -> None:
+        """Повреждённый JSON → файл сохраняется целиком, вызывающий узнаёт.
+
+        Раньше тест закреплял противоположное: чтение возвращало пустой список
+        «не бросая исключения» (research R6), и следующая же запись
+        перезаписывала файл пустым состоянием — данные исчезали бессрочно,
+        единственным следом была строка ``WARNING``. Требование «не падать»
+        оказалось несовместимо с требованием «не терять данные»: молчаливое
+        чтение пустоты и есть путь к потере.
+        """
+        from core.persistence.atomic import PersistenceCorruptedError
+
         persistence = DeviceSyncEventPersistence(data_dir=tmp_path)
         persistence.events_file.write_text("{not valid json", encoding="utf-8")
 
-        result = await persistence.list_events(uuid4())
+        with pytest.raises(PersistenceCorruptedError):
+            await persistence.list_events(uuid4())
 
-        assert result == []
+        # Файл сохранён целиком под суффиксом .corrupt-<ts> — данные не затёрты
+        backups = [p for p in tmp_path.iterdir() if ".corrupt-" in p.name]
+        assert backups, "повреждённый файл должен быть сохранён, а не потерян"
+        assert backups[0].read_text(encoding="utf-8") == "{not valid json"

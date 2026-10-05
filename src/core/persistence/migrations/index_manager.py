@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.persistence.atomic import atomic_write_json
 from core.persistence.paths import resolve_data_dir
 
 
@@ -56,8 +57,7 @@ class IndexManager:
             indices: Индексы для сохранения
         """
         indices["last_updated"] = datetime.utcnow().isoformat()
-        with open(self.sources_indices_file, "w") as f:
-            json.dump(indices, f, indent=2, default=str)
+        atomic_write_json(self.sources_indices_file, indices)
 
     def _create_default_sources_indices(self) -> dict[str, Any]:
         """Создать индексы sources по умолчанию."""
@@ -219,8 +219,7 @@ class IndexManager:
             indices: Индексы для сохранения
         """
         indices["last_updated"] = datetime.utcnow().isoformat()
-        with open(self.devices_indices_file, "w") as f:
-            json.dump(indices, f, indent=2, default=str)
+        atomic_write_json(self.devices_indices_file, indices)
 
     def _create_default_devices_indices(self) -> dict[str, Any]:
         """Создать индексы devices по умолчанию."""

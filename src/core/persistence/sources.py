@@ -11,6 +11,11 @@ from pathlib import Path
 from uuid import UUID
 
 from core.models.ha_source import HASource
+from core.persistence.atomic import (
+    PersistenceCorruptedError,
+    atomic_write_json,
+    preserve_corrupt_file,
+)
 from core.persistence.paths import resolve_data_dir
 from core.security.encryption import TokenEncryptor
 
@@ -56,8 +61,7 @@ class HASourcePersistence:
             sources_data[str(source.id)] = source_dict
 
             # Сохраняем в файл
-            with open(self.sources_file, "w") as f:
-                json.dump(sources_data, f, indent=2, default=str)
+            atomic_write_json(self.sources_file, sources_data)
 
             logger.info(f"Источник {source.id} сохранен в {self.sources_file}")
 
@@ -140,8 +144,7 @@ class HASourcePersistence:
             if str(source_id) in sources_data:
                 del sources_data[str(source_id)]
 
-                with open(self.sources_file, "w") as f:
-                    json.dump(sources_data, f, indent=2, default=str)
+                atomic_write_json(self.sources_file, sources_data)
 
                 logger.info(f"Источник {source_id} удален")
                 return True
@@ -164,6 +167,12 @@ class HASourcePersistence:
         try:
             with open(self.sources_file) as f:
                 return json.load(f)
-        except json.JSONDecodeError:
-            logger.warning(f"Файл {self.sources_file} повреждён, начинаю с пустого")
-            return {}
+        except json.JSONDecodeError as exc:
+            # Молчаливый возврат пустого словаря приводил к тому, что
+            # следующая запись перезаписывала файл пустым состоянием —
+            # источники и их токены исчезали бессрочно (Блокер 2).
+            backup = preserve_corrupt_file(self.sources_file)
+            raise PersistenceCorruptedError(
+                f"Файл {self.sources_file} повреждён ({exc}); копия: {backup}. "
+                f"Данные не перезаписываются — восстановите их вручную."
+            ) from exc

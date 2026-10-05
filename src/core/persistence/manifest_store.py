@@ -18,6 +18,7 @@ import yaml
 from loguru import logger
 
 from core.models.manifest import Manifest
+from core.persistence.atomic import atomic_write_text
 
 
 class ManifestStore:
@@ -79,16 +80,17 @@ class ManifestStore:
 
         # Снимок состояния до записи — основа для отката
         backup_path = f"{self.path}.bak"
-        with open(backup_path, "w") as f:
-            if self.backup:
-                yaml.dump(self.backup.model_dump(), f, default_flow_style=False, sort_keys=False)
-            else:
-                # Снимка ещё нет — сохраняем текущее состояние
-                yaml.dump(self.current.model_dump(), f, default_flow_style=False, sort_keys=False)
+        snapshot = self.backup if self.backup else self.current
+        atomic_write_text(
+            backup_path,
+            yaml.dump(snapshot.model_dump(), default_flow_style=False, sort_keys=False),
+        )
 
         # Актуальное состояние
-        with open(self.path, "w") as f:
-            yaml.dump(self.current.model_dump(), f, default_flow_style=False, sort_keys=False)
+        atomic_write_text(
+            self.path,
+            yaml.dump(self.current.model_dump(), default_flow_style=False, sort_keys=False),
+        )
 
         self.backup = copy.deepcopy(self.current)
         self.has_unsaved_changes = False

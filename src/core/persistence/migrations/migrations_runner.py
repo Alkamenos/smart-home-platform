@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.persistence.atomic import atomic_write_json
 from core.persistence.paths import resolve_data_dir
 
 
@@ -80,8 +81,7 @@ class MigrationsRunner:
         Args:
             history: История для сохранения
         """
-        with open(self.migrations_history_file, "w") as f:
-            json.dump(history, f, indent=2, default=str)
+        atomic_write_json(self.migrations_history_file, history)
 
     async def up(self, target_migration: str | None = None) -> None:
         """

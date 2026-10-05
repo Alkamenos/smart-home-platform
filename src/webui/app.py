@@ -20,6 +20,7 @@ from loguru import logger
 
 from core.models.device import Device
 from core.models.manifest import BehaviorConfig
+from core.persistence.atomic import atomic_write_text
 from core.persistence.manifest_store import ManifestStore
 
 from .models import InstanceConfig, ManifestModel
@@ -1096,5 +1097,4 @@ def _save_manifest(path: str, data: dict) -> None:
         path: Path to the manifest file.
         data: Manifest data to save.
     """
-    with open(path, "w") as f:
-        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    atomic_write_text(path, yaml.dump(data, default_flow_style=False, sort_keys=False))

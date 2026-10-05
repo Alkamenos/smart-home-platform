@@ -14,6 +14,11 @@ from core.models.device import Device
 from core.models.device_access import DeviceAccess
 from core.models.device_config import DeviceConfig
 from core.models.device_sync_event import DeviceSyncEvent
+from core.persistence.atomic import (
+    PersistenceCorruptedError,
+    atomic_write_json,
+    preserve_corrupt_file,
+)
 from core.persistence.paths import resolve_data_dir
 
 
@@ -45,8 +50,7 @@ class DevicePersistence:
             devices_data = await self._load_devices_data()
             devices_data[str(device.id)] = device.model_dump(mode="json")
 
-            with open(self.devices_file, "w") as f:
-                json.dump(devices_data, f, indent=2, default=str)
+            atomic_write_json(self.devices_file, devices_data)
 
             logger.info(f"Устройство {device.id} ({device.name}) сохранено")
 
@@ -66,8 +70,7 @@ class DevicePersistence:
             for device in devices:
                 devices_data[str(device.id)] = device.model_dump(mode="json")
 
-            with open(self.devices_file, "w") as f:
-                json.dump(devices_data, f, indent=2, default=str)
+            atomic_write_json(self.devices_file, devices_data)
 
             logger.info(f"Сохранено {len(devices)} устройств")
 
@@ -154,8 +157,7 @@ class DevicePersistence:
             if str(device_id) in devices_data:
                 del devices_data[str(device_id)]
 
-                with open(self.devices_file, "w") as f:
-                    json.dump(devices_data, f, indent=2, default=str)
+                atomic_write_json(self.devices_file, devices_data)
 
                 logger.info(f"Устройство {device_id} удалено")
                 return True
@@ -185,8 +187,7 @@ class DevicePersistence:
                     count += 1
 
             if count > 0:
-                with open(self.devices_file, "w") as f:
-                    json.dump(devices_data, f, indent=2, default=str)
+                atomic_write_json(self.devices_file, devices_data)
 
                 logger.info(f"Удалено {count} устройств источника {source_id}")
 
@@ -208,9 +209,17 @@ class DevicePersistence:
         try:
             with open(self.devices_file) as f:
                 return json.load(f)
-        except json.JSONDecodeError:
-            logger.warning(f"Файл {self.devices_file} повреждён, начинаю с пустого")
-            return {}
+        except json.JSONDecodeError as exc:
+            # Раньше здесь возвращался пустой словарь, и следующая же запись
+            # перезаписывала файл пустым состоянием — данные исчезали
+            # бессрочно, единственным следом была строка WARNING. Теперь
+            # файл сохраняется целиком под суффиксом .corrupt-<ts>, а
+            # вызывающий код узнаёт о повреждении (Known Issue, Блокер 2).
+            backup = preserve_corrupt_file(self.devices_file)
+            raise PersistenceCorruptedError(
+                f"Файл {self.devices_file} повреждён ({exc}); копия: {backup}. "
+                f"Данные не перезаписываются — восстановите их вручную."
+            ) from exc
 
     async def save_device_config(self, config: DeviceConfig) -> None:
         """Сохраняет конфигурацию устройства.
@@ -222,8 +231,7 @@ class DevicePersistence:
             configs_data = await self._load_configs_data()
             configs_data[str(config.id)] = config.model_dump(mode="json")
 
-            with open(self.configs_file, "w") as f:
-                json.dump(configs_data, f, indent=2, default=str)
+            atomic_write_json(self.configs_file, configs_data)
 
             logger.info(f"Конфигурация {config.id} устройства {config.device_id} сохранена")
 
@@ -266,9 +274,12 @@ class DevicePersistence:
         try:
             with open(self.configs_file) as f:
                 return json.load(f)
-        except json.JSONDecodeError:
-            logger.warning(f"Файл {self.configs_file} повреждён, начинаю с пустого")
-            return {}
+        except json.JSONDecodeError as exc:
+            backup = preserve_corrupt_file(self.configs_file)
+            raise PersistenceCorruptedError(
+                f"Файл {self.configs_file} повреждён ({exc}); копия: {backup}. "
+                f"Данные не перезаписываются — восстановите их вручную."
+            ) from exc
 
 
 class DeviceAccessPersistence:
@@ -295,8 +306,7 @@ class DeviceAccessPersistence:
             access_data = await self._load_access_data()
             access_data[str(access.id)] = access.model_dump(mode="json")
 
-            with open(self.access_file, "w") as f:
-                json.dump(access_data, f, indent=2, default=str)
+            atomic_write_json(self.access_file, access_data)
 
             logger.info(
                 f"Запись доступа {access.id} (user {access.user_id} -> device {access.device_id}) сохранена"
@@ -318,8 +328,7 @@ class DeviceAccessPersistence:
             for access in accesses:
                 access_data[str(access.id)] = access.model_dump(mode="json")
 
-            with open(self.access_file, "w") as f:
-                json.dump(access_data, f, indent=2, default=str)
+            atomic_write_json(self.access_file, access_data)
 
             logger.info(f"Сохранено {len(accesses)} записей доступа")
 
@@ -446,8 +455,7 @@ class DeviceAccessPersistence:
             if str(access_id) in access_data:
                 del access_data[str(access_id)]
 
-                with open(self.access_file, "w") as f:
-                    json.dump(access_data, f, indent=2, default=str)
+                atomic_write_json(self.access_file, access_data)
 
                 logger.info(f"Запись доступа {access_id} удалена")
                 return True
@@ -477,8 +485,7 @@ class DeviceAccessPersistence:
                     count += 1
 
             if count > 0:
-                with open(self.access_file, "w") as f:
-                    json.dump(access_data, f, indent=2, default=str)
+                atomic_write_json(self.access_file, access_data)
 
                 logger.info(f"Удалено {count} записей доступа для устройства {device_id}")
 
@@ -522,9 +529,12 @@ class DeviceAccessPersistence:
         try:
             with open(self.access_file) as f:
                 return json.load(f)
-        except json.JSONDecodeError:
-            logger.warning(f"Файл {self.access_file} повреждён, начинаю с пустого")
-            return {}
+        except json.JSONDecodeError as exc:
+            backup = preserve_corrupt_file(self.access_file)
+            raise PersistenceCorruptedError(
+                f"Файл {self.access_file} повреждён ({exc}); копия: {backup}. "
+                f"Данные не перезаписываются — восстановите их вручную."
+            ) from exc
 
 
 class DeviceSyncEventPersistence:
@@ -559,8 +569,7 @@ class DeviceSyncEventPersistence:
             events_data = await self._load_events_data()
             events_data[str(event.id)] = event.model_dump(mode="json")
 
-            with open(self.events_file, "w") as f:
-                json.dump(events_data, f, indent=2, default=str)
+            atomic_write_json(self.events_file, events_data)
 
             logger.info(
                 f"История: записана операция {event.action} "
@@ -620,6 +629,9 @@ class DeviceSyncEventPersistence:
         try:
             with open(self.events_file) as f:
                 return json.load(f)
-        except json.JSONDecodeError:
-            logger.warning(f"Файл {self.events_file} повреждён, начинаю с пустого")
-            return {}
+        except json.JSONDecodeError as exc:
+            backup = preserve_corrupt_file(self.events_file)
+            raise PersistenceCorruptedError(
+                f"Файл {self.events_file} повреждён ({exc}); копия: {backup}. "
+                f"Данные не перезаписываются — восстановите их вручную."
+            ) from exc
