@@ -33,6 +33,20 @@ FSM_ID = "light.kitchen_lighting_10"
 DEVICE = "light.kitchen"
 
 
+class StrictAdapter:
+    """Адаптер ровно с тем, что есть у настоящих реализаций.
+
+    Раньше в тестах стоял `MagicMock`, у которого можно создать любой атрибут:
+    проверка сторожа на имя `connected` проходила, хотя ни `HAAdapter`, ни
+    `MockAdapter` такого имени не имеют. `MagicMock` создаёт отсутствующий
+    атрибут по требованию, поэтому расхождение интерфейсов осталось незамеченным,
+    а в контейнере сторож падал каждый цикл с AttributeError.
+    """
+
+    def __init__(self, connected: bool = True) -> None:
+        self.is_connected = connected
+
+
 class FakeClock:
     """Монотонные часы с управлением из теста.
 
@@ -244,12 +258,51 @@ class TestStuckDetection:
 class TestConnectionLoss:
     """Потеря связи с внешней системой (FR-014)."""
 
+    async def test_should_work_with_adapter_exposing_only_is_connected(
+        self, engine: FSMEngine, metrics: MetricsCollector
+    ) -> None:
+        """Сторож работает с адаптером, у которого есть только `is_connected`.
+
+        Обнаружено проверкой готовности в контейнере: сторож падал каждый цикл с
+        `AttributeError: 'HAAdapter' object has no attribute 'connected'`.
+        `AdapterProtocol` объявлял свойство `connected`, которого нет ни у
+        `HAAdapter`, ни у `MockAdapter` — у обоих `is_connected`. Исключение
+        глушилось в цикле сторожа, поэтому проверка зависаний не работала никогда,
+        а тесты этого не видели: они пользовались `MagicMock`, который создаёт
+        любой атрибут по запросу.
+
+        Здесь фейк строгий: лишнего атрибута у него нет, поэтому расхождение
+        проявляется сразу.
+        """
+
+        adapter = StrictAdapter()
+        assert not hasattr(adapter, "connected"), "фейк не должен иметь `connected`"
+
+        clock = FakeClock()
+        watchdog = make_watchdog(engine, metrics, adapter=adapter, clock=clock, ha_loss_sec=100)
+
+        first = await watchdog.check_once()
+        assert first.ha_checked is True, (
+            "сторож не смог прочитать связь: интерфейс адаптера не совпадает с "
+            "тем, что объявляет AdapterProtocol"
+        )
+        assert first.ha_disconnected is False
+
+        # Потеря связи с настоящим именем атрибута обязана фиксироваться.
+        # Отсчёт начинается с первой проверки без связи, поэтому одного цикла
+        # недостаточно: сначала потеря фиксируется, затем превышается порог.
+        adapter.is_connected = False
+        assert (await watchdog.check_once()).ha_disconnected is False
+        clock.advance(200)
+        assert (await watchdog.check_once()).ha_disconnected is True, (
+            "потеря связи не зафиксирована: сторож читает не тот атрибут"
+        )
+
     async def test_should_report_lost_when_adapter_disconnected_beyond_threshold(
         self, engine: FSMEngine, metrics: MetricsCollector
     ) -> None:
         """Отсутствие связи дольше порога — проблема."""
-        adapter = MagicMock()
-        adapter.connected = False
+        adapter = StrictAdapter(connected=False)
         clock = FakeClock()
         watchdog = make_watchdog(engine, metrics, adapter=adapter, clock=clock, ha_loss_sec=100)
 
@@ -265,15 +318,14 @@ class TestConnectionLoss:
         self, engine: FSMEngine, metrics: MetricsCollector
     ) -> None:
         """Восстановление связи снимает проблему (FR-016)."""
-        adapter = MagicMock()
-        adapter.connected = False
+        adapter = StrictAdapter(connected=False)
         clock = FakeClock()
         watchdog = make_watchdog(engine, metrics, adapter=adapter, clock=clock, ha_loss_sec=100)
 
         clock.advance(200)
         assert (await watchdog.check_once()).ha_disconnected is True
 
-        adapter.connected = True
+        adapter.is_connected = True
         assert (await watchdog.check_once()).ha_disconnected is False
 
     async def test_should_not_report_lost_when_no_external_system(
@@ -293,8 +345,7 @@ class TestConnectionLoss:
         self, engine: FSMEngine, metrics: MetricsCollector
     ) -> None:
         """Штатное состояние связи не считается проблемой."""
-        adapter = MagicMock()
-        adapter.connected = True
+        adapter = StrictAdapter(connected=True)
         watchdog = make_watchdog(engine, metrics, adapter=adapter, ha_loss_sec=10)
 
         snapshot = await watchdog.check_once()
@@ -401,8 +452,7 @@ class TestWatchdogMetrics:
         self, engine: FSMEngine, metrics: MetricsCollector
     ) -> None:
         """Потеря связи отражается в шкале, а не только в журнале."""
-        adapter = MagicMock()
-        adapter.connected = False
+        adapter = StrictAdapter(connected=False)
         clock = FakeClock()
         watchdog = make_watchdog(engine, metrics, adapter=adapter, clock=clock, ha_loss_sec=10)
 

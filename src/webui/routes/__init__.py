@@ -19,6 +19,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from core.persistence.event_store import EventStore
 from webui.models import build_all_fsm_state_views
+from webui.routes.readiness import collect_checks
 
 
 if TYPE_CHECKING:
@@ -463,6 +464,43 @@ async def dashboard(request: Request) -> HTMLResponse:
             "user_id": getattr(request.app.state, "default_user_id", None) or "admin_user",
             "user_is_admin": bool(getattr(request.app.state, "default_user_is_admin", False)),
         },
+    )
+
+
+@router.get("/ready", response_class=JSONResponse)
+async def check_readiness(request: Request) -> JSONResponse:
+    """Проверить готовность платформы к работе.
+
+    В отличие от ``/health``, который проверяет только жизненность процесса и
+    обязан отдавать 200 всегда, здесь выполняются настоящие проверки: доступ к
+    каталогу данных, наличие ключа шифрования, связь с Home Assistant, свежесть
+    снимков сторожа и состояние движка автоматов.
+
+    Код 503 означает, что платформа не готова выполнять свою работу. Каждая
+    проверка выполняется независимо, поэтому в ответе видно все причины сразу,
+    а не только первую.
+
+    Этот маршрут не вызывается healthcheck-ом Docker намеренно: иначе
+    недоступность Home Assistant привела бы к рестарт-циклу, в котором
+    перезапуск контейнера ничего не исправляет.
+
+    Args:
+        request: Входящий HTTP-запрос.
+
+    Returns:
+        JSON с признаком ``ready``, списком проверок и их подробностями.
+        Код 503, если хотя бы одна проверка не прошла.
+    """
+    checks = collect_checks(request)
+    failed = [name for name, detail in checks.items() if not detail.get("ok")]
+
+    return JSONResponse(
+        {
+            "ready": not failed,
+            "failed": failed,
+            "checks": checks,
+        },
+        status_code=200 if not failed else 503,
     )
 
 

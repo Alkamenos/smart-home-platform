@@ -195,8 +195,11 @@ class AdapterProtocol(Protocol):
     связи и не должен зависеть от конкретной реализации (R-13).
     """
 
+    # Имя именно `is_connected`: так объявляют обе настоящие реализации —
+    # `HAAdapter.is_connected` и `MockAdapter.is_connected`. Раньше здесь стояло
+    # `connected`, и сторож в контейнере падал каждый цикл с AttributeError.
     @property
-    def connected(self) -> bool: ...
+    def is_connected(self) -> bool: ...
 
 
 class MetricsProtocol(Protocol):
@@ -339,6 +342,9 @@ class WatchdogService:
     event_bus: Any | None = None
     clock: Callable[[], float] = time.monotonic
 
+    # Последний снимок хранится, чтобы проверка готовности могла судить о
+    # свежести: без него «сторож молчит» и «сторож не работает» неразличимы.
+    _last_snapshot: FsmSnapshot | None = None
     _task: asyncio.Task[None] | None = None
     _running: bool = False
     _disconnected_since: float | None = None
@@ -418,10 +424,12 @@ class WatchdogService:
         except Exception as exc:  # noqa: BLE001 - проверка обязана быть устойчивой
             logger.warning(f"Failed to collect FSM states: {type(exc).__name__}: {exc}")
             snapshot = FsmSnapshot(taken_at=_now_timestamp(), failed=True)
+            self._last_snapshot = snapshot
             self._record_metrics(snapshot)
             return snapshot
 
         snapshot = self._with_connection(entries)
+        self._last_snapshot = snapshot
         self._record_metrics(snapshot)
         self._publish_problems(snapshot)
         logger.info(f"[WATCHDOG] {snapshot.to_json()}")
@@ -501,7 +509,7 @@ class WatchdogService:
             self._disconnected_since = None
             return False, False
 
-        if self.adapter.connected:
+        if self.adapter.is_connected:
             self._disconnected_since = None
             return True, False
 
