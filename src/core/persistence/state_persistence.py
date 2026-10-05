@@ -8,11 +8,17 @@ saved to a JSON file and restored on platform restart.
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
 
-import contextlib
+import asyncio
 import json
 import sys
 from pathlib import Path
 
+from core.persistence.atomic import (
+    PersistenceCorruptedError,
+    atomic_write_json,
+    file_lock,
+    preserve_corrupt_file,
+)
 from core.persistence.paths import resolve_data_dir
 
 
@@ -108,121 +114,76 @@ class StatePersistence:
 
         try:
             with open(self.storage_path, encoding="utf-8") as f:
-                data = json.load(f)
-                return data if isinstance(data, dict) else {}
-        except (OSError, json.JSONDecodeError):
+                content = f.read()
+            if not content.strip():
+                # Пустой файл — не повреждение, а законное состояние: свежая
+                # установка или файл, обрезанный до нуля сбоем питания. Раньше
+                # он молча превращался в {}, и данные терялись; теперь
+                # отличаем «пусто» от «испорчено», чтобы чистая установка не
+                # падала с ошибкой.
+                return {}
+            data = json.loads(content)
+            return data if isinstance(data, dict) else {}
+        except json.JSONDecodeError as exc:
+            # Раньше здесь возвращался пустой словарь, и следующая же запись
+            # перезаписывала файл пустым состоянием — состояния автоматов
+            # исчезали бессрочно. Теперь файл сохраняется целиком, а вызывающий
+            # узнаёт о повреждении.
+            backup = preserve_corrupt_file(self.storage_path)
+            raise PersistenceCorruptedError(
+                f"Файл {self.storage_path} повреждён ({exc}); копия: {backup}. "
+                f"Данные не перезаписываются — восстановите их вручную."
+            ) from exc
+        except OSError:
             return {}
 
     def _save_data(self, data: dict) -> None:
-        """
-        Save data to the JSON file using atomic write with file locking.
-
-        Uses atomic write pattern: write to temp file, then rename.
-        Also uses file locking to prevent race conditions.
+        """Сохранить данные через общий атомарный хелпер.
 
         Args:
-            data: The data dictionary to save.
+            data: Данные для сохранения.
         """
         self._ensure_storage_dir()
-
-        # Use a unique temp file name based on PID and timestamp to avoid conflicts
-        import os
-        import time
-
-        temp_path = self.storage_path.with_suffix(
-            self.storage_path.suffix + f".tmp.{os.getpid()}.{int(time.time() * 1000000)}"
-        )
-
-        # Open the main file for locking
-        with open(self.storage_path, "a", encoding="utf-8") as lock_file:
-            try:
-                # Acquire exclusive lock
-                self._acquire_lock(lock_file)
-
-                # Write to temporary file first
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                    f.flush()
-                    os.fsync(f.fileno())  # Ensure data is written to disk
-
-                # Atomic rename (os.rename is atomic on POSIX systems)
-                # On Windows, os.replace is needed if target exists
-                if sys.platform == "win32":
-                    os.replace(temp_path, self.storage_path)
-                else:
-                    os.rename(temp_path, self.storage_path)
-            finally:
-                # Release lock
-                self._release_lock(lock_file)
-
-            # Clean up temp file if it still exists (in case of error)
-            if temp_path.exists():
-                with contextlib.suppress(OSError):
-                    temp_path.unlink()
+        with file_lock(self.storage_path):
+            atomic_write_json(self.storage_path, data)
 
     def save_state(self, entity_id: str, state: str, context: dict) -> None:
-        """
-        Save the FSM state to the storage file.
+        """Сохранить состояние автомата.
 
-        This method acquires an exclusive lock before reading the current state
-        and writing the new state to prevent race conditions.
+        Запись идёт через общий атомарный хелпер :func:`atomic_write_json`
+        (temp → fsync → ``os.replace`` → fsync каталога), а взаимное
+        исключение берётся на **отдельный** файл ``<state>.lock``.
+
+        Раньше замок брался на сам файл состояний, который тут же подменялся
+        ``os.rename``: после подстановки нового inode замок оказывался на
+        файле, которого больше нет, и взаимное исключение не работало, хотя
+        докстринг утверждал обратное.
 
         Args:
-            entity_id: The unique identifier of the FSM entity.
-            state: The current state name to save.
-            context: The context dictionary associated with the state.
+            entity_id: Идентификатор автомата.
+            state: Имя состояния.
+            context: Контекст состояния.
         """
-        import os
-
         self._ensure_storage_dir()
 
-        # Use a unique temp file name based on PID and timestamp to avoid conflicts
-        temp_path = self.storage_path.with_suffix(
-            self.storage_path.suffix
-            + f".tmp.{os.getpid()}.{int(__import__('time').time() * 1000000)}"
-        )
+        with file_lock(self.storage_path):
+            data = self._load_data()
+            data[entity_id] = {"state": state, "context": context}
+            atomic_write_json(self.storage_path, data)
 
-        # Open the main file for locking - this lock covers both read and write
-        with open(self.storage_path, "a+", encoding="utf-8") as lock_file:
-            try:
-                # Acquire exclusive lock BEFORE reading
-                self._acquire_lock(lock_file)
+    async def save_state_async(self, entity_id: str, state: str, context: dict) -> None:
+        """Сохранить состояние, не блокируя event loop.
 
-                # Read current data while holding the lock
-                lock_file.seek(0)
-                try:
-                    content = lock_file.read()
-                    if content:
-                        data = json.loads(content)
-                        if not isinstance(data, dict):
-                            data = {}
-                    else:
-                        data = {}
-                except (OSError, json.JSONDecodeError):
-                    data = {}
+        ``save_state`` синхронный и делает ``fsync`` — на медленном диске это
+        заметная пауза. Движок вызывал его прямо из корутины перехода, то есть
+        каждый переход FSM останавливал event loop на время записи.
 
-                # Update data with new state
-                data[entity_id] = {"state": state, "context": context}
-
-                # Write to temporary file first
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                    f.flush()
-                    os.fsync(f.fileno())  # Ensure data is written to disk
-
-                # Atomic rename
-                if sys.platform == "win32":
-                    os.replace(temp_path, self.storage_path)
-                else:
-                    os.rename(temp_path, self.storage_path)
-            finally:
-                # Release lock
-                self._release_lock(lock_file)
-
-            # Clean up temp file if it still exists (in case of error)
-            if temp_path.exists():
-                with contextlib.suppress(OSError):
-                    temp_path.unlink()
+        Args:
+            entity_id: Идентификатор автомата.
+            state: Имя состояния.
+            context: Контекст состояния.
+        """
+        await asyncio.to_thread(self.save_state, entity_id, state, context)
 
     def load_state(self, entity_id: str) -> tuple[str, dict] | None:
         """

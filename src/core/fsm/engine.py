@@ -692,9 +692,17 @@ class FSMEngine:
             self._last_transition_time[entity_id] = now
             self.note_transition(entity_id)
 
-            # Persist state if persistence is enabled
+            # Persist state if persistence is enabled.
+            # Асинхронный путь обязателен: save_state делает fsync, и вызов
+            # прямо из корутины перехода останавливал event loop на время
+            # записи — при нескольких автоматах это складывалось в задержки
+            # на WebSocket и срабатывания сторожа.
             if self._persistence is not None:
-                self._persistence.save_state(entity_id, transition.to_state, new_context)
+                saver = getattr(self._persistence, "save_state_async", None)
+                if saver is not None:
+                    await saver(entity_id, transition.to_state, new_context)
+                else:
+                    self._persistence.save_state(entity_id, transition.to_state, new_context)
 
             log.info(
                 f"Entity {entity_id}: Transition '{current_state.current_state}' -> '{transition.to_state}' "

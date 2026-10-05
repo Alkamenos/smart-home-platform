@@ -21,6 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
+from core.persistence.atomic import PersistenceCorruptedError
 from core.persistence.state_persistence import StatePersistence
 
 
@@ -112,15 +113,25 @@ class TestSaveState:
 
     @patch("sys.platform", "linux")
     @patch("core.persistence.state_persistence.fcntl")
-    def test_uses_fcntl_locking_on_linux(self, mock_fcntl, persistence):
-        """На Linux используется fcntl.flock"""
-        mock_fcntl.LOCK_EX = 1
-        mock_fcntl.LOCK_UN = 2
+    def test_lock_is_taken_on_separate_file(self, persistence):
+        """Замок берётся на отдельный файл, а не на файл данных.
 
+        Раньше `fcntl.flock` вызывался на самом файле состояний, который тут
+        же подменялся через `os.rename`. После подстановки нового inode замок
+        оказывался на файле, которого больше нет, — взаимное исключение не
+        работало, хотя докстринг утверждал обратно.
+
+        Проверка именно этого: файл-замок существует и не совпадает с файлом
+        данных.
+        """
         persistence.save_state("light.test", "ON", {})
 
-        # Проверяем что fcntl.flock вызывался
-        assert mock_fcntl.flock.called
+        lock_file = persistence.storage_path.with_name(f"{persistence.storage_path.name}.lock")
+        assert lock_file.exists(), "файл-замок должен существовать"
+        assert lock_file != persistence.storage_path, (
+            "замок обязан жить в отдельном файле: файл данных атомарно "
+            "подменяется, и замок на старом inode перестал бы работать"
+        )
 
     def test_handles_empty_context(self, persistence):
         """Пустой контекст сохраняется корректно"""
@@ -406,23 +417,27 @@ class TestAtomicWrite:
 class TestConcurrentAccess:
     """Тесты concurrent доступа (с моками)"""
 
-    @patch("core.persistence.state_persistence.StatePersistence._acquire_lock")
-    @patch("core.persistence.state_persistence.StatePersistence._release_lock")
-    def test_acquire_lock_before_read(self, mock_release, mock_acquire):
-        """Блокировка приобретается перед чтением"""
+    def test_read_happens_under_lock(self):
+        """Чтение текущих данных должно происходить под замком.
+
+        Без этого две параллельные записи делают read-modify-write по
+        не защищённому файлу, и одна теряет изменения другой.
+        """
         fd, path = tempfile.mkstemp(suffix=".json")
         os.close(fd)
 
-        # Записываем начальные данные
         with open(path, "w") as f:
             json.dump({"existing": {"state": "ON", "context": {}}}, f)
 
         persistence = StatePersistence(path)
         persistence.save_state("light.test", "OFF", {})
 
-        # Проверяем что lock был приобретен
-        assert mock_acquire.called
-        assert mock_release.called
+        with open(path) as f:
+            data = json.load(f)
+
+        # Прежняя запись не потерялась — значит чтение видело её, а не пустоту
+        assert data["existing"]["state"] == "ON"
+        assert data["light.test"]["state"] == "OFF"
 
     def test_file_locking_prevents_race_conditions(self):
         """Блокировка файлов предотвращает race conditions"""
@@ -456,14 +471,15 @@ class TestEdgeCases:
 
         persistence = StatePersistence(path)
 
-        # Должно работать несмотря на битый файл
-        persistence.save_state("light.test", "ON", {})
+        # Раньше тест требовал «работать несмотря на битый файл»: save_state
+        # молча затирал его пустым состоянием, и это закрепляло потерю данных
+        # как норму. Теперь файл сохраняется целиком, а вызывающий узнаёт.
+        with pytest.raises(PersistenceCorruptedError):
+            persistence.save_state("light.test", "ON", {})
 
-        # Проверяем что файл теперь корректен
-        with open(path) as f:
-            data = json.load(f)
-
-        assert "light.test" in data
+        backups = list(Path(path).parent.glob(f"{Path(path).name}.corrupt-*"))
+        assert backups, "повреждённый файл должен быть сохранён"
+        assert backups[0].read_text() == "{ invalid json }}}"
 
     def test_handles_empty_file(self):
         """Пустой файл обрабатывается корректно"""

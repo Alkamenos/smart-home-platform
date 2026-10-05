@@ -27,8 +27,15 @@ import json
 import os
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+
+if sys.platform == "win32":  # pragma: no cover - ветка платформы
+    import msvcrt
+else:
+    import fcntl
 
 
 class PersistenceCorruptedError(RuntimeError):
@@ -113,6 +120,45 @@ def atomic_write_text(path: Path | str, text: str) -> None:
             temp_path.unlink(missing_ok=True)
 
 
+@contextlib.contextmanager
+def file_lock(path: Path | str) -> Iterator[None]:
+    """Взаимное исключение через отдельный файл-замок.
+
+    Замок берётся на **отдельный** файл ``<данные>.lock``, а не на сам файл
+    данных. Причина: атомарная запись подменяет файл через ``os.replace``, то
+    же самое делал прежний код через ``os.rename``. Замок, взятый на старом
+    inode, после подстановки нового оказывается на файле, которого больше
+    нет, — взаимное исключение перестаёт работать, хотя докстринг утверждал
+    обратное. Побочный файл никогда не заменяется, поэтому его inode постоянен.
+
+    Args:
+        path: Путь к файлу данных. Замок будет на ``path`` с суффиксом
+            ``.lock``.
+
+    Yields:
+        Ничего — блокировка действует, пока выполняется тело ``with``.
+    """
+    target = Path(path)
+    lock_path = target.with_name(f"{target.name}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    handle = open(lock_path, "a+")  # noqa: SIM115 - освобождается в finally
+    try:
+        if sys.platform == "win32":
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1024 * 1024)
+        else:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            if sys.platform == "win32":
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1024 * 1024)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
 def _fsync_directory(directory: Path) -> None:
     """Сбросить изменения каталога на диск.
 
@@ -160,7 +206,13 @@ def read_json_preserving_corrupt(path: Path) -> tuple[Any, Path | None]:
 
     try:
         with open(path, encoding="utf-8") as handle:
-            return json.load(handle), None
+            content = handle.read()
+        if not content.strip():
+            # Пустой файл — не повреждение, а законное состояние (свежая
+            # установка либо файл, обрезанный до нуля сбоем питания). Если
+            # считать это повреждением, чистая установка падала бы с ошибкой.
+            return {}, None
+        return json.loads(content), None
     except json.JSONDecodeError as exc:
         backup = preserve_corrupt_file(path)
         raise PersistenceCorruptedError(
