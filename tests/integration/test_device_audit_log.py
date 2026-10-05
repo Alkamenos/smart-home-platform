@@ -233,7 +233,7 @@ class TestCommandHistory:
             json={"name": "turn_on", "parameters": {"brightness": 80}},
             headers={"X-User-ID": admin_user_id},
         )
-        assert command_response.status_code == 202, command_response.text
+        assert command_response.status_code == 200, command_response.text
 
         events = client.get(
             f"/api/v1/devices/{sample_device}/events?event_type=command_executed",

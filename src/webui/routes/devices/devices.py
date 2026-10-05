@@ -513,7 +513,7 @@ class CommandResponse(BaseModel):
     error: str | None = None
 
 
-@router.post("/{device_id}/command", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{device_id}/command", status_code=status.HTTP_200_OK)
 async def execute_device_command(
     device_id: UUID,
     http_request: Request,
@@ -548,41 +548,57 @@ async def execute_device_command(
 
     await _require_access_or_403(http_request, device_id, _ROLE_CONTROLLER)
 
+    from uuid import uuid4
+
+    command_id = str(uuid4())
+    effective_name = request.command_name or request.name or request.service or "unknown"
+    # Пустой словарь — это осмысленное «без параметров», а не повод брать `data`.
+    # Прежняя проверка `if request.parameters else request.data` подставляла None,
+    # и распаковка `**None` роняла вызов с TypeError.
+    parameters = request.parameters or request.data or {}
+
+    # Имя сервиса может прийти с доменом («light.turn_on»). Домен берётся из типа
+    # устройства, поэтому из имени он убирается: иначе HA получил бы
+    # сервис «light.turn_on» в домене light и ответил бы ошибкой.
+    service = effective_name.split(".", 1)[1] if "." in effective_name else effective_name
+
+    logger.info(f"Выполняю команду {service} на устройстве {device_id}")
+
     try:
-        # TODO: Использовать DeviceService.execute_command()
-        from uuid import uuid4
-
-        command_id = str(uuid4())
-
-        effective_name = request.command_name or request.name or request.service or "unknown"
-        logger.info(f"Выполняю команду {effective_name} на устройстве {device_id}")
-
+        result = await device_service._call_ha_service(device, service, parameters)
+    except Exception as e:
+        logger.error(f"Команда {service} для {device.ha_entity_id} не выполнена: {e}")
         await record_sync_event(
             http_request,
             device_id,
-            "command_executed",
+            "command_failed",
             before=None,
             after=None,
-            data={
-                "command": effective_name,
-                "parameters": request.parameters if request.parameters else request.data,
-            },
+            data={"command": service, "error": str(e)},
         )
-
-        return CommandResponse(
-            id=command_id,
-            device_id=str(device_id),
-            command_name=effective_name,
-            status="executing",
-            created_at=datetime.utcnow().isoformat(),
-        )
-
-    except Exception as e:
-        logger.error(f"Ошибка при выполнении команды: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка при выполнении команды",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Команда {service} не выполнена: {e}",
         ) from e
+
+    await record_sync_event(
+        http_request,
+        device_id,
+        "command_executed",
+        before=None,
+        after=None,
+        data={"command": service, "parameters": parameters},
+    )
+
+    return CommandResponse(
+        id=command_id,
+        device_id=str(device_id),
+        command_name=effective_name,
+        status="success",
+        created_at=datetime.utcnow().isoformat(),
+        completed_at=datetime.utcnow().isoformat(),
+        result=result,
+    )
 
 
 # ============ T056: GET /api/v1/devices/{id}/command/{command_id} ============

@@ -242,7 +242,7 @@ class TestAccessControlAPI:
             headers={"X-User-ID": current_user_id},
         )
 
-        assert response.status_code == 202, f"ожидался 202 для роли controller: {response.text}"
+        assert response.status_code == 200, f"ожидался 200 для роли controller: {response.text}"
 
     # T062: Контрактный тест для управления правами доступа
 

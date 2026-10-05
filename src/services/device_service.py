@@ -1370,6 +1370,12 @@ class DeviceService:
         # и приводило к ValidationError при формировании ответа.
         if isinstance(result, dict):
             return result
+        if isinstance(result, list):
+            # HA отвечает списком изменившихся состояний, и он пуст, когда
+            # состояние уже было нужным. `bool([])` давал `success: False` при
+            # успешно выполненной команде — тот же ложный исход, что и у
+            # заглушки маршрута команды (Known Issue #69).
+            return {"success": True, "changed_states": result}
         return {"success": bool(result)} if result is not None else {}
 
     async def get_command_status(

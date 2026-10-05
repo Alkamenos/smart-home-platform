@@ -269,7 +269,7 @@ class TestCommandsUnderAccess:
 
     @pytest.mark.parametrize(
         ("role", "expected_status"),
-        [("viewer", 403), ("controller", 202)],
+        [("viewer", 403), ("controller", 200)],
     )
     def test_role_decides_command_outcome(
         self, isolated_client, device_ids, role: str, expected_status: int
@@ -304,7 +304,7 @@ class TestCommandsUnderAccess:
     def test_controller_command_is_recorded(self, isolated_client, device_ids):
         """Разрешённая команда попадает в историю устройства.
 
-        Без этой проверки «202» означал бы только «ответили успехом», а не
+        Без этой проверки «200» означал бы только «ответили успехом», а не
         «команда действительно выполнена».
         """
         granted = isolated_client.post(
@@ -318,7 +318,7 @@ class TestCommandsUnderAccess:
             f"/api/v1/devices/{device_ids['first']}/command",
             json={"command_name": "turn_off"},
         )
-        assert response.status_code == 202, response.text
+        assert response.status_code == 200, response.text
 
         events = isolated_client.get(
             f"/api/v1/devices/{device_ids['first']}/events?event_type=command_executed"

@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field, model_validator
 SyncAction = Literal[
     "config_changed",
     "command_executed",
+    # Отказ команды тоже событие: раньше провал выполнения не попадал в журнал,
+    # потому что команда не выполнялась вовсе (Known Issue #69).
+    "command_failed",
     "access_granted",
     "access_revoked",
     "access_updated",

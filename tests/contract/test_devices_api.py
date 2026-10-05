@@ -349,12 +349,12 @@ class TestDeviceConfigAPI:
             json={"command_name": "turn_on"},
             headers={"X-User-ID": "response_format_user"},
         )
-        assert response.status_code == 202, response.text
+        assert response.status_code == 200, response.text
 
         body = response.json()
         for field in ("id", "device_id", "command_name", "status", "created_at"):
             assert field in body, f"в ответе команды нет поля {field}: {body}"
-        assert body["status"] == "executing", f"ожидался статус executing: {body}"
+        assert body["status"] == "success", f"ожидался успешный статус: {body}"
         assert body["command_name"] == "turn_on"
         assert body["device_id"] == str(device.id)
 

@@ -156,7 +156,7 @@ class TestConcurrentCommands:
 
         assert elapsed < CONCURRENCY_BUDGET_SEC, f"параллельные команды заняли {elapsed:.1f} с"
         for response in responses:
-            assert response.status_code == 202, f"ожидался 202: {response.text}"
+            assert response.status_code == 200, f"ожидался 200: {response.text}"
 
         events = isolated_client.get(
             f"/api/v1/devices/{synced_device_id}/events?event_type=command_executed"

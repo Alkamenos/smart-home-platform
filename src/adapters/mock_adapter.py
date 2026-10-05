@@ -120,10 +120,17 @@ class MockAdapter:
         entity_id: str,
         data: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> None:
         """Simulate a Home Assistant service call.
 
         Updates device state in memory and logs the action.
+
+        ``**kwargs`` принимается, как и у настоящего ``HAAdapter``: вызовы идут
+        через ``DeviceService._call_ha_service``, который распаковывает параметры
+        команды в вызов сервиса. Заглушка без ``**kwargs`` принимала только
+        ``data`` и падала с TypeError на любой команде с параметрами — то есть
+        расходилась с production-адаптером и скрывала это.
 
         Args:
             domain: Service domain (e.g., "light").
@@ -131,8 +138,10 @@ class MockAdapter:
             entity_id: Target device ID.
             data: Additional service data.
             context: Optional context dict (may contain trace_id).
+            **kwargs: Прочие поля сервиса, как у HAAdapter.
         """
         data = data or {}
+        data.update(kwargs)
         context = context or {}
         trace_id = context.get("trace_id", "unknown")
         log = self.log.bind(trace_id=trace_id)

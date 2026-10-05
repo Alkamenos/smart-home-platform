@@ -92,7 +92,7 @@ def _as(client: TestClient, user_id: str, is_admin: bool = False) -> TestClient:
     у клиента стоит `X-Is-Admin: true`, то переопределение только `X-User-ID`
     оставит признак администратора, и пользователь получит admin-bypass:
     `devices.py:65` начинает проверку с `if is_admin: return`. Роль `viewer`
-    получала бы 202 вместо 403, а проверка прав проходила бы, ничего не
+    получала бы 200 вместо 403, а проверка прав проходила бы, ничего не
     проверяя, — ровно та ошибка, которую фича и устраняет.
 
     Args:
@@ -189,7 +189,7 @@ class TestFullAccessControlFlow:
         allowed = viewer.post(
             f"/api/v1/devices/{device_id}/command", json={"command_name": "turn_off"}
         )
-        assert allowed.status_code == 202, (
+        assert allowed.status_code == 200, (
             f"роль controller обязана позволять команду, получен {allowed.status_code}"
         )
 
@@ -241,7 +241,7 @@ class TestMultipleUsersAccess:
         assert viewer_command.status_code == 403, (
             f"роль viewer обязана давать отказ: {viewer_command.text}"
         )
-        assert other_command.status_code == 202, (
+        assert other_command.status_code == 200, (
             f"роль controller обязана позволять команду: {other_command.text}"
         )
 
