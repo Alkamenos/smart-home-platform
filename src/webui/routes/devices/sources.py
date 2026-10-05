@@ -5,12 +5,13 @@ API маршруты для управления источниками Home Ass
 """
 
 import logging
+import os
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, ValidationError
 
 from core.models.ha_source import HASource
 from services.device_service import DeviceService
@@ -18,6 +19,11 @@ from webui.routes.devices.access_control import require_admin
 
 
 logger = logging.getLogger(__name__)
+
+#: Имя источника, создаваемого из переменных окружения. Пользователь увидит
+#: его в списке, поэтому «Home Assistant» понятнее, чем «Источник 1».
+DEFAULT_SOURCE_NAME = "Home Assistant"
+
 
 router = APIRouter(prefix="/api/v1/devices/sources", tags=["sources"])
 
@@ -106,6 +112,123 @@ async def list_sources(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ошибка при получении списка источников",
         ) from e
+
+
+class SourceFromEnvResponse(BaseModel):
+    """Подсказка для создания источника из переменных окружения.
+
+    Токен сюда **не входит**: значение секрета не должно покидать сервер.
+    Пользователю достаточно знать, что источник можно создать одним нажатием.
+    """
+
+    available: bool = Field(description="Заданы ли в окружении адрес и токен")
+    has_token: bool = Field(description="Задан ли токен в окружении")
+    url: str = Field(default="", description="Адрес из HA_URL")
+    name: str = Field(default=DEFAULT_SOURCE_NAME, description="Предлагаемое имя источника")
+    detail: str = Field(default="", description="Почему подсказка недоступна")
+
+
+@router.get("/from-env", response_model=SourceFromEnvResponse)
+async def suggest_source_from_env(request: Request) -> SourceFromEnvResponse:
+    """Сообщить, можно ли создать источник из переменных окружения.
+
+    Отдаётся только несекретное: наличие токена флагом и адрес. Сам токен
+    возвращаться не должен — иначе он окажется в HTML и в истории браузера.
+
+    Args:
+        request: HTTP-запрос.
+
+    Returns:
+        Подсказку с признаком доступности.
+    """
+    del request  # Идентичность тут не нужна: данные несекретные.
+    url = (os.environ.get("HA_URL") or "").strip()
+    token = (os.environ.get("HA_TOKEN") or "").strip()
+    available = bool(url and token)
+
+    detail = ""
+    if not available:
+        missing = []
+        if not url:
+            missing.append("HA_URL")
+        if not token:
+            missing.append("HA_TOKEN")
+        detail = f"Не заданы переменные окружения: {', '.join(missing)}"
+
+    return SourceFromEnvResponse(
+        available=available,
+        has_token=bool(token),
+        url=url,
+        detail=detail,
+    )
+
+
+@router.post("/from-env", status_code=status.HTTP_201_CREATED)
+async def create_source_from_env(
+    request: Request, is_admin: bool = Depends(require_admin)
+) -> SourceResponse:
+    """Создать источник из переменных окружения.
+
+    Значения читаются на сервере, токен в ответе не возвращается. Так адрес и
+    токен не нужно вводить руками: платформа всё равно подключается к HA по
+    этим же переменным, и повторный ввод приводил к опечаткам — в развёртывании
+    так появился источник с адресом `homeassistant.local`, который из контейнера
+    не резолвится.
+
+    Args:
+        request: FastAPI request.
+        is_admin: Требуются права администратора.
+
+    Returns:
+        Созданный источник.
+
+    Raises:
+        HTTPException: 409, если переменные окружения не заданы; 503, если
+            хранилище недоступно.
+    """
+    url = (os.environ.get("HA_URL") or "").strip()
+    token = (os.environ.get("HA_TOKEN") or "").strip()
+    if not url or not token:
+        missing = [n for n, v in (("HA_URL", url), ("HA_TOKEN", token)) if not v]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Невозможно создать источник: не заданы {', '.join(missing)}",
+        )
+
+    persistence = getattr(request.app.state, "persistence", None)
+    if not persistence:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Persistence не инициализирован",
+        )
+
+    # Адрес проверяется до создания модели: без этого неверный HA_URL в
+    # окружении приводил к 500 с текстом валидатора pydantic вместо понятного
+    # ответа. Здесь тот же тип, что требует HASource, поэтому mypy не даёт
+    # разойтись с проверкой времени выполнения.
+    try:
+        parsed_url = TypeAdapter(HttpUrl).validate_python(url)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"HA_URL в окружении не является корректным адресом: {url!r}",
+        ) from exc
+
+    source = HASource(
+        id=uuid4(),
+        name=DEFAULT_SOURCE_NAME,
+        url=parsed_url,
+        token=token,
+        last_sync=None,
+        last_error=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+    await persistence.sources.save_source(source)
+    logger.info(f"Создан источник {source.id} из переменных окружения")
+
+    return _source_to_response(source)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
