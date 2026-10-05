@@ -532,28 +532,37 @@ class HAAdapter:
                 heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
                 try:
-                    # Ждём сигнала остановки или завершения listen_task (если есть)
+                    # Ждём сигнала остановки или завершения listen_task
                     listen_task = getattr(self._ws_client, "_listen_task", None)
-                    tasks = [asyncio.ensure_future(self._shutdown_event.wait())]
-                    if listen_task and not listen_task.done():
-                        tasks.append(listen_task)
+                    if listen_task is not None and not listen_task.done():
+                        tasks = [
+                            asyncio.ensure_future(self._shutdown_event.wait()),
+                            listen_task,
+                        ]
 
-                    done, pending = await asyncio.wait(
-                        tasks,
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
+                        done, pending = await asyncio.wait(
+                            tasks,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
 
-                    # Если listen_task завершился — соединение разорвано извне
-                    if listen_task and listen_task in done:
                         reason = "listen task ended"
-                        try:
-                            listen_task.result()
-                        except Exception as e:
-                            reason = f"listen task failed: {e}"
-                            log.warning(f"HAAdapter: listen_task ended unexpectedly: {e}")
-                        self._record_disconnect(reason, reconnect_delay)
-                        needs_backoff = True
-                        # Выходим из try блока, чтобы сработал reconnect
+                        if listen_task in done:
+                            try:
+                                listen_task.result()
+                            except Exception as e:
+                                reason = f"listen task failed: {e}"
+                                log.warning(f"HAAdapter: listen_task ended unexpectedly: {e}")
+                    else:
+                        # Задача чтения отсутствует или уже завершилась. Ждать
+                        # дальше нечего: в ожидании остался бы только флаг
+                        # остановки, который сам никогда не сработает. Прежний
+                        # код именно так и уходил в ожидание forever — платформа
+                        # навсегда переставала получать события, ни разу не
+                        # написав об обрыве (Known Issue #70).
+                        reason = "listen task missing or already done"
+
+                    self._record_disconnect(reason, reconnect_delay)
+                    needs_backoff = True
                 finally:
                     # Останавливаем heartbeat при любом выходе
                     heartbeat_task.cancel()
