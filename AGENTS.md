@@ -17,7 +17,7 @@
 ```bash
 make lint        # ruff check
 make format      # ruff format (OpenCode запускает его автоматически после правок)
-make type-check  # mypy --strict
+make type-check  # mypy src/ — strict включён в pyproject.toml, флаг не нужен
 make test        # pytest + coverage
 ```
 

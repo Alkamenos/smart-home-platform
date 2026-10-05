@@ -16,10 +16,18 @@ repos:
       - id: ruff-format
 
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.3.1
+  # mypy запускается из окружения проекта, а не из изолированного venv хука.
+  # Раньше здесь стоял mirrors-mypy с additional_dependencies из трёх пакетов:
+  # в его окружении нет aiohttp, uvicorn, watchdog, websockets,
+  # prometheus_client, dotenv и cryptography, поэтому хук всегда падал с
+  # 20 ошибками import-not-found и вынуждал к --no-verify. Настоящая проверка
+  # одна — `make type-check`, и хук обязан выполнять ровно её, иначе он
+  # проверяет не тот код и не той версией mypy.
+  - repo: local
     hooks:
       - id: mypy
-        additional_dependencies: [ pydantic>=2.0, loguru>=0.7, types-PyYAML ]
-        files: ^src/
-        args: [ --config-file=pyproject.toml, --explicit-package-bases]
+        name: mypy (окружение проекта)
+        entry: mypy src/
+        language: system
+        pass_filenames: false
+        types: [ python ]

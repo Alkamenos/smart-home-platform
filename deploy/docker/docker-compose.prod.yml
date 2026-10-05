@@ -74,4 +74,3 @@ services:
     labels:
       - "behavioral.platform.enabled=true"
       - "behavioral.platform.version=1.0.0"
-

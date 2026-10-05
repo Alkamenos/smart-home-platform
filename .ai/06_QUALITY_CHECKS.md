@@ -52,11 +52,12 @@ pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=80
 ```
 
 #### 2. Type Checking (mypy)
-- Strict mode
+- Strict mode — включён в `pyproject.toml` (`strict = true`), дописывать `--strict` руками не нужно
 - Не должно быть ошибок типизации
+- Запускать **без** `--ignore-missing-imports`: флаг превращает ненайденный импорт в тишину, а модуль без типов — в `Any`, вместе с ним исчезают и проверки его атрибутов
 
 ```bash
-mypy src/ --strict
+mypy src/
 ```
 
 #### 3. Linting (ruff)

@@ -139,7 +139,18 @@ echo ""
 
 # 2. Type checking
 echo "2️⃣  Type checking..."
-if mypy src/ --strict --ignore-missing-imports 2>&1; then
+# Команда обязана совпадать с Makefile (`type-check`) и CI (`ci.yml`) — это
+# `mypy src/`, который читает pyproject.toml (там strict = true).
+#
+# Раньше здесь стояло `mypy src/ --strict --ignore-missing-imports`, и это был
+# ложный зелёный свет: --ignore-missing-imports превращает ненайденный импорт
+# в тишину, а модуль без типов становится Any — вместе с ним исчезают и любые
+# обращения к его атрибутам. Проверено инъекцией файла с несуществующим
+# импортом: с флагом «Success: no issues found», без него — «Found 1 error».
+# То есть скрипт мог отметить успехом код, который CI отвергнет. С этим же
+# флагом молча проходила бы и нехватка зависимости в образе — см. Known Issue
+# про отсутствующий `cryptography`.
+if mypy src/ 2>&1; then
     echo -e "${GREEN}✅ Type checking passed${NC}"
 else
     echo -e "${RED}❌ Type checking failed${NC}"
