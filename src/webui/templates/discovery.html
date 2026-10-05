@@ -287,13 +287,40 @@
                     <div class="card source-card ${source.id === state.sourceId ? 'active' : ''}"
                          data-source-id="${escapeHtml(source.id)}">
                         <div class="card-body py-2">
-                            <div class="fw-semibold">${escapeHtml(source.name)}</div>
+                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                <div class="fw-semibold">${escapeHtml(source.name)}</div>
+                                <span class="badge ${sourceStatusBadge(source.status)}">
+                                    ${escapeHtml(sourceStatusLabel(source.status))}
+                                </span>
+                            </div>
                             <small class="text-muted d-block text-truncate">${escapeHtml(source.url)}</small>
+                            <small class="text-muted d-block">Синхронизация: ${escapeHtml(formatSyncTime(source.last_sync))}</small>
+                            ${source.last_error ? `<div class="small text-danger mt-1">${escapeHtml(source.last_error)}</div>` : ''}
+                            <div class="mt-2 d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        data-action="sync"
+                                        data-source-id="${escapeHtml(source.id)}">Синхронизировать</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                        data-action="delete"
+                                        data-source-id="${escapeHtml(source.id)}">Удалить</button>
+                            </div>
                         </div>
                     </div>
                 </div>`).join('');
             container.querySelectorAll('.source-card').forEach((card) => {
-                card.addEventListener('click', () => selectSource(card.dataset.sourceId));
+                card.addEventListener('click', (event) => {
+                    // Кнопки внутри карточки не должны выбирать источник:
+                    // иначе удаление источника сначала переключит страницу на
+                    // удаляемый источник.
+                    if (event.target.closest('button[data-action]')) return;
+                    selectSource(card.dataset.sourceId);
+                });
+            });
+            container.querySelectorAll('button[data-action="sync"]').forEach((button) => {
+                button.addEventListener('click', () => syncSource(button));
+            });
+            container.querySelectorAll('button[data-action="delete"]').forEach((button) => {
+                button.addEventListener('click', () => deleteSource(button));
             });
         } catch (error) {
             container.innerHTML = `<div class="col-12 text-danger">Не удалось загрузить источники: ${escapeHtml(error.message)}</div>`;
@@ -312,6 +339,92 @@
         window.history.replaceState({}, '', url);
         document.getElementById('source-info').textContent = `Источник: ${sourceId.slice(0, 8)}…`;
         await Promise.all([loadRooms(), loadDiscoveryData()]);
+    }
+
+    // ------------------------------------------------------------------
+    // Источники: статус, синхронизация, удаление
+    // ------------------------------------------------------------------
+
+    const SOURCE_STATUS = {
+        connected: { label: 'Подключён', badge: 'bg-success' },
+        disconnected: { label: 'Не отвечает', badge: 'bg-secondary' },
+        syncing: { label: 'Синхронизация', badge: 'bg-info' },
+        error: { label: 'Ошибка', badge: 'bg-danger' }
+    };
+
+    function sourceStatusLabel(status) {
+        const known = SOURCE_STATUS[String(status || '').toLowerCase()];
+        return known ? known.label : (status || 'неизвестно');
+    }
+
+    function sourceStatusBadge(status) {
+        const known = SOURCE_STATUS[String(status || '').toLowerCase()];
+        return known ? known.badge : 'bg-secondary';
+    }
+
+    function formatSyncTime(value) {
+        if (!value) return 'ещё не выполнялась';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return value;
+        return parsed.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    async function syncSource(button) {
+        const sourceId = button.dataset.sourceId;
+        withBusy(button, true, 'Синхронизация…');
+        try {
+            const response = await fetch(`${API.sources}/${encodeURIComponent(sourceId)}/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            if (!response.ok) {
+                throw new Error(await apiError(response, `HTTP ${response.status}`));
+            }
+            await loadSources();
+        } catch (error) {
+            // Причина показывается на карточке источника: после перечитывания
+            // списка она будет видна рядом с ним, а не потеряется в консоли.
+            window.alert(`Не удалось синхронизировать: ${error.message}`);
+            await loadSources();
+        } finally {
+            withBusy(button, false, 'Синхронизировать');
+        }
+    }
+
+    async function deleteSource(button) {
+        const sourceId = button.dataset.sourceId;
+        const card = button.closest('.source-card');
+        const name = card && card.querySelector('.fw-semibold');
+        const title = name ? name.textContent.trim() : sourceId;
+
+        // Подтверждение обязательно: вместе с источником уходят привязанные к
+        // нему устройства, и без вопроса опечатка удалила бы рабочую настройку.
+        const message =
+            `Удалить источник «${title}»?\n\n` +
+            'Вместе с ним будут отвязаны все устройства этого источника. ' +
+            'Действие необратимо.';
+        if (!window.confirm(message)) {
+            return;
+        }
+
+        withBusy(button, true, 'Удаление…');
+        try {
+            const response = await fetch(`${API.sources}/${encodeURIComponent(sourceId)}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) {
+                throw new Error(await apiError(response, `HTTP ${response.status}`));
+            }
+            if (state.sourceId === sourceId) {
+                state.sourceId = null;
+                state.selected.clear();
+            }
+            await loadSources();
+        } catch (error) {
+            window.alert(`Не удалось удалить источник: ${error.message}`);
+            withBusy(button, false, 'Удалить');
+        }
     }
 
     function showSourceFormErrors(detail) {
