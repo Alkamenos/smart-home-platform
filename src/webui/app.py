@@ -542,18 +542,30 @@ def create_app(
 
     @app.get("/manifest/reload")  # type: ignore[untyped-decorator]
     async def reload_manifest(request: Request) -> Response:
-        """Reload manifest from file (revert unsaved changes).
+        """Перечитывает манифест из файла в работающую платформу.
+
+        Откатывает только манифест. Устройства в постоянном хранилище остаются:
+        откат хранилища не заявлен, и делать это молча опаснее, чем не делать.
 
         Args:
             request: FastAPI request object.
 
         Returns:
-            Redirect to index page or error template.
+            Перенаправление на главную или сообщение об ошибке.
         """
+        container = getattr(request.app.state, "container", None)
+        if container is None:
+            return templates.TemplateResponse(
+                request,
+                "partials/save_error.html",
+                {"error": "Контейнер платформы недоступен"},
+                status_code=400,
+            )
+
         try:
-            manifest_store.revert()
+            manifest_store.reload_into(container.manifest)
         except Exception as e:
-            logger.error(f"Failed to reload manifest: {e}")
+            logger.error(f"Не удалось перечитать манифест: {e}")
             return templates.TemplateResponse(
                 request,
                 "partials/save_error.html",
@@ -561,7 +573,28 @@ def create_app(
                 status_code=400,
             )
 
-        # Redirect to index
+        # Снимаем автоматы, которых больше нет в манифесте, и заводим новые.
+        # Состояния сохраняются: лампа, включённая по движению, не должна
+        # «забывать» об этом после перечитывания файла.
+        wanted = {d.entity_id for d in container.factory.create_from_manifest(container.manifest)}
+        for entity_id in list(container.fsm.get_all_states()):
+            if entity_id not in wanted:
+                container.fsm.unregister(entity_id)
+        for definition in container.factory.create_from_manifest(container.manifest):
+            container.fsm.register_definition(definition, restore_state=True)
+        container.factory._template_cache.clear()
+
+        # Карта маршрутизации строится из манифеста, поэтому перечитывание
+        # обязано её перестроить: иначе датчик новой комнаты молчал бы.
+        lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
+        if lifecycle_service is not None:
+            lifecycle_service._rebuild_event_routing()
+        elif container.event_router is not None:
+            container.event_router._build_mapping()
+
+        logger.info(
+            f"Манифест перечитан: комнат {len(container.manifest.rooms)}, автоматов {len(wanted)}"
+        )
 
         return RedirectResponse(url="/")
 

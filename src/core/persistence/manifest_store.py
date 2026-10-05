@@ -109,6 +109,44 @@ class ManifestStore:
         self.has_unsaved_changes = False
         logger.info(f"Манифест сохранён в {self.path}, резервная копия: {backup_path}")
 
+    def reload_into(self, target: Any) -> None:
+        """Перечитывает файл и обновляет существующий объект манифеста на месте.
+
+        Подмена объекта не годится: `Container`, `EventRouter`, фабрика машин
+        состояний и `DeviceLifecycleService` держат ссылку именно на него, и
+        после подмены все они продолжали бы работать с прежней копией — reload
+        отвечал бы успехом и ничего бы не менял (Known Issue #68). Поэтому
+        содержимое заливается в тот же экземпляр.
+
+        Сначала файл разбирается во временный объект: если разбор упадёт, цель
+        останется нетронутой. Частично применённый манифест хуже отказа.
+
+        Args:
+            target: Модель манифеста, обновляемая на месте.
+
+        Raises:
+            ValueError: Если файл не удалось разобрать.
+        """
+        fresh = self.model_type(**self._read_raw())
+        target.__dict__.update(fresh.__dict__)
+        self.current = target
+        self.backup = copy.deepcopy(target)
+        self.has_unsaved_changes = False
+        logger.info(f"Манифест перечитан из {self.path} в существующий объект")
+
+    def _read_raw(self) -> dict[str, Any]:
+        """Читает и разбирает файл манифеста без изменения состояния хранилища.
+
+        Returns:
+            Словарь данных манифеста.
+
+        Raises:
+            FileNotFoundError: Если файла нет.
+            ValidationError: Если манифест некорректен.
+        """
+        with open(self.path) as f:
+            return yaml.safe_load(f) or {}
+
     def revert(self) -> Any:
         """Откатывает манифест к последнему сохранённому состоянию.
 
