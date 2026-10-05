@@ -418,14 +418,32 @@ class FSMEngine:
             событие.
         """
         state = self._states.get(entity_id)
+        if state is None:
+            return None
+        return self.expected_timeout_sec_in_state(entity_id, state.current_state)
+
+    def expected_timeout_sec_in_state(self, entity_id: str, state: str) -> float | None:
+        """То же вычисление, но для указанного состояния, а не текущего.
+
+        Вынесено отдельно, чтобы взвод таймера и чтение ожидания сторожом
+        считались по одному правилу. Иначе они могут разойтись: движок ждёт
+        своего, сторож — своего, и расхождение выглядит как «сторож врёт».
+
+        Args:
+            entity_id: Идентификатор автомата.
+            state: Имя состояния.
+
+        Returns:
+            Максимум ``timeout_sec`` среди переходов из состояния либо None.
+        """
         definition = self._definitions.get(entity_id)
-        if state is None or definition is None:
+        if definition is None:
             return None
 
         timeouts = [
             transition.timeout_sec
             for transition in definition.transitions
-            if transition.from_state == state.current_state
+            if transition.from_state == state
             and transition.timeout_sec is not None
             and transition.timeout_sec > 0
         ]
@@ -717,13 +735,34 @@ class FSMEngine:
                 entity_id, event, current_state.current_state, transition.to_state, trace_id
             )
 
-            # Schedule timeout if specified
-            if transition.timeout_sec is not None and transition.timeout_sec > 0:
+            # Таймер взводится по новому состоянию, а не по сработавшему
+            # переходу: `timeout_sec` означает «сколько можно находиться в
+            # состоянии», и шаблоны объявляют его на исходящем переходе
+            # (`lighting.yaml`: ON_MOTION --[timeout]--> OFF, 30 с). Прежний
+            # код смотрел на сработавший переход, где таймера нет, поэтому
+            # таймауты не срабатывали никогда, а `expected_timeout_sec` видел
+            # ожидание, которого движок не выполнял (Known Issue #66).
+            #
+            # Таймер прежнего состояния снимается: состояние сменилось, его
+            # ожидание больше не действует. `timeout_sec` сработавшего перехода
+            # учитывается тоже — иначе сломалась бы форма объявления «таймер на
+            # входящем переходе», на которой написаны существующие тесты.
+            declared = [
+                value
+                for value in (
+                    self._incoming_timeout(definition, transition),
+                    self._outgoing_timeout(entity_id, transition.to_state),
+                )
+                if value is not None
+            ]
+            timeout_sec = max(declared) if declared else None
+            if timeout_sec is not None:
                 self._timers[entity_id] = asyncio.create_task(
-                    self._timeout_handler(entity_id, transition.timeout_sec, trace_id)
+                    self._timeout_handler(entity_id, timeout_sec, trace_id)
                 )
                 log.debug(
-                    f"Entity {entity_id}: Scheduled timeout transition in {transition.timeout_sec}s"
+                    f"Entity {entity_id}: Scheduled timeout transition in {timeout_sec}s "
+                    f"for state '{transition.to_state}'"
                 )
 
             return True
@@ -733,6 +772,54 @@ class FSMEngine:
             entity_id, event, current_state.current_state, REASON_GUARD_FAILED, trace_id
         )
         return False
+
+    @staticmethod
+    def _incoming_timeout(definition: FSMDefinition, transition: Transition) -> float | None:
+        """Возвращает ``timeout_sec`` сработавшего перехода, если он задан.
+
+        Args:
+            definition: Описание автомата.
+            transition: Сработавший переход.
+
+        Returns:
+            Время ожидания или None.
+        """
+        value = transition.timeout_sec
+        if value is not None and value > 0:
+            return value
+        return None
+
+    def _outgoing_timeout(self, entity_id: str, state: str) -> float | None:
+        """Возвращает ожидание по исходящим переходам по триггеру ``timeout``.
+
+        Фильтр по триггеру обязателен. Шаблоны объявляют ожидание так:
+        ``ON_MOTION --[timeout]--> OFF, timeout_sec=30`` — то есть на том самом
+        переходе, который таймер и должен вызвать. Но встречается и форма
+        ``OFF --[manual_override]--> ON_MANUAL, timeout_sec=3600``, где тот же
+        параметр описывает уже достигнутое состояние, а из ``OFF`` события
+        ``timeout`` никто не слушает. Взводить таймер по таким переходам нельзя:
+        он истечёт вхолостую.
+
+        Args:
+            entity_id: Идентификатор автомата.
+            state: Имя состояния.
+
+        Returns:
+            Время ожидания либо None, если из состояния нечему ждать.
+        """
+        definition = self._definitions.get(entity_id)
+        if definition is None:
+            return None
+
+        timeouts = [
+            transition.timeout_sec
+            for transition in definition.transitions
+            if transition.from_state == state
+            and transition.trigger == "timeout"
+            and transition.timeout_sec is not None
+            and transition.timeout_sec > 0
+        ]
+        return max(timeouts) if timeouts else None
 
     async def _timeout_handler(self, entity_id: str, timeout_sec: float, trace_id: str) -> None:
         """Handle timeout-based transitions.

@@ -186,7 +186,19 @@ class TestExpectedTimeoutSec:
             assert await engine.trigger(FSM_ID, "motion_detected") is True
             assert engine.get_state(FSM_ID) is not None
             assert engine.get_state(FSM_ID).current_state == "on"
-            # Таймер взведён только на переход с таймаутом, а не на чтение.
+            # Таймер взводит переход, а не чтение: `expected_timeout_sec` —
+            # чистая функция от описания.
+            #
+            # Здесь таймер не взводится: `timeout_sec=30` стоит на переходе
+            # `on --motion_cleared--> standby`, а движок берёт ожидание с
+            # перехода по триггеру `timeout`. Форма шаблонов —
+            # `ON_MOTION --[timeout]--> OFF, 30 с` (Known Issue #66), и именно
+            # она ломалась.
+            #
+            # `expected_timeout_sec` при этом возвращает 30.0: он читает все
+            # исходящие переходы без фильтра по триггеру. Расхождение с
+            # движком на этой форме описания остаётся и вынесено в отдельную
+            # задачу, а не исправлено здесь молча.
             assert engine.expected_timeout_sec(FSM_ID) == 30.0
             assert FSM_ID not in engine._timers
             await engine.shutdown()
