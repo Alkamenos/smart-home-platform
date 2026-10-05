@@ -1,0 +1,165 @@
+# Контракт шаблонов поведения
+#
+# Файл сгенерирован: правьте шаблоны и реестр, затем перегенерируйте, иначе
+# tests/contract/test_template_contract.py упадёт. Разделы `gaps` заполняются
+# руками — они не выводятся из кода.
+#
+# Зачем он нужен: платформа публикует события датчиков, но из них шаблоны
+# слушают единицы, а триггеры шаблонов порождаются ещё реже. По этой таблице
+# веб-интерфейс должен строить форму поведения из того, что платформа правда
+# выполнит, и не предлагать пользователю недостижимого.
+
+sensor_events:
+  motion: [motion_detected, motion_cleared]
+  temperature: [temperature_changed]
+  humidity: [humidity_changed]
+  lux: [brightness_changed]
+  contact: [opened, closed]
+
+engine_events:
+  # События, которые порождает сам движок, а не внешний источник.
+  timeout: таймер взводится по исходящим переходам состояния с триггером timeout.
+
+registered_actions:  # реестр после register_all_actions
+  - climate_cool
+  - climate_heat
+  - climate_off
+  - fan_turn_off
+  - fan_turn_on
+  - release_device
+  - turn_off_light
+  - turn_off_night_light
+  - turn_on_light
+  - turn_on_night_light
+
+registered_guards:  # реестр после register_all_guards
+  - humidity_above_60
+  - humidity_below_60
+  - is_day_time
+  - is_manual_override_enabled
+
+uncovered_platform_events:
+  # События, которые платформа публикует, но ни один шаблон не слушает.
+  - brightness_changed
+  - closed
+  - humidity_changed
+  - motion_cleared
+  - opened
+  - temperature_changed
+
+templates:
+  climate_control:
+    reachable: true
+    in_manifest: [kitchen, living_room]
+    actions: [climate_heat, climate_cool, climate_off]
+    guards: []
+    triggers:
+      temperature_low: НЕТ ПРОИСХОДИТЕЛЯ
+      temperature_high: НЕТ ПРОИСХОДИТЕЛЯ
+      temperature_reached: НЕТ ПРОИСХОДИТЕЛЯ
+    unproduced_triggers: [temperature_low, temperature_high, temperature_reached]
+    gaps:
+      - Платформа публикует temperature_changed, шаблон слушает temperature_low, temperature_high и temperature_reached — имена не совпадают, событие не приходит никогда.
+      - У переходов нет guard'ов и порогов. Даже после исправления имён любое изменение температуры включало бы обогрев, а возврат к норме выключал бы. Порог должен стать параметром поведения.
+  generic_cover:
+    reachable: false
+    in_manifest: []
+    actions: [start_opening, confirm_open, start_closing, confirm_closed, stop_cover, record_manual_override, close_cover]
+    guards: []
+    triggers:
+      open: НЕТ ПРОИСХОДИТЕЛЯ
+      fully_opened: НЕТ ПРОИСХОДИТЕЛЯ
+      close: НЕТ ПРОИСХОДИТЕЛЯ
+      fully_closed: НЕТ ПРОИСХОДИТЕЛЯ
+      stop: НЕТ ПРОИСХОДИТЕЛЯ
+      manual_change: НЕТ ПРОИСХОДИТЕЛЯ
+      timeout: engine
+    unproduced_triggers: [open, fully_opened, close, fully_closed, stop, manual_change]
+    gaps:
+      - Ни одного из семи действий в реестре нет — шаблон неисполним целиком. Вне объёма варианта (a).
+  generic_switch:
+    reachable: false
+    in_manifest: []
+    actions: [turn_on_switch, turn_off_switch, record_manual_override]
+    guards: []
+    triggers:
+      turn_on: НЕТ ПРОИСХОДИТЕЛЯ
+      turn_off: НЕТ ПРОИСХОДИТЕЛЯ
+      manual_change: НЕТ ПРОИСХОДИТЕЛЯ
+      timeout: engine
+    unproduced_triggers: [turn_on, turn_off, manual_change]
+    gaps:
+      - Все три действия в реестре отсутствуют — шаблон неисполним целиком. Вне объёма варианта (a).
+  humidity_ventilation:
+    reachable: true
+    in_manifest: [bathroom]
+    actions: [fan_turn_on, fan_turn_off]
+    guards: [humidity_above_60, humidity_below_60]
+    triggers:
+      humidity_high: НЕТ ПРОИСХОДИТЕЛЯ
+      humidity_normal: НЕТ ПРОИСХОДИТЕЛЯ
+    unproduced_triggers: [humidity_high, humidity_normal]
+    gaps:
+      - Платформа публикует humidity_changed, шаблон слушает humidity_high и humidity_normal — имена не совпадают, событие не приходит никогда.
+      - Порог зашит в имя guard'а (60), тогда как манифест задаёт поведению параметр humidity_threshold со значением 65. Параметр не читается.
+  lighting:
+    reachable: true
+    in_manifest: [kitchen, living_room, bedroom, bathroom]
+    actions: [turn_on_light, turn_off_light]
+    guards: [is_day_time, is_manual_override_enabled]
+    triggers:
+      motion_detected: sensor
+      manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ
+      timeout: engine
+      manual_override: НЕТ ПРОИСХОДИТЕЛЯ
+      manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
+    unproduced_triggers: [manual_switch_on, manual_override, manual_switch_off]
+    gaps:
+      - motion_cleared публикуется платформой, но перехода по нему нет — движение кончилось, свет горит до таймаута. Это сценарий «свет с задержкой», а не дефект; отдельная задача на выбор поведения.
+      - manual_switch_on и manual_switch_off нигде не порождаются. Ручной путь управления устройством в платформе отсутствует как класс (пункт 3 веб-плана), поэтому и manual_override не имеет источника.
+  night_light:
+    reachable: true
+    in_manifest: [kitchen, living_room, bedroom, bathroom]
+    actions: [turn_on_night_light, release_device, turn_off_night_light]
+    guards: []
+    triggers:
+      motion_detected: sensor
+      timeout: engine
+      manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
+      schedule_end: НЕТ ПРОИСХОДИТЕЛЯ
+    unproduced_triggers: [manual_switch_off, schedule_end]
+    gaps:
+      - schedule_end не порождается — расписание не выключает ночной свет.
+      - У состояния ON_NIGHT нет guard'а на ночь, поэтому оно достижимо и днём через motion_detected.
+  smart_lock:
+    reachable: false
+    in_manifest: []
+    actions: [start_unlock, confirm_unlock, start_lock, confirm_lock, alert_jam, emergency_unlock]
+    guards: []
+    triggers:
+      unlock: НЕТ ПРОИСХОДИТЕЛЯ
+      unlocked: НЕТ ПРОИСХОДИТЕЛЯ
+      timeout: engine
+      lock: НЕТ ПРОИСХОДИТЕЛЯ
+      locked: НЕТ ПРОИСХОДИТЕЛЯ
+      jam_detected: НЕТ ПРОИСХОДИТЕЛЯ
+      jam_cleared: НЕТ ПРОИСХОДИТЕЛЯ
+      emergency_unlock: НЕТ ПРОИСХОДИТЕЛЯ
+    unproduced_triggers: [unlock, unlocked, lock, locked, jam_detected, jam_cleared, emergency_unlock]
+    gaps:
+      - Ни одного из шести действий в реестре нет — шаблон неисполним целиком. Для замков осознанно не сделано: удалённой отпирающей команде не доверяем.
+  speed_control:
+    reachable: false
+    in_manifest: []
+    actions: [set_low_speed, set_medium_speed, set_high_speed, turn_off_fan, record_manual_override]
+    guards: []
+    triggers:
+      turn_on: НЕТ ПРОИСХОДИТЕЛЯ
+      increase_speed: НЕТ ПРОИСХОДИТЕЛЯ
+      decrease_speed: НЕТ ПРОИСХОДИТЕЛЯ
+      turn_off: НЕТ ПРОИСХОДИТЕЛЯ
+      manual_change: НЕТ ПРОИСХОДИТЕЛЯ
+      timeout: engine
+    unproduced_triggers: [turn_on, increase_speed, decrease_speed, turn_off, manual_change]
+    gaps:
+      - Ни одного из пяти действий в реестре нет — шаблон неисполним целиком. Вне объёма варианта (a).
