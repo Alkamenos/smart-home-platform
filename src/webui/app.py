@@ -376,7 +376,12 @@ def create_app(
         try:
             from core.persistence.manager import PersistenceManager
 
-            persistence = PersistenceManager(data_dir="data")
+            # Каталог данных не передаётся: PersistenceManager сам берёт его
+            # из DATA_PATH (см. core/persistence/paths.py). Раньше здесь стояло
+            # data_dir="data", из-за чего путь неявно закреплялся за относительным
+            # путём от WORKDIR, и в контейнере данные писались внутрь слоя
+            # образа вместо смонтированного тома (Known Issue #44).
+            persistence = PersistenceManager()
         except ImportError as e:
             logger.warning(
                 f"Could not initialize PersistenceManager: {e}. Running with limited functionality."

@@ -13,6 +13,8 @@ import json
 import sys
 from pathlib import Path
 
+from core.persistence.paths import resolve_data_dir
+
 
 # Platform-specific file locking imports
 if sys.platform == "win32":
@@ -22,8 +24,10 @@ else:
 
 
 # Каталог хранения состояний автоматов — рядом с прочими файлами данных
-# платформы (data/), а не в текущем рабочем каталоге (T013).
-DEFAULT_DATA_DIR = "data"
+# платформы, а не в текущем рабочем каталоге (T013). Источник пути —
+# ``paths.resolve_data_dir``, который читает DATA_PATH: иначе в контейнере
+# файл писался внутрь слоя образа, а том монтировался в другой каталог
+# (Known Issue #44).
 DEFAULT_STORAGE_FILENAME = "state.json"
 
 
@@ -33,7 +37,7 @@ def default_storage_path() -> str:
     Returns:
         Путь к файлу состояний внутри каталога данных платформы.
     """
-    return str(Path(DEFAULT_DATA_DIR) / DEFAULT_STORAGE_FILENAME)
+    return str(resolve_data_dir(None) / DEFAULT_STORAGE_FILENAME)
 
 
 class StatePersistence:

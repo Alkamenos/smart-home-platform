@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.persistence.paths import resolve_data_dir
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +19,14 @@ logger = logging.getLogger(__name__)
 class IndexManager:
     """Менеджер для управления индексами в JSON хранилище."""
 
-    def __init__(self, data_dir: Path | str = "data") -> None:
+    def __init__(self, data_dir: Path | str | None = None) -> None:
         """
         Инициализация менеджера индексов.
 
         Args:
             data_dir: Директория для хранения данных и индексов
         """
-        self.data_dir = Path(data_dir)
+        self.data_dir = resolve_data_dir(data_dir)
         self.sources_indices_file = self.data_dir / ".sources_indices.json"
         self.devices_indices_file = self.data_dir / ".devices_indices.json"
 

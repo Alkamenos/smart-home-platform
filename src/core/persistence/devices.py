@@ -14,6 +14,7 @@ from core.models.device import Device
 from core.models.device_access import DeviceAccess
 from core.models.device_config import DeviceConfig
 from core.models.device_sync_event import DeviceSyncEvent
+from core.persistence.paths import resolve_data_dir
 
 
 logger = logging.getLogger(__name__)
@@ -22,13 +23,14 @@ logger = logging.getLogger(__name__)
 class DevicePersistence:
     """Управляет сохранением и загрузкой устройств."""
 
-    def __init__(self, data_dir: Path | str = "data") -> None:
+    def __init__(self, data_dir: Path | str | None = None) -> None:
         """Инициализация персистентности.
 
         Args:
-            data_dir: Директория для сохранения данных
+            data_dir: Директория данных. По умолчанию — ``DATA_PATH`` из
+                окружения, иначе ``data`` (см. ``paths.resolve_data_dir``).
         """
-        self.data_dir = Path(data_dir)
+        self.data_dir = resolve_data_dir(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.devices_file = self.data_dir / "devices.json"
         self.configs_file = self.data_dir / "device_configs.json"
@@ -272,13 +274,14 @@ class DevicePersistence:
 class DeviceAccessPersistence:
     """Управляет сохранением и загрузкой записей доступа к устройствам."""
 
-    def __init__(self, data_dir: Path | str = "data") -> None:
+    def __init__(self, data_dir: Path | str | None = None) -> None:
         """Инициализация персистентности доступа.
 
         Args:
-            data_dir: Директория для сохранения данных
+            data_dir: Директория данных. По умолчанию — ``DATA_PATH`` из
+                окружения, иначе ``data``.
         """
-        self.data_dir = Path(data_dir)
+        self.data_dir = resolve_data_dir(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.access_file = self.data_dir / "device_access.json"
 
@@ -531,13 +534,14 @@ class DeviceSyncEventPersistence:
     ``device_sync_events.json`` (паттерн DeviceAccessPersistence).
     """
 
-    def __init__(self, data_dir: Path | str = "data") -> None:
+    def __init__(self, data_dir: Path | str | None = None) -> None:
         """Инициализация персистентности истории операций.
 
         Args:
-            data_dir: Директория для сохранения данных
+            data_dir: Директория данных. По умолчанию — ``DATA_PATH`` из
+                окружения, иначе ``data``.
         """
-        self.data_dir = Path(data_dir)
+        self.data_dir = resolve_data_dir(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.events_file = self.data_dir / "device_sync_events.json"
 

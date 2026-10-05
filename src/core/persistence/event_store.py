@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.persistence.paths import resolve_data_dir
+
 
 # Дни недели в порядке отображения карты активности.
 WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -58,8 +60,12 @@ class SensorEvent:
 class EventStore:
     """SQLite хранилище для истории событий и переходов FSM."""
 
-    def __init__(self, db_path: str = "data/history.db"):
-        self.db_path = Path(db_path)
+    def __init__(self, db_path: str | None = None):
+        # По умолчанию — внутри каталога данных платформы, который читает
+        # DATA_PATH (Known Issue #44). Явный путь имеет приоритет.
+        self.db_path = (
+            Path(db_path) if db_path is not None else (resolve_data_dir(None) / "history.db")
+        )
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 

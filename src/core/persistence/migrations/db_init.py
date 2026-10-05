@@ -14,12 +14,15 @@ from core.persistence.migrations.migrations_runner import (
     check_migrations_status,
     init_migrations,
 )
+from core.persistence.paths import resolve_data_dir
 
 
 logger = logging.getLogger(__name__)
 
 
-async def initialize_database(data_dir: Path | str = "data", apply_migrations: bool = True) -> bool:
+async def initialize_database(
+    data_dir: Path | str | None = None, apply_migrations: bool = True
+) -> bool:
     """
     Инициализировать БД и применить все необходимые миграции.
 
@@ -32,12 +35,12 @@ async def initialize_database(data_dir: Path | str = "data", apply_migrations: b
     """
     try:
         logger.info("Инициализация БД...")
-        data_dir = Path(data_dir)
-        data_dir.mkdir(parents=True, exist_ok=True)
+        resolved_dir = resolve_data_dir(data_dir)
+        resolved_dir.mkdir(parents=True, exist_ok=True)
 
         if apply_migrations:
             logger.info("Применение миграций...")
-            await init_migrations(data_dir)
+            await init_migrations(resolved_dir)
             logger.info("Миграции успешно применены")
         else:
             logger.info("Проверка статуса миграций...")
@@ -53,7 +56,7 @@ async def initialize_database(data_dir: Path | str = "data", apply_migrations: b
         return False
 
 
-async def verify_migrations(data_dir: Path | str = "data") -> bool:
+async def verify_migrations(data_dir: Path | str | None = None) -> bool:
     """
     Проверить, что все миграции применены.
 
@@ -81,7 +84,7 @@ async def verify_migrations(data_dir: Path | str = "data") -> bool:
         return False
 
 
-async def reset_database(data_dir: Path | str = "data", confirm: bool = False) -> bool:
+async def reset_database(data_dir: Path | str | None = None, confirm: bool = False) -> bool:
     """
     Полностью сбросить БД (откатить все миграции).
 
@@ -112,7 +115,7 @@ async def reset_database(data_dir: Path | str = "data", confirm: bool = False) -
         return False
 
 
-def print_migration_status(data_dir: Path | str = "data") -> None:
+def print_migration_status(data_dir: Path | str | None = None) -> None:
     """
     Вывести статус всех миграций.
 

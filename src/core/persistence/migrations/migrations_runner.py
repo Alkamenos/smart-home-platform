@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.persistence.paths import resolve_data_dir
+
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ class MigrationsRunner:
     """Менеджер для выполнения миграций БД."""
 
     def __init__(
-        self, data_dir: Path | str = "data", migrations_package: str = "migrations"
+        self, data_dir: Path | str | None = None, migrations_package: str = "migrations"
     ) -> None:
         """
         Инициализация менеджера миграций.
@@ -29,7 +31,7 @@ class MigrationsRunner:
             data_dir: Директория для хранения данных и истории миграций
             migrations_package: Имя пакета с миграциями
         """
-        self.data_dir = Path(data_dir)
+        self.data_dir = resolve_data_dir(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.migrations_history_file = self.data_dir / ".migrations_history.json"
         self.migrations_package = migrations_package
@@ -237,7 +239,7 @@ class MigrationsRunner:
             raise
 
 
-async def init_migrations(data_dir: Path | str = "data") -> MigrationsRunner:
+async def init_migrations(data_dir: Path | str | None = None) -> MigrationsRunner:
     """
     Инициализировать и применить все миграции.
 
@@ -252,7 +254,7 @@ async def init_migrations(data_dir: Path | str = "data") -> MigrationsRunner:
     return runner
 
 
-async def check_migrations_status(data_dir: Path | str = "data") -> dict[str, Any]:
+async def check_migrations_status(data_dir: Path | str | None = None) -> dict[str, Any]:
     """
     Проверить статус миграций.
 

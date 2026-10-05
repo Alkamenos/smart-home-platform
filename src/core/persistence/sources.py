@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import UUID
 
 from core.models.ha_source import HASource
+from core.persistence.paths import resolve_data_dir
 from core.security.encryption import TokenEncryptor
 
 
@@ -21,15 +22,16 @@ class HASourcePersistence:
     """Управляет сохранением и загрузкой источников Home Assistant."""
 
     def __init__(
-        self, data_dir: Path | str = "data", encryptor: TokenEncryptor | None = None
+        self, data_dir: Path | str | None = None, encryptor: TokenEncryptor | None = None
     ) -> None:
         """Инициализация персистентности.
 
         Args:
-            data_dir: Директория для сохранения данных
+            data_dir: Директория данных. По умолчанию — ``DATA_PATH`` из
+                окружения, иначе ``data`` (см. ``paths.resolve_data_dir``).
             encryptor: Шифровальщик для токенов (опционально)
         """
-        self.data_dir = Path(data_dir)
+        self.data_dir = resolve_data_dir(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.sources_file = self.data_dir / "sources.json"
         self.encryptor = encryptor

@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.persistence.paths import resolve_data_dir
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +23,14 @@ class Migration001InitSources:
     name = "001_init_sources"
     description = "Инициализация таблицы sources с индексами по имени и статусу"
 
-    def __init__(self, data_dir: Path | str = "data") -> None:
+    def __init__(self, data_dir: Path | str | None = None) -> None:
         """
         Инициализация миграции.
 
         Args:
             data_dir: Директория для хранения данных
         """
-        self.data_dir = Path(data_dir)
+        self.data_dir = resolve_data_dir(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.sources_file = self.data_dir / "sources.json"
         self.indices_file = self.data_dir / ".sources_indices.json"

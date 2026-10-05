@@ -10,6 +10,7 @@ from core.persistence.devices import (
     DevicePersistence,
     DeviceSyncEventPersistence,
 )
+from core.persistence.paths import resolve_data_dir
 from core.persistence.sources import HASourcePersistence
 
 
@@ -24,16 +25,17 @@ class PersistenceManager:
 
     def __init__(
         self,
-        data_dir: Path | str = "data",
+        data_dir: Path | str | None = None,
         encryptor: "TokenEncryptor | None" = None,
     ) -> None:
         """Инициализация менеджера.
 
         Args:
-            data_dir: Директория для сохранения данных
+            data_dir: Директория данных. По умолчанию — ``DATA_PATH`` из
+                окружения, иначе ``data`` (см. ``paths.resolve_data_dir``).
             encryptor: Шифровальщик для токенов (опционально)
         """
-        self.data_dir = Path(data_dir)
+        self.data_dir = resolve_data_dir(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Инициализируем компоненты
