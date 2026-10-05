@@ -6,7 +6,15 @@ set -e
 
 # Конфигурация
 PLATFORM_NAME="behavioral-platform"
-DOCKER_COMPOSE_FILE="./deploy/docker/docker-compose.prod.yml"
+
+# Путь к compose-файлу задаётся переменной окружения. Раньше он был зашит
+# литералом, из-за чего скрипт нельзя было направить на другое развёртывание —
+# ни в другое окружение, ни в изолированный каталог для тестов. Тесты при этом
+# НЕ ПАДАЛИ, а молча работали с настоящими каталогами развёртывания, то есть
+# вызывали `restore` и трогали живые данные. Переменная окружения — не удобство,
+# а условие безопасности: без неё скрипт неотличим от того, что пишет в
+# боевую директорию.
+DOCKER_COMPOSE_FILE="${DOCKER_COMPOSE_FILE:-./deploy/docker/docker-compose.prod.yml}"
 
 # Каталоги данных и конфигурации задаются ОТНОСИТЕЛЬНО КАТАЛОГА COMPOSE-ФАЙЛА,
 # потому что именно относительно него compose монтирует тома:
@@ -29,6 +37,17 @@ CONFIG_DIR="$COMPOSE_DIR/config"
 DATA_DIR="$COMPOSE_DIR/data"
 BACKUP_DIR="$COMPOSE_DIR/backups"
 SHADOW_MODE="${SHADOW_MODE:-false}"
+
+# Куда складывать архивы копий.
+#
+# По умолчанию — тот же хост, рядом с данными. Это НЕ защита от потери диска
+# или хоста, поэтому `backup` об этом предупреждает: иначе бэкап выглядит
+# защитой, которой нет. Для настоящей защиты задайте `BACKUP_DEST_DIR` на
+# сетевой каталог, внешний диск или иное хранилище.
+BACKUP_DEST_DIR="${BACKUP_DEST_DIR:-$BACKUP_DIR}"
+# Сколько последних копий хранить. Без ротации копии занимают диск, и бэкап
+# становится причиной отказа платформы из-за нехватки места.
+BACKUP_KEEP="${BACKUP_KEEP:-7}"
 
 # Цвета для вывода
 RED='\033[0;31m'
@@ -71,25 +90,184 @@ check_dependencies() {
 
 # Создание резервной копии
 create_backup() {
-    local timestamp=$(date +%Y%m%d_%H%M%S)
-    local backup_path="$BACKUP_DIR/backup_$timestamp"
+    local timestamp
+    timestamp=$(date +%Y%m%d_%H%M%S)
+    local dest="$BACKUP_DEST_DIR"
+    local staging
+    staging="$(mktemp -d)"
+    local archive="$dest/backup_$timestamp.tar.gz"
 
-    log_info "Создание резервной копии в $backup_path..."
+    log_info "Создание резервной копии в $archive..."
 
-    mkdir -p "$backup_path"
+    mkdir -p "$dest"
 
-    # Копирование конфигурации
+    if [ "$dest" = "$BACKUP_DIR" ]; then
+        log_warn "Копия создаётся на том же хосте, что и данные (каталог $dest)."
+        log_warn "От потери диска или хоста это НЕ защищает."
+        log_warn "Задайте BACKUP_DEST_DIR на внешнее хранилище: $0 backup"
+    fi
+
+    # Каталоги переносятся под именами config/ и data/ независимо от того, где
+    # они лежат на хосте: путь восстановления не должен зависеть от того, как
+    # размечены тома.
+    # COPYFILE_DISABLE=1 убирает служебные файлы `._*`, которые macOS создаёт
+    # рядом с каждым скопированным файлом при переносе расширенных атрибутов.
+    # В архив они попадать не должны: это мусор, который раздувает копию и
+    # ломает проверку целостности при переносе на Linux.
     if [ -d "$CONFIG_DIR" ]; then
-        cp -r "$CONFIG_DIR" "$backup_path/config"
+        COPYFILE_DISABLE=1 cp -r "$CONFIG_DIR" "$staging/config"
     fi
-
-    # Копирование данных (состояния)
     if [ -d "$DATA_DIR" ]; then
-        cp -r "$DATA_DIR" "$backup_path/data"
+        COPYFILE_DISABLE=1 cp -r "$DATA_DIR" "$staging/data"
     fi
 
-    log_info "Резервная копия создана: $backup_path"
-    echo "$backup_path"
+    if [ ! -d "$staging/config" ] && [ ! -d "$staging/data" ]; then
+        log_error "Нечего копировать: нет ни каталога конфигурации, ни каталога данных"
+        log_error "Ожидались: $CONFIG_DIR и $DATA_DIR"
+        rm -rf "$staging"
+        return 1
+    fi
+
+    # Суммы внутри архива, а не рядом с ним: копия, перенесённая в другое
+    # хранилище, должна проверяться на месте, без внешнего файла.
+    if command -v sha256sum >/dev/null 2>&1; then
+        ( cd "$staging" && find . -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS ) 2>/dev/null || log_warn "Не удалось посчитать суммы"
+    else
+        log_warn "sha256sum недоступен: контрольные суммы не рассчитаны"
+    fi
+
+    # Члены архива перечисляются явно: `tar -C ... .` даёт имена с префиксом
+    # `./`, и проверка содержимого копии снаружи её не находит.
+    local members=()
+    [ -d "$staging/config" ] && members+=("config")
+    [ -d "$staging/data" ] && members+=("data")
+    members+=("SHA256SUMS")
+    COPYFILE_DISABLE=1 tar -czf "$archive" -C "$staging" "${members[@]}"
+    rm -rf "$staging"
+
+    # Копия считается годной только после проверки собственной целостности.
+    # Архив, который не читается, хуже отсутствия копии: он выглядит как
+    # защита и обнаруживается при восстановлении.
+    if ! verify_archive "$archive"; then
+        log_error "Созданный архив не прошёл проверку целостности: $archive"
+        return 1
+    fi
+
+    prune_old_backups
+
+    log_info "Резервная копия создана и проверена: $archive"
+    echo "$archive"
+}
+
+# Проверить целостность архива: читаемость и совпадение сумм
+verify_archive() {
+    local archive="$1"
+
+    if [ ! -f "$archive" ]; then
+        log_error "Архив не найден: $archive"
+        return 1
+    fi
+
+    if ! tar -tzf "$archive" >/dev/null 2>&1; then
+        log_error "Архив не читается: $archive"
+        return 1
+    fi
+
+    if ! tar -xzOf "$archive" SHA256SUMS >/dev/null 2>&1; then
+        log_error "В архиве нет файла сумм SHA256SUMS: $archive"
+        return 1
+    fi
+
+    local staging
+    staging="$(mktemp -d)"
+    tar -xzf "$archive" -C "$staging" 2>/dev/null
+    if ( cd "$staging" && sha256sum -c SHA256SUMS >/dev/null 2>&1 ); then
+        rm -rf "$staging"
+        return 0
+    fi
+    rm -rf "$staging"
+    log_error "Контрольные суммы не совпали: $archive"
+    return 1
+}
+
+# Проверить последнюю (или указанную) копию
+verify_backup() {
+    local archive="${1:-}"
+    if [ -z "$archive" ]; then
+        archive=$(latest_archive)
+    fi
+    if [ -z "$archive" ]; then
+        log_error "Резервных копий не найдено в $BACKUP_DEST_DIR"
+        return 1
+    fi
+    log_info "Проверка целостности: $archive"
+    if verify_archive "$archive"; then
+        log_info "Копия целостна: $archive"
+        return 0
+    fi
+    log_error "Копия повреждена: $archive"
+    return 1
+}
+
+# Восстановить данные и конфигурацию из архива
+restore_backup() {
+    local archive="$1"
+
+    if [ -z "$archive" ]; then
+        archive=$(latest_archive)
+    fi
+    if [ -z "$archive" ]; then
+        log_error "Резервных копий не найдено в $BACKUP_DEST_DIR"
+        return 1
+    fi
+
+    # Проверка ДО остановки сервиса и до затирания: восстановление из битой
+    # копии хуже, чем отсутствие восстановления, — оно выглядит как помощь.
+    if ! verify_archive "$archive"; then
+        log_error "Восстановление отменено: копия не прошла проверку целостности"
+        return 1
+    fi
+
+    local safety="$BACKUP_DIR/pre_restore_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$safety"
+    [ -d "$CONFIG_DIR" ] && cp -r "$CONFIG_DIR" "$safety/config"
+    [ -d "$DATA_DIR" ] && cp -r "$DATA_DIR" "$safety/data"
+    log_info "Текущие данные сохранены в $safety"
+
+    local staging
+    staging="$(mktemp -d)"
+    tar -xzf "$archive" -C "$staging"
+
+    [ -d "$staging/config" ] && cp -r "$staging/config/." "$CONFIG_DIR/"
+    [ -d "$staging/data" ] && cp -r "$staging/data/." "$DATA_DIR/"
+    rm -rf "$staging"
+
+    log_info "Восстановлено из $archive"
+    log_warn "Если платформа работала во время восстановления, перезапустите её:"
+    log_warn "  docker compose -f $DOCKER_COMPOSE_FILE restart $PLATFORM_NAME"
+}
+
+# Удалить старые копии сверх лимита
+prune_old_backups() {
+    local keep="${BACKUP_KEEP:-7}"
+    local count
+    count=$(find "$BACKUP_DEST_DIR" -maxdepth 1 -name 'backup_*.tar.gz' 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$count" -le "$keep" ]; then
+        return 0
+    fi
+    local remove=$(( count - keep ))
+    log_info "Ротация копий: удаляю $remove из $count (лимит $keep)"
+    find "$BACKUP_DEST_DIR" -maxdepth 1 -name 'backup_*.tar.gz' 2>/dev/null \
+        | sort | head -n "$remove" | while read -r old; do
+            log_info "  удаляю $old"
+            rm -f "$old"
+        done
+}
+
+latest_archive() {
+    find "$BACKUP_DEST_DIR" -maxdepth 1 -name 'backup_*.tar.gz' 2>/dev/null | sort | tail -n 1
 }
 
 # Проверка здоровья сервиса
@@ -298,8 +476,14 @@ main() {
         backup)
             create_backup
             ;;
+        verify)
+            verify_backup "${2:-}"
+            ;;
+        restore)
+            restore_backup "${2:-}"
+            ;;
         help|*)
-            echo "Usage: $0 {deploy|shadow|rollback|status|health|backup}"
+            echo "Usage: $0 {deploy|shadow|rollback|status|health|backup|verify|restore}"
             echo ""
             echo "Commands:"
             echo "  deploy   - Развернуть платформу (production или shadow mode)"
@@ -307,7 +491,9 @@ main() {
             echo "  rollback - Откатиться к предыдущей версии"
             echo "  status   - Показать статус сервиса"
             echo "  health   - Проверить здоровье сервиса"
-            echo "  backup   - Создать резервную копию"
+            echo "  backup   - Создать сжатую резервную копию с проверкой целостности"
+            echo "  verify   - Проверить целостность копии (последней или указанной)"
+            echo "  restore  - Восстановить данные из копии (последней или указанной)"
             echo ""
             echo "Environment Variables:"
             echo "  SHADOW_MODE=true  - Включить shadow mode"
