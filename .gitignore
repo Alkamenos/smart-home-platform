@@ -154,6 +154,11 @@ deploy/docker/config/
 deploy/docker/data/
 deploy/docker/backups/
 
+# Файл ключа шифрования токенов. Создаётся платформой автоматически в томе
+# данных, права 600. В репозиторий попадать не должен ни при каких условиях:
+# это ключ, которым зашифрованы все токены Home Assistant.
+encryption.key
+
 # ActiveMQ
 activemq-data/
 

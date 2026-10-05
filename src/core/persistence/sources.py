@@ -4,7 +4,6 @@
 Обеспечивает сохранение и загрузку конфигурации источников HA из файловой системы.
 """
 
-import contextlib
 import json
 import logging
 from pathlib import Path
@@ -21,6 +20,14 @@ from core.security.encryption import TokenEncryptor
 
 
 logger = logging.getLogger(__name__)
+
+
+class SourceTokenError(Exception):
+    """Сохранённый токен источника не расшифровывается текущим ключом.
+
+    Отдельный тип, чтобы вызывающий мог отличить «ключ не тот» от «запись
+    повреждена» и не записать шифротекст поверх настоящего токена.
+    """
 
 
 class HASourcePersistence:
@@ -85,10 +92,14 @@ class HASourcePersistence:
             if not source_data:
                 return None
 
-            # Дешифруем токен
-            if self.encryptor:
-                with contextlib.suppress(ValueError):
-                    source_data["token"] = self.encryptor.decrypt(source_data["token"])
+            # Дешифруем токен. Раньше здесь стояло
+            # `with contextlib.suppress(ValueError)`, и при неудачной
+            # расшифровке объект возвращался с токеном-шифротекстом — та же
+            # порча данных, что и в load_all_sources (Known Issue #53).
+            source_data = dict(source_data)
+            source_data["token"] = self._decrypt_token(
+                source_data.get("token", ""), source_data.get("name", "?")
+            )
 
             return HASource(**source_data)
 
@@ -100,7 +111,8 @@ class HASourcePersistence:
         """Загружает все источники.
 
         Returns:
-            Список всех источников
+            Список всех источников. Источник, токен которого не расшифровывается,
+            НЕ возвращается: см. ``_decrypt_token``.
         """
         try:
             sources_data = await self._load_sources_data()
@@ -108,13 +120,10 @@ class HASourcePersistence:
 
             for source_data in sources_data.values():
                 try:
-                    # Дешифруем токен
-                    if self.encryptor:
-                        try:
-                            source_data = source_data.copy()
-                            source_data["token"] = self.encryptor.decrypt(source_data["token"])
-                        except ValueError:
-                            pass
+                    source_data = source_data.copy()
+                    source_data["token"] = self._decrypt_token(
+                        source_data.get("token", ""), source_data.get("name", "?")
+                    )
 
                     source = HASource(**source_data)
                     sources.append(source)
@@ -128,6 +137,40 @@ class HASourcePersistence:
         except Exception as e:
             logger.error(f"Ошибка загрузки источников: {e}")
             return []
+
+    def _decrypt_token(self, stored_token: str, source_name: str) -> str:
+        """Расшифровать сохранённый токен.
+
+        Раньше здесь стояло ``except ValueError: pass``, и это молча портило
+        данные: источник создавался с токеном-шифротекстом, выглядел рабочим,
+        а следующая запись шифровала шифротекст ещё раз. Каждый перезапуск с
+        новым ключом добавлял слой, и восстановить токен становилось невозможно
+        (Known Issue #53).
+
+        Args:
+            stored_token: Значение из хранилища.
+            source_name: Имя источника для сообщения об ошибке.
+
+        Returns:
+            Расшифрованный токен. Если шифрование не настроено, значение
+            возвращается как есть.
+
+        Raises:
+            SourceTokenError: Токен не расшифровывается текущим ключом.
+        """
+        if not self.encryptor or not stored_token:
+            return stored_token
+
+        try:
+            return self.encryptor.decrypt(stored_token)
+        except ValueError as exc:
+            raise SourceTokenError(
+                f"Токен источника «{source_name}» не расшифровывается текущим "
+                f"ключом: {exc}. Источник НЕ загружен, чтобы не записать "
+                f"шифротекст поверх настоящего токена. Восстановите ключ "
+                f"шифрования (файл в томе данных или переменная "
+                f"HOME_ASSISTANT_ENCRYPTION_KEY) либо введите токен заново."
+            ) from exc
 
     async def delete_source(self, source_id: UUID) -> bool:
         """Удаляет источник.

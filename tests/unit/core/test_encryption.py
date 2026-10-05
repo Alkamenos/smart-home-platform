@@ -22,7 +22,11 @@ from __future__ import annotations
 import pytest
 from cryptography.fernet import Fernet
 
-from core.security.encryption import TokenEncryptor, generate_encryption_key
+from core.security.encryption import (
+    EncryptionKeyError,
+    TokenEncryptor,
+    generate_encryption_key,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -139,14 +143,98 @@ class TestKeySources:
         with pytest.raises(ValueError):
             TokenEncryptor().decrypt(explicit.encrypt("test_token_12345"))
 
-    def test_generated_key_differs_between_instances(self):
-        """Без ключа и без переменной окружения каждый экземпляр свой."""
-        first = TokenEncryptor()
-        second = TokenEncryptor()
+    def test_without_key_a_stored_key_file_is_created(self, tmp_path, monkeypatch):
+        """Без ключа и переменной создаётся файл ключа, и он переживает
+        «перезапуск».
 
-        assert first.decrypt(first.encrypt("test_token_12345")) == "test_token_12345"
-        with pytest.raises(ValueError):
-            second.decrypt(first.encrypt("test_token_12345"))
+        Раньше здесь стояло `test_generated_key_differs_between_instances`:
+        тест закреплял дефект как норму, утверждая, что каждый экземпляр
+        получает СВОЙ ключ. Из-за этого сохранённые токены нельзя было
+        расшифровать после перезапуска, а `sources.py` при неудачной
+        расшифровке молча подставлял шифротекст вместо токена (Known Issue
+        #47, #53).
+
+        Теперь ключ берётся из файла в каталоге данных, поэтому два
+        экземпляра — это два «запуска» с одним и тем же ключом.
+        """
+        monkeypatch.delenv("HOME_ASSISTANT_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("ENCRYPTION_KEY_PATH", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+
+        first = TokenEncryptor()
+        key_file = tmp_path / "encryption.key"
+
+        assert key_file.is_file(), "файл ключа должен быть создан"
+        # Второй экземпляр — это «перезапуск»: он обязан прочитать данные,
+        # записанные первым.
+        second = TokenEncryptor()
+        assert second.decrypt(first.encrypt("test_token_12345")) == "test_token_12345"
+
+    def test_explicit_path_beats_environment_variable(self, tmp_path, monkeypatch):
+        """Путь из ENCRYPTION_KEY_PATH приоритетнее пути по умолчанию."""
+        monkeypatch.delenv("HOME_ASSISTANT_ENCRYPTION_KEY", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path / "data"))
+        elsewhere = tmp_path / "secrets"
+        monkeypatch.setenv("ENCRYPTION_KEY_PATH", str(elsewhere / "key"))
+
+        TokenEncryptor()
+
+        assert (elsewhere / "key").is_file()
+        assert not (tmp_path / "data" / "encryption.key").exists()
+
+    def test_existing_key_file_is_not_overwritten(self, tmp_path, monkeypatch):
+        """Существующий ключ читается, а не заменяется новым.
+
+        Если бы файл перезаписывался, каждый запуск получал бы новый ключ и
+        все ранее зашифрованные токены становились бы невосстановимыми.
+        """
+        monkeypatch.delenv("HOME_ASSISTANT_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("ENCRYPTION_KEY_PATH", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+        key_file = tmp_path / "encryption.key"
+        existing = generate_encryption_key()
+        key_file.write_text(existing, encoding="utf-8")
+
+        encryptor = TokenEncryptor()
+
+        assert key_file.read_text(encoding="utf-8").strip() == existing
+        # Ключ из файла настоящий: им зашифровано значение читается обратно.
+        expected = TokenEncryptor(encryption_key=existing)
+        assert encryptor.decrypt(expected.encrypt("test_token_12345")) == "test_token_12345"
+
+    def test_key_file_is_not_world_readable(self, tmp_path, monkeypatch):
+        """Файл ключа доступен только владельцу.
+
+        Иначе токены читаются любым пользователем хоста, и шифрование теряет
+        смысл.
+        """
+        monkeypatch.delenv("HOME_ASSISTANT_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("ENCRYPTION_KEY_PATH", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+
+        TokenEncryptor()
+
+        mode = (tmp_path / "encryption.key").stat().st_mode & 0o777
+        assert mode == 0o600, f"ожидались права 600, получено {mode:o}"
+
+    def test_empty_key_file_raises_instead_of_regenerating(self, tmp_path, monkeypatch):
+        """Пустой файл ключа — ошибка, а не повод сгенерировать новый ключ.
+
+        Новый ключ здесь означал бы, что платформа продолжит работу и
+        зашифрует уже сохранённые значения повторно, то есть токены будут
+        разрушены безвозвратно.
+        """
+        monkeypatch.delenv("HOME_ASSISTANT_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("ENCRYPTION_KEY_PATH", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+        key_file = tmp_path / "encryption.key"
+        key_file.write_text("   \n", encoding="utf-8")
+
+        with pytest.raises(EncryptionKeyError):
+            TokenEncryptor()
+
+        # Файл не перезаписан: пустой остался пустым.
+        assert not key_file.read_text(encoding="utf-8").strip()
 
     def test_short_arbitrary_key_is_accepted_via_fallback(self):
         """Ключ произвольной длины приводится к корректному через запасное кодирование.

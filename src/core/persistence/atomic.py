@@ -89,7 +89,7 @@ def atomic_write_json(path: Path, data: Any, *, indent: int | None = 2) -> None:
             temp_path.unlink(missing_ok=True)
 
 
-def atomic_write_text(path: Path | str, text: str) -> None:
+def atomic_write_text(path: Path | str, text: str, mode: int | None = None) -> None:
     """Записать текст атомарно.
 
     Нужна для файлов, которые пишутся не через ``json.dump``: манифест
@@ -99,6 +99,10 @@ def atomic_write_text(path: Path | str, text: str) -> None:
     Args:
         path: Куда писать.
         text: Содержимое файла.
+        mode: Права на файл, например ``0o600`` для секретов. Выставляются на
+            временном файле **до** записи содержимого: иначе секрет успевает
+            появиться читаемым всеми. Если не задано, действуют права по
+            умолчанию.
 
     Raises:
         OSError: Если запись или замена файла не удалась.
@@ -108,6 +112,13 @@ def atomic_write_text(path: Path | str, text: str) -> None:
     temp_path = path.with_suffix(f"{path.suffix}.tmp.{os.getpid()}.{time.time_ns()}")
 
     try:
+        if mode is not None:
+            # Сначала создать пустой файл и выставить права, и только потом
+            # писать содержимое. Обратный порядок оставляет окно, в котором
+            # секрет доступен всем, кто может читать каталог.
+            temp_path.touch()
+            os.chmod(temp_path, mode)
+
         with open(temp_path, "w", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
