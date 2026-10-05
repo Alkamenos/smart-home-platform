@@ -230,8 +230,12 @@ restore_backup() {
         return 1
     fi
 
-    local safety="$BACKUP_DIR/pre_restore_$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$safety"
+    # Имя через mktemp, а не по секундам: два восстановления в одну секунду давали
+    # одинаковое имя, и `cp -r` в уже существующий каталог вкладывал данные в
+    # самих себя (`config/config/manifest.yaml`). Страховочная копия от этого
+    # становилась нечитаемой — то есть переставала быть страховкой.
+    local safety
+    safety="$(mktemp -d "$BACKUP_DIR/pre_restore_XXXXXXXX")"
     [ -d "$CONFIG_DIR" ] && cp -r "$CONFIG_DIR" "$safety/config"
     [ -d "$DATA_DIR" ] && cp -r "$DATA_DIR" "$safety/data"
     log_info "Текущие данные сохранены в $safety"
