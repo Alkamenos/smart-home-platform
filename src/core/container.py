@@ -425,6 +425,11 @@ class Container:
             dispatcher=self.dispatcher,
             event_router=self.event_router,
             fsm_bridge=self.fsm_bridge,
+            # Сторож обязан попасть в контекст: shutdown() останавливает его
+            # первым, и без ссылки здесь проверка `if self.watchdog is not None`
+            # была ложной, то есть мёртвой веткой. Сторож читает состояния
+            # движка, поэтому порядок в shutdown() важен (FR-017).
+            watchdog=self._watchdog,
         )
 
     def _start_watchdog(self) -> None:

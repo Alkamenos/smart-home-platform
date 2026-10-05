@@ -50,6 +50,11 @@ services:
       # Логи HA (опционально, для интеграции)
       - /var/log/homeassistant:/var/log/homeassistant:ro
 
+    # Запас Docker на завершение больше таймаута uvicorn (8 с), иначе Docker
+    # по умолчанию (10 с) может убить процесс SIGKILL, не дав выполниться
+    # ctx.shutdown(): сторож не остановится, сессия адаптера не закроется.
+    stop_grace_period: 20s
+
     # Health check
     healthcheck:
       test: [ "CMD", "python", "-m", "src.cli.health_check" ]

@@ -153,7 +153,18 @@ async def run_platform():
         logger.info("✅ FastAPI app created successfully")
 
         # Принудительно ставим уровень DEBUG для всех логов Uvicorn
-        config = uvicorn.Config(app, host="0.0.0.0", port=8125, log_level="debug")
+        config = uvicorn.Config(
+            app,
+            host="0.0.0.0",
+            port=8125,
+            log_level="debug",
+            # Предел ожидания при завершении. Дефолт uvicorn — None, то есть
+            # ждать вечно, а WS-ручки держат соединение бесконечным циклом
+            # `await websocket.receive_text()`. Без предела Docker выждет
+            # stop_grace_period и убьёт процесс SIGKILL, после чего
+            # `ctx.shutdown()` не выполнится вовсе.
+            timeout_graceful_shutdown=8,
+        )
         server = uvicorn.Server(config)
         logger.info("✅ Uvicorn server configured on port 8125 (log_level=debug)")
 

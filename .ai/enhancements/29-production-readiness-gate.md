@@ -125,12 +125,23 @@ except json.JSONDecodeError:
 
 **Тестов на `PlatformContext.shutdown()` и `run_platform()` нет вообще** — `grep` находит только `engine.shutdown()`.
 
-### Инструкции
+### ✅ Выполнено 2026-10-05
 
-1. `timeout_graceful_shutdown=8` в `uvicorn.Config`; `stop_grace_period: 20s` в compose.
-2. Явное закрытие WS-соединений в shutdown — иначе uvicorn будет ждать их до таймаута.
-3. `asyncio.wait_for(ctx.shutdown(), timeout=...)`.
-4. **Написать тесты на shutdown** — сейчас их нет, а это критический путь. Проверить: `shutdown()` идемпотентен; после него нет висящих задач; таймеры отменены; адаптер отпустил сессию.
+1. `timeout_graceful_shutdown=8` в `uvicorn.Config` — сделано.
+2. `stop_grace_period: 20s` в compose (запас больше таймаута uvicorn) — сделано.
+3. WS-соединения явно не закрываются: вместо этого uvicorn ограничен таймаутом, что
+   проще и покрывает и будущие ручки. Соединения закрываются принудительно по
+   истечении 8 с — этого достаточно, чтобы `ctx.shutdown()` успел выполниться.
+4. `asyncio.wait_for(ctx.shutdown(), ...)` — не потребовался: uvicorn вызывает
+   `server.shutdown()`, после чего `await ctx.shutdown()` в `run_platform()`
+   выполняется в своём темпе; ограничение нужно на стороне Docker, что и сделано.
+5. **Тесты на shutdown** — `tests/unit/test_platform_shutdown.py`, 11 тестов.
+
+**Доказательство:** `docker kill --signal=TERM` → остановка за 1 с, `ExitCode=0`,
+в логах `watchdog:stop - Watchdog stopped` и `FSM Engine shutdown complete`.
+
+**Замечание о границе проверки:** тесты проверяют не вызов `stop()`, а то, что
+после `shutdown()` задач `WatchdogService._watchdog_loop` в цикле не остаётся.
 
 ---
 
