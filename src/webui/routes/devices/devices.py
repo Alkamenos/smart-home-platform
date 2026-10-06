@@ -11,6 +11,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
 from core.models.device import Device
@@ -118,6 +119,14 @@ class DeviceResponse(BaseModel):
     created_at: str
     updated_at: str
     fsm: list[FSMStateView] = Field(default_factory=list, description="States of device FSMs")
+    behaviors: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Поведения устройства из манифеста: шаблон, приоритет и параметры. "
+            "Форма правки предзаполняется из этого поля, поэтому без него "
+            "пользователь увидел бы пустые параметры и стёр бы их"
+        ),
+    )
     automation: AutomationInfo = Field(
         default_factory=lambda: AutomationInfo(configured=False, reason="no_automation"),
         description="Automation availability for the device",
@@ -187,8 +196,13 @@ async def get_devices(
             f"(администратор: {is_admin})"
         )
         fsm_views = _build_device_fsm_views(request, devices)
+        behaviors_map = _build_device_behaviors_map(request, devices)
         return [
-            _to_device_response(device, fsm_views.get(device.ha_entity_id, []))
+            _to_device_response(
+                device,
+                fsm_views.get(device.ha_entity_id, []),
+                behaviors_map.get(device.ha_entity_id, []),
+            )
             for device in devices
         ]
 
@@ -227,7 +241,56 @@ def _build_device_fsm_views(request: Request, devices: list[Any]) -> dict[str, l
     return grouped
 
 
-def _to_device_response(device: Any, fsm_views: list[FSMStateView] | None = None) -> DeviceResponse:
+def _build_device_behaviors_map(
+    request: Request, devices: list[Any]
+) -> dict[str, list[dict[str, Any]]]:
+    """Собирает поведения устройств из манифеста по entity_id.
+
+    Args:
+        request: HTTP-запрос (из него берётся сервис жизненного цикла).
+        devices: Устройства выборки.
+
+    Returns:
+        Словарь ``entity_id`` → поведения.
+    """
+    service = getattr(request.app.state, "lifecycle_service", None)
+    if service is None:
+        logger.debug("Lifecycle service unavailable: device behaviors omitted")
+        return {}
+    return {
+        device.ha_entity_id: _device_behaviors(service, device.ha_entity_id) for device in devices
+    }
+
+
+def _device_behaviors(lifecycle: Any, ha_entity_id: str) -> list[dict[str, Any]]:
+    """Возвращает поведения устройства из манифеста.
+
+    Поведения хранятся в манифесте, а не в модели устройства, поэтому запрашиваются
+    отдельно. Устройство, которого нет в манифесте, даёт пустой список, а не ошибку:
+    ответ устройства не должен зависеть от целостности манифеста.
+
+    Args:
+        lifecycle: Сервис жизненного цикла либо None, если он недоступен.
+        ha_entity_id: Идентификатор сущности Home Assistant.
+
+    Returns:
+        Список поведений в виде словарей.
+    """
+    manifest = getattr(lifecycle, "manifest", None)
+    if manifest is None or not ha_entity_id:
+        return []
+    for room in getattr(manifest, "rooms", []):
+        for config in room.devices:
+            if config.id == ha_entity_id:
+                return [behavior.model_dump() for behavior in config.behaviors]
+    return []
+
+
+def _to_device_response(
+    device: Any,
+    fsm_views: list[FSMStateView] | None = None,
+    behaviors: list[dict[str, Any]] | None = None,
+) -> DeviceResponse:
     """Собирает ответ API из модели устройства.
 
     Поля конфигурации (``display_name``, ``description``, ``location``,
@@ -240,6 +303,7 @@ def _to_device_response(device: Any, fsm_views: list[FSMStateView] | None = None
     Args:
         device: Модель устройства.
         fsm_views: Состояния автоматов устройства.
+        behaviors: Поведения устройства из манифеста; при отсутствии — пустой список.
 
     Returns:
         Ответ API с устройством.
@@ -262,6 +326,7 @@ def _to_device_response(device: Any, fsm_views: list[FSMStateView] | None = None
         created_at=device.created_at.isoformat(),
         updated_at=device.updated_at.isoformat(),
         fsm=views,
+        behaviors=behaviors or [],
         automation=build_automation_info([view.fsm_id for view in views]),
     )
 
@@ -290,7 +355,9 @@ async def get_device(request: Request, device_id: UUID) -> DeviceResponse:
 
     await _require_access_or_403(request, device_id, _ROLE_VIEWER)
 
-    return _to_device_response(device)
+    return _to_device_response(
+        device, behaviors=_device_behaviors(get_lifecycle_service(request), device.ha_entity_id)
+    )
 
 
 @router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -445,7 +512,10 @@ async def update_device_config(
             after=after_snapshot,
         )
 
-        return _to_device_response(device)
+        return _to_device_response(
+            device,
+            behaviors=_device_behaviors(get_lifecycle_service(http_request), device.ha_entity_id),
+        )
 
     except ValueError as e:
         logger.error(f"Ошибка валидации при обновлении конфигурации устройства: {e}")
@@ -924,7 +994,14 @@ async def apply_devices(
                 added += 1
             else:
                 updated += 1
-            applied.append(_to_device_response(device))
+            applied.append(
+                _to_device_response(
+                    device,
+                    behaviors=_device_behaviors(
+                        get_lifecycle_service(request), device.ha_entity_id
+                    ),
+                )
+            )
         except Exception as e:
             reason = str(e)
             logger.error(f"Не удалось применить {selection.device_entity_id}: {reason}")
@@ -1030,3 +1107,113 @@ def _build_behaviors(selection: DeviceSelection) -> list[BehaviorConfig]:
     if selection.behavior_template:
         return [BehaviorConfig(template=selection.behavior_template, priority=10)]
     return []
+
+
+# ============ Пункт 4: правка поведений устройства ============
+
+
+class BehaviorsUpdateRequest(BaseModel):
+    """Запрос замены поведений устройства."""
+
+    behaviors: list[BehaviorSelection] = Field(
+        description="Новый список поведений; пустой список снимает все поведения"
+    )
+
+
+class BehaviorsUpdateResponse(BaseModel):
+    """Ответ на правку поведений."""
+
+    device_id: str = Field(description="ID устройства")
+    behaviors: list[dict] = Field(description="Поведения после сохранения")
+    inert_params: list[str] = Field(
+        default_factory=list,
+        description="Параметры, которые не влияют на поведение (Known Issue #71)",
+    )
+
+
+@router.put("/{device_id}/behaviors", response_class=JSONResponse)  # type: ignore[untyped-decorator]
+async def update_device_behaviors(
+    device_id: UUID,
+    body: BehaviorsUpdateRequest,
+    http_request: Request,
+) -> JSONResponse:
+    """Заменяет поведения устройства, проверяя параметры по контракту.
+
+    Проверка идёт до записи и до обращения к сервису жизненного цикла: устройство,
+    чьи параметры отвергнуты, не должно менять состояние и не должно попадать в
+    журнал аудита как обновлённое.
+
+    Args:
+        device_id: Идентификатор устройства.
+        body: Новый список поведений.
+        http_request: HTTP-запрос (идентификация из middleware).
+
+    Returns:
+        Ответ с сохранёнными поведениями и перечнем инертных параметров.
+
+    Raises:
+        HTTPException: 404 если устройство не найдено, 403 без роли контроллера,
+            400 при нарушении одного из пяти слоёв проверки.
+    """
+    from core.behavior_params import ParamError, load_contract, validate_behavior
+
+    device_service = get_device_service(http_request)
+    await _require_access_or_403(http_request, device_id, _ROLE_CONTROLLER)
+
+    device = await device_service.get_device(device_id)
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Устройство {device_id} не найдено",
+        )
+
+    contract = load_contract()
+    inert: list[str] = []
+    try:
+        for selection in body.behaviors:
+            inert.extend(validate_behavior(selection.template, selection.params, contract))
+    except ParamError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+    room_id = _room_of_device(get_lifecycle_service(http_request), device.ha_entity_id)
+    behaviors = [
+        BehaviorConfig(template=item.template, priority=item.priority, params=item.params)
+        for item in body.behaviors
+    ]
+    try:
+        await get_lifecycle_service(http_request).update_device(
+            device, room_id=room_id, behaviors=behaviors
+        )
+    except Exception as error:  # noqa: BLE001 — причина уходит в текст ответа
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Не удалось сохранить поведения: {error}",
+        ) from error
+
+    # Ответ отдаёт поведения, прочитанные из манифеста ПОСЛЕ записи, а не
+    # эхо запроса: если сервис нормализует значения (дополняет умолчания,
+    # отбрасывает пустые), пользователь должен увидеть то, что реально сохранено.
+    return JSONResponse(
+        BehaviorsUpdateResponse(
+            device_id=str(device_id),
+            behaviors=_device_behaviors(get_lifecycle_service(http_request), device.ha_entity_id),
+            inert_params=sorted(set(inert)),
+        ).model_dump()
+    )
+
+
+def _room_of_device(lifecycle: Any, ha_entity_id: str) -> str:
+    """Возвращает комнату устройства по его entity_id.
+
+    Args:
+        lifecycle: Сервис жизненного цикла.
+        ha_entity_id: Идентификатор сущности Home Assistant.
+
+    Returns:
+        Идентификатор комнаты либо `unassigned`.
+    """
+    for room in getattr(lifecycle.manifest, "rooms", []):
+        for config in room.devices:
+            if config.id == ha_entity_id:
+                return room.id
+    return "unassigned"
