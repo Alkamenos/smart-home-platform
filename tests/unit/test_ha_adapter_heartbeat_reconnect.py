@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -200,3 +201,23 @@ async def _noop(self: Any) -> None:
     Args:
         self: Не используется.
     """
+
+
+class TestStalePathIsObservable:
+    """Путь «устаревшее соединение» обязан оставлять след в журнале."""
+
+    def test_should_log_before_and_after_closing_stale_connection(self) -> None:
+        """Обе точки фиксируются: до закрытия и после.
+
+        Без этого повторение дефекта выглядит как «лог пообещал переподключение и
+        замолчал» — выяснять причину приходится вслепую. Именно это и стоило
+        прошлого расследования (Known Issue #70).
+        """
+        source = (
+            Path(__file__).resolve().parents[2] / "src" / "adapters" / "ha_adapter.py"
+        ).read_text(encoding="utf-8")
+
+        assert "closing stale connection" in source
+        assert "stale connection closed" in source
+        # Порядок важен: «после» должно идти после закрытия, иначе запись врёт.
+        assert source.index("closing stale connection") < source.index("stale connection closed")

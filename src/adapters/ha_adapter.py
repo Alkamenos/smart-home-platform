@@ -664,10 +664,16 @@ class HAAdapter:
                         logger.warning(
                             f"HAAdapter: No events for {time_since:.0f}s, connection is stale - forcing reconnect"
                         )
+                        # Инструментация #70: в проде после этой строки журнал
+                        # замолкал полностью — было неясно, доходит ли heartbeat
+                        # до закрытия соединения. Теперь видно, где именно
+                        # остановка, без изменения поведения.
+                        logger.info("HAAdapter: closing stale connection")
                         if self._ws_client:
                             self._ws_client.connected = False
                             with contextlib.suppress(Exception):
                                 await self._ws_client.close()
+                        logger.info("HAAdapter: stale connection closed")
                         continue
 
                 # Send ping to keep connection alive
