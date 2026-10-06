@@ -219,5 +219,18 @@ class TestStalePathIsObservable:
 
         assert "closing stale connection" in source
         assert "stale connection closed" in source
+        # Уровень обязателен и проверяется кодом, а не глазами: логи адаптера
+        # наследуют корневой обработчик, где INFO не виден. На INFO обе строки
+        # молчали, и инструментация не могла ответить на вопрос, для которого
+        # была сделана — это и случилось в проде.
+        lines = source.splitlines()
+        for marker in ("closing stale connection", "stale connection closed"):
+            matching = [line for line in lines if marker in line and "logger." in line]
+            assert matching, f"запись {marker} не найдена рядом с вызовом журнала"
+            for line in matching:
+                assert "logger.warning" in line, (
+                    f"запись {marker} должна быть WARNING, а иначе она не видна "
+                    f"в журнале: {line.strip()}"
+                )
         # Порядок важен: «после» должно идти после закрытия, иначе запись врёт.
         assert source.index("closing stale connection") < source.index("stale connection closed")

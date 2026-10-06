@@ -664,16 +664,19 @@ class HAAdapter:
                         logger.warning(
                             f"HAAdapter: No events for {time_since:.0f}s, connection is stale - forcing reconnect"
                         )
-                        # Инструментация #70: в проде после этой строки журнал
-                        # замолкал полностью — было неясно, доходит ли heartbeat
-                        # до закрытия соединения. Теперь видно, где именно
-                        # остановка, без изменения поведения.
-                        logger.info("HAAdapter: closing stale connection")
+                        # Инструментация #70. Уровень — WARNING, и это не
+                        # вкусовое решение: логи адаптера не имеют собственного
+                        # обработчика и наследуют корневой, где INFO не виден.
+                        # Проверено в проде: от модуля adapters.ha_adapter в
+                        # журнале ноль строк, а эта самая ветка печаталась
+                        # единственным WARNING. На INFO инструментация молчала
+                        # и не могла ответить на вопрос, для которого сделана.
+                        logger.warning("HAAdapter: closing stale connection")
                         if self._ws_client:
                             self._ws_client.connected = False
                             with contextlib.suppress(Exception):
                                 await self._ws_client.close()
-                        logger.info("HAAdapter: stale connection closed")
+                        logger.warning("HAAdapter: stale connection closed, heartbeat will resume")
                         continue
 
                 # Send ping to keep connection alive
