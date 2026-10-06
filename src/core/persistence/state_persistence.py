@@ -147,7 +147,9 @@ class StatePersistence:
         with file_lock(self.storage_path):
             atomic_write_json(self.storage_path, data)
 
-    def save_state(self, entity_id: str, state: str, context: dict) -> None:
+    def save_state(
+        self, entity_id: str, state: str, context: dict, entered_at: float | None = None
+    ) -> None:
         """Сохранить состояние автомата.
 
         Запись идёт через общий атомарный хелпер :func:`atomic_write_json`
@@ -163,15 +165,23 @@ class StatePersistence:
             entity_id: Идентификатор автомата.
             state: Имя состояния.
             context: Контекст состояния.
+            entered_at: Настенное время входа в состояние. Сохраняется, чтобы
+                после перезапуска можно было восстановить отложенный переход с
+                остатком срока, а не заново на полный (Known Issue #78).
         """
         self._ensure_storage_dir()
 
         with file_lock(self.storage_path):
             data = self._load_data()
-            data[entity_id] = {"state": state, "context": context}
+            entry: dict = {"state": state, "context": context}
+            if entered_at is not None:
+                entry["entered_at"] = entered_at
+            data[entity_id] = entry
             atomic_write_json(self.storage_path, data)
 
-    async def save_state_async(self, entity_id: str, state: str, context: dict) -> None:
+    async def save_state_async(
+        self, entity_id: str, state: str, context: dict, entered_at: float | None = None
+    ) -> None:
         """Сохранить состояние, не блокируя event loop.
 
         ``save_state`` синхронный и делает ``fsync`` — на медленном диске это
@@ -182,8 +192,29 @@ class StatePersistence:
             entity_id: Идентификатор автомата.
             state: Имя состояния.
             context: Контекст состояния.
+            entered_at: Настенное время входа в состояние; см. :meth:`save_state`.
         """
-        await asyncio.to_thread(self.save_state, entity_id, state, context)
+        await asyncio.to_thread(self.save_state, entity_id, state, context, entered_at)
+
+    def load_state_entry(self, entity_id: str) -> dict | None:
+        """Прочитать запись автомата целиком, вместе со временем входа в состояние.
+
+        Отдельный метод нужен движку автоматов: восстановленному состоянию
+        требуется не только имя, но и время входа — по нему считается остаток
+        отложенного перехода. `load_state` эту часть записи отбрасывал, поэтому
+        после перезапуска таймер не восстанавливался вовсе (Known Issue #78).
+
+        Args:
+            entity_id: Идентификатор автомата.
+
+        Returns:
+            Запись состояния как есть в файле либо None, если её нет.
+        """
+        data = self._load_data()
+        entry = data.get(entity_id)
+        if not isinstance(entry, dict):
+            return None
+        return entry
 
     def load_state(self, entity_id: str) -> tuple[str, dict] | None:
         """
@@ -196,11 +227,10 @@ class StatePersistence:
             Optional[Tuple[str, dict]]: A tuple of (state, context) if found,
                                         None if no saved state exists.
         """
-        data = self._load_data()
-        if entity_id not in data:
+        entry = self.load_state_entry(entity_id)
+        if entry is None:
             return None
 
-        entry = data[entity_id]
         state = entry.get("state")
         context = entry.get("context", {})
 

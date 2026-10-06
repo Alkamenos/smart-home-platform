@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from adapters.ha_adapter import HAAdapter, SimpleHAWebSocketClient
+from adapters.ha_adapter import AlwaysExecuteGate, HAAdapter, SimpleHAWebSocketClient
 
 
 #: Ожидаемая последовательность пауз экспоненциального отката: старт 1 с,
@@ -279,9 +279,14 @@ class TestHAAdapterServiceCalls:
     @pytest.mark.asyncio
     async def test_call_service_pyscript_mode_no_hass(self):
         """Pyscript mode without hass should return False."""
+        # Ворота выхода обязательны: `call_service` обращается к `_deployment`
+        # (Known Issue #77). Адаптер, собранный в обход `__init__`, оставлял поле
+        # неопределённым, и проверка падала AttributeError — то есть проверяла не
+        # отказ, а отсутствие атрибута.
         adapter = HAAdapter.__new__(HAAdapter)
         adapter._mode = "pyscript"
         adapter._hass = None
+        adapter._deployment = AlwaysExecuteGate()
         adapter._generate_trace_id = lambda: "test123"
 
         result = await adapter.call_service(
@@ -315,6 +320,7 @@ class TestHAAdapterServiceCalls:
         adapter._mode = "websocket"
         adapter._ws_client = MagicMock()
         adapter._ws_client.call_service = AsyncMock(return_value={"result": "success"})
+        adapter._deployment = AlwaysExecuteGate()
         adapter._generate_trace_id = lambda: "test123"
 
         result = await adapter.call_service(
@@ -333,6 +339,7 @@ class TestHAAdapterServiceCalls:
         adapter = HAAdapter.__new__(HAAdapter)
         adapter._mode = "websocket"
         adapter._ws_client = None
+        adapter._deployment = AlwaysExecuteGate()
         adapter._generate_trace_id = lambda: "test123"
 
         result = await adapter.call_service(
@@ -350,6 +357,7 @@ class TestHAAdapterServiceCalls:
         adapter._mode = "websocket"
         adapter._ws_client = MagicMock()
         adapter._ws_client.call_service = AsyncMock(side_effect=Exception("WS error"))
+        adapter._deployment = AlwaysExecuteGate()
         adapter._generate_trace_id = lambda: "test123"
 
         result = await adapter.call_service(

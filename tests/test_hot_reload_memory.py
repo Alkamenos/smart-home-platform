@@ -22,11 +22,24 @@ class MockPersistence:
     def __init__(self):
         self._data = {}
 
-    def save_state(self, entity_id: str, state: str, context: dict) -> None:
+    # `entered_at` добавлен в контракт `save_state` вместе с починкой #78:
+    # движок передаёт настенное время входа, чтобы после перезапуска можно было
+    # восстановить остаток отложенного перехода. Заглушка повторяет контракт
+    # настоящего `StatePersistence` — иначе проверка падала бы на подписи, а не
+    # на памяти.
+    def save_state(
+        self, entity_id: str, state: str, context: dict, entered_at: float | None = None
+    ) -> None:
         self._data[entity_id] = (state, context)
 
     def load_state(self, entity_id: str) -> tuple[str, dict] | None:
         return self._data.get(entity_id)
+
+    def load_state_entry(self, entity_id: str) -> dict | None:
+        entry = self._data.get(entity_id)
+        if entry is None:
+            return None
+        return {"state": entry[0], "context": entry[1]}
 
 
 def create_test_fsm_definition(entity_id: str, timeout_sec: float = 1.0) -> FSMDefinition:

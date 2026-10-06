@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -309,14 +310,26 @@ class FSMEngine:
             saved_state, saved_context = restored_state
             # Validate that the saved state is valid for this FSM
             if saved_state in definition.states:
+                # Время входа берётся из сохранённых данных, а не подставляется
+                # заново: `entered_at` — монотонные часы цикла, поэтому при
+                # восстановлении «сейчас» нужно откатить на то время, которое
+                # состояние уже пролежало. Иначе остаток отложенного перехода
+                # считался бы от старта контейнера (Known Issue #78).
+                restored_age = self._restored_state_age(definition.entity_id)
+                entered_at = loop_time() - restored_age
                 self._states[definition.entity_id] = State(
                     current_state=saved_state,
-                    entered_at=loop_time(),
+                    entered_at=entered_at,
                     context=saved_context,
                 )
                 logger.info(
-                    f"Registered FSM for entity {definition.entity_id} with restored state '{saved_state}'"
+                    f"Registered FSM for entity {definition.entity_id} with restored state "
+                    f"'{saved_state}' (state held for {restored_age:.1f}s)"
                 )
+                # Таймер восстанавливается вместе с состоянием: без него
+                # автомат ждал бы триггера, который не придёт. Взводится здесь,
+                # а не в пути перехода, потому что перехода при старте нет.
+                self._schedule_restored_timeout(definition, saved_state, restored_age)
             else:
                 logger.warning(
                     f"Saved state '{saved_state}' for entity {definition.entity_id} is invalid, "
@@ -715,12 +728,19 @@ class FSMEngine:
             # прямо из корутины перехода останавливал event loop на время
             # записи — при нескольких автоматах это складывалось в задержки
             # на WebSocket и срабатывания сторожа.
+            #
+            # `entered_at` передаётся настенным временем: по нему после
+            # перезапуска восстанавливается остаток отложенного перехода. Без
+            # него состояние восстанавливалось, а таймер нет (Known Issue #78).
             if self._persistence is not None:
+                wall_entered_at = time.time()
                 saver = getattr(self._persistence, "save_state_async", None)
                 if saver is not None:
-                    await saver(entity_id, transition.to_state, new_context)
+                    await saver(entity_id, transition.to_state, new_context, wall_entered_at)
                 else:
-                    self._persistence.save_state(entity_id, transition.to_state, new_context)
+                    self._persistence.save_state(
+                        entity_id, transition.to_state, new_context, wall_entered_at
+                    )
 
             log.info(
                 f"Entity {entity_id}: Transition '{current_state.current_state}' -> '{transition.to_state}' "
@@ -772,6 +792,76 @@ class FSMEngine:
             entity_id, event, current_state.current_state, REASON_GUARD_FAILED, trace_id
         )
         return False
+
+    def _restored_state_age(self, entity_id: str) -> float:
+        """Сколько секунд восстановленное состояние уже пролежало.
+
+        Время входа хранится настенным (`time.time()`), потому что монотонные
+        часы цикла после перезапуска бессмысленны: они отсчитываются заново от
+        старта процесса и ничего не говорят о том, сколько автомат пролежал в
+        состоянии до остановки.
+
+        Args:
+            entity_id: Идентификатор автомата.
+
+        Returns:
+            Возраст состояния в секундах; 0.0, если время входа не сохранено
+            (состояния, записанные прежней версией платформы).
+        """
+        if self._persistence is None:
+            return 0.0
+
+        loader = getattr(self._persistence, "load_state_entry", None)
+        if loader is None:
+            return 0.0
+
+        entry = loader(entity_id) or {}
+        entered_at = entry.get("entered_at")
+        if not isinstance(entered_at, (int, float)) or entered_at <= 0:
+            return 0.0
+
+        age = time.time() - float(entered_at)
+        # Метка из будущего означает рассинхронизацию часов, а не состояние,
+        # которое пролежало отрицательное время.
+        return max(0.0, age)
+
+    def _schedule_restored_timeout(self, definition: FSMDefinition, state: str, age: float) -> None:
+        """Взвести отложенный переход для восстановленного состояния.
+
+        Остаток считается от фактического времени в состояние, а не от старта
+        контейнера. Иначе перезапуск продлевал бы свечение: состояние, пролежав
+        25 с из 30, получало бы ещё 30 вместо оставшихся 5, и с каждым
+        перезапуском расхождение росло бы.
+
+        Args:
+            definition: Определение автомата.
+            state: Восстановленное имя состояния.
+            age: Сколько секунд состояние уже пролежало, сек.
+        """
+        timeout_sec = self._outgoing_timeout(definition.entity_id, state)
+        if timeout_sec is None:
+            return
+
+        remaining = max(0.0, timeout_sec - age)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # Без работающего цикла таймер взвести нечем: задачу создать негде.
+            # Сборка контейнера в тестах проходит без цикла, и это не должно
+            # быть отказом регистрации автомата (ср. FR-016).
+            logger.warning(
+                f"Entity {definition.entity_id}: restored state '{state}' has a "
+                f"{timeout_sec}s timeout, but no running event loop — timer not armed"
+            )
+            return
+
+        self._timers[definition.entity_id] = asyncio.create_task(
+            self._timeout_handler(definition.entity_id, remaining, "restored")
+        )
+        logger.warning(
+            f"Entity {definition.entity_id}: restored state '{state}', timer armed for "
+            f"{remaining:.1f}s of {timeout_sec:.1f}s (state held for {age:.1f}s)"
+        )
 
     @staticmethod
     def _incoming_timeout(definition: FSMDefinition, transition: Transition) -> float | None:
