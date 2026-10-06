@@ -66,6 +66,10 @@ class PlatformContext:
         Порядок важен: сторож читает состояния движка, поэтому он останавливается
         первым, а движок — после него (FR-017).
         """
+        # ВИДИМО: shutdown() — единственный вызывающий adapter.stop() в рантайме
+        # (#70). Запись нужна, чтобы отличить остановку по внешнему сигналу от
+        # остановки внутри процесса; на info она не видна.
+        logger.warning("Container.shutdown() called")
         if self.watchdog is not None:
             await self.watchdog.stop()
         await self.adapter.stop()

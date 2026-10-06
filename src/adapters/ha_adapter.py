@@ -589,11 +589,7 @@ class HAAdapter:
 
                         reason = "listen task ended"
                         if listen_task in done:
-                            try:
-                                listen_task.result()
-                            except Exception as e:
-                                reason = f"listen task failed: {e}"
-                                log.warning(f"HAAdapter: listen_task ended unexpectedly: {e}")
+                            reason = self._listen_task_reason(listen_task, log)
                     else:
                         # Задача чтения отсутствует или уже завершилась. Ждать
                         # дальше нечего: в ожидании остался бы только флаг
@@ -651,6 +647,36 @@ class HAAdapter:
                 logger.warning("HAAdapter: backoff skipped, shutdown_event is set")
 
         logger.warning("HAAdapter: reconnect loop exited")
+
+    @staticmethod
+    def _listen_task_reason(listen_task: asyncio.Task[Any], log: Any) -> str:
+        """Классифицирует завершение задачи чтения.
+
+        Отдельный метод, а не три строки в цикле, потому что именно тут
+        исходное исключение важно различать, а различение легко потерять:
+        `CancelledError` не наследует `Exception`, поэтому `listen_task.result()`
+        на отменённой задаче уходил в обработчик отмены самого цикла, цикл
+        выходил, и переподключения не происходило никогда (#70).
+
+        Отмена задачи чтения — ожидаемый исход при закрытии устаревшего
+        соединения: так её останавливает heartbeat. Это обрыв, а не остановка
+        платформы.
+
+        Args:
+            listen_task: Задача чтения.
+            log: Журнал соединения.
+
+        Returns:
+            Причина завершения для `_record_disconnect`.
+        """
+        if listen_task.cancelled():
+            return "listen task cancelled"
+        try:
+            listen_task.result()
+        except Exception as error:
+            log.warning(f"HAAdapter: listen_task ended unexpectedly: {error}")
+            return f"listen task failed: {error}"
+        return "listen task ended"
 
     async def _handle_ws_state_change(
         self,
@@ -745,6 +771,12 @@ class HAAdapter:
             pass
 
     async def stop(self) -> None:
+        # ВИДИМО: единственное место в коде, где отменяется задача цикла
+        # переподключения (#70). Пока запись шла на info, было невозможно отличить
+        # «отменил stop()» от «отмена пришла изнутри» — обе выглядели одинаково.
+        logger.warning(
+            f"HAAdapter: stop() called, cancelling reconnect task (task={self._reconnect_task!r})"
+        )
         logger.info("HAAdapter: initiating graceful shutdown")
         self._shutdown_event.set()
 

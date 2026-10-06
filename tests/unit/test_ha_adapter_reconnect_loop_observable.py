@@ -129,6 +129,34 @@ class TestReconnectLoopIsObservable:
         )
         assert match and match.group(1) == "warning", "запись об отмене должна быть WARNING"
 
+    def test_should_make_stop_and_container_shutdown_visible(self) -> None:
+        """`stop()` и `Container.shutdown()` видны: иначе отмена извне неотличима.
+
+        `_reconnect_task.cancel()` встречается в коде ровно в одном месте — в
+        `stop()`, который вызывается из `Container.shutdown()`. Пока оба писали
+        на `info`, нельзя было отличить «отменил stop()» от отмены изнутри цикла,
+        а это и есть последний открытый вопрос #70.
+
+        Args:
+            None.
+        """
+        adapter_source = _source()
+        container_source = (
+            Path(__file__).resolve().parents[2] / "src" / "core" / "container.py"
+        ).read_text(encoding="utf-8")
+
+        assert "stop() called, cancelling reconnect task" in adapter_source
+        assert "Container.shutdown() called" in container_source
+        for source, marker in (
+            (adapter_source, "stop() called, cancelling reconnect task"),
+            (container_source, "Container.shutdown() called"),
+        ):
+            match = re.search(rf"logger\.(\w+)\((?:[^()]|\([^()]*\))*?{re.escape(marker)}", source)
+            assert match and match.group(1) == "warning", (
+                f"запись {marker} должна быть WARNING: на info её не видно, и "
+                "снова придётся угадывать"
+            )
+
     def test_should_keep_existing_info_records(self) -> None:
         """Прежние `info`-записи остаются: видимость не выкупается шумом.
 
