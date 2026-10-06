@@ -779,6 +779,33 @@ class HAAdapter:
                 await self._session.close()
             self._session = None
 
+    async def _force_disconnect(self, reason: str) -> None:
+        """Объявить соединение мёртвым и освободить сокет.
+
+        Закрытие здесь — не гигиена, а условие переподключения. Цикл в
+        `_connect_websocket` ждёт завершения задачи чтения, и при разрыве без
+        чистого закрытия (отвал Wi-Fi, `docker network disconnect`) эта задача
+        не завершается никогда: `recv()` ждёт данных, которых не будет. Пока сокет
+        открыт и помечен лишь флагом, цикл остаётся в `asyncio.wait(...)`, а
+        heartbeat со следующей итерации выходит по `if not connected: continue` —
+        то есть выключает себя сам. Обрыв был обнаружен и записан, а
+        переподключения не происходило никогда (#78).
+
+        Args:
+            reason: Причина обрыва — попадает в журнал.
+        """
+        client = self._ws_client
+        if client is None:
+            return
+
+        client.connected = False
+        try:
+            await client.close()
+        except Exception as error:  # noqa: BLE001 — обрыв не должен ронять heartbeat
+            # Закрытие может не завершиться на мёртвом сокете; обрыв всё равно
+            # объявлен, и следующая попытка подключения его разберёт.
+            logger.warning(f"HAAdapter: close after '{reason}' failed: {error}")
+
     async def _heartbeat_loop(self) -> None:
         """Проверять живость соединения и переподключать мёртвое.
 
@@ -791,8 +818,11 @@ class HAAdapter:
         Признак жизни обновляется тремя способами: при подключении, на каждом
         входящем событии и на каждом успешном ответе на ping. Ответ на ping —
         прямое доказательство, что соединение в порядке, даже если событий не
-        было вовсе. Неотвечающий сокет по-прежнему приводит к обрыву: ping
-        ставит `connected = False`, и следующая итерация уходит в переподключение.
+        было вовсе.
+
+        Неотвечающий сокет приводит к обрыву, и обрыв обязан быть настоящим:
+        соединение закрывается, а не только помечается флагом — иначе цикл
+        переподключения не заметит обрыва никогда (#78).
         """
         try:
             while not self._shutdown_event.is_set():
@@ -809,11 +839,12 @@ class HAAdapter:
                         # Ответ пришёл — соединение живо, даже если событий не было.
                         self._last_liveness_time = time.time()
                         logger.debug("HAAdapter: WebSocket ping sent")
-                except (TimeoutError, Exception) as e:
+                except Exception as e:
+                    # Запись до закрытия: если `close()` не вернётся на мёртвом
+                    # сокете, по журналу должно быть видно, что обрыв найден.
                     logger.warning(f"HAAdapter: ping failed ({e}), forcing reconnect")
-                    if self._ws_client:
-                        self._ws_client.connected = False
-                    continue
+                    await self._force_disconnect(f"ping failed: {e}")
+                    return
 
                 # Шаг 2: судить по признаку жизни, а не по тишине.
                 last_liveness = getattr(self, "_last_liveness_time", None)
@@ -828,10 +859,7 @@ class HAAdapter:
                         f"(no events, no ping reply), connection is stale - forcing reconnect"
                     )
                     logger.warning("HAAdapter: closing stale connection")
-                    if self._ws_client:
-                        self._ws_client.connected = False
-                        with contextlib.suppress(Exception):
-                            await self._ws_client.close()
+                    await self._force_disconnect("stale connection")
                     logger.warning("HAAdapter: stale connection closed, heartbeat will resume")
         except asyncio.CancelledError:
             pass
