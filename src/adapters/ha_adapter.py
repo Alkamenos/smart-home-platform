@@ -569,6 +569,13 @@ class HAAdapter:
 
                 # 🆕 Инициализируем timestamp последнего события
                 self._last_event_time = time.time()
+                # Признак жизни соединения. Раньше порог «устаревшего» считался
+                # от времени последнего события, а это время выставлялось только
+                # здесь, при подключении, и нигде не обновлялось: обрыв
+                # объявлялся ровно через 300 с после старта независимо от того,
+                # как бурно шла жизнь дома. Тишина в доме и мёртвое соединение
+                # были неразличимы.
+                self._last_liveness_time = time.time()
 
                 # 🆕 Запускаем heartbeat задачу для обнаружения мёртвых соединений
                 heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -685,6 +692,7 @@ class HAAdapter:
     ) -> None:
         trace_id = trace_id or self._generate_trace_id()
         log = self._get_logger(trace_id)
+        self._last_liveness_time = time.time()
 
         try:
             entity_id = message.get("entity_id", "")
@@ -721,11 +729,19 @@ class HAAdapter:
             self._session = None
 
     async def _heartbeat_loop(self) -> None:
-        """Send periodic pings to detect dead WebSocket connections.
+        """Проверять живость соединения и переподключать мёртвое.
 
-        Without this, silent TCP disconnections (e.g., NAT timeout on router)
-        will leave the connection stuck forever - no events, no errors.
-        The heartbeat detects stale connections and forces a reconnect.
+        Задача — находить мёртвые соединения, а не шумные дома. Поэтому порядок
+        шагов важен: **сначала признак жизни, потом вывод**. Если сначала судить
+        по тишине, а потом спрашивать сокет, то вывод всегда опережает проверку:
+        при очередном пробуждении тишина уже «пять минут», и исправное соединение
+        рвётся, не успев ни разу ответить на ping.
+
+        Признак жизни обновляется тремя способами: при подключении, на каждом
+        входящем событии и на каждом успешном ответе на ping. Ответ на ping —
+        прямое доказательство, что соединение в порядке, даже если событий не
+        было вовсе. Неотвечающий сокет по-прежнему приводит к обрыву: ping
+        ставит `connected = False`, и следующая итерация уходит в переподключение.
         """
         try:
             while not self._shutdown_event.is_set():
@@ -734,39 +750,38 @@ class HAAdapter:
                 if not (self._ws_client and getattr(self._ws_client, "connected", False)):
                     continue
 
-                # Check time since last event - if too long, connection is stale
-                last_event = getattr(self, "_last_event_time", None)
-                if last_event is not None:
-                    time_since = time.time() - last_event
-                    if time_since > 300:  # 5 minutes without events = stale
-                        logger.warning(
-                            f"HAAdapter: No events for {time_since:.0f}s, connection is stale - forcing reconnect"
-                        )
-                        # Инструментация #70. Уровень — WARNING, и это не
-                        # вкусовое решение: логи адаптера не имеют собственного
-                        # обработчика и наследуют корневой, где INFO не виден.
-                        # Проверено в проде: от модуля adapters.ha_adapter в
-                        # журнале ноль строк, а эта самая ветка печаталась
-                        # единственным WARNING. На INFO инструментация молчала
-                        # и не могла ответить на вопрос, для которого сделана.
-                        logger.warning("HAAdapter: closing stale connection")
-                        if self._ws_client:
-                            self._ws_client.connected = False
-                            with contextlib.suppress(Exception):
-                                await self._ws_client.close()
-                        logger.warning("HAAdapter: stale connection closed, heartbeat will resume")
-                        continue
-
-                # Send ping to keep connection alive
+                # Шаг 1: спросить у сокета, жив ли он.
                 try:
                     ws = getattr(self._ws_client, "ws", None)
                     if ws and hasattr(ws, "ping"):
                         await asyncio.wait_for(ws.ping(), timeout=5)
+                        # Ответ пришёл — соединение живо, даже если событий не было.
+                        self._last_liveness_time = time.time()
                         logger.debug("HAAdapter: WebSocket ping sent")
                 except (TimeoutError, Exception) as e:
                     logger.warning(f"HAAdapter: ping failed ({e}), forcing reconnect")
                     if self._ws_client:
                         self._ws_client.connected = False
+                    continue
+
+                # Шаг 2: судить по признаку жизни, а не по тишине.
+                last_liveness = getattr(self, "_last_liveness_time", None)
+                if last_liveness is None:
+                    last_liveness = getattr(self, "_last_event_time", None)
+                if last_liveness is None:
+                    continue
+                time_since = time.time() - last_liveness
+                if time_since > 300:  # 5 minutes without any sign of life
+                    logger.warning(
+                        f"HAAdapter: No sign of life for {time_since:.0f}s "
+                        f"(no events, no ping reply), connection is stale - forcing reconnect"
+                    )
+                    logger.warning("HAAdapter: closing stale connection")
+                    if self._ws_client:
+                        self._ws_client.connected = False
+                        with contextlib.suppress(Exception):
+                            await self._ws_client.close()
+                    logger.warning("HAAdapter: stale connection closed, heartbeat will resume")
         except asyncio.CancelledError:
             pass
 
