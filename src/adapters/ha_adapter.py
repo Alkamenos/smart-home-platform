@@ -34,6 +34,12 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 
+# Предел ожидания закрытия WebSocket. Закрытие идёт по рукопожатию, и на
+# молчащем соединении оно может не прийти вовсе; ждать бесконечно означает
+# остановить heartbeat и основной цикл адаптера (#70).
+WS_CLOSE_TIMEOUT_SEC = 5.0
+
+
 class SimpleHAWebSocketClient:
     """Minimal WebSocket client implementing HA WebSocket API protocol.
 
@@ -144,8 +150,24 @@ class SimpleHAWebSocketClient:
             logger.warning("HAAdapter: close() no listen_task")
         if self.ws:
             logger.warning("HAAdapter: close() closing websocket")
-            await self.ws.close()
-            logger.warning("HAAdapter: close() websocket closed")
+            # Закрытие ограничено по времени (#70). Библиотека ждёт рукопожатия
+            # закрытия, которого на молчащем соединении не приходит, и `close()`
+            # не возвращался никогда: heartbeat застревал здесь, сокет оставался
+            # открытым, переподключения не происходило, а /ready отвечал 200.
+            # Известно живьём: второй вызов close() на том же сокете закрывал его
+            # за 46 мс, а первый не возвращался совсем.
+            try:
+                await asyncio.wait_for(self.ws.close(), timeout=WS_CLOSE_TIMEOUT_SEC)
+                logger.warning("HAAdapter: close() websocket closed")
+            except TimeoutError:
+                # Таймаут — не повод молчать: закрытие не завершилось, и это
+                # единственный признак, по которому висяние видно в журнале.
+                logger.warning(
+                    f"HAAdapter: close() websocket close timed out after "
+                    f"{WS_CLOSE_TIMEOUT_SEC}s, continuing anyway"
+                )
+            except Exception as error:  # noqa: BLE001 — закрытие не должно ронять heartbeat
+                logger.warning(f"HAAdapter: close() websocket close failed: {error}")
         self.connected = False
 
     async def subscribe(
