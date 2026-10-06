@@ -65,13 +65,13 @@ templates:
       target_temp:
         type: float
         range: "5-35"
-        effective: false
-        note: "ИНЕРТЕН. Читается только валидатором"
+        effective: true
+        note: "Целевая температура. ИНЕРТЕН: читается только валидатором."
       hysteresis:
         type: float
         range: "0-5"
         effective: false
-        note: "ИНЕРТЕН. Читается только валидатором"
+        note: "Гистерезис. ИНЕРТЕН: читается только валидатором."
   generic_cover:
     reachable: false
     in_manifest: []
@@ -118,7 +118,7 @@ templates:
         type: float
         range: "0-100"
         effective: true
-        note: "Порог включения вентиляции, читается guard-ом. Единственный параметр этого шаблона с силой"
+        note: "Порог включения вентиляции; читается guard'ом — единственный параметр этого шаблона с силой."
   lighting:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -139,12 +139,12 @@ templates:
         type: int
         range: "0-255"
         effective: true
-        note: "Яркость включения, уходит в команду HA"
+        note: "Яркость включения; уходит в команду HA."
       motion_timeout_sec:
         type: int
         range: "30-3600"
-        effective: false
-        note: "ИНЕРТЕН. Таймаут берётся из YAML шаблона (factory.py:227), параметр в это выражение не входит"
+        effective: true
+        note: "Задержка выключения. Сейчас ИНЕРТЕН: таймаут берётся из YAML шаблона (factory.py:227), параметр не участвует."
   night_light:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -164,12 +164,12 @@ templates:
         type: int
         range: "0-255"
         effective: true
-        note: "Ночная яркость, уходит в команду HA"
+        note: "Ночная яркость; уходит в команду HA."
       schedule:
         type: str
         range: "ЧЧ:ММ-ЧЧ:ММ"
         effective: true
-        note: "ИНЕРТЕН. Читается только валидатором"
+        note: "Окно ночного режима. Сейчас ИНЕРТЕН: читается только валидатором."
   smart_lock:
     reachable: false
     in_manifest: []

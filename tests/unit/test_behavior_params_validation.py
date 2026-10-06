@@ -173,11 +173,14 @@ class TestInertParamsAreAcceptedButReported:
     def test_should_report_inert_params_without_failing(self, contract: dict) -> None:
         """Инертный параметр не роняет запрос — иначе правка манифеста сломается.
 
+        Раньше примером был `motion_timeout_sec`, но он стал действующим
+        (см. `test_params_affect_behavior.py`), поэтому примером стал `hysteresis`.
+
         Args:
             contract: Контракт шаблонов.
         """
-        notes = validate_behavior("lighting", {"motion_timeout_sec": 180}, contract)
-        assert notes == ["motion_timeout_sec"], (
+        notes = validate_behavior("climate_control", {"hysteresis": 0.5}, contract)
+        assert notes == ["hysteresis"], (
             "инертный параметр должен возвращаться замечанием, а не ошибкой"
         )
 
@@ -207,6 +210,6 @@ class TestEmptyMeansDefault:
         Args:
             contract: Контракт шаблонов.
         """
-        assert validate_behavior("climate_control", {"target_temp": 22.0}, contract) == [
-            "target_temp"
-        ]
+        assert validate_behavior("climate_control", {"target_temp": 22.0}, contract) == [], (
+            "target_temp стал действующим и замечанием больше не сопровождается"
+        )

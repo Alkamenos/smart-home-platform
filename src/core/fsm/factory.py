@@ -27,6 +27,35 @@ from core.registry import Registry
 _PACKAGE_FEATURES_DIR = Path(__file__).resolve().parents[2] / "features"
 
 
+def _timeout_from_params(yaml_transition: YAMLTransition, params: dict | None) -> float | None:
+    """Определяет таймаут перехода с учётом параметра поведения.
+
+    ``timeout_sec`` в шаблоне — это значение по умолчанию, а не приговор: если
+    пользователь задал в манифесте ``motion_timeout_sec``, он и должен действовать.
+    Раньше параметр доходил до описания автомата и там оставался: таймаут всегда
+    брался из YAML, то есть поле «задержка выключения» в манифесте было
+    безмолвным обещанием (#71).
+
+    Переопределяется только переход по триггеру ``timeout``: у остальных
+    ``timeout_sec`` — это верхняя граница ожидания при входе в состояние, и
+    подменять её пользовательским «задержкой выключения» неверно.
+
+    Args:
+        yaml_transition: Переход из шаблона.
+        params: Параметры поведения из манифеста.
+
+    Returns:
+        Время ожидания перехода.
+    """
+    default = yaml_transition.timeout_sec
+    if yaml_transition.trigger != "timeout" or not params:
+        return default
+    override = params.get("motion_timeout_sec")
+    if isinstance(override, bool) or not isinstance(override, (int, float)) or override <= 0:
+        return default
+    return float(override)
+
+
 def _resolve_features_dir(features_dir: str | None) -> Path:
     """Определить каталог с YAML-шаблонами автоматизаций.
 
@@ -174,7 +203,10 @@ class FSMFactory:
         return template_data
 
     def _yaml_to_transition(
-        self, yaml_transition: YAMLTransition, schedule_guard_fn=None
+        self,
+        yaml_transition: YAMLTransition,
+        schedule_guard_fn=None,
+        params: dict | None = None,
     ) -> Transition:
         """
         Преобразовать YAMLTransition в Transition, резолвя строки в функции.
@@ -182,6 +214,7 @@ class FSMFactory:
         Args:
             yaml_transition: Валидированная YAML-модель перехода.
             schedule_guard_fn: Опциональная функция guard для расписания.
+            params: Параметры поведения из манифеста.
 
         Returns:
             Transition: Объект перехода для FSM с резолвленными функциями.
@@ -224,7 +257,7 @@ class FSMFactory:
             trigger=yaml_transition.trigger,
             guard=guard_fn,
             action=action_fn,
-            timeout_sec=yaml_transition.timeout_sec,
+            timeout_sec=_timeout_from_params(yaml_transition, params),
         )
 
     def _yaml_to_fsm_definition(
@@ -241,7 +274,8 @@ class FSMFactory:
             FSMDefinition: Объект определения FSM для двигателя.
         """
         transitions = tuple(
-            self._yaml_to_transition(t, schedule_guard_fn) for t in yaml_def.transitions
+            self._yaml_to_transition(t, schedule_guard_fn, yaml_def.params)
+            for t in yaml_def.transitions
         )
 
         return FSMDefinition(

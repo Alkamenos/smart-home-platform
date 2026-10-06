@@ -217,7 +217,13 @@ def _climate_intent(context: dict[str, Any], service: str, source: str) -> Comma
         return None
 
     data: dict[str, Any] = {}
-    target_temperature = context.get("target_temperature")
+    # Имя параметра в манифесте — `target_temp`; прежнее чтение `target_temperature`
+    # означало, что команда всегда уходила без температуры, сколько бы её ни задали
+    # в конфигурации (#71). Старое имя оставлено как запасной вариант: им пользуются
+    # вызовы вне контекста поведения.
+    target_temperature = context.get("target_temp")
+    if target_temperature is None:
+        target_temperature = context.get("target_temperature")
     if target_temperature is not None:
         data["temperature"] = target_temperature
 

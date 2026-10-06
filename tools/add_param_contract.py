@@ -76,9 +76,9 @@ while i < len(lines):
             effective = read_in_hot_path(name)
             out.append(f"      {name}:")
             out.append(f"        type: {typ}")
-            out.append(f"        range: {rng}")
+            out.append(f'        range: "{rng}"')
             out.append(f"        effective: {str(effective).lower()}")
-            out.append(f"        note: {note}")
+            out.append(f'        note: "{note}"')
         i = j
         continue
     i += 1
