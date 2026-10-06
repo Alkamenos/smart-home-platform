@@ -709,6 +709,34 @@ async def list_templates() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.get("/api/behavior-params/{template_name}")
+async def get_behavior_params(template_name: str) -> dict[str, Any]:
+    """Возвращает описание параметров шаблона из контракта.
+
+    `/api/templates/{name}` отдаёт параметры из YAML шаблона и не содержит
+    диапазонов и отметки действенности. Форма правки обязана знать оба: без
+    диапазона она предложила бы значение, которое сервер отвергнет, а без
+    отметки ``effective`` — показала бы инертный параметр как рабочий.
+
+    Args:
+        template_name: Имя шаблона.
+
+    Returns:
+        Словарь с именем шаблона и описанием параметров.
+
+    Raises:
+        HTTPException: 404 если шаблона нет в контракте.
+    """
+    from core.behavior_params import load_contract, template_params
+
+    params = template_params(load_contract(), template_name)
+    if params is None:
+        raise HTTPException(
+            status_code=404, detail=f"Шаблон '{template_name}' отсутствует в контракте"
+        )
+    return {"template": template_name, "params": params}
+
+
 @router.get("/api/templates/{template_name}")
 async def get_template(template_name: str) -> dict[str, Any]:
     """Get a specific template by name.

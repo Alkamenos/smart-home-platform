@@ -1,0 +1,293 @@
+<!--
+    Форма правки поведений устройства (пункт 4 веб-плана).
+
+    Отдельный файл, а не часть index.html: здесь логика правки — единственное,
+    что обязано знать о контракте параметров, и смешивать её с загрузкой
+    состояний, автоматов и WebSocket в одном файле невозможно без потери
+    читаемости.
+
+    Два режима, переключатель в шапке панели:
+      - поля  — только для действенных параметров (contract: effective true),
+                 с подсказкой диапазона. Инертные параметры показаны списком
+                 с пометкой, но не редактируются: их правка создаёт видимость
+                 работы, которой нет;
+      - JSON — весь набор целиком, для случаев, когда нужно увидеть или
+                 перенести значения, которых нет в полях.
+
+    Пустое поле означает «взять значение по умолчанию» и отправляется как
+    отсутствующее, а не как пустая строка: пустая строка не прошла бы проверку
+    формата на сервере.
+-->
+
+<template id="behavior-editor-template">
+    <div class="behavior-editor border rounded p-2 mt-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">Поведения</span>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-secondary active"
+                        data-mode="fields" title="Действенные параметры по одному">
+                    Поля
+                </button>
+                <button type="button" class="btn btn-outline-secondary"
+                        data-mode="json" title="Весь набор в JSON">
+                    JSON
+                </button>
+            </div>
+        </div>
+
+        <div data-part="status" class="mb-2"></div>
+        <div data-part="fields"></div>
+        <div data-part="json" class="d-none">
+            <textarea class="form-control form-control-sm font-monospace behavior-json"
+                      rows="6" spellcheck="false"></textarea>
+        </div>
+        <div data-part="inert" class="mt-2"></div>
+
+        <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-sm btn-primary behavior-save">
+                Сохранить
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary behavior-cancel">
+                Закрыть
+            </button>
+        </div>
+    </div>
+</template>
+
+<script>
+/* Форма правки поведений устройства.
+ *
+ * Источники данных:
+ *   - /api/v1/devices            — текущие поведения устройства (поле behaviors);
+ *   - /api/behavior-params/{имя} — диапазоны и отметка действенности из контракта;
+ *   - PUT /api/v1/devices/{id}/behaviors — сохранение с проверкой на сервере.
+ *
+ * Проверка на сервере остаётся обязательной даже при заполненных полях: подсказка
+ * диапазона в форме не заменяет пяти слоёв проверки, а совпадение двух реализаций
+ * правил — источник расхождений при правке контракта.
+ */
+window.BehaviorEditor = (function () {
+    const CONTRACT_CACHE = new Map();
+
+    function escapeHtml(value) {
+        if (typeof window.escapeHtml === 'function') return window.escapeHtml(value);
+        return String(value ?? '').replace(/[&<>"']/g, ch => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[ch]);
+    }
+
+    function headers() {
+        if (typeof window.pageHeaders === 'function') return window.pageHeaders();
+        return {};
+    }
+
+    /* Диапазон приходит строкой «мин-макс». Разбор неудачный — возвращаем
+     * пустые границы, и поле остаётся без подсказки: лучше отсутствие
+     * подсказки, чем враньё в ней. */
+    function parseRange(range) {
+        const match = String(range ?? '').match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+        if (!match) return { min: null, max: null };
+        return { min: match[1], max: match[2] };
+    }
+
+    async function contractFor(template) {
+        if (CONTRACT_CACHE.has(template)) return CONTRACT_CACHE.get(template);
+        const response = await fetch(`/api/behavior-params/${encodeURIComponent(template)}`, {
+            headers: headers()
+        });
+        if (!response.ok) throw new Error(`Метаданные шаблона ${template}: HTTP ${response.status}`);
+        const body = await response.json();
+        CONTRACT_CACHE.set(template, body.params || {});
+        return body.params || {};
+    }
+
+    /* Поле параметра. Только действенные: инертные собираются отдельно. */
+    function paramField(name, spec, value) {
+        const range = parseRange(spec.range);
+        const type = spec.type === 'float' ? 'number' : 'number';
+        const step = spec.type === 'float' ? '0.1' : '1';
+        const attributes = [
+            `type="${type}"`,
+            `step="${step}"`,
+            `class="form-control form-control-sm"`,
+            `data-param="${escapeHtml(name)}"`,
+            `placeholder="по умолчанию"`,
+            value === undefined || value === null ? '' : `value="${escapeHtml(value)}"`
+        ];
+        if (range.min !== null) attributes.push(`min="${escapeHtml(range.min)}"`);
+        if (range.max !== null) attributes.push(`max="${escapeHtml(range.max)}"`);
+        const hint = spec.note ? `<div class="form-text">${escapeHtml(spec.note)}</div>` : '';
+        return `
+            <div class="mb-2">
+                <label class="form-label mb-0">${escapeHtml(name)}</label>
+                <input ${attributes.join(' ')}>
+                ${hint}
+            </div>
+        `;
+    }
+
+    function inertList(params, current) {
+        const names = Object.keys(params).filter(name => params[name].effective === false);
+        if (!names.length) return '';
+        const items = names.map(name => {
+            const has = Object.prototype.hasOwnProperty.call(current, name);
+            return `<li>${escapeHtml(name)}${has ? ' — задано значение, но код его не читает' : ''}</li>`;
+        }).join('');
+        return `
+            <div class="alert alert-secondary py-1 px-2 mb-0">
+                <div class="fw-semibold">Не влияют на поведение</div>
+                <ul class="mb-0 ps-3">${items}</ul>
+            </div>
+        `;
+    }
+
+    function statusNote(node, text, kind) {
+        const classes = {
+            ok: 'text-muted',
+            error: 'text-danger',
+            warn: 'text-warning'
+        };
+        node.innerHTML = text ? `<span class="${classes[kind] || 'text-muted'}">${escapeHtml(text)}</span>` : '';
+    }
+
+    /* Собирает параметры из полей и режима JSON. Пустая строка — отсутствие
+     * значения: поле не отправляется, чтобы сервер взял умолчание. */
+    function collectParams(root, mode) {
+        const params = {};
+        if (mode === 'json') {
+            const raw = root.querySelector('.behavior-json').value.trim();
+            if (!raw) return params;
+            let parsed;
+            try {
+                parsed = JSON.parse(raw);
+            } catch (error) {
+                throw new Error(`JSON не разобран: ${error.message}`);
+            }
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('Ожидался объект с параметрами');
+            }
+            return parsed;
+        }
+        root.querySelectorAll('[data-param]').forEach(input => {
+            const raw = input.value.trim();
+            if (raw === '') return;
+            params[input.dataset.param] = Number.isNaN(Number(raw)) ? raw : Number(raw);
+        });
+        return params;
+    }
+
+    function setMode(root, mode) {
+        root.querySelectorAll('[data-mode]').forEach(button => {
+            button.classList.toggle('active', button.dataset.mode === mode);
+        });
+        root.querySelector('[data-part="fields"]').classList.toggle('d-none', mode !== 'fields');
+        root.querySelector('[data-part="json"]').classList.toggle('d-none', mode !== 'json');
+    }
+
+    async function open(root, device, template, current) {
+        const status = root.querySelector('[data-part="status"]');
+        statusNote(status, 'загрузка параметров…', 'ok');
+        let params = {};
+        try {
+            params = await contractFor(template);
+        } catch (error) {
+            statusNote(status, String(error.message || error), 'error');
+        }
+        const effective = Object.keys(params).filter(name => params[name].effective !== false);
+        root.querySelector('[data-part="fields"]').innerHTML = effective.length
+            ? effective.map(name => paramField(name, params[name], (current || {})[name])).join('')
+            : '<div class="text-muted small">У шаблона нет действенных параметров.</div>';
+        root.querySelector('[data-part="inert"]').innerHTML = inertList(params, current || {});
+        root.querySelector('.behavior-json').value = JSON.stringify(current || {}, null, 2);
+        setMode(root, 'fields');
+        statusNote(status, '', 'ok');
+        root.dataset.template = template;
+        root.dataset.deviceId = device.id;
+        root.dataset.priority = String(root.dataset.priority || 10);
+    }
+
+    async function save(root) {
+        const status = root.querySelector('[data-part="status"]');
+        const deviceId = root.dataset.deviceId;
+        const template = root.dataset.template;
+        if (!deviceId || !template) {
+            statusNote(status, 'Форма не инициализирована', 'error');
+            return;
+        }
+        let params;
+        const mode = root.querySelector('[data-mode].active').dataset.mode;
+        try {
+            params = collectParams(root, mode);
+        } catch (error) {
+            statusNote(status, String(error.message || error), 'error');
+            return;
+        }
+        statusNote(status, 'сохранение…', 'ok');
+        try {
+            const response = await fetch(
+                `/api/v1/devices/${encodeURIComponent(deviceId)}/behaviors`,
+                {
+                    method: 'PUT',
+                    headers: { ...headers(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        behaviors: [{
+                            template: template,
+                            priority: Number(root.dataset.priority || 10),
+                            params: params
+                        }]
+                    })
+                }
+            );
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                statusNote(status, body.detail || `HTTP ${response.status}`, 'error');
+                return;
+            }
+            const inert = body.inert_params || [];
+            const saved = body.behaviors && body.behaviors[0];
+            if (saved) {
+                root.querySelector('.behavior-json').value = JSON.stringify(saved.params || {}, null, 2);
+            }
+            if (inert.length) {
+                statusNote(status, `сохранено; не влияют на поведение: ${inert.join(', ')}`, 'warn');
+            } else {
+                statusNote(status, 'сохранено', 'ok');
+            }
+            if (typeof window.refreshDevices === 'function') window.refreshDevices();
+        } catch (error) {
+            statusNote(status, String(error.message || error), 'error');
+        }
+    }
+
+    function wire(root) {
+        if (root.dataset.wired === '1') return;
+        root.dataset.wired = '1';
+        root.querySelectorAll('[data-mode]').forEach(button => {
+            button.addEventListener('click', () => setMode(root, button.dataset.mode));
+        });
+        root.querySelector('.behavior-save').addEventListener('click', () => save(root));
+        root.querySelector('.behavior-cancel').addEventListener('click', () => {
+            root.remove();
+        });
+    }
+
+    /* Точка входа: кнопка на карточке устройства. */
+    async function attach(card, entityId) {
+        if (card.querySelector('.behavior-editor')) return;
+        const device = (window.devices || []).find(item => item.ha_entity_id === entityId);
+        if (!device || !device.id) return;
+        const behaviors = device.behaviors || [];
+        if (!behaviors.length) return;
+        const behavior = behaviors[0];
+        const template = behavior.template;
+        const root = document.getElementById('behavior-editor-template')
+            .content.firstElementChild.cloneNode(true);
+        root.querySelector('.behavior-editor').dataset.priority = String(behavior.priority || 10);
+        wire(root.querySelector('.behavior-editor'));
+        card.querySelector('.device-state').after(root);
+        await open(root.querySelector('.behavior-editor'), device, template, behavior.params);
+    }
+
+    return { attach, open, save, collectParams, parseRange, setMode, wire };
+})();
+</script>

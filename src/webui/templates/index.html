@@ -753,6 +753,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% include "partials/behavior_editor.html" %}
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
         // Search functionality
@@ -849,6 +850,13 @@
             let socket = null;
             let reconnectDelay = RECONNECT_MIN_MS;
             let devices = [];
+            // Форма правки поведений — отдельный файл, но читает те же данные
+            // карточки. Отдаём наружу явно, чтобы не тянуть весь скрипт внутрь
+            // IIFE формы.
+            Object.defineProperty(window, 'devices', { get: () => devices });
+            window.pageHeaders = headers;
+            window.escapeHtml = escapeHtml;
+            window.refreshDevices = () => loadInitialData();
             let deviceStates = {};      // ha_entity_id -> { state, status }
             const fsmStates = {};       // fsm_id -> { state, since }
             let fsmViews = [];           // представления состояний из раздела
@@ -967,8 +975,10 @@
                     </span>
                     ${unavailable ? `<span class="badge bg-warning text-dark ms-1">${escapeHtml(info.status)}</span>` : ''}
                     ${deviceControlHtml(entityId, raw)}
+                    ${behaviorEditorButtonHtml(entityId)}
                 `;
                 wireDeviceControl(holder, entityId);
+                wireBehaviorEditor(holder, entityId);
             }
 
             // Домены, которыми можно управлять из карточки (пункт 3 веб-плана).
@@ -1005,6 +1015,33 @@
                     </button>
                     <span class="device-command-note ms-1"></span>
                 `;
+            }
+
+            // Кнопка правки поведений. Показывается только если поведения есть:
+            // у устройства без них форма всё равно открылась бы пустой.
+            function behaviorEditorButtonHtml(entityId) {
+                const device = (devices || []).find(item => item.ha_entity_id === entityId);
+                if (!device || !(device.behaviors || []).length) return '';
+                return `
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary ms-2 behavior-open"
+                            data-device-id="${escapeHtml(device.id)}"
+                            title="Параметры поведений этого устройства">
+                        Поведения
+                    </button>
+                `;
+            }
+
+            function wireBehaviorEditor(holder, entityId) {
+                const button = holder.querySelector('.behavior-open');
+                if (!button || button.dataset.wired === '1') return;
+                button.dataset.wired = '1';
+                button.addEventListener('click', () => {
+                    const card = document.querySelector(
+                        `.device-card[data-device="${CSS.escape(entityId)}"]`
+                    );
+                    if (card) window.BehaviorEditor.attach(card, entityId);
+                });
             }
 
             function wireDeviceControl(holder, entityId) {
