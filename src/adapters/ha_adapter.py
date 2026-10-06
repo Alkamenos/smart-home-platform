@@ -25,7 +25,7 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import aiohttp
 
@@ -38,6 +38,33 @@ logger = logging.getLogger(__name__)
 # молчащем соединении оно может не прийти вовсе; ждать бесконечно означает
 # остановить heartbeat и основной цикл адаптера (#70).
 WS_CLOSE_TIMEOUT_SEC = 5.0
+
+
+@runtime_checkable
+class ActionGateProtocol(Protocol):
+    """Разрешение на выполнение команд, выходящих в Home Assistant.
+
+    Отдельный протокол, а не конкретный ``DeploymentManager``, потому что адаптер
+    не должен зависеть от конкретного класса: запрет на выход — это свойство
+    транспорта, а способ переключения режима — свойство политики (#77).
+    """
+
+    def should_execute_action(self) -> bool:
+        """Вернуть True, если команды разрешено выполнять."""
+        ...
+
+
+class AlwaysExecuteGate:
+    """Ворота, пропускающие всё.
+
+    Значение по умолчанию, когда менеджер развёртывания не передан. Обратный
+    вариант (блокировать всё) тихо отключил бы автоматику у того, кто забыл
+    передать менеджер, и выглядел бы как «свет перестал включаться».
+    """
+
+    def should_execute_action(self) -> bool:
+        """Всегда разрешать выполнение."""
+        return True
 
 
 class SimpleHAWebSocketClient:
@@ -289,6 +316,7 @@ class HAAdapter:
         token: str | None = None,
         manual_lockout_middleware: ManualLockoutMiddleware | None = None,
         event_router: EventRouter | None = None,
+        deployment: ActionGateProtocol | None = None,
     ) -> None:
         if mode not in ("pyscript", "websocket"):
             raise ValueError(f"Invalid mode: {mode}. Must be 'pyscript' or 'websocket'")
@@ -298,6 +326,12 @@ class HAAdapter:
         self._hass = hass
         self._ws_url = ws_url
         self._token = token
+        # Запрет на выход в Home Assistant. Передаётся из Container.build(),
+        # иначе переменная SHADOW_MODE оставалась бы объявленной, но не
+        # действующей (Known Issue #77).
+        self._deployment: ActionGateProtocol = (
+            deployment if deployment is not None else AlwaysExecuteGate()
+        )
 
         self._manual_lockout_middleware = manual_lockout_middleware
         self._event_router = event_router
@@ -405,6 +439,23 @@ class HAAdapter:
         data = data or {}
         trace_id = trace_id or self._generate_trace_id()
         log = self._get_logger(trace_id)
+
+        # Запрет на выход в Home Assistant. Стоит в единственной точке, откуда
+        # платформа обращается к HA-сервисам: сюда попадают и команды автоматов
+        # (через CommandDispatcher), и ручные команды из WebUI (через
+        # DeviceService), причём разными способами вызова. Проверка на уровне
+        # вызывающего кода обошла бы один из путей (Known Issue #77).
+        if not self._deployment.should_execute_action():
+            # WARNING, а не INFO: логи адаптера наследуют корневой обработчик,
+            # где info не виден — на info проверка молчала бы и не доказала бы
+            # ничего (урок #70). Уровень записей проверяется кодом.
+            log.warning(
+                f"[DRY RUN] Would execute: {domain}.{service}(entity_id={entity_id}, data={data})"
+            )
+            # Возвращается True намеренно: в режиме тени автомат продолжает
+            # считать свои состояния, иначе нечего было бы наблюдать. Ответ,
+            # которого на самом деле нет, и не должен выглядеть как отказ.
+            return True
 
         log.info(f"HAAdapter: calling service {domain}.{service} for {entity_id}")
 

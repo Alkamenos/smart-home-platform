@@ -5,6 +5,7 @@ Provides shadow mode, graceful fallback, and deployment state management.
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -12,6 +13,17 @@ from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
+
+ENV_SHADOW_MODE = "SHADOW_MODE"
+"""Имя переменной окружения, задающей режим развёртывания."""
+
+_FALSE_VALUES = frozenset({"false", "0", "no", "off"})
+"""Значения переменной, которые явно означают активный режим.
+
+Всё остальное — включая пустую строку, опечатку и отсутствие переменной —
+означает режим тени. Обратное было бы опасным дефолтом: забытая настройка
+включала бы управление реальным домом (Known Issue #77).
+"""
 
 
 class DeploymentMode(Enum):
@@ -79,6 +91,48 @@ class DeploymentManager:
         self.state = DeploymentState()
         self._error_threshold = 10  # Max errors before fallback
         self._initialized = False
+
+    @classmethod
+    def from_env(cls, config_path: Path | None = None) -> "DeploymentManager":
+        """
+        Создать менеджера с режимом из переменной ``SHADOW_MODE``.
+
+        До появления этого метода переменная была объявлена в ``.env``,
+        ``deploy/README.md`` и ``deploy/scripts/deploy.sh``, доходила до
+        контейнера — и не читалась ни одной строкой Python. Оператор видел
+        ``SHADOW_MODE=true`` и считал, что платформа не трогает дом (Known
+        Issue #77).
+
+        Args:
+            config_path: Необязательный путь к файлу конфигурации развёртывания.
+
+        Returns:
+            Инициализированный менеджер в режиме из окружения.
+        """
+        manager = cls(config_path=config_path)
+        manager.initialize()
+
+        raw_value = os.environ.get(ENV_SHADOW_MODE)
+        if raw_value is None:
+            logger.warning(
+                f"{ENV_SHADOW_MODE} не задана — включаю режим тени: "
+                "команды будут записаны в лог, но не уйдут в Home Assistant"
+            )
+            manager.state.mode = DeploymentMode.SHADOW
+        elif raw_value.strip().lower() in _FALSE_VALUES:
+            manager.state.mode = DeploymentMode.ACTIVE
+        else:
+            if raw_value.strip() and raw_value.strip().lower() not in {"true", "1", "yes", "on"}:
+                logger.warning(
+                    f"{ENV_SHADOW_MODE}={raw_value!r} не распознана — "
+                    "считаю режимом тени (безопасный вариант)"
+                )
+            manager.state.mode = DeploymentMode.SHADOW
+
+        logger.warning(
+            f"Режим развёртывания: {manager.state.mode.value} ({ENV_SHADOW_MODE}={raw_value!r})"
+        )
+        return manager
 
     def initialize(self) -> bool:
         """

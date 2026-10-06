@@ -23,6 +23,7 @@ from core.action_handlers import register_all_actions
 from core.commands.dispatcher import CommandDispatcher, HAAdapterProtocol
 from core.commands.middleware import ManualLockoutMiddleware
 from core.control_tracker import ControlTracker
+from core.deployment_manager import DeploymentManager
 from core.events.event_bus import EventBus
 from core.events.event_router import EventRouter
 from core.events.fsm_events import EVENT_PLATFORM_STARTED
@@ -59,6 +60,7 @@ class PlatformContext:
     event_router: EventRouter
     fsm_bridge: Any = None
     watchdog: Any = None
+    deployment: Any = None
 
     async def shutdown(self) -> None:
         """Idempotent shutdown: watchdog, adapter, FSM engine, dispatcher cleanup loop.
@@ -127,6 +129,7 @@ class Container:
         self._middleware: ManualLockoutMiddleware | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
+        self._deployment: DeploymentManager | None = None
 
     @property
     def manifest(self) -> Manifest:
@@ -192,6 +195,18 @@ class Container:
         return self._event_router
 
     @property
+    def deployment(self) -> DeploymentManager:
+        """Менеджер развёртывания: режим тени и активного режима (#77).
+
+        Создаётся один раз и передаётся адаптеру, потому что `SHADOW_MODE`
+        действует именно на выход в Home Assistant. Раньше переменная доходила
+        до контейнера и не читалась ни одной строкой кода.
+        """
+        if self._deployment is None:
+            self._deployment = DeploymentManager.from_env()
+        return self._deployment
+
+    @property
     def adapter(self) -> HAAdapter | MockAdapter:
         """Get or create adapter instance (depends on fsm and event_router)."""
         if self._adapter is None:
@@ -205,6 +220,7 @@ class Container:
                     event_router=self.event_router,
                     ws_url=ws_url,
                     token=ha_token,
+                    deployment=self.deployment,
                 )
             else:
                 self._adapter = MockAdapter(engine=self.fsm)
@@ -447,6 +463,10 @@ class Container:
             # была ложной, то есть мёртвой веткой. Сторож читает состояния
             # движка, поэтому порядок в shutdown() важен (FR-017).
             watchdog=self._watchdog,
+            # Менеджер развёртывания обязан быть в контексте: режим должен быть
+            # виден снаружи (`/health`), иначе оператор снова не может отличить
+            # режим тени от активного — ровно тот случай, что породил #77.
+            deployment=self.deployment,
         )
 
     def _start_watchdog(self) -> None:
