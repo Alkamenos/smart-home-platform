@@ -517,6 +517,12 @@ class HAAdapter:
             needs_backoff = False
             try:
                 log = self._get_logger(self._generate_trace_id())
+                # Инструментация #70: записи цикла переподключения печатаются на
+                # уровне info либо через per-connection логгер, и в этом
+                # развёртывании не видны ни те, ни другие. Поэтому по журналу
+                # нельзя было отличить «цикл остановился» от «цикл работает
+                # молча». Уровень WARNING — единственный, который здесь виден.
+                logger.warning("🔌 HAAdapter: attempting WebSocket connection (iteration)")
                 logger.info(f"🔌 HAAdapter: attempting WebSocket connection to {self._ws_url}")
                 log.info(f"HAAdapter: connecting to WebSocket {self._ws_url}")
 
@@ -606,7 +612,10 @@ class HAAdapter:
                         await heartbeat_task
 
             except asyncio.CancelledError:
-                logger.info("HAAdapter: WebSocket connection cancelled")
+                # Ветка видна: она выходит из цикла, не делая ни паузы, ни
+                # повторного подключения, и без записи выглядит как зависание.
+                # Уровень WARNING — logger.info здесь не виден (#70).
+                logger.warning("HAAdapter: reconnect loop cancelled - no retry will happen")
                 break
 
             except Exception as e:
@@ -632,9 +641,16 @@ class HAAdapter:
                 await self._cleanup_websocket()
 
             if needs_backoff and not self._shutdown_event.is_set():
-                logger.info(f"🔄 HAAdapter: retrying in {reconnect_delay:.1f}s...")
+                logger.warning(f"🔄 HAAdapter: retrying in {reconnect_delay:.1f}s (visible)")
                 await asyncio.sleep(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+            elif needs_backoff:
+                # Ветка «нужна пауза, но система останавливается» раньше уходила
+                # молча: цикл выходил из while по установленному _shutdown_event,
+                # и в журнале не оставалось ни единой записи. Теперь видно.
+                logger.warning("HAAdapter: backoff skipped, shutdown_event is set")
+
+        logger.warning("HAAdapter: reconnect loop exited")
 
     async def _handle_ws_state_change(
         self,
