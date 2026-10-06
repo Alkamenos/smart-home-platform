@@ -66,7 +66,7 @@ templates:
         type: float
         range: "5-35"
         effective: true
-        note: "Целевая температура. ИНЕРТЕН: читается только валидатором."
+        note: "Целевая температура. Уходит в команду climate.set_temperature (action_handlers.py:_climate_intent); старое имя target_temperature принимается для совместимости."
       hysteresis:
         type: float
         range: "0-5"
@@ -144,7 +144,7 @@ templates:
         type: int
         range: "30-3600"
         effective: true
-        note: "Задержка выключения. Сейчас ИНЕРТЕН: таймаут берётся из YAML шаблона (factory.py:227), параметр не участвует."
+        note: "Задержка выключения. Переопределяет timeout_sec только у переходов с триггером timeout (factory.py:_timeout_from_params); у остальных переходов timeout_sec — верхняя граница ожидания, и подменять её неверно."
   night_light:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -202,4 +202,3 @@ templates:
     unproduced_triggers: [turn_on, increase_speed, decrease_speed, turn_off, manual_change]
     gaps:
       - Ни одного из пяти действий в реестре нет — шаблон неисполним целиком. Вне объёма варианта (a).
-

@@ -1,6 +1,9 @@
 """Генератор src/features/CONTRACT.yaml из кода. Запуск: python /tmp/gen_contract.py"""
 
+import json
 import pathlib
+import sys
+from typing import Any
 
 import yaml
 
@@ -11,6 +14,48 @@ from core.registry import Registry
 
 
 NO = "НЕТ ПРОИСХОДИТЕЛЯ"
+
+CONTRACT_PATH = pathlib.Path("src/features/CONTRACT.yaml")
+
+
+def _existing_params() -> dict[str, dict[str, Any]]:
+    """Читает объявления параметров из текущего контракта.
+
+    Параметры вносятся вручную: у них нет первоисточника в коде, который
+    генератор умеет обходить. Раньше генератор их просто не выводил, и любой
+    запуск «освежал» контракт удалением всех объявлений — форма правки
+    теряла поля (Known Issue #72).
+
+    Args:
+        None.
+
+    Returns:
+        Словарь ``имя шаблона`` → описания параметров.
+    """
+    if not CONTRACT_PATH.exists():
+        return {}
+    current = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8")) or {}
+    found: dict[str, dict[str, Any]] = {}
+    for name, spec in (current.get("templates") or {}).items():
+        params = (spec or {}).get("params")
+        if params:
+            found[name] = params
+    return found
+
+
+def _yaml_str(value: Any) -> str:
+    """Оформляет значение как строку YAML в двойных кавычках.
+
+    Args:
+        value: Значение.
+
+    Returns:
+        Строковый литерал YAML. JSON-экранирование совместимо с YAML: оба
+        используют одинаковые обозначения управляющих последовательностей.
+    """
+    return json.dumps(str(value), ensure_ascii=False)
+
+
 GAPS = {
     "lighting": [
         "motion_cleared публикуется платформой, но перехода по нему нет — "
@@ -123,6 +168,8 @@ lines += [
 lines += [f"  - {e}" for e in uncovered]
 lines += ["", "templates:"]
 
+existing = _existing_params()
+
 for path in sorted(pathlib.Path("src/features").glob("*.yaml")):
     name = path.stem
     if name == "CONTRACT":
@@ -153,6 +200,21 @@ for path in sorted(pathlib.Path("src/features").glob("*.yaml")):
     lines.append("    gaps:")
     for gap in GAPS.get(name, []):
         lines.append(f"      - {gap}")
+    # Объявления параметров переносятся из текущего контракта, а не
+    # придумываются здесь: их пишет человек, и потерять их молча нельзя.
+    if existing.get(name):
+        lines.append("    params:")
+        for param_name, spec in existing[name].items():
+            spec = spec or {}
+            lines.append(f"      {param_name}:")
+            lines.append(f"        type: {spec.get('type', 'int')}")
+            lines.append(f"        range: {_yaml_str(spec.get('range', ''))}")
+            lines.append(f"        effective: {str(bool(spec.get('effective'))).lower()}")
+            lines.append(f"        note: {_yaml_str(spec.get('note', ''))}")
 
-pathlib.Path("src/features/CONTRACT.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+# Путь вывода можно задать аргументом: иначе проверка, что регенерация ничего
+# не теряет, вынуждена была бы переписывать файл в дереве.
+target = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else CONTRACT_PATH
+target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+print(f"записано: {target}")
 print("сгенерировано, строк:", len(lines))
