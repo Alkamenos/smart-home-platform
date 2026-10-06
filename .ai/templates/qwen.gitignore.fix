@@ -141,14 +141,38 @@ mnesia/
 rabbitmq/
 rabbitmq-data/
 
+# Рабочие каталоги развёртывания в deploy/docker. Это ТОЧКИ МОНТИРОВАНИЯ томов,
+# которые compose задаёт относительно своего каталога:
+#   ./config → /config/behavioral_platform   (манифест и поведения)
+#   ./data   → /data/behavioral_platform      (состояния, источники, журнал)
+#   ./backups                               (копии deploy.sh backup)
+# Раньше в .gitignore стоял только `data/`, из-за чего config/ с манифестом и
+# backups/ попадали в индекс, а каталог данных при этом игнорировался только
+# для корня репозитория. Каталог ./data в корне — протухший остаток локальных
+# запусков, том его не использует; его судьбу нужно решить отдельно.
+deploy/docker/config/
+deploy/docker/data/
+deploy/docker/backups/
+
+# Файл ключа шифрования токенов. Создаётся платформой автоматически в томе
+# данных, права 600. В репозиторий попадать не должен ни при каких условиях:
+# это ключ, которым зашифрованы все токены Home Assistant.
+encryption.key
+
 # ActiveMQ
 activemq-data/
 
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environments.
+# `.env` без звёздочки не покрывает `.env.prod`, `.env.local` и подобные —
+# из-за этого файл с токеном Home Assistant оказался в git. Исключение
+# `!*.example`: образцы конфигурации должны отслеживаться.
 .env
+.env.*
+!.env.example
+!.env.prod.example
 .envrc
 .venv
 env/

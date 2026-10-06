@@ -83,23 +83,24 @@ echo ""
 # ──────────────────────────────────────────────
 # 0. Проверка: .gitignore не был изменён
 # ──────────────────────────────────────────────
-GITIGNORE_FIX="$ROOT/.ai/templates/qwen.gitignore.fix"
+GITIGNORE_CHECK="$ROOT/.ai/scripts/check_gitignore.sh"
 
-if [[ -f "$GITIGNORE_FIX" ]]; then
-    if ! diff -q "$GITIGNORE_FIX" "$ROOT/.gitignore" >/dev/null 2>&1; then
-        fail ".gitignore был изменён! Это запрещено.
-
-⛔ Восстанови .gitignore из шаблона:
-   cp .ai/templates/qwen.gitignore.fix .gitignore
-   git add .gitignore
-
-Затем запусти проверки снова."
+# Раньше здесь стояло сравнение с шаблоном и предложение «восстанови .gitignore из
+# шаблона». Шаблон к этому моменту устарел: коммиты 5dad5f8 и 848b140 добавили
+# правила для ключа шифрования и `.env.*`, а эталон остался прежним. Поэтому
+# каждое сравнение падало и предлагало откатить правила безопасности, вернув в
+# индекс каталоги с манифестом и копиями бэкапов. Теперь сравнение живёт в
+# check_gitignore.sh вместе с проверкой самих правил, а эталон синхронизирован.
+if [[ -x "$GITIGNORE_CHECK" ]]; then
+    if ! "$GITIGNORE_CHECK"; then
+        fail "Проверка .gitignore не пройдена (см. выше)."
     fi
 else
-    warn "qwen.gitignore.fix не найден — пропускаю проверку .gitignore"
+    fail "Скрипт проверки .gitignore отсутствует или не исполняем: $GITIGNORE_CHECK
+
+⛔ Верни его на место — иначе правка .gitignore останется незамеченной."
 fi
 
-echo -e "${GREEN}✅ .gitignore не изменён${NC}"
 echo ""
 #
 ## 1. Tests
@@ -204,16 +205,18 @@ echo ""
 # ──────────────────────────────────────────────
 # 6. Финальная проверка: .gitignore не в staged
 # ──────────────────────────────────────────────
-if git diff --cached --name-only | grep -q '^\.gitignore$'; then
-    fail ".gitignore находится в staged (готов к коммиту)! Это запрещено.
+# Правка самого .gitignore в коммите запрещена: файл управляется вручную, а любое
+# изменение правил безопасности должно проходить через владельца. Эталон при этом
+# править можно — он хранит ожидаемое состояние, и без его обновления любая
+# намеренная правка .gitignore сделала бы run_checks.sh непроходимым навсегда.
+if git diff --cached --name-only | grep -qx '\.gitignore$'; then
+    fail ".gitignore находится в staged — правка запрещена.
 
-⛔ Убери .gitignore из индекса:
+⛔ Убери из индекса:
    git restore --staged .gitignore
 
-Или восстанови шаблон, если ты его менял:
-   cp .ai/templates/qwen.gitignore.fix .gitignore
-   git restore --staged .gitignore
-"
+Если правка .gitignore была намеренной, сначала обнови эталон, затем
+попроси владельца подтвердить изменение правил."
 fi
 
 echo ""

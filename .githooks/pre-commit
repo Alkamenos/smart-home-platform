@@ -62,10 +62,14 @@ fi
 
 # 4. Проверка .gitignore
 info "📝 Checking .gitignore..."
-if [[ -x "$ROOT/.ai/scripts/check_gitignore.sh" ]]; then
-    if ! "$ROOT/.ai/scripts/check_gitignore.sh"; then
-        fail "❌ Gitignore check failed"
-    fi
+# Проверка обязательна, а не условна: `[[ -x ... ]]` молча пропускал отсутствующий
+# скрипт, и .gitignore можно было править беспрепятственно — при том что правила
+# проекта это запрещают. Отсутствие проверки выглядело как «проверка прошла».
+if [[ ! -x "$ROOT/.ai/scripts/check_gitignore.sh" ]]; then
+    fail "❌ Скрипт проверки .gitignore отсутствует или не исполняем: .ai/scripts/check_gitignore.sh"
+fi
+if ! "$ROOT/.ai/scripts/check_gitignore.sh"; then
+    fail "❌ Gitignore check failed"
 fi
 
 # 5. Проверка обновления документации
