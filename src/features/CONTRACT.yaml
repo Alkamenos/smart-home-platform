@@ -61,6 +61,17 @@ templates:
     gaps:
       - Платформа публикует temperature_changed, шаблон слушает temperature_low, temperature_high и temperature_reached — имена не совпадают, событие не приходит никогда.
       - У переходов нет guard'ов и порогов. Даже после исправления имён любое изменение температуры включало бы обогрев, а возврат к норме выключал бы. Порог должен стать параметром поведения.
+    params:
+      target_temp:
+        type: float
+        range: "5-35"
+        effective: false
+        note: "ИНЕРТЕН. Читается только валидатором"
+      hysteresis:
+        type: float
+        range: "0-5"
+        effective: false
+        note: "ИНЕРТЕН. Читается только валидатором"
   generic_cover:
     reachable: false
     in_manifest: []
@@ -102,6 +113,12 @@ templates:
     gaps:
       - Платформа публикует humidity_changed, шаблон слушает humidity_high и humidity_normal — имена не совпадают, событие не приходит никогда.
       - Порог зашит в имя guard'а (60), тогда как манифест задаёт поведению параметр humidity_threshold со значением 65. Параметр не читается.
+    params:
+      humidity_threshold:
+        type: float
+        range: "0-100"
+        effective: true
+        note: "Порог включения вентиляции, читается guard-ом. Единственный параметр этого шаблона с силой"
   lighting:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -117,6 +134,17 @@ templates:
     gaps:
       - motion_cleared публикуется платформой, но перехода по нему нет — движение кончилось, свет горит до таймаута. Это сценарий «свет с задержкой», а не дефект; отдельная задача на выбор поведения.
       - manual_switch_on и manual_switch_off нигде не порождаются. Ручной путь управления устройством в платформе отсутствует как класс (пункт 3 веб-плана), поэтому и manual_override не имеет источника.
+    params:
+      brightness:
+        type: int
+        range: "0-255"
+        effective: true
+        note: "Яркость включения, уходит в команду HA"
+      motion_timeout_sec:
+        type: int
+        range: "30-3600"
+        effective: false
+        note: "ИНЕРТЕН. Таймаут берётся из YAML шаблона (factory.py:227), параметр в это выражение не входит"
   night_light:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -131,6 +159,17 @@ templates:
     gaps:
       - schedule_end не порождается — расписание не выключает ночной свет.
       - У состояния ON_NIGHT нет guard'а на ночь, поэтому оно достижимо и днём через motion_detected.
+    params:
+      brightness:
+        type: int
+        range: "0-255"
+        effective: true
+        note: "Ночная яркость, уходит в команду HA"
+      schedule:
+        type: str
+        range: "ЧЧ:ММ-ЧЧ:ММ"
+        effective: true
+        note: "ИНЕРТЕН. Читается только валидатором"
   smart_lock:
     reachable: false
     in_manifest: []
@@ -163,3 +202,4 @@ templates:
     unproduced_triggers: [turn_on, increase_speed, decrease_speed, turn_off, manual_change]
     gaps:
       - Ни одного из пяти действий в реестре нет — шаблон неисполним целиком. Вне объёма варианта (a).
+
