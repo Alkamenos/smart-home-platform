@@ -1118,6 +1118,13 @@ class BehaviorsUpdateRequest(BaseModel):
     behaviors: list[BehaviorSelection] = Field(
         description="Новый список поведений; пустой список снимает все поведения"
     )
+    room_id: str | None = Field(
+        None,
+        description=(
+            "Комната устройства. Обычно не нужна: комната берётся из манифеста по "
+            "entity_id. Указывается, когда устройства в манифесте нет"
+        ),
+    )
 
 
 class BehaviorsUpdateResponse(BaseModel):
@@ -1175,15 +1182,27 @@ async def update_device_behaviors(
     except ParamError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
-    room_id = _room_of_device(get_lifecycle_service(http_request), device.ha_entity_id)
+    lifecycle = get_lifecycle_service(http_request)
+    # Комната берётся из манифеста. Раньше здесь подставлялась строка
+    # "unassigned" на случай отсутствия устройства в манифесте, но такой
+    # комнаты в манифесте не бывает: сервис отвечал 400 с текстом про
+    # несуществующую комнату вместо объяснения, что не так. Теперь отсутствие
+    # комнаты — отдельный отказ с понятным текстом.
+    room_id = body.room_id or _room_of_device(lifecycle, device.ha_entity_id)
+    if room_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Устройство {device.ha_entity_id} не найдено в манифесте, поэтому "
+                "неизвестна его комната. Укажите комнату в поле room_id."
+            ),
+        )
     behaviors = [
         BehaviorConfig(template=item.template, priority=item.priority, params=item.params)
         for item in body.behaviors
     ]
     try:
-        await get_lifecycle_service(http_request).update_device(
-            device, room_id=room_id, behaviors=behaviors
-        )
+        await lifecycle.update_device(device, room_id=room_id, behaviors=behaviors)
     except Exception as error:  # noqa: BLE001 — причина уходит в текст ответа
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1202,7 +1221,7 @@ async def update_device_behaviors(
     )
 
 
-def _room_of_device(lifecycle: Any, ha_entity_id: str) -> str:
+def _room_of_device(lifecycle: Any, ha_entity_id: str) -> str | None:
     """Возвращает комнату устройства по его entity_id.
 
     Args:
@@ -1210,10 +1229,10 @@ def _room_of_device(lifecycle: Any, ha_entity_id: str) -> str:
         ha_entity_id: Идентификатор сущности Home Assistant.
 
     Returns:
-        Идентификатор комнаты либо `unassigned`.
+        Идентификатор комнаты либо None, если устройства нет в манифесте.
     """
     for room in getattr(lifecycle.manifest, "rooms", []):
         for config in room.devices:
             if config.id == ha_entity_id:
                 return room.id
-    return "unassigned"
+    return None

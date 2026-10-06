@@ -280,12 +280,14 @@ window.BehaviorEditor = (function () {
         if (!behaviors.length) return;
         const behavior = behaviors[0];
         const template = behavior.template;
+        // Клон уже является блоком .behavior-editor: искать его вложенным
+        // бессмысленно, такой поиск возвращает null.
         const root = document.getElementById('behavior-editor-template')
             .content.firstElementChild.cloneNode(true);
-        root.querySelector('.behavior-editor').dataset.priority = String(behavior.priority || 10);
-        wire(root.querySelector('.behavior-editor'));
+        root.dataset.priority = String(behavior.priority || 10);
+        wire(root);
         card.querySelector('.device-state').after(root);
-        await open(root.querySelector('.behavior-editor'), device, template, behavior.params);
+        await open(root, device, template, behavior.params);
     }
 
     return { attach, open, save, collectParams, parseRange, setMode, wire };

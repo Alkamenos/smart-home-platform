@@ -36,6 +36,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
@@ -45,12 +46,17 @@ from playwright.sync_api import Page, expect
 
 
 SERVER_HOST = "127.0.0.1"
-SERVER_PORT = 8125
+# Порт намеренно не 8125: на 8125 поднят боевой контейнер платформы, и станок,
+# переиспользовавший его, проверял бы чужое состояние вместо своего (#73).
+SERVER_PORT = 8177
 SERVER_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
 
 # Идентичность для запросов к API: устройства и источники отдаются
 # авторизованному пользователю (DeviceAccessMiddleware).
 E2E_USER_ID = "e2e_admin"
+# Метка станка: сервер отвечает ей в /health, и только такой сервер можно
+# переиспользовать вместо поднятого заново.
+E2E_MARKER = "e2e-smoke-server"
 SERVER_START_TIMEOUT_SEC = 30.0
 DEFAULT_ACTION_TIMEOUT_MS = 10_000
 
@@ -81,6 +87,31 @@ def _is_server_up() -> bool:
         return sock.connect_ex((SERVER_HOST, SERVER_PORT)) == 0
 
 
+def _is_our_server() -> bool:
+    """Проверяет, что на порту отвечает именно станок, а не посторонний сервер.
+
+    Раньше проверка спрашивала только «отвечает ли порт», и этого хватало, пока
+    станок был единственным, кто слушал 8125. Стоило на том же порту оказаться
+    запущенному контейнеру платформы, станок молча пошёлл против него: тесты
+    получали боевой манифест и боевой Home Assistant, а всё, что они проверяют,
+    относилось к чужому состоянию. Наблюдалось это на `#73`: браузерная проверка
+    формы пошла против контейнера, и её отказ был отказом боевой системы, а не
+    станка.
+
+    Returns:
+        True, если сервер отвечает и помечен как станок.
+    """
+    try:
+        request = urllib.request.Request(  # noqa: S310 - адрес локальный и фиксирован
+            f"{SERVER_URL}/health",
+            headers={"X-E2E-Probe": E2E_MARKER},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
+            return E2E_MARKER in response.read().decode(errors="replace")
+    except Exception:
+        return False
+
+
 @pytest.fixture(scope="session", autouse=True)
 def start_webui_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Поднимает Web UI на временной копии манифеста и ждёт готовности.
@@ -89,6 +120,11 @@ def start_webui_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str
         Базовый URL сервера.
     """
     if _is_server_up():
+        assert _is_our_server(), (
+            f"порт {SERVER_PORT} занят посторонним сервером — это не станок. "
+            "Прогон против чужого сервера писал бы в боевое состояние. "
+            "Освободите порт или запустите станок на другом"
+        )
         yield SERVER_URL
         return
 
@@ -200,8 +236,14 @@ def _request_json(method: str, path: str, payload: dict | None = None) -> dict |
             "X-Is-Admin": "true",
         },
     )
-    with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
-        body = response.read().decode()
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+            body = response.read().decode()
+    except urllib.error.HTTPError as error:
+        # Тело ответа обязано попасть в сообщение: HTTP 400 без причины
+        # не диагностируется, а именно его возвращает проверка параметров.
+        detail = error.read().decode(errors="replace")
+        raise AssertionError(f"{method} {path} -> HTTP {error.code}: {detail}") from error
     return json.loads(body) if body else {}
 
 
@@ -482,6 +524,190 @@ class TestBehaviorManagement:
             page.locator("button:has-text('Remove')").last.click()
 
             expect(page.locator(".behavior-item")).to_have_count(behaviors_before - 1)
+
+
+class TestBehaviorEditorForm:
+    """Форма правки поведений в настоящем браузере (пункт 4 веб-плана).
+
+    Форма собрана из контракта параметров и работает в браузере, поэтому проверять
+    её в node недостаточно: там нет ни загрузки страницы, ни нажатия кнопки, ни
+    ответа сервера. Здесь проверяется весь путь — открытие панели, поля из
+    контракта, переключатель режимов и сохранение с последующей сверкой через API.
+
+    Устройство и его параметры создаются проверкой, а не берутся из состояния
+    прогона: иначе тест зависел бы от порядка и от того, что осталось от других
+    тестов. Исходные параметры восстанавливаются в конце, чтобы проверка не
+    оставляла за собой мусор для следующих.
+    """
+
+    ENTITY_ID = "light.behavior_editor_probe"
+
+    def _ensure_device_with_behavior(self) -> str:
+        """Создаёт устройство с поведением lighting и возвращает его id.
+
+        Returns:
+            Идентификатор устройства.
+        """
+        devices = _request_json("GET", f"/api/v1/devices?ha_entity_id={self.ENTITY_ID}")
+        if isinstance(devices, list) and devices:
+            found = str(devices[0]["id"])
+            _request_json(
+                "PUT",
+                f"/api/v1/devices/{found}/behaviors",
+                {
+                    "behaviors": [{"template": "lighting", "priority": 10, "params": {}}],
+                    "room_id": "kitchen",
+                },
+            )
+            return found
+
+        source_id = _ensure_ha_source_exists()
+        applied = _request_json(
+            "POST",
+            "/api/v1/devices/apply",
+            {
+                "source_id": source_id,
+                "dry_run": False,
+                "selections": [
+                    {
+                        "device_entity_id": self.ENTITY_ID,
+                        "device_type": "light",
+                        "name": "Проба формы поведений",
+                        "target_room": "kitchen",
+                        "behavior_template": "lighting",
+                    }
+                ],
+            },
+        )
+        created = [
+            item
+            for item in applied.get("devices", [])
+            if item.get("ha_entity_id") == self.ENTITY_ID
+        ]
+        assert created, f"устройство не создано: {applied}"
+        return str(created[0]["id"])
+
+    def _open_editor(self, page: Page) -> None:
+        """Открывает панель правки поведений устройства.
+
+        Args:
+            page: Playwright page.
+        """
+        _open_index(page)
+        card = page.locator(f'.device-card[data-device="{self.ENTITY_ID}"]')
+        expect(card).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+        card.locator("button.behavior-open").click()
+        expect(card.locator(".behavior-editor")).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+
+    def test_should_show_effective_params_as_fields(self, page: Page) -> None:
+        """Поля строятся из контракта, с диапазонами из него же.
+
+        Args:
+            page: Playwright page.
+        """
+        device_id = self._ensure_device_with_behavior()
+        self._open_editor(page)
+
+        brightness = page.locator('.behavior-editor [data-param="brightness"]')
+        expect(brightness).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+        # Диапазон из контракта попадает в подсказку браузера: без него форма
+        # предлагала бы значения, которые сервер отвергнет.
+        expect(brightness).to_have_attribute("min", "0")
+        expect(brightness).to_have_attribute("max", "255")
+
+        _request_json(
+            "PUT",
+            f"/api/v1/devices/{device_id}/behaviors",
+            {"behaviors": [{"template": "lighting", "priority": 10, "params": {}}]},
+        )
+
+    def test_should_switch_to_json_mode_and_back(self, page: Page) -> None:
+        """Переключатель режимов работает: JSON показывается, поле скрывается.
+
+        Args:
+            page: Playwright page.
+        """
+        self._ensure_device_with_behavior()
+        self._open_editor(page)
+        editor = page.locator(".behavior-editor")
+
+        editor.locator('button[data-mode="json"]').click()
+        expect(editor.locator(".behavior-json")).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+        expect(editor.locator('[data-param="brightness"]')).to_be_hidden()
+
+        editor.locator('button[data-mode="fields"]').click()
+        expect(editor.locator('[data-param="brightness"]')).to_be_visible(
+            timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
+        expect(editor.locator(".behavior-json")).to_be_hidden()
+
+    def test_should_save_changed_params_and_report_inert_ones(self, page: Page) -> None:
+        """Сохранение доходит до сервера и возвращает замечания об инертных.
+
+        Args:
+            page: Playwright page.
+        """
+        device_id = self._ensure_device_with_behavior()
+        self._open_editor(page)
+        editor = page.locator(".behavior-editor")
+
+        editor.locator('[data-param="brightness"]').fill("200")
+        editor.locator("button.behavior-save").click()
+        expect(editor.locator('[data-part="status"]')).to_contain_text(
+            "сохранено", timeout=DEFAULT_ACTION_TIMEOUT_MS
+        )
+
+        saved = _request_json("GET", f"/api/v1/devices?ha_entity_id={self.ENTITY_ID}")
+        assert saved[0]["behaviors"][0]["params"] == {"brightness": 200}, saved[0]["behaviors"]
+
+        # Инертный параметр должен быть назван, а не молча принят.
+        _request_json(
+            "PUT",
+            f"/api/v1/devices/{device_id}/behaviors",
+            {
+                "behaviors": [
+                    {
+                        "template": "climate_control",
+                        "priority": 10,
+                        "params": {"hysteresis": 0.5},
+                    }
+                ],
+                "room_id": "kitchen",
+            },
+        )
+        page.reload(wait_until="load")
+        self._open_editor(page)
+        inert = page.locator('.behavior-editor [data-part="inert"]')
+        expect(inert).to_contain_text("hysteresis", timeout=DEFAULT_ACTION_TIMEOUT_MS)
+
+        _request_json(
+            "PUT",
+            f"/api/v1/devices/{device_id}/behaviors",
+            {"behaviors": [{"template": "lighting", "priority": 10, "params": {}}]},
+        )
+
+    def test_should_show_server_rejection_in_page(self, page: Page) -> None:
+        """Отвергнутое значение показывается в странице, а не теряется.
+
+        Args:
+            page: Playwright page.
+        """
+        self._ensure_device_with_behavior()
+        self._open_editor(page)
+        editor = page.locator(".behavior-editor")
+
+        # Обходим подсказку диапазона: значение вне контракта должно отвергаться
+        # сервером, даже если браузер его пропустил.
+        editor.locator('[data-param="brightness"]').fill("9999")
+        editor.locator("button.behavior-save").click()
+
+        status = editor.locator('[data-part="status"]')
+        expect(status).to_contain_text("слой 3", timeout=DEFAULT_ACTION_TIMEOUT_MS)
+
+        saved = _request_json("GET", f"/api/v1/devices?ha_entity_id={self.ENTITY_ID}")
+        assert saved[0]["behaviors"][0].get("params", {}) == {}, (
+            "отвергнутое значение не должно было сохраниться"
+        )
 
 
 class TestTemplateAPI:
