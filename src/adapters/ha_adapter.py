@@ -126,12 +126,26 @@ class SimpleHAWebSocketClient:
             logger.warning(f"HAAdapter: listen loop terminated: {e}")
 
     async def close(self) -> None:
+        # Инструментация #70: heartbeat входит в close() и не возвращается. Чтобы
+        # сказать, на каком именно ожидании встали, нужна запись ДО и ПОСЛЕ каждого
+        # шага, а не только вход и выход. Уровень WARNING — логи клиента наследуют
+        # корневой обработчик, где INFO не виден (проверено: от этого модуля в
+        # журнале не было ни одной строки).
+        logger.warning(f"HAAdapter: close() start, listen_task={self._listen_task!r}")
         if self._listen_task:
             self._listen_task.cancel()
+            logger.warning(f"HAAdapter: close() cancel sent, task done={self._listen_task.done()}")
             with contextlib.suppress(asyncio.CancelledError):
                 await self._listen_task
+            logger.warning(
+                f"HAAdapter: close() listen_task awaited, done={self._listen_task.done()}"
+            )
+        else:
+            logger.warning("HAAdapter: close() no listen_task")
         if self.ws:
+            logger.warning("HAAdapter: close() closing websocket")
             await self.ws.close()
+            logger.warning("HAAdapter: close() websocket closed")
         self.connected = False
 
     async def subscribe(
