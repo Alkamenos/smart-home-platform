@@ -258,6 +258,40 @@ def _request_json(method: str, path: str, payload: dict | None = None) -> dict |
     return json.loads(body) if body else {}
 
 
+def _auth_headers() -> dict[str, str]:
+    """Заголовки идентичности для прямых запросов к API.
+
+    ``page.request`` не наследует заголовки страницы: это отдельный клиент,
+    который ничего не знает про ``X-User-ID``. Эндпоинты с состояниями требуют
+    идентичность и отвечают 401 без неё, поэтому такие проверки падали с
+    «Missing X-User-ID header», а диагностировали это как «состояний нет».
+
+    Returns:
+        Заголовки запроса.
+    """
+    return {"X-User-ID": E2E_USER_ID, "X-Is-Admin": "true"}
+
+
+def _first_fsm_id(page: Page) -> str:
+    """Берёт идентификатор автомата из живых данных.
+
+    Раньше здесь был зашит ``light.kitchen`` — устройство из старой копии
+    манифеста. На боевом манифесте такого автомата нет, и проверка падала с 404,
+    хотя диаграммы были исправны.
+
+    Returns:
+        Идентификатор первого автомата.
+    """
+    response = page.request.get(f"{SERVER_URL}/api/fsm/state", headers=_auth_headers())
+    assert response.status == 200, f"/api/fsm/state -> {response.status}"
+    states = response.json()["states"]
+    assert states, (
+        "на манифесте станка нет ни одного автомата — проверка диаграммы была бы "
+        "пустой: она обязана смотреть на реальный автомат"
+    )
+    return str(states[0]["fsm_id"])
+
+
 def _open_index(page: Page) -> None:
     """Открывает главную страницу и дожидается готовности к взаимодействию.
 
@@ -339,8 +373,8 @@ class TestLiveUpdates:
         """Состояния показаны сразу при загрузке, до первого события (FR-028)."""
         _open_index(page)
 
-        response = page.request.get(f"{SERVER_URL}/api/fsm/state")
-        assert response.status == 200
+        response = page.request.get(f"{SERVER_URL}/api/fsm/state", headers=_auth_headers())
+        assert response.status == 200, response.text()
         states = response.json()["states"]
 
         if states:
@@ -352,8 +386,11 @@ class TestLiveUpdates:
         """Схема отображается как диаграмма, а не как JSON (FR-029)."""
         _open_index(page)
 
-        response = page.request.get(f"{SERVER_URL}/api/fsm/light.kitchen/diagram")
-        assert response.status == 200
+        fsm_id = _first_fsm_id(page)
+        response = page.request.get(
+            f"{SERVER_URL}/api/fsm/{fsm_id}/diagram", headers=_auth_headers()
+        )
+        assert response.status == 200, response.text()
         assert response.text().startswith("stateDiagram-v2")
 
         page.locator(".device-action", has_text="FSM").first.click()
@@ -397,7 +434,9 @@ class TestLiveUpdates:
             "() => typeof window.Chart !== 'undefined'", timeout=DEFAULT_ACTION_TIMEOUT_MS
         )
 
-        states = page.request.get(f"{SERVER_URL}/api/fsm/state").json()["states"]
+        states = page.request.get(f"{SERVER_URL}/api/fsm/state", headers=_auth_headers()).json()[
+            "states"
+        ]
         if states:
             expect(page.locator("#deviceStatusTable")).not_to_contain_text(">Active<")
         expect(page.locator("#deviceStatusTable")).to_be_visible()
