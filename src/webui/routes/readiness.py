@@ -149,6 +149,64 @@ def check_home_assistant(adapter: Any) -> dict[str, Any]:
     return {"ok": False, "detail": "нет соединения с Home Assistant"}
 
 
+def check_deployment_mode(container: Any) -> dict[str, Any]:
+    """Проверить, исполняет ли платформа обещанные команды.
+
+    Режим развёртывания — не строчка в журнале, а часть готовности. Дефект #77
+    был обратной стороной того же: `SHADOW_MODE` доходил до контейнера и не
+    читался кодом, поэтому оператор считал систему безопасной, а она трогала
+    дом. Теперь режим читается и блокирует выход — но без ответа в `/ready`
+    оператор не увидит и обратного: события приходят, автоматы считают
+    состояния, `ready: true`, а лампы не включаются.
+
+    Поэтому в режиме тени готовность ложная: система принимает события и
+    считает состояния, но не исполняет команды.
+
+    Args:
+        container: Контейнер платформы либо ``None``.
+
+    Returns:
+        Словарь ``ok``, ``mode`` и ``detail``.
+    """
+    deployment = getattr(container, "_deployment", None)
+    if deployment is None:
+        # Отсутствие менеджера — отсутствие данных, а не отказ: сборка без
+        # развёртывания (тесты, локальный запуск) не должна падать на проверке,
+        # которая для этой конфигурации ничего не утверждает.
+        return {
+            "ok": True,
+            "mode": "unknown",
+            "detail": "режим развёртывания не задан",
+        }
+
+    try:
+        executes = bool(deployment.should_execute_action())
+        mode = str(getattr(deployment.get_mode(), "value", "unknown"))
+    except Exception as exc:  # noqa: BLE001 - причина попадает в отчёт
+        return {
+            "ok": False,
+            "mode": "unknown",
+            "detail": f"режим развёртывания неизвестен: {exc}",
+        }
+
+    if executes:
+        return {
+            "ok": True,
+            "mode": mode,
+            "detail": f"режим {mode}: команды исполняются",
+        }
+
+    return {
+        "ok": False,
+        "mode": mode,
+        "detail": (
+            f"режим {mode}: команды НЕ исполняются, платформа только считает "
+            f"состояния. Чтобы включить выход в Home Assistant, задайте "
+            f"SHADOW_MODE=false и перезапустите контейнер"
+        ),
+    }
+
+
 def check_watchdog(container: Any, stale_sec: float = WATCHDOG_STALE_SEC) -> dict[str, Any]:
     """Проверить, что сторож публикует свежие снимки.
 
@@ -262,6 +320,7 @@ def collect_checks(request: Any) -> dict[str, dict[str, Any]]:
     return {
         "data_dir": check_data_dir(),
         "encryption_key": check_encryption_key(),
+        "deployment_mode": check_deployment_mode(container),
         "home_assistant": check_home_assistant(adapter),
         "watchdog": check_watchdog(container),
         "fsm_engine": check_fsm_engine(container),

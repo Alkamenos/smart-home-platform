@@ -124,7 +124,7 @@ docker logs -f behavioral-platform
 | `HA_URL` | URL Home Assistant | `http://localhost:8123` |
 | `HA_TOKEN` | Токен доступа к HA | *(требуется)* |
 | `LOG_LEVEL` | Уровень логирования | `INFO` |
-| `SHADOW_MODE` | Режим безопасного тестирования | `false` |
+| `SHADOW_MODE` | Режим развёртывания. `false`/`0`/`no`/`off` — команды исполняются; всё остальное, включая **незаданную переменную** и опечатку, — режим тени, команды не исполняются | режим тени |
 | `CONFIG_PATH` | Путь к конфигурации | `/config/behavioral_platform` |
 | `DATA_PATH` | Путь к данным | `/data/behavioral_platform` |
 

@@ -225,6 +225,11 @@ class TestChecksAreIndependent:
         assert set(checks) == {
             "data_dir",
             "encryption_key",
+            # Режим развёртывания добавлен в сводку вместе с #77: в режиме тени
+            # система принимает события и считает состояния, но не исполняет
+            # команды, и без этой проверки `/ready` отвечал бы `ready: true`
+            # там, где свет не включается.
+            "deployment_mode",
             "home_assistant",
             "watchdog",
             "fsm_engine",
