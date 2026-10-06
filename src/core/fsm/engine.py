@@ -482,6 +482,13 @@ class FSMEngine:
     async def _cancel_timers(self, entity_id: str, log: Any | None = None) -> None:
         """Cancel any pending timers for an entity.
 
+        Текущая задача не отменяется. Обработчик таймаута сам зовёт `trigger`,
+        а тот на выполненном переходе отменяет прежние таймеры — включая тот,
+        который его и вызвал. Без этого таймер отменял сам себя на середине
+        срабатывания: переход начинал выполняться и обрывался, состояние
+        оставалось прежним (найдено на стенде 2026-10-07, отложенный переход
+        не наступал никогда).
+
         Args:
             entity_id: ID of the entity whose timers should be cancelled.
             log: Optional logger instance with trace_id bound.
@@ -490,11 +497,14 @@ class FSMEngine:
             log = logger
         if entity_id in self._timers:
             timer_task = self._timers[entity_id]
-            if not timer_task.done():
+            # Порядок обязателен: запись снимается ДО отмены. Иначе обработчик,
+            # добравшись до конца перехода, запишет новый таймер — и следующая
+            # отмена снимет уже не тот.
+            del self._timers[entity_id]
+            if timer_task is not asyncio.current_task() and not timer_task.done():
                 timer_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await timer_task
-            del self._timers[entity_id]
             log.debug(f"Cancelled timers for entity {entity_id}")
 
     def _evaluate_guard(
@@ -644,9 +654,19 @@ class FSMEngine:
         # Bind trace_id to logger for this trigger
         log = logger.bind(trace_id=trace_id)
 
-        # Cancel any existing timers before processing new trigger
-        await self._cancel_timers(entity_id, log)
-
+        # Таймер НЕ отменяется здесь, до разбора события.
+        #
+        # Отмена означает «состояние изменилось, прежнее ожидание больше не
+        # действует». Но событие может не дать перехода вовсе: в `lighting.yaml`
+        # нет перехода по триггеру `motion_cleared`, и датчик движения в жилой
+        # комнате шлёт события каждые 15–60 с. Прежняя отмена стояла первым
+        # действием, поэтому каждое такое событие съедало таймер, а новый не
+        # взводилось — перехода не было. Отложенный переход не наступал никогда,
+        # и свет не гас никогда, в том числе в живом процессе без перезапуска
+        # (найдено на стенде 2026-10-07).
+        #
+        # Настоящий переход отменяет прежний таймер ниже, в ветке выполненного
+        # перехода: там состояние действительно меняется.
         if entity_id not in self._definitions:
             log.warning(f"No FSM definition found for entity {entity_id}")
             self._publish_rejection(entity_id, event, None, REASON_UNKNOWN_ENTITY, trace_id)
@@ -712,6 +732,12 @@ class FSMEngine:
             )
 
             new_context = {**merged_context, **context_patch}
+
+            # Таймер прежнего состояния снимается здесь — то есть на
+            # выполненном переходе, а не на каждом событии. Отмена означает
+            # «ожидание прежнего состояния больше не действует», и только
+            # сменившееся состояние делает его недействующим.
+            await self._cancel_timers(entity_id, log)
 
             # Create new state
             new_state = State(
