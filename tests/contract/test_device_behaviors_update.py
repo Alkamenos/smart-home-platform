@@ -56,6 +56,67 @@ def _make_device(client: TestClient) -> str:
     return str(client.get("/api/v1/devices?ha_entity_id=light.behavior_probe").json()[0]["id"])
 
 
+class TestDeviceFilterIsReal:
+    """Фильтр `ha_entity_id` обязан сужать выборку (#74).
+
+    Параметр был молчаливо игнорируем: запрос с фильтром возвращал все устройства.
+    Проверки этого файла пользовались им и проходили не потому, что он работает,
+    а потому что устройство в изолированном приложении было одно.
+    """
+
+    def test_should_return_only_requested_device(self, isolated_client: TestClient) -> None:
+        """Фильтр оставляет ровно одно устройство.
+
+        Args:
+            isolated_client: HTTP-клиент от имени администратора.
+        """
+        first = _make_device(isolated_client)
+
+        source = isolated_client.post(
+            "/api/v1/devices/sources",
+            json={"name": "Второй источник", "url": "http://192.168.1.14:8123", "token": "t" * 20},
+        )
+        assert source.status_code == 201, source.text
+        isolated_client.post(
+            "/api/v1/devices/apply",
+            json={
+                "source_id": source.json()["id"],
+                "dry_run": False,
+                "selections": [
+                    {
+                        "device_entity_id": "light.behavior_probe_two",
+                        "device_type": "light",
+                        "name": "Второй светильник",
+                        "target_room": "kitchen",
+                        "behavior_template": "lighting",
+                    }
+                ],
+            },
+        )
+
+        listing = isolated_client.get("/api/v1/devices")
+
+        assert len(listing.json()) == 2, "в изолированном приложении должно быть два устройства"
+        filtered = isolated_client.get("/api/v1/devices?ha_entity_id=light.behavior_probe")
+
+        assert [item["id"] for item in filtered.json()] == [first], (
+            "фильтр не сузил выборку: вызывающий код получил бы все устройства, "
+            "считая, что получил одно (Known Issue #74)"
+        )
+
+    def test_should_return_empty_list_for_unknown_entity(self, isolated_client: TestClient) -> None:
+        """Неизвестный entity_id даёт пустой список, а не всё подряд.
+
+        Args:
+            isolated_client: HTTP-клиент от имени администратора.
+        """
+        _make_device(isolated_client)
+
+        response = isolated_client.get("/api/v1/devices?ha_entity_id=light.нет_такого")
+
+        assert response.json() == [], response.text
+
+
 class TestBehaviorsUpdate:
     """Правка поведений устройства."""
 

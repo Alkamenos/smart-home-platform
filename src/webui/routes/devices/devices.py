@@ -140,6 +140,7 @@ class DeviceResponse(BaseModel):
 async def get_devices(
     request: Request,
     source_id: UUID | None = None,
+    ha_entity_id: str | None = None,
     x_user_id: str | None = Header(None),
 ) -> list[DeviceResponse]:
     """Получает список всех доступных пользователю устройств.
@@ -157,7 +158,10 @@ async def get_devices(
     - иначе — только устройства, к которым у пользователя есть запись о доступе
       (``get_user_accessible_devices``); без ``X-User-ID`` пустой список.
 
-    Фильтр по ``source_id`` применяется поверх в обоих случаях.
+    Фильтры по ``source_id`` и ``ha_entity_id`` применяются поверх в обоих
+    случаях. Фильтр по ``ha_entity_id`` был молчаливо игнорируем: параметр
+    приходил в запрос, но на выборку не влиял, и вызывающий код получал все
+    устройства, считая, что получил суженную выборку (#74).
 
     Список берётся из единого источника — DeviceService (spec 006, FR-003):
     раньше роут читал временный словарь, который был пуст после перезапуска
@@ -166,6 +170,7 @@ async def get_devices(
     Args:
         request: HTTP запрос (для получения DeviceService и признака админа)
         source_id: Опциональный фильтр по источнику
+        ha_entity_id: Опциональный фильтр по entity_id в Home Assistant
         x_user_id: ID пользователя из заголовка X-User-ID
 
     Returns:
@@ -187,9 +192,11 @@ async def get_devices(
             # T069: фильтруем по доступу пользователя (важнее source_id)
             devices = await device_service.get_user_accessible_devices(x_user_id)
 
-        # Фильтруем по source_id если указан (поверх фильтра доступа)
+        # Фильтры применяются поверх фильтра доступа, а не вместо него.
         if source_id:
             devices = [device for device in devices if device.source_id == source_id]
+        if ha_entity_id:
+            devices = [device for device in devices if device.ha_entity_id == ha_entity_id]
 
         logger.info(
             f"Получен список {len(devices)} устройств для пользователя {x_user_id} "
