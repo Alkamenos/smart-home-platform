@@ -966,7 +966,89 @@
                         ${escapeHtml(deviceStateLabel(raw))}
                     </span>
                     ${unavailable ? `<span class="badge bg-warning text-dark ms-1">${escapeHtml(info.status)}</span>` : ''}
+                    ${deviceControlHtml(entityId, raw)}
                 `;
+                wireDeviceControl(holder, entityId);
+            }
+
+            // Домены, которыми можно управлять из карточки (пункт 3 веб-плана).
+            const SWITCHABLE_DOMAINS = ['light', 'switch', 'fan', 'input_boolean'];
+
+            // Идентификаторы устройств платформы: под рукой только выгрузка
+            // /api/v1/devices, а карточки размечены entity_id из Home Assistant.
+            function deviceIdByEntity(entityId) {
+                const found = (devices || []).find(d => d.ha_entity_id === entityId);
+                return found ? found.id : null;
+            }
+
+            // Пауза после команды. Шаблон lighting задаёт debounce_sec 0.5, и
+            // вторая команда в пределах этого окна отвергается движком как
+            // дребезг. Без паузы второе нажатие выглядело бы как «не работает»,
+            // хотя команда просто не была выполнена.
+            const DEVICE_COMMAND_COOLDOWN_MS = 900;
+
+            function deviceControlHtml(entityId, state) {
+                const domain = String(entityId || '').split('.')[0];
+                if (!SWITCHABLE_DOMAINS.includes(domain)) return '';
+                const deviceId = deviceIdByEntity(entityId);
+                if (!deviceId) return '';
+                const isOn = String(state || '').toLowerCase() === 'on';
+                const command = isOn ? 'turn_off' : 'turn_on';
+                const label = isOn ? 'Выключить' : 'Включить';
+                return `
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary ms-2 device-power"
+                            data-device-id="${escapeHtml(deviceId)}"
+                            data-command="${command}"
+                            title="Ручное управление: команда уходит через автомат">
+                        ${label}
+                    </button>
+                    <span class="device-command-note ms-1"></span>
+                `;
+            }
+
+            function wireDeviceControl(holder, entityId) {
+                const button = holder.querySelector('.device-power');
+                if (!button || button.dataset.wired === '1') return;
+                button.dataset.wired = '1';
+                button.addEventListener('click', () => sendDeviceCommand(button, holder));
+            }
+
+            async function sendDeviceCommand(button, holder) {
+                if (button.disabled) return;
+                const note = holder.querySelector('.device-command-note');
+                const deviceId = button.dataset.deviceId;
+                const command = button.dataset.command;
+                const restore = button.textContent;
+                button.disabled = true;
+                if (note) note.innerHTML = '<span class="text-muted">выполняется…</span>';
+                try {
+                    const response = await fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}/command`, {
+                        method: 'POST',
+                        headers: { ...headers(), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: command, parameters: {} })
+                    });
+                    if (!response.ok) {
+                        let detail = `HTTP ${response.status}`;
+                        try {
+                            const body = await response.json();
+                            detail = body.detail || detail;
+                        } catch (e) { /* тело не JSON — оставляем код ответа */ }
+                        if (note) note.innerHTML = `<span class="text-danger">${escapeHtml(detail)}</span>`;
+                        return;
+                    }
+                    const body = await response.json();
+                    if (note) {
+                        note.innerHTML = body.automation_synced
+                            ? '<span class="text-muted">команда учтена автоматом</span>'
+                            : '<span class="text-warning" title="В шаблоне нет ручного перехода: команда ушла прямо в Home Assistant, автомат о состоянии устройства не знает">автоматика не следит</span>';
+                    }
+                } catch (e) {
+                    if (note) note.innerHTML = `<span class="text-danger">${escapeHtml(String(e))}</span>`;
+                } finally {
+                    button.textContent = restore;
+                    setTimeout(() => { button.disabled = false; }, DEVICE_COMMAND_COOLDOWN_MS);
+                }
             }
 
             // Показать состояние автоматов устройства прямо на карточке (FR-028).
