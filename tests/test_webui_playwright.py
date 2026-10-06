@@ -301,8 +301,12 @@ def _open_index(page: Page) -> None:
     Args:
         page: Playwright page.
     """
-    # networkidle недостижим: страница держит открытым WebSocket канала устройств
-    page.goto(SERVER_URL, wait_until="load")
+    # networkidle недостижим: страница держит открытым WebSocket канала устройств.
+    # `load` тоже ненадёжен: страница тянет htmx, Bootstrap и mermaid с CDN, и при
+    # медленной сети событие загрузки не наступает за 30 с — падал таймаут
+    # Page.goto без всякой связи с проверяемым. `domcontentloaded` достаточно:
+    # нужные скрипты проверяются ожиданиями ниже явно.
+    page.goto(SERVER_URL, wait_until="domcontentloaded")
     expect(page.locator(".room-card").first).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
     page.wait_for_function(
         "() => typeof window.htmx !== 'undefined' && typeof window.bootstrap !== 'undefined'",
@@ -644,6 +648,15 @@ class TestBehaviorEditorForm:
             page: Playwright page.
         """
         _open_index(page)
+        # Данные устройств приходят отдельным запросом после загрузки страницы,
+        # а карточки комнат рисуются из манифеста. Без ожидания `devices` кнопка
+        # «Поведения» ещё не отрисована: проверка полагалась на порядок запросов,
+        # который в браузере не гарантирован. Именно этим объяснялся редкий сбой —
+        # панель не открывалась, хотя предыдущий шаг отработал.
+        page.wait_for_function(
+            "() => Array.isArray(window.devices) && window.devices.length > 0",
+            timeout=DEFAULT_ACTION_TIMEOUT_MS,
+        )
         card = page.locator(f'.device-card[data-device="{self.ENTITY_ID}"]')
         expect(card).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
         card.locator("button.behavior-open").click()
@@ -725,7 +738,7 @@ class TestBehaviorEditorForm:
                 "room_id": "kitchen",
             },
         )
-        page.reload(wait_until="load")
+        page.reload(wait_until="domcontentloaded")
         self._open_editor(page)
         inert = page.locator('.behavior-editor [data-part="inert"]')
         expect(inert).to_contain_text("hysteresis", timeout=DEFAULT_ACTION_TIMEOUT_MS)
