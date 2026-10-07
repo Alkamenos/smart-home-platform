@@ -19,9 +19,14 @@ Control Tracker - Отслеживание кто и когда управлял
 
 from __future__ import annotations
 
+import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import Any
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -68,9 +73,19 @@ class ControlTracker:
             print("Ручное управление было в течение последнего часа")
     """
 
-    def __init__(self, history_size: int = 100):
+    def __init__(
+        self,
+        history_size: int = 100,
+        store: Any | None = None,
+        restore: bool = False,
+    ):
         self._history: dict[str, list[ControlEvent]] = defaultdict(list)
         self._history_size = history_size
+
+        # Хранилище переживающего перезапуск факта. Без него блокировка живёт
+        # только в памяти процесса: перезапуск стирал бы её, и человек увидел бы,
+        # что выключил свет, а через минуту свет включился снова.
+        self._store = store
 
         # Кэш последних событий для быстрого доступа
         self._last_manual: dict[str, ControlEvent | None] = {}
@@ -78,6 +93,70 @@ class ControlTracker:
 
         # Статистика по источникам
         self._stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+        if restore:
+            self.restore()
+
+    def restore(self) -> int:
+        """Восстановить последние ручные действия из хранилища.
+
+        Вызывается один раз при старте. По умолчанию трекер начинает с чистого
+        состояния, чтобы его использование в тестах и демо не зависело от
+        содержимого каталога данных.
+
+        Returns:
+            Сколько фактов восстановлено.
+        """
+        if self._store is None:
+            return 0
+
+        restored = 0
+        for entity_id, raw in self._store.load().items():
+            try:
+                event = ControlEvent(
+                    entity_id=str(raw.get("entity_id") or entity_id),
+                    source=str(raw.get("source") or TriggerSource.MANUAL),
+                    trigger=str(raw.get("trigger") or "manual_control"),
+                    timestamp=float(raw.get("timestamp") or 0.0),
+                    value=raw.get("value"),
+                )
+            except (TypeError, ValueError):
+                continue
+            self._last_manual[entity_id] = event
+            restored += 1
+
+        if restored:
+            logger.info(
+                f"Restored {restored} manual control record(s): manual lockout survives restart"
+            )
+        return restored
+
+    def _persist_manual(self, event: ControlEvent) -> None:
+        """Сохранить последнее ручное действие.
+
+        Args:
+            event: Записанное действие.
+        """
+        if self._store is None:
+            return
+
+        records = self._store.load()
+        records[event.entity_id] = {
+            "entity_id": event.entity_id,
+            "source": event.source,
+            "trigger": event.trigger,
+            "timestamp": event.timestamp,
+            "value": event.value,
+        }
+        try:
+            self._store.save(records)
+        except OSError as exc:
+            # Запись на диск не должна ломать работу в текущем процессе: каталог
+            # может оказаться только для чтения. Тогда блокировка не переживёт
+            # перезапуск, но платформа продолжит работать.
+            logger.warning(
+                f"Не удалось сохранить факт ручного действия для {event.entity_id}: {exc}"
+            )
 
     def record(self, entity_id: str, source: str, trigger: str, value: str | None = None) -> None:
         """
@@ -109,6 +188,7 @@ class ControlTracker:
         # Обновляем кэш последних событий
         if source == TriggerSource.MANUAL:
             self._last_manual[entity_id] = event
+            self._persist_manual(event)
 
         self._last_control[entity_id] = event
 

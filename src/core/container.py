@@ -31,6 +31,7 @@ from core.fsm.engine import FSMEngine
 from core.fsm.factory import FSMFactory
 from core.guards.builtin import register_all_guards
 from core.models.manifest import Manifest, load_manifest
+from core.persistence.manual_control_store import ManualControlStore
 from core.registry import Registry
 
 
@@ -182,9 +183,20 @@ class Container:
 
     @property
     def control_tracker(self) -> ControlTracker:
-        """Get or create ControlTracker instance."""
+        """Get or create ControlTracker instance.
+
+        Трекер сохраняет последнее ручное действие на диск и восстанавливает его
+        при старте. Без этого блокировка жила бы только в памяти процесса:
+        перезапуск стирал бы её, и человек видел бы, что выключил свет, а через
+        минуту свет включался снова — то есть ровно в тот момент, когда он и
+        проверяет, работает ли платформа (спека 010, US1, R-03).
+        """
         if self._control_tracker is None:
-            self._control_tracker = ControlTracker(history_size=100)
+            self._control_tracker = ControlTracker(
+                history_size=100,
+                store=ManualControlStore(),
+                restore=True,
+            )
         return self._control_tracker
 
     @property
