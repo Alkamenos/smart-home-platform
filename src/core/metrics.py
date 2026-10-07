@@ -111,6 +111,9 @@ class MetricsCollector:
         self._device_commands_total: Counter | None = None
         self._device_commands_success: Counter | None = None
         self._device_commands_failed: Counter | None = None
+        # Отказы по ручной блокировке: автоматика выключена намеренно, и это
+        # должно отличаться от поломки в показателях, а не только в журнале.
+        self._manual_lockout_blocks_total: Counter | None = None
 
         # Error metrics
         self._device_connection_errors_total: Counter | None = None
@@ -387,6 +390,16 @@ class MetricsCollector:
                 "device_integration_device_commands_failed",
                 "Количество неудачных команд",
                 ("source_id", "device_type", "command_type", "error_type"),
+            )
+
+            # Counter для отказов по ручной блокировке. Без него сценарий «свет не
+            # включается» нечем объяснить: отказ в журнале выглядит так же, как
+            # любой другой, и оператор ищет поломку там, где автоматика выключена
+            # намеренно — потому что человек сам выключил свет.
+            self._manual_lockout_blocks_total = counter(
+                "manual_lockout_blocks_total",
+                "Количество автоматических команд, отклонённых по ручной блокировке",
+                ("device_id",),
             )
 
             # 3. ERROR METRICS
@@ -756,6 +769,47 @@ class MetricsCollector:
                 command_type=command_type,
                 error_type=error_type,
             ).inc()
+
+    def record_manual_lockout_block(
+        self,
+        device_id: str,
+        remaining_sec: float | None = None,
+    ) -> None:
+        """Записать отказ автоматической команды по ручной блокировке.
+
+        Остаток срока в счётчик не входит — он меняется по ходу дела, и счётчик
+        с такой меткой раздувался бы на каждом опросе. Он пишется в журнал.
+
+        Args:
+            device_id: Идентификатор устройства, которым управлял человек.
+            remaining_sec: Сколько секунд осталось до конца блокировки; для
+                диагностики в журнале.
+        """
+        if self._initialized and self._manual_lockout_blocks_total:
+            self._manual_lockout_blocks_total.labels(device_id=device_id).inc()
+
+    def manual_lockout_blocks_total_value(self) -> int:
+        """Суммарное число отказов по ручной блокировке.
+
+        Существует ради проверок: счётчик с метками читать неудобно, а нужно
+        проверить сам факт учёта — иначе приёмка «свет не включился» нечем
+        подтвердить.
+
+        Returns:
+            Сумма по всем устройствам; 0, если счётчик не инициализирован.
+        """
+        counter = self._manual_lockout_blocks_total
+        if not self._initialized or counter is None:
+            return 0
+        total = 0.0
+        for metric in counter.collect():
+            for sample in metric.samples:
+                # Служебный образец `_created` несёт время создания счётчика, а не число
+                # число отказов: без фильтра сумма была бы временем запуска.
+                if sample.name.endswith("_created"):
+                    continue
+                total += sample.value
+        return int(total)
 
     def record_connection_error(
         self,

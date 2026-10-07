@@ -198,11 +198,31 @@ class ManualLockoutMiddleware(Middleware):
         if self._is_in_lockout_period(device_id, domain):
             last_manual = self._control_tracker.get_last_manual(device_id)
             lockout_minutes = self._get_lockout_minutes(domain)
-            logger.info(
+            elapsed = self._control_tracker.minutes_since_manual(device_id)
+            remaining_min = max(0.0, lockout_minutes - elapsed) if elapsed is not None else None
+            # Запись — предупреждение, а не обычная строка: логи адаптера
+            # наследуют корневой обработчик, где info не виден, и проверка на info
+            # молчала бы, не доказав ничего (урок #70). Остаток срока назван
+            # прямо — иначе отказ неотличим от поломки.
+            logger.warning(
                 f"Blocked automated command from {source} for {device_id}: "
-                f"manual lockout active (last manual control at {last_manual.timestamp if last_manual else 'unknown'}, "
-                f"lockout duration: {lockout_minutes} min)"
+                f"manual lockout active (last manual control at "
+                f"{last_manual.timestamp if last_manual else 'unknown'}, "
+                f"lockout duration: {lockout_minutes} min, "
+                f"remaining: {remaining_min:.1f} min)"
+                if remaining_min is not None
+                else f"Blocked automated command from {source} for {device_id}: "
+                f"manual lockout active (last manual control at "
+                f"{last_manual.timestamp if last_manual else 'unknown'})"
             )
+            try:
+                from core.metrics import get_metrics_collector
+
+                get_metrics_collector().record_manual_lockout_block(
+                    device_id, remaining_sec=(remaining_min or 0) * 60
+                )
+            except Exception as metric_error:  # noqa: BLE001 — учёт не влияет на отказ
+                logger.debug(f"Не удалось учесть отказ по блокировке в показателях: {metric_error}")
             return None
 
         # Allow the command
