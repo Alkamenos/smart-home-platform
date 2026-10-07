@@ -76,9 +76,9 @@ contracts/observable-signals.md, quickstart.md
 - [ ] T016 [US1] Модель ручного действия: `device_id`, `occurred_at`, `origin`, `command` — `src/core/models/manual_control.py` (одна запись на устройство, история не хранится)
 - [ ] T017 [US1] Модель блокировки как производная величина: `device_id`, `until`, `lockout_minutes` из манифеста, `cause` — `src/core/models/manual_control.py` (блокировка вычисляется, а не хранится: два источника правды разойдутся)
 - [ ] T018 [US1] Срок блокировки по типу устройства берётся из манифеста — `src/core/models/manifest.py` (значения по умолчанию уже есть; новых значений в коде не появляется)
-- [ ] T019 [US1] Проверка: факт ручного действия переживает перезапуск — `tests/unit/test_manual_control_persistence.py`
-- [ ] T020 [US1] Хранение факта: атомарная запись и чтение — `src/core/persistence/manual_control_store.py` (решение R-03; в `state.json` класть нельзя — файл перезаписывается при горячей перезагрузке манифеста)
-- [ ] T021 [US1] Восстановление факта при старте платформы — `src/core/container.py` (зависит от T020)
+- [X] T019 [US1] Проверка: факт ручного действия переживает перезапуск — `tests/unit/test_manual_control_persistence.py`
+- [X] T020 [US1] Хранение факта: атомарная запись и чтение — `src/core/persistence/manual_control_store.py` (решение R-03; в `state.json` класть нельзя — файл перезаписывается при горячей перезагрузке манифеста)
+- [X] T021 [US1] Восстановление факта при старте платформы — `src/core/container.py` (зависит от T020)
 - [ ] T022 [US1] Отказ по блокировке несёт остаток срока в показателях и в записи о переходах — `src/core/metrics.py`, `src/core/persistence/event_store.py`
 - [ ] T023 [US1] Записи о ручном действии и о сработавшей блокировке пишутся на видимом уровне, а не на уровне отладки — `src/core/control_tracker.py`, `src/core/commands/middleware.py` (логи адаптера наследуют корневой обработчик, где отладка не видна)
 

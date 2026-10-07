@@ -180,7 +180,11 @@ async def check_source_sync(persistence: Any, stale_sec: float | None = None) ->
             + (f" ({int(entry['age_sec'])} с)" if entry["age_sec"] is not None else "")
             for entry in stale
         )
-        result["detail"] = f"данные источников устарели: {listed}. Обновите их POST /sync"
+        result["detail"] = (
+            f"данные источников устарели: {listed}. Обновите вручную: "
+            f"POST /api/v1/devices/sources/<id>/sync — по расписанию синхронизация "
+            f"не запускается"
+        )
     else:
         result["detail"] = f"синхронизация не старше {int(limit)} с, источников — {len(sources)}"
 
