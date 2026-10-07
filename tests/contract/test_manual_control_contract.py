@@ -167,6 +167,16 @@ class TestLockoutIsVisible:
         assert any("manual lockout" in m or "Блокировка" in m for m in messages), (
             f"отказ по блокировке не попал в журнал: {messages}"
         )
+        block_levels = {
+            level
+            for level, msg in capture.records
+            if "manual lockout" in msg or "Блокировка" in msg
+        }
+        assert "debug" not in block_levels, (
+            f"отказ по блокировке записан только на уровне отладки {block_levels}: в "
+            f"журнале его не видно, и оператор ищет поломку там, где автоматика "
+            f"выключена намеренно"
+        )
 
     @pytest.mark.asyncio
     async def test_block_is_counted_in_metrics(self) -> None:
