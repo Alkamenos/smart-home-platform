@@ -20,6 +20,24 @@ from core.models.manifest import AutomationRules
 from .dispatcher import CommandIntent
 
 
+#: Источники команд, которые считаются вмешательством человека.
+#:
+#: `manual_command` добавлен потому, что команда из веб-интерфейса платформы —
+#: это тоже человек; без него платформа засчитывала собственное действие жильца
+#: только по пути Home Assistant, а по второму пути считала его автоматикой.
+DEFAULT_MANUAL_SOURCES = frozenset(
+    {
+        "manual",
+        "user",
+        "home_assistant",
+        "voice",
+        "alexa",
+        "google",
+        "manual_command",
+    }
+)
+
+
 class Middleware(ABC):
     """
     Base class for middleware in the command processing pipeline.
@@ -94,20 +112,28 @@ class ManualLockoutMiddleware(Middleware):
         """
         Check if a command source is considered manual user control.
 
+        Список источников — настраиваемый, а не зашитый: перечень ручных
+        действий есть политика установки, и следующий интерфейс (умная колонка,
+        CLI) иначе снова упрётся в этот же перечень. Значение по умолчанию
+        дополнено источником команды из веб-интерфейса платформы — человек,
+        нажавший кнопку в самом интерфейсе, вмешался так же, как нажавший
+        кнопку в приложении Home Assistant.
+
+        Замена правила «всё, что не автоматика, считается ручным» была бы
+        опаснее: внутренние служебные команды платформы (зеркало состояния
+        автомата проходит через тот же диспетчер) засчитались бы вмешательством
+        человека, и система заблокировала бы сама себя.
+
         Args:
             source: The source name of the command.
 
         Returns:
             True if the source represents manual control, False otherwise.
         """
-        manual_sources = {
-            "manual",
-            "user",
-            "home_assistant",
-            "voice",
-            "alexa",
-            "google",
-        }
+        extra = getattr(self._automation_rules, "manual_command_sources", None)
+        manual_sources = set(DEFAULT_MANUAL_SOURCES)
+        if isinstance(extra, (list, tuple, set)):
+            manual_sources.update(str(item).lower() for item in extra)
         return source.lower() in manual_sources
 
     def record_manual_control(self, device_id: str) -> None:

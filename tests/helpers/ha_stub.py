@@ -54,6 +54,7 @@ __all__ = [
     "HAUnavailable",
     "HAStub",
     "async_value",
+    "state_changed_event",
     "stub_ha",
 ]
 
@@ -113,6 +114,51 @@ def async_raiser(error: BaseException) -> Any:
         raise error
 
     return _raise
+
+
+def state_changed_event(
+    entity_id: str,
+    new_state: str,
+    old_state: str = "unknown",
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Событие изменения состояния в том виде, в каком его шлёт Home Assistant.
+
+    Конверт собирается целиком, а не только `data`. Это не формальность: указание
+    пользователя лежит именно в конверте, уровнем выше данных, и подмена одного
+    лишь `data` проверяла бы другую форму сообщения — ту, которую Home Assistant
+    не присылает. На этом и прятался дефект: ручная блокировка не включалась ни
+    одним путём, потому что конверт разбирался без указания пользователя.
+
+    Args:
+        entity_id: Идентификатор изменившейся сущности.
+        new_state: Новое состояние сущности.
+        old_state: Прежнее состояние.
+        user_id: Кто вызвал изменение; ``None`` — автоматика или сам Home
+            Assistant, и ручным действием это не считается.
+
+    Returns:
+        Конверт события, готовый к разбору клиентом WebSocket.
+    """
+    return {
+        "id": 1,
+        "type": "event",
+        "event": {
+            "event_type": "state_changed",
+            "origin": "LOCAL",
+            "time_fired": "2026-10-07T00:00:00Z",
+            "data": {
+                "entity_id": entity_id,
+                "old_state": {"entity_id": entity_id, "state": old_state},
+                "new_state": {"entity_id": entity_id, "state": new_state},
+            },
+            "context": {
+                "id": "ctx-1",
+                "user_id": user_id,
+                "parent_id": None,
+            },
+        },
+    }
 
 
 class HAStub:

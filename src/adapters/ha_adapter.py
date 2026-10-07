@@ -817,11 +817,22 @@ class HAAdapter:
                 f"HAAdapter: WebSocket state_change for {entity_id}: '{old_state}' -> '{new_state}'"
             )
 
+            # Указание пользователя лежит в конверте события, а не в его данных.
+            # Раньше оно подставлялось заглушкой и терялось: без него платформа
+            # не отличала «человек выключил свет» от «сработал сценарий», а
+            # ручная блокировка не включалась ни одним путём. Именно поэтому
+            # человек гасил свет, а автоматика включала его обратно.
+            ha_context = message.get("context") or {}
+
             await self.on_state_change(
                 entity_id=entity_id,
                 new_state=new_state,
                 old_state=old_state,
-                context={"trace_id": trace_id, "source": "websocket"},
+                context={
+                    "trace_id": trace_id,
+                    "source": "websocket",
+                    "user_id": ha_context.get("user_id"),
+                },
             )
 
         except Exception as e:
