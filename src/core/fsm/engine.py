@@ -28,6 +28,7 @@ from core.events.fsm_events import (
     OUTCOME_REJECTED,
     OUTCOME_TRANSITIONED,
     REASON_DEBOUNCED,
+    REASON_GUARD_DATA_MISSING,
     REASON_GUARD_FAILED,
     REASON_NO_STATE,
     REASON_NO_TRANSITION,
@@ -597,6 +598,46 @@ class FSMEngine:
                     await timer_task
             log.debug(f"Cancelled timers for entity {entity_id}")
 
+    def _guard_rejection_reason(
+        self,
+        guard: str | Callable[..., bool] | None,
+        entity_id: str,
+        context: dict[str, Any],
+    ) -> str | None:
+        """Определить причину отказа по условию, не вызывая само условие.
+
+        Наличие данных проверяется **до** вызова условия, иначе пришлось бы
+        разбирать результат условия, а это изменило бы контракт всех условий и
+        затронуло работающий код. Отсутствие данных — не «значение не
+        подходит», а отдельная причина: по ней видно, что молчит датчик, а не
+        что состояние штатное.
+
+        Args:
+            guard: Имя условия либо сама функция.
+            entity_id: Идентификатор автомата.
+            context: Контекст перехода.
+
+        Returns:
+            `None`, если данные на месте; иначе причина отказа.
+        """
+        if guard is None:
+            return None
+
+        guard_fn = self._guards.get(guard) if isinstance(guard, str) else guard
+        if guard_fn is None:
+            return REASON_GUARD_FAILED
+
+        required = getattr(guard_fn, "requires", ())
+        missing = [key for key in required if context.get(key) is None]
+        if missing:
+            logger.debug(
+                f"Entity {entity_id}: guard {getattr(guard_fn, '__name__', guard)} "
+                f"denied — no data for {', '.join(missing)}"
+            )
+            return REASON_GUARD_DATA_MISSING
+
+        return None
+
     def _evaluate_guard(
         self,
         guard: str | Callable[..., bool] | None,
@@ -809,13 +850,25 @@ class FSMEngine:
         if external_ctx:
             merged_context.update(external_ctx)
 
+        # Причины отказов по условиям: отсутствие данных и «значение не подходят»
+        # неразличимы в счётчике, если не различать их здесь.
+        guard_denials: dict[str, str] = {}
+
         # Process transitions (first valid one wins)
         for transition in matching_transitions:
-            # Evaluate guard
-            if not self._evaluate_guard(transition.guard, entity_id, merged_context, log):
+            # Отсутствие данных проверяется до вызова условия: условие остаётся
+            # функцией «да/нет», а отказ получает собственное имя.
+            missing = self._guard_rejection_reason(transition.guard, entity_id, merged_context)
+            if missing is None and not self._evaluate_guard(
+                transition.guard, entity_id, merged_context, log
+            ):
+                missing = REASON_GUARD_FAILED
+
+            if missing is not None:
+                guard_denials.setdefault(missing, str(transition.guard))
                 log.debug(
                     f"Entity {entity_id}: Guard '{transition.guard}' failed for transition "
-                    f"'{current_state.current_state}' -> '{transition.to_state}'"
+                    f"'{current_state.current_state}' -> '{transition.to_state}' ({missing})"
                 )
                 continue
 
@@ -907,10 +960,17 @@ class FSMEngine:
             return True
 
         log.debug(f"Entity {entity_id}: No valid transitions for event '{event}'")
-        self._record_rejection(entity_id, event, REASON_GUARD_FAILED)
-        self._publish_rejection(
-            entity_id, event, current_state.current_state, REASON_GUARD_FAILED, trace_id
+        # Причина отказа выбирается по тому, чего не хватило: отсутствие данных
+        # и неподходящее значение — разные ситуации, и оператор должен видеть
+        # какую именно. Если отказов не было (все переходы прошли), причина
+        # прежняя.
+        reason = (
+            REASON_GUARD_DATA_MISSING
+            if REASON_GUARD_DATA_MISSING in guard_denials
+            else REASON_GUARD_FAILED
         )
+        self._record_rejection(entity_id, event, reason)
+        self._publish_rejection(entity_id, event, current_state.current_state, reason, trace_id)
         return False
 
     def _restored_state_age(self, entity_id: str) -> float:

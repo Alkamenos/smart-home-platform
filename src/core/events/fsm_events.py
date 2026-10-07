@@ -50,6 +50,13 @@ REASON_NO_STATE: Final[str] = "no_state"
 REASON_DEBOUNCED: Final[str] = "debounced"
 REASON_NO_TRANSITION: Final[str] = "no_transition"
 REASON_GUARD_FAILED: Final[str] = "guard_failed"
+#: Отдельная причина для условия, которому не передали данные.
+#:
+#: Раньше «данных не было» и «значение не подходит» давали одну и ту же
+#: формулировку, и владелец не мог отличить штатную работу от молчащей поломки:
+#: поведение, описанное в манифесте, просто не срабатывало, и это выглядело как
+#: «влажность ниже порога», а не как «влажности не было никогда».
+REASON_GUARD_DATA_MISSING: Final[str] = "guard_data_missing"
 
 # Формат времени во всех разделах интерфейса (FR-023)
 TIMESTAMP_FORMAT: Final[str] = "%Y-%m-%dT%H:%M:%S.%f"

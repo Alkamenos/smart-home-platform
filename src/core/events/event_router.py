@@ -17,6 +17,25 @@ from core.fsm.engine import FSMEngine
 from core.models.manifest import Manifest
 
 
+def _as_measurement(value: str | Any) -> Any:
+    """Привести показание датчика к числу, если это возможно.
+
+    Числом — чтобы условие сравнивало числа, а не строки. Строкой — чтобы
+    нечитаемое значение осталось нечитаемым: молчаливое превращение «unavailable»
+    в ноль выдало бы заведомо ложное решение за честное.
+
+    Args:
+        value: Новое состояние датчика, как его прислал Home Assistant.
+
+    Returns:
+        Число, если значение приводится, иначе исходное значение.
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
+
+
 def collect_subscribed_entities(manifest: Any) -> list[str]:
     """Собрать сущности, на которые платформе нужны события.
 
@@ -70,6 +89,9 @@ class EventRouter:
         self._manifest = manifest
         self._engine = engine
         self._sensor_to_fsms: dict[str, list[tuple[str, str]]] = {}
+        # Роль датчика («humidity», «motion») по его сущности: под этим именем
+        # значение кладётся в контекст перехода.
+        self._sensor_roles: dict[str, str] = {}
         self._build_mapping()
 
     def _build_mapping(self) -> None:
@@ -89,6 +111,12 @@ class EventRouter:
                 if not events:
                     logger.warning(f"Unknown sensor type '{sensor_type}' in room '{room.id}'")
                     continue
+
+                # Роль датчика запоминается отдельно от маршрута: по ней
+                # значение кладётся в контекст перехода под тем именем, которое
+                # читает условие. Без этого условие влажности читало ключ,
+                # которого в контексте нет, и вентиляция не срабатывала никогда.
+                self._sensor_roles.setdefault(sensor_id, sensor_type)
 
                 for event_name in events:
                     for fsm_id in room_fsm_ids:
@@ -119,6 +147,7 @@ class EventRouter:
             self._manifest = manifest
 
         self._sensor_to_fsms.clear()
+        self._sensor_roles.clear()
         self._build_mapping()
 
     def get_mapping(self, sensor_id: str) -> list[tuple[str, str]]:
@@ -158,6 +187,18 @@ class EventRouter:
                 "new_state": new_state,
                 "old_state": old_state,
             }
+
+            # Измеримое значение датчика едет в контексте под именем его роли —
+            # тем самым, которое читает условие перехода. Раньше сюда попадали
+            # только имена состояний, и условие по влажности читало ключ, которого
+            # в контексте не было никогда.
+            #
+            # Значение приводится к числу, когда это возможно, иначе остаётся
+            # строкой: «unavailable» не должен молча превращаться в ноль и
+            # выглядеть как честное «влажность 0, значит выключить».
+            role = self._sensor_roles.get(entity_id)
+            if role:
+                external_ctx[role] = _as_measurement(new_state)
 
             logger.info(f"Routing: sensor={entity_id} → fsm={fsm_entity_id}, event={event_name}")
 

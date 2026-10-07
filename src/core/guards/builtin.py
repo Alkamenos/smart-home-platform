@@ -208,6 +208,42 @@ def make_is_manual_override_enabled(
     return is_manual_override_enabled
 
 
+#: Имена guard'ов, которым нужны данные датчиков, и сами данные. Ключ — имя
+#: условия, значение — ключи контекста перехода, без которых решение выносить
+#: не по чему, и отказ должен называться «данных нет», а не «значение не подходит».
+GUARD_DATA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
+    "humidity_above_60": ("humidity",),
+    "humidity_below_60": ("humidity",),
+}
+
+
+def with_requirements(
+    guard_fn: Callable[[Any, dict[str, Any]], bool],
+    *requires: str,
+) -> Callable[[Any, dict[str, Any]], bool]:
+    """Пометить условие как требующее данные из контекста перехода.
+
+    Требование едет вместе с функцией, а не хранится отдельно: фабрика подставляет
+    в переход **вызов** условия, а не его имя, и отдельная таблица «имя → данные»
+    разошлась бы с тем, что реально вызывается. Подпись условия при этом не
+    меняется — это по-прежнему функция «да/нет».
+
+    Args:
+        guard_fn: Функция условия.
+        *requires: Ключи контекста, без которых условие не может решить.
+
+    Returns:
+        Та же функция с атрибутом ``requires``.
+    """
+    # Промежуточная переменная типизируется как Any: условие остаётся функцией
+    # «да/нет», а атрибут требований — её свойством. Через setattr ruff возвращает
+    # прямую присваивание, а через прямую присваивание mypy требует знать об
+    # атрибуте у произвольной функции; здесь не спорит ни один из них.
+    guarded: Any = guard_fn
+    guarded.requires = tuple(requires)
+    return guarded
+
+
 def build_guards(
     control_tracker: Any,
     *,
@@ -225,7 +261,7 @@ def build_guards(
         Словарь «имя guard'а → функция». Имена совпадают с теми, что указаны в
         шаблонах ``src/features/*.yaml``.
     """
-    return {
+    guards: dict[str, Callable[[Any, dict[str, Any]], bool]] = {
         "is_day_time": make_is_day_time(day_range),
         "is_manual_override_enabled": make_is_manual_override_enabled(
             control_tracker, lockout_minutes=lockout_minutes
@@ -233,6 +269,13 @@ def build_guards(
         "humidity_above_60": make_humidity_above(),
         "humidity_below_60": make_humidity_below(),
     }
+    # Требования объявляются здесь, рядом с условием: объявление в стороне
+    # разошлось бы с ним при первом же переименовании.
+    for name, requires in GUARD_DATA_REQUIREMENTS.items():
+        guard = guards.get(name)
+        if guard is not None:
+            with_requirements(guard, *requires)
+    return guards
 
 
 #: Имена guard'ов, которые должны существовать в реестре движка.
