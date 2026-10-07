@@ -222,6 +222,10 @@ class Container:
                     token=ha_token,
                     deployment=self.deployment,
                 )
+                # Манифест отдаётся адаптеру для фильтра подписки: без него HA
+                # присылает все сущности дома (в бою 1502 против 6 описанных),
+                # и платформа отбивает каждое событие лишней сущности.
+                self._adapter._manifest = self.manifest
             else:
                 self._adapter = MockAdapter(engine=self.fsm)
                 self._adapter.set_event_router(self.event_router)

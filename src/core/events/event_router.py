@@ -17,6 +17,38 @@ from core.fsm.engine import FSMEngine
 from core.models.manifest import Manifest
 
 
+def collect_subscribed_entities(manifest: Any) -> list[str]:
+    """Собрать сущности, на которые платформе нужны события.
+
+    Список идёт в Home Assistant как фильтр подписки: без него сервер присылает
+    все сущности дома, и платформа разбирает и отбивает каждое событие той,
+    которая в манифесте не описана. В бою это 1502 сущности против 6 описанных.
+
+    Берутся и устройства комнат, и их датчики: датчик комнаты без устройств тоже
+    нужен, по нему приходят события движения.
+
+    Args:
+        manifest: Манифест платформы.
+
+    Returns:
+        Список `entity_id` без повторов, в исходном порядке.
+    """
+    entities: list[str] = []
+    seen: set[str] = set()
+
+    for room in getattr(manifest, "rooms", []) or []:
+        candidates: list[Any] = [
+            *(room.sensors or {}).values(),
+            *(getattr(device, "id", None) for device in (room.devices or [])),
+        ]
+        for entity_id in candidates:
+            if entity_id and entity_id not in seen:
+                seen.add(entity_id)
+                entities.append(entity_id)
+
+    return entities
+
+
 class EventRouter:
     """Routes state change events from sensors to registered FSMs.
 

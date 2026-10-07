@@ -202,14 +202,34 @@ class SimpleHAWebSocketClient:
         handler: Callable[[dict[str, Any]], Awaitable[None]],
         filter_dict: dict[str, Any],
     ) -> None:
+        """Подписаться на события Home Assistant.
+
+        Args:
+            handler: Обработчик входящего события.
+            filter_dict: Фильтр подписки. Поле ``type`` обязательно, поле
+                ``entity_ids`` ограничивает список присылаемых сущностей.
+        """
         if self.ws and self.connected:
             self._msg_id += 1
             self._event_handler = handler
-            sub_msg = {
+            sub_msg: dict[str, Any] = {
                 "id": self._msg_id,
                 "type": "subscribe_events",
                 "event_type": filter_dict.get("type", ""),
             }
+            # Фильтр сущностей уходит на сервер, а не применяется у нас. Иначе
+            # Home Assistant присылает все сущности дома — в бою 1502 против 6
+            # описанных в манифесте, — и платформа разбирает и отбивает каждое
+            # событие лишней сущности.
+            #
+            # Пустой список НЕ отправляется: в API он означает «все сущности»,
+            # и полагаться на это нельзя. Лучше подписаться на всё и отбить
+            # лишнее у себя, чем при пустом манифесте стать молчащей: соединение
+            # есть, /ready зелёный, событий нет — и это неотличимо от поломки.
+            entity_ids = filter_dict.get("entity_ids") or []
+            if entity_ids:
+                sub_msg["entity_ids"] = list(entity_ids)
+
             await self.ws.send(json.dumps(sub_msg))
 
     async def get_states(self) -> Any:
@@ -337,6 +357,12 @@ class HAAdapter:
         self._event_router = event_router
         self._ws_client: HomeAssistantWS | None = None
         self._session: aiohttp.ClientSession | None = None
+        # Манифест для фильтра подписки. Не передаётся в __init__, чтобы не
+        # менять его подпись: список сущностей нужен только при подписке, а
+        # манифест меняется при hot-reload, и копия в адаптере разошлась бы с
+        # реальной. Читается через getattr, поэтому адаптер, собранный без
+        # манифеста (тесты, локальный запуск), работает как раньше.
+        self._manifest: Any = None
         self._shutdown_event = asyncio.Event()
         self._reconnect_task: asyncio.Task[None] | None = None
         self._reconnect_attempt = 0
@@ -605,12 +631,45 @@ class HAAdapter:
 
                 logger.info("✅ HAAdapter: WebSocket connected successfully!")
 
-                # Подписываемся на события
+                # Подписываемся на события.
+                #
+                # Список сущностей ограничивает поток на стороне Home
+                # Assistant: без него сервер присылает все сущности дома (в бою
+                # 1502 против 6 описанных в манифесте), и платформа разбирает и
+                # отбивает каждое событие лишней сущности — по сети, по разбору
+                # и по записи в историю.
+                #
+                # Пустой список означает подписку на всё: при пустом манифесте
+                # лучше получать лишнее и отбивать у себя, чем не получать
+                # ничего (тогда платформа выглядит исправной и молчит).
+                subscribed = self._subscribed_entities()
+                filter_dict: dict[str, Any] = {"type": "state_changed"}
+                if subscribed:
+                    filter_dict["entity_ids"] = subscribed
+
                 await self._ws_client.subscribe(
                     self._handle_ws_state_change,
-                    {"type": "state_changed"},
+                    filter_dict,
                 )
+                # INFO-запись остаётся на месте: видимость покупается добавлением
+                # WARNING, а не отказом от неё. Сторож на исходном тексте
+                # (tests/unit/test_ha_adapter_reconnect_loop_observable.py) требует
+                # и её присутствия, и это правильно: подписка — заметное событие,
+                # и INFO для неё уместен.
                 log.info("HAAdapter: subscribed to state_changed events")
+                if subscribed:
+                    # WARNING, а не INFO: логи адаптера наследуют корневой
+                    # обработчик, где info не виден — проверка на info молчала бы
+                    # и не доказала бы ничего (урок #70).
+                    logger.warning(
+                        f"🔔 HAAdapter: subscribed to state_changed for "
+                        f"{len(subscribed)} entities from manifest"
+                    )
+                else:
+                    logger.warning(
+                        "🔔 HAAdapter: manifest lists no entities — subscribed to "
+                        "ALL state_changed events"
+                    )
                 logger.info("🔔 HAAdapter: listening for HA state changes...")
 
                 reconnect_delay = 1.0
@@ -778,6 +837,25 @@ class HAAdapter:
             with contextlib.suppress(Exception):
                 await self._session.close()
             self._session = None
+
+    def _subscribed_entities(self) -> list[str]:
+        """Сущности из манифеста, на которые подписан адаптер.
+
+        Берутся из манифеста через тот же механизм, что и в `EventRouter`, чтобы
+        источник истины был один: подписка и маршрутизация не должны
+        расходиться, иначе платформа будет получать события, которые не
+        маршрутизирует, либо не получать те, которые маршрутизирует.
+
+        Returns:
+            Список `entity_id`; пустой, если манифест недоступен или пуст.
+        """
+        manifest = getattr(self, "_manifest", None)
+        if manifest is None:
+            return []
+
+        from core.events.event_router import collect_subscribed_entities
+
+        return collect_subscribed_entities(manifest)
 
     async def _force_disconnect(self, reason: str) -> None:
         """Объявить соединение мёртвым и освободить сокет.
