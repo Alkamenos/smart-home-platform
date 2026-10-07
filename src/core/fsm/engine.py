@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import time
 import uuid
 from collections.abc import Callable
@@ -44,6 +45,26 @@ if TYPE_CHECKING:
 # Сколько ждать завершения задач публикации при остановке движка, прежде чем
 # отменить их (FR-012).
 PUBLISH_DRAIN_TIMEOUT_SEC = 1.0
+
+# Флаг, возвращающий прежнее поведение: каждый отказ пишется в журнал.
+ENV_LOG_REJECTIONS = "FSM_LOG_REJECTIONS"
+
+# Значения флага, которые его включают. Всё остальное, включая пустую строку,
+# опечатку и отсутствие переменной, флаг не включает: иначе опечатка в
+# настройке возвращала бы 80% шума в журнал молча.
+_FLAG_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _flag_enabled(name: str) -> bool:
+    """Включён ли булев флаг окружения.
+
+    Args:
+        name: Имя переменной окружения.
+
+    Returns:
+        True, если переменная задана одним из значений «да».
+    """
+    return os.environ.get(name, "").strip().lower() in _FLAG_TRUE_VALUES
 
 
 def loop_time() -> float:
@@ -173,6 +194,56 @@ class FSMEngine:
         self._persistence = persistence
         self._event_bus = event_bus
         self._publish_tasks: set[asyncio.Task[None]] = set()
+        # Счётчики отказов по причинам: наблюдаемость не теряется при молчании
+        # в журнале, а переезжает туда, где полезна (см. `_record_rejection`).
+        self._rejection_counts: dict[str, int] = {}
+        # Сущности, об отказе по которым уже сказано в журнале. Отказ честный —
+        # сущности действительно нет в манифесте, — но повторять его тысячи раз
+        # незачем: в доме синхронизировано 1489 устройств против 6 в манифесте,
+        # и это давало две строки журнала на каждое изменение состояния, то есть
+        # 80% объёма. Число строк растёт с числом РАЗЛИЧНЫХ сущностей, а не с
+        # числом событий.
+        self._reported_rejections: set[tuple[str, str]] = set()
+        # Флаг возвращает прежнее поведение целиком — на случай разбора в доме,
+        # где шум полезен. Нераспознанное значение флага шум не включает: тот же
+        # принцип, что и в `SHADOW_MODE`.
+        self._log_every_rejection = _flag_enabled(ENV_LOG_REJECTIONS)
+
+    def rejection_counts(self) -> dict[str, int]:
+        """Сколько отказов было по каждой причине.
+
+        Возвращается копия: счётчик доступен наружу для диагностики, но менять
+        его извне нельзя.
+
+        Returns:
+            Словарь «причина → число отказов».
+        """
+        return dict(self._rejection_counts)
+
+    def _record_rejection(self, entity_id: str, event: str, reason: str) -> None:
+        """Учесть отказ и решить, стоит ли о нём писать в журнал.
+
+        Args:
+            entity_id: Идентификатор сущности, по которой отказ.
+            event: Событие-триггер.
+            reason: Причина отказа.
+        """
+        self._rejection_counts[reason] = self._rejection_counts.get(reason, 0) + 1
+
+        if self._log_every_rejection:
+            # Флаг возвращает прежнее поведение целиком: каждый отказ пишется.
+            logger.warning(f"No FSM definition found for entity {entity_id}")
+            return
+
+        key = (entity_id, reason)
+        if key in self._reported_rejections:
+            return
+        self._reported_rejections.add(key)
+        logger.warning(
+            f"FSMEngine: отказ по сущности {entity_id} ({reason}); "
+            f"повторные отказы этой сущности в журнал не пишутся, счётчик — "
+            f"в rejection_counts()"
+        )
 
     def note_transition(self, entity_id: str, wall_clock: str | None = None) -> None:
         """Зафиксировать настенное время перехода автомата.
@@ -668,7 +739,7 @@ class FSMEngine:
         # Настоящий переход отменяет прежний таймер ниже, в ветке выполненного
         # перехода: там состояние действительно меняется.
         if entity_id not in self._definitions:
-            log.warning(f"No FSM definition found for entity {entity_id}")
+            self._record_rejection(entity_id, event, REASON_UNKNOWN_ENTITY)
             self._publish_rejection(entity_id, event, None, REASON_UNKNOWN_ENTITY, trace_id)
             return False
 
@@ -676,6 +747,7 @@ class FSMEngine:
 
         if entity_id not in self._states:
             log.error(f"No state found for entity {entity_id}")
+            self._record_rejection(entity_id, event, REASON_NO_STATE)
             self._publish_rejection(entity_id, event, None, REASON_NO_STATE, trace_id)
             return False
 
@@ -690,6 +762,7 @@ class FSMEngine:
                     f"Entity {entity_id}: Debounce active ({elapsed:.3f}s < {definition.debounce_sec}s), "
                     f"ignoring event '{event}'"
                 )
+                self._record_rejection(entity_id, event, REASON_DEBOUNCED)
                 self._publish_rejection(
                     entity_id, event, current_state.current_state, REASON_DEBOUNCED, trace_id
                 )
@@ -706,6 +779,7 @@ class FSMEngine:
             log.debug(
                 f"Entity {entity_id}: No transitions for event '{event}' from state '{current_state.current_state}'"
             )
+            self._record_rejection(entity_id, event, REASON_NO_TRANSITION)
             self._publish_rejection(
                 entity_id, event, current_state.current_state, REASON_NO_TRANSITION, trace_id
             )
@@ -814,6 +888,7 @@ class FSMEngine:
             return True
 
         log.debug(f"Entity {entity_id}: No valid transitions for event '{event}'")
+        self._record_rejection(entity_id, event, REASON_GUARD_FAILED)
         self._publish_rejection(
             entity_id, event, current_state.current_state, REASON_GUARD_FAILED, trace_id
         )

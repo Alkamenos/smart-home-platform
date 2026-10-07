@@ -43,7 +43,6 @@ uncovered_platform_events:
   - brightness_changed
   - closed
   - humidity_changed
-  - motion_cleared
   - opened
   - temperature_changed
 
@@ -128,6 +127,7 @@ templates:
       motion_detected: sensor
       manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ
       timeout: engine
+      motion_cleared: sensor
       manual_override: НЕТ ПРОИСХОДИТЕЛЯ
       manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
     unproduced_triggers: [manual_switch_on, manual_override, manual_switch_off]

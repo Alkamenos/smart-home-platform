@@ -14,6 +14,7 @@ import uvicorn
 from loguru import logger
 
 from core.container import Container
+from core.logging_setup import configure_library_logging
 from services.config_watcher import create_watcher, hot_reload_enabled
 
 # Канонический путь импорта — src.webui.* (совпадает с Makefile и со всеми
@@ -55,6 +56,13 @@ logger.add(
     diagnose=False,
     enqueue=False,  # Без очереди для синхронности логов в Docker
 )
+
+# Журналы библиотек поднимаются отдельно от LOG_LEVEL. При DEBUG библиотека
+# WebSocket писала бинарный обмен (`> PING b3 d2 62 82 [binary, 4 bytes]`) на
+# каждое сообщение — 80% объёма журнала, из-за чего в нём не было видно ничего
+# о работе платформы. Поднимается уровень конкретных библиотек, а не всех:
+# `sqlalchemy` и прочие на DEBUG дают полезный вывод.
+configure_library_logging()
 
 # Опционально: лог в файл (без цветов)
 LOG_FILE = os.getenv("LOG_FILE")
