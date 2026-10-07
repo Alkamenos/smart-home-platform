@@ -394,6 +394,11 @@ def create_app(
             ha_adapter=_container.adapter if _container is not None else None,
             engine=_container.fsm if _container is not None else None,
             event_router=_container.event_router if _container is not None else None,
+            # Манифест нужен только при включённом SYNC_FILTER_MANIFEST_ONLY:
+            # фильтр берёт из него список сущностей, которые синхронизация
+            # должна обновлять. Без флага он игнорируется, поэтому передача
+            # манифеста ничего не меняет в поведении по умолчанию.
+            manifest=_container.manifest if _container is not None else None,
         )
 
         # Обработчик изменения состояния устройства существовал, но ни на что

@@ -8,6 +8,7 @@
 
 import asyncio
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Any, Literal
@@ -37,6 +38,38 @@ EVENT_DEVICE_STATE_CHANGED = "device.state_changed"
 EVENT_DEVICE_ACCESS_CHANGED = "device.access_changed"
 EVENT_DEVICE_REMOVED = "device.removed"
 
+#: Переменная окружения, включающая фильтр сущностей при синхронизации.
+SYNC_FILTER_ENV = "SYNC_FILTER_MANIFEST_ONLY"
+
+#: Значения, читаемые как «включено». Незаданная переменная — «выключено».
+_TRUTHY_VALUES = {"1", "true", "yes", "on"}
+
+
+def sync_filter_enabled() -> bool:
+    """Включён ли фильтр сущностей при синхронизации.
+
+    По умолчанию **выключен**, и это решение владельца, а не техническая
+    осторожность. Фильтр меняет контракт платформы: при нём синхронизация
+    перестаёт быть способом узнать о новом устройстве и остаётся только
+    обновлением уже описанного — добавить устройство может мастер discovery.
+
+    Цена измерена, а не предположена: включение фильтра роняет **38 тестов**, из
+    них 21 в `tests/integration/{test_device_sync,test_device_sync_lifecycle,
+    test_concurrency_and_removal}.py` и 17 контрактных и прочих. Это не
+    устаревшие тесты — они проверяют нынешний контракт как рабочий, и переписывание
+    их под новое поведение означало бы смену контракта без отдельного на то
+    решения.
+
+    Поэтому флаг по умолчанию `false`: как и `SHADOW_MODE`, забытая настройка не
+    должна молча менять смысл платформы. Включать осознанно, и тогда падение
+    тестов — это список меняющихся поведений, а не сбой.
+
+    Returns:
+        True, если фильтр применять.
+    """
+    return os.getenv(SYNC_FILTER_ENV, "false").strip().lower() in _TRUTHY_VALUES
+
+
 # Канал Home Assistant с изменениями состояния. Раньше обработчик
 # handle_state_change существовал, но ни на что не подписывался, поэтому
 # состояние устройства обновлялось только синхронизацией (FR-007).
@@ -58,6 +91,7 @@ class DeviceService:
         cache_ttl_seconds: int = 300,
         engine: object | None = None,
         event_router: object | None = None,
+        manifest: object | None = None,
     ) -> None:
         """Инициализация сервиса с зависимостями.
 
@@ -70,6 +104,11 @@ class DeviceService:
             engine: Движок машин состояний — нужен, чтобы снимать автоматику
                 устройств, исчезнувших из Home Assistant (spec 006, FR-016).
             event_router: Маршрутизатор событий — перестраивается после снятия.
+            manifest: Манифест платформы — нужен только при включённом
+                `SYNC_FILTER_MANIFEST_ONLY`, чтобы синхронизация забирала
+                состояния описанных сущностей и уже известных сервису (см.
+                `sync_entity_filter`). `None` оставляет синхронизацию без
+                фильтра, что верно для сборок без манифеста.
         """
         self.event_bus = event_bus
         # Четыре зависимости ниже — «утиные» объекты без общего протокола:
@@ -83,6 +122,7 @@ class DeviceService:
         self.ha_adapter: Any = ha_adapter
         self._engine: Any = engine
         self._event_router: Any = event_router
+        self._manifest: Any = manifest
         self._devices: dict[UUID, Device] = {}
         self._sources: dict[UUID, HASource] = {}
         # Удалённые устройства: по ним отличаем «уже удалено» от «неизвестно»,
@@ -270,6 +310,60 @@ class DeviceService:
 
         logger.info(f"Снято машин состояний для исчезнувших устройств: {unregistered}")
 
+    def _known_entity_ids(self, source_id: UUID) -> set[str]:
+        """Идентификаторы сущностей, уже известных сервису для источника.
+
+        Известные сущности сохраняются при фильтрации: устройство, добавленное
+        через интерфейс или найденное прошлой синхронизацией, не должно исчезать
+        из базы только потому, что его нет в манифесте. Иначе фильтр сам
+        становился бы причиной `removed_from_ha` — то есть снятия автоматики у
+        живого устройства.
+
+        Args:
+            source_id: Идентификатор источника.
+
+        Returns:
+            Множество `ha_entity_id`, известных сервису для этого источника.
+        """
+        return {
+            device.ha_entity_id
+            for device in self._devices.values()
+            if device.source_id == source_id and device.ha_entity_id
+        }
+
+    def sync_entity_filter(self, source_id: UUID) -> set[str] | None:
+        """Сущности, состояния которых синхронизация должна принимать.
+
+        Это манифест **плюс** уже известные сервису сущности источника, а не
+        манифест в одиночку:
+
+        - в бою Home Assistant отдаёт 1502 сущности против 6 описанных, и остальные
+          1496 попадали в `devices.json` молча — они не автоматизируются, но
+          занимают место и время на каждую синхронизацию;
+        - «только манифест» означал бы, что всё остальное помечается
+          `removed_from_ha` (`_merge_synced_devices`), то есть фильтр отбирал бы
+          устройства у живого дома.
+
+        Пустой манифест означает отсутствие фильтра, а не пустой результат: иначе
+        сборка без манифеста стала бы молчащей — устройств нет, синхронизация
+        «успешна», и это неотличимо от поломки.
+
+        Args:
+            source_id: Идентификатор источника.
+
+        Returns:
+            Множество допустимых `ha_entity_id` либо `None`, если фильтр не
+            применяется.
+        """
+        if self._manifest is None or not sync_filter_enabled():
+            return None
+
+        from core.events.event_router import collect_subscribed_entities
+
+        allowed = set(collect_subscribed_entities(self._manifest))
+        allowed |= self._known_entity_ids(source_id)
+        return allowed
+
     async def _fetch_source_devices(self, source: HASource, source_id: UUID) -> list[Device]:
         """Читает состояния устройств источника Home Assistant.
 
@@ -290,6 +384,15 @@ class DeviceService:
                 raise RuntimeError(f"Не удалось подключиться к HA: {source.url}")
 
             ha_states = await rest_client.fetch_devices()
+
+        allowed = self.sync_entity_filter(source_id)
+        if allowed is not None:
+            before = len(ha_states)
+            ha_states = [state for state in ha_states if state.get("entity_id") in allowed]
+            logger.info(
+                f"Фильтр синхронизации источника {source_id}: {len(ha_states)} из "
+                f"{before} состояний (манифест + известные устройства)"
+            )
 
         parsed_devices = self.parse_devices(ha_states)
         for device in parsed_devices:
