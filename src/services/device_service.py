@@ -300,17 +300,55 @@ class DeviceService:
         )
         return parsed_devices
 
-    async def _mark_source_synced(self, source: HASource) -> None:
+    async def _mark_source_synced(self, source: HASource, device_count: int | None = None) -> None:
         """Фиксирует успешную синхронизацию в метаданных источника.
+
+        Обновляются не только время, но и состояние источника: `status` и
+        `device_count`. Раньше здесь писалось только время, и оба поля оставались
+        в прежнем значении — в бою это давало `status: disconnected` и
+        `device_count: 0` при 1502 загруженных устройствах. Статус источника
+        интерфейс берёт из этого поля, то есть показывал «Дом отключён» при
+        работающем источнике.
 
         Args:
             source: Источник Home Assistant.
+            device_count: Сколько устройств пришло из источника; при ``None``
+                прежнее значение сохраняется (вызывающий может не знать числа).
         """
         source.last_sync = datetime.utcnow()
         source.last_error = None
+        # Канонический статус, а не исторический `active`: API понимал оба
+        # значения, но источник после синхронизации обязан иметь одно, иначе
+        # следующая проверка снова столкнётся с двумя формами одного и того же.
+        source.status = "connected"
+        if device_count is not None:
+            source.device_count = device_count
         if self.persistence and hasattr(self.persistence, "sources"):
             await self.persistence.sources.save_source(source)
-            logger.info(f"Обновлено время синхронизации источника {source.id}")
+            logger.info(
+                f"Обновлено состояние источника {source.id}: status=connected, "
+                f"устройств={source.device_count}"
+            )
+
+    async def _mark_source_failed(self, source: HASource, error: str) -> None:
+        """Фиксирует неудачную синхронизацию.
+
+        Источник переводится в `disconnected`, а время последней **успешной**
+        синхронизации не меняется: иначе оператор увидит свежую дату при данных
+        трёхдневной давности, и расхождение не будет видно.
+
+        Args:
+            source: Источник Home Assistant.
+            error: Текст ошибки для источника.
+        """
+        source.status = "disconnected"
+        source.last_error = error
+        if self.persistence and hasattr(self.persistence, "sources"):
+            try:
+                await self.persistence.sources.save_source(source)
+            except Exception as save_error:  # noqa: BLE001 — отказ не должен ронять разбор
+                logger.warning(f"Не удалось сохранить состояние источника: {save_error}")
+        logger.warning(f"Синхронизация источника {source.id} не удалась: {error}")
 
     async def _persist_sync_result(self, merged: list[Device], removed: list[Device]) -> None:
         """Фиксирует результат синхронизации во всех хранилищах и событиях.
@@ -380,8 +418,10 @@ class DeviceService:
             # автоматики исчезнувших → события
             await self._persist_sync_result(merged, removed)
 
-            # 10. Обновить источник с временем последней синхронизации
-            await self._mark_source_synced(source)
+            # 10. Обновить источник: время последней синхронизации, состояние и число
+            # устройств. Без состояния источник остаётся «отключённым» при
+            # успешной синхронизации, и интерфейс показывает неправду.
+            await self._mark_source_synced(source, device_count=len(merged))
 
             # 11. Обновляем метрики
             sync_duration = time.time() - sync_start_time
@@ -402,13 +442,15 @@ class DeviceService:
             error_type = type(e).__name__
             self._metrics.record_sync_error(source_id_str, error_type)
 
-            # Обновляем источник с информацией об ошибке
+            # Обновляем источник: он переходит в «отключён», иначе интерфейс
+            # покажет работающее соединение при сломанном. Время последней
+            # успешной синхронизации при этом не меняется — иначе расхождение
+            # между датой и данными не было бы видно.
             try:
                 if self.persistence and hasattr(self.persistence, "sources"):
                     source = await self.persistence.sources.load_source(source_id)
                     if source:
-                        source.last_error = str(e)
-                        await self.persistence.sources.save_source(source)
+                        await self._mark_source_failed(source, str(e))
             except Exception as e2:
                 logger.warning(f"Не удалось обновить ошибку источника: {e2}")
 
