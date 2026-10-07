@@ -248,8 +248,7 @@ class TestStorageDataIsNotTruncatedInPlace:
         "core/persistence/devices.py",
         "core/persistence/sources.py",
         "core/persistence/manifest_store.py",
-        "core/persistence/migrations/index_manager.py",
-        "core/persistence/migrations/migrations_runner.py",
+        "core/persistence/index_manager.py",
         "webui/app.py",
     )
 

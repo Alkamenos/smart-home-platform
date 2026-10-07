@@ -126,12 +126,6 @@ class TestStoragesReadEnvironment:
         assert store.db_path == self.data_dir / "history.db"
         assert store.db_path.exists()
 
-    def test_migrations_runner(self):
-        """Раннер миграций тоже должен работать внутри DATA_PATH."""
-        from core.persistence.migrations.migrations_runner import MigrationsRunner
-
-        assert MigrationsRunner().data_dir == self.data_dir
-
     def test_created_files_land_in_data_path(self):
         """Проверка на действии: файлы появляются там, где указано.
 
@@ -162,8 +156,6 @@ class TestNoHardcodedRelativeDefault:
         "core/persistence/manager.py",
         "core/persistence/event_store.py",
         "core/persistence/state_persistence.py",
-        "core/persistence/migrations/migrations_runner.py",
-        "core/persistence/migrations/db_init.py",
     )
 
     @pytest.mark.parametrize("relative_path", PERSISTENCE_MODULES)
