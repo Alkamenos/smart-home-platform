@@ -91,6 +91,9 @@ class SimpleHAWebSocketClient:
         self._handlers: dict[int, Callable[..., Any]] = {}
         self._event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None
         self._listen_task: asyncio.Task[None] | None = None
+        # Причина последнего разрыва. Нужна, чтобы отличить молчаливый уход HA
+        # от собственной остановки: без неё оба случая выглядят одинаково.
+        self._disconnect_reason: str | None = None
 
     async def connect(self) -> None:
         if self.ws is not None:
@@ -99,6 +102,10 @@ class SimpleHAWebSocketClient:
         self._msg_id = 0
         self._handlers.clear()
         self._event_handler = None
+        # Причина прошлого разрыва не должна пережить новое подключение: иначе
+        # после успешного восстановления она продолжала бы объяснять то, что
+        # давно починено.
+        self._disconnect_reason = None
         try:
             import websockets
 
@@ -135,6 +142,16 @@ class SimpleHAWebSocketClient:
             self.connected = False
 
     async def _listen_loop(self) -> None:
+        """Читать события, пока соединение живо.
+
+        Флаг ``connected`` сбрасывается в ``finally``, а не в ``except``.
+        Home Assistant закрывает соединение штатно (``CLOSE 1001 going away``),
+        и цикл чтения при этом доходит до конца **без исключения**: проверено
+        на websockets 17.1 и 17.2. Прежний код трогал флаг только в ``except``,
+        поэтому после штатного разрыва клиент оставался «подключённым» — и
+        ``/ready`` отвечал ``home_assistant: ok``, хотя ни одного события
+        больше не пришло бы. Наблюдалось в бою 2026-10-07 пять часов подряд.
+        """
         try:
             async for raw in self.ws:
                 try:
@@ -155,8 +172,15 @@ class SimpleHAWebSocketClient:
                 except Exception as e:
                     logger.warning(f"HAAdapter: error processing WS message: {e}")
         except Exception as e:
-            self.connected = False
+            self._disconnect_reason = f"{type(e).__name__}: {e}"
             logger.warning(f"HAAdapter: listen loop terminated: {e}")
+        else:
+            # Штатное закрытие: HA ушёл молча, без ошибки. Причина записывается
+            # явно, иначе по журналу это неотличимо от «мы отключились сами».
+            self._disconnect_reason = f"соединение закрыто сервером: {self.ws.close_code}"
+        finally:
+            self.connected = False
+            logger.warning(f"HAAdapter: listen loop finished ({self._disconnect_reason})")
 
     async def close(self) -> None:
         # Инструментация #70: heartbeat входит в close() и не возвращается. Чтобы
@@ -986,9 +1010,28 @@ class HAAdapter:
 
     @property
     def is_connected(self) -> bool:
+        """Есть ли живое соединение с Home Assistant.
+
+        Returns:
+            True, если соединение действительно есть.
+        """
         if self._mode == "pyscript":
             return True
         return self._ws_client is not None and self._ws_client.connected
+
+    @property
+    def last_disconnect_reason(self) -> str | None:
+        """Причина последнего разрыва соединения.
+
+        Отдаётся наружу для `/ready`: оператор должен видеть не только факт
+        отсутствия связи, но и то, кто её разорвал.
+
+        Returns:
+            Причина разрыва или ``None``, если разрывов не было.
+        """
+        if self._ws_client is None:
+            return None
+        return getattr(self._ws_client, "_disconnect_reason", None)
 
 
 HomeAssistantAdapter = HAAdapter

@@ -332,6 +332,16 @@ def check_home_assistant(adapter: Any) -> dict[str, Any]:
 
     if connected:
         return {"ok": True, "detail": "соединение установлено"}
+
+    # Причина названа прямо: «нет соединения» без причины заставляет искать
+    # поломку в адаптере, тогда как чаще всего соединение закрыл Home Assistant
+    # сам, и чинить нужно не адаптер.
+    reason = getattr(adapter, "last_disconnect_reason", None)
+    if reason:
+        return {
+            "ok": False,
+            "detail": f"нет соединения с Home Assistant ({reason})",
+        }
     return {"ok": False, "detail": "нет соединения с Home Assistant"}
 
 
