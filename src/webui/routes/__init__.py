@@ -491,7 +491,7 @@ async def check_readiness(request: Request) -> JSONResponse:
         JSON с признаком ``ready``, списком проверок и их подробностями.
         Код 503, если хотя бы одна проверка не прошла.
     """
-    checks = collect_checks(request)
+    checks = await collect_checks(request)
     failed = [name for name, detail in checks.items() if not detail.get("ok")]
 
     return JSONResponse(

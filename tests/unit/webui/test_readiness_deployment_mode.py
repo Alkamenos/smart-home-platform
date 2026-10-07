@@ -35,6 +35,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from core.deployment_manager import DeploymentManager, DeploymentMode
 from webui.routes import readiness
 
@@ -203,7 +205,8 @@ class TestShadowModeIsVisible:
 class TestCollectChecksIncludesDeploymentMode:
     """Режим входит в сводку готовности, а не живёт отдельно."""
 
-    def test_summary_contains_the_check(self) -> None:
+    @pytest.mark.asyncio
+    async def test_summary_contains_the_check(self) -> None:
         """`/ready` включает проверку режима в общий список.
 
         Returns:
@@ -211,7 +214,7 @@ class TestCollectChecksIncludesDeploymentMode:
         """
         container = _Container(_deployment(DeploymentMode.SHADOW))
 
-        checks = readiness.collect_checks(_Request(container))
+        checks = await readiness.collect_checks(_Request(container))
 
         assert "deployment_mode" in checks, (
             f"проверка режима не попала в сводку готовности: {sorted(checks)}. "

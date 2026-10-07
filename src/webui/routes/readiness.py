@@ -28,12 +28,166 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
+
 from core.persistence.paths import resolve_data_dir
 from core.security.encryption import DEFAULT_KEY_FILENAME
 
 
 #: Порог «свежести» снимка сторожа: два интервала сторожа с запасом.
 WATCHDOG_STALE_SEC = 180.0
+
+#: Порог «свежести» синхронизации источника по умолчанию: сутки.
+SYNC_STALE_SEC = 86_400
+
+#: Переменная окружения с порогом устаревания синхронизации.
+SYNC_STALE_ENV = "SYNC_STALE_SEC"
+
+
+def sync_stale_sec() -> float:
+    """Прочитать порог устаревания синхронизации.
+
+    Некорректное значение (не число, ноль, отрицательное) заменяется значением
+    по умолчанию с предупреждением: сбой настройки не должен ни ронять старт, ни
+    превращать проверку в вечно зелёную.
+
+    Returns:
+        Порог в секундах.
+    """
+    raw = os.getenv(SYNC_STALE_ENV)
+    if raw is None:
+        return float(SYNC_STALE_SEC)
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(f"{SYNC_STALE_ENV}={raw!r} is not a number; using default")
+        return float(SYNC_STALE_SEC)
+    if value <= 0:
+        logger.warning(f"{SYNC_STALE_ENV}={raw!r} is not positive; using default")
+        return float(SYNC_STALE_SEC)
+    return value
+
+
+def _age_seconds(stamp: Any) -> float | None:
+    """Посчитать возраст метки времени в секундах.
+
+    Метка источника хранится наивным временем UTC (`datetime.utcnow()`), а из
+    JSON-хранилища может прийти строкой. Разбор без часового пояса считал бы её
+    местным временем, и в контейнере с не-UTC-смещением возраст оказался бы
+    на часы больше настоящего — то есть либо вечно протухшим, либо вечно свежим.
+
+    Args:
+        stamp: Метка времени: `datetime`, строка ISO-8601 или `None`.
+
+    Returns:
+        Возраст в секундах либо `None`, если метки нет или она не разобрана.
+    """
+    if stamp is None:
+        return None
+
+    if isinstance(stamp, datetime):
+        taken = stamp
+    else:
+        try:
+            taken = datetime.fromisoformat(str(stamp))
+        except ValueError:
+            return None
+
+    if taken.tzinfo is None:
+        taken = taken.replace(tzinfo=UTC)
+
+    return max(0.0, time.time() - taken.timestamp())
+
+
+async def check_source_sync(persistence: Any, stale_sec: float | None = None) -> dict[str, Any]:
+    """Проверить, что данные источников не устарели.
+
+    Синхронизация запускается только вручную, поэтому её возраст не растёт
+    сам и не выглядит поломкой — её просто никто не запускает. Пока `/ready` о
+    ней молчал, оператор видел исправную систему и список устройств наполненным,
+    а данные в нём были на момент последнего ручного нажатия: устройство,
+    появившееся или исчезнувшее за это время, платформа не знала.
+
+    Отсутствие источников отказом не считается: синхронизировать нечего.
+    Недоступное хранилище — наоборот, отказ: это уже не отсутствие данных, а
+    невозможность их прочитать.
+
+    Args:
+        persistence: Персистентность платформы либо ``None``.
+        stale_sec: Порог устаревания в секундах; по умолчанию из окружения.
+
+    Returns:
+        Словарь с ключом ``ok``, ``sources``, ``stale``, ``not_connected``,
+        ``oldest_age_sec``, ``stale_after_sec`` и ``detail``.
+    """
+    limit = sync_stale_sec() if stale_sec is None else stale_sec
+    result: dict[str, Any] = {
+        "ok": False,
+        "sources": 0,
+        "stale": [],
+        "not_connected": [],
+        "oldest_age_sec": None,
+        "stale_after_sec": limit,
+    }
+
+    try:
+        store = getattr(persistence, "sources", None)
+    except Exception as exc:  # noqa: BLE001 — причина попадает в отчёт
+        result["detail"] = f"хранилище источников недоступно: {exc}"
+        return result
+
+    if store is None:
+        result["detail"] = "хранилище источников не найдено"
+        return result
+
+    try:
+        sources = await store.load_all_sources()
+    except Exception as exc:  # noqa: BLE001 — причина попадает в отчёт
+        result["detail"] = f"источники не прочитаны: {exc}"
+        return result
+
+    if not sources:
+        result["ok"] = True
+        result["detail"] = "источников нет: синхронизировать нечего"
+        return result
+
+    stale: list[dict[str, Any]] = []
+    not_connected: list[str] = []
+    ages: list[float] = []
+
+    for source in sources:
+        age = _age_seconds(getattr(source, "last_sync", None))
+
+        if str(getattr(source, "status", "")) != "connected":
+            not_connected.append(str(getattr(source, "name", "источник без имени")))
+
+        if age is None or age > limit:
+            stale.append(_stale_source_entry(source, age, limit))
+
+        if age is not None:
+            ages.append(age)
+
+    oldest = max(ages) if ages else None
+    result["sources"] = len(sources)
+    result["stale"] = stale
+    result["not_connected"] = not_connected
+    result["oldest_age_sec"] = round(oldest, 1) if oldest is not None else None
+    result["ok"] = not stale
+
+    if stale:
+        listed = "; ".join(
+            f"{entry['name']} — {entry['reason']}"
+            + (f" ({int(entry['age_sec'])} с)" if entry["age_sec"] is not None else "")
+            for entry in stale
+        )
+        result["detail"] = f"данные источников устарели: {listed}. Обновите их POST /sync"
+    else:
+        result["detail"] = f"синхронизация не старше {int(limit)} с, источников — {len(sources)}"
+
+    if not_connected:
+        result["detail"] += f"; отключены: {', '.join(not_connected)}"
+
+    return result
 
 
 def _base_data_dir(explicit: Path | str | None = None) -> Path:
@@ -125,6 +279,34 @@ def check_encryption_key(path: Path | str | None = None) -> dict[str, Any]:
     result["ok"] = True
     result["detail"] = "ключ шифрования на месте"
     return result
+
+
+def _stale_source_entry(source: Any, age: float | None, limit: float) -> dict[str, Any]:
+    """Описать протухший источник для отчёта.
+
+    Args:
+        source: Источник Home Assistant.
+        age: Возраст данных в секундах либо ``None``, если метки нет или она
+            не разобрана.
+        limit: Порог устаревания в секундах.
+
+    Returns:
+        Словарь с именем, возрастом и причиной.
+    """
+    name = str(getattr(source, "name", "источник без имени"))
+    if age is None:
+        raw_sync = getattr(source, "last_sync", None)
+        reason = (
+            "дата синхронизации не разобрана"
+            if raw_sync is not None
+            else "ни разу не синхронизирован"
+        )
+        return {"name": name, "age_sec": None, "reason": reason}
+    return {
+        "name": name,
+        "age_sec": round(age, 1),
+        "reason": f"данные старше {int(limit)} с",
+    }
 
 
 def check_home_assistant(adapter: Any) -> dict[str, Any]:
@@ -301,11 +483,13 @@ def check_fsm_engine(container: Any) -> dict[str, Any]:
     return {"ok": True, "devices": devices, "detail": "движок собран"}
 
 
-def collect_checks(request: Any) -> dict[str, dict[str, Any]]:
+async def collect_checks(request: Any) -> dict[str, dict[str, Any]]:
     """Собрать все проверки готовности.
 
     Каждая проверка выполняется независимо: отказ одной не скрывает остальные,
-    иначе оператор увидел бы одну причину и не узнал бы о других.
+    иначе оператор увидел бы одну причину и не узнал бы о других. Поэтому
+    проверка источников, которой нечем читать, даёт отказ в своём ключе, а не
+    прерывает сбор остальных.
 
     Args:
         request: HTTP-запрос (используется ``request.app.state``).
@@ -316,6 +500,7 @@ def collect_checks(request: Any) -> dict[str, dict[str, Any]]:
     state = getattr(request.app, "state", None)
     container = getattr(state, "container", None) if state is not None else None
     adapter = getattr(container, "_adapter", None) if container is not None else None
+    persistence = getattr(state, "persistence", None) if state is not None else None
 
     return {
         "data_dir": check_data_dir(),
@@ -324,4 +509,5 @@ def collect_checks(request: Any) -> dict[str, dict[str, Any]]:
         "home_assistant": check_home_assistant(adapter),
         "watchdog": check_watchdog(container),
         "fsm_engine": check_fsm_engine(container),
+        "source_sync": await check_source_sync(persistence),
     }
