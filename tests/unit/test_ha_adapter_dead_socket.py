@@ -114,6 +114,10 @@ class _BlackHoleClient:
         Returns:
             Ничего.
         """
+        self.subscription_confirmed = True
+        self.subscription_error = None
+        self.filtered_entity_ids = tuple(filter_dict.get("entity_ids", []))
+        self._filtered_out = 0
 
         async def _listen_forever() -> None:
             """Ждёт данных, которых не придёт.

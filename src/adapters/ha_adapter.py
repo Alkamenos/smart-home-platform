@@ -39,6 +39,13 @@ logger = logging.getLogger(__name__)
 # остановить heartbeat и основной цикл адаптера (#70).
 WS_CLOSE_TIMEOUT_SEC = 5.0
 
+#: Сколько ждём ответа HA на подписку.
+#:
+#: Отдельно от закрытия: подписка не закрывает соединение, но без ответа на неё
+#: события не придут, а узнать об этом можно только по отсутствию событий.
+#: Константа, а не число в коде, чтобы проверки не ждали десять секунд каждая.
+SUBSCRIPTION_TIMEOUT_SEC = 10.0
+
 
 @runtime_checkable
 class ActionGateProtocol(Protocol):
@@ -94,6 +101,63 @@ class SimpleHAWebSocketClient:
         # Причина последнего разрыва. Нужна, чтобы отличить молчаливый уход HA
         # от собственной остановки: без неё оба случая выглядят одинаково.
         self._disconnect_reason: str | None = None
+        # Подтверждена ли подписка ответом HA. Отправленное сообщение — ещё не
+        # подписка: HA может отвергнуть её, и тогда события не придут никогда.
+        self.subscription_confirmed: bool = False
+        self.subscription_error: str | None = None
+        # Сущности, ради которых подписывались. Фильтра на стороне HA нет
+        # (проверено на живом HA 2026-10-08: `entity_ids` отвергается как
+        # лишний ключ), поэтому ограничение применяется у нас.
+        self.filtered_entity_ids: tuple[str, ...] = ()
+        # Идентификатор подписки, ответ на который ещё ожидается. Инициализируется
+        # перед вызовом _subscription_result().
+        self._pending_subscription_id: int = 0
+        # Сколько событий отброшено фильтром сущностей.
+        self._filtered_out = 0
+
+    @property
+    def filtered_out_count(self) -> int:
+        """Сколько событий отброшено фильтром сущностей.
+
+        Returns:
+            Счётчик отброшенных событий.
+        """
+        return self._filtered_out
+
+    def _accepts(self, payload: dict[str, Any]) -> bool:
+        """Относится ли событие к сущностям, ради которых подписались.
+
+        Args:
+            payload: Событие от HA.
+
+        Returns:
+            True, если событие стоит обрабатывать.
+        """
+        if not self.filtered_entity_ids:
+            return True
+        entity_id = payload.get("entity_id")
+        if not entity_id:
+            return True
+        return str(entity_id) in self.filtered_entity_ids
+
+    async def _deliver(self, payload: dict[str, Any]) -> None:
+        """Передать событие обработчику, если оно проходит фильтр.
+
+        Вынесено отдельно, чтобы доставка проверялась напрямую: события в бою
+        приходят из сокета, и подмена пути скрыла бы, где именно теряется
+        поток.
+
+        Args:
+            payload: Событие от HA.
+
+        Returns:
+            Ничего.
+        """
+        if not self._accepts(payload):
+            self._filtered_out += 1
+            return
+        if self._event_handler is not None:
+            await self._event_handler(payload)
 
     async def connect(self) -> None:
         if self.ws is not None:
@@ -161,7 +225,10 @@ class SimpleHAWebSocketClient:
                     if msg_type == "event" and self._event_handler:
                         event_data = msg.get("event", {})
                         payload = event_data.get("data", event_data)
-                        await self._event_handler(payload)
+                        # Фильтр применяется здесь: ограничения на стороне HA
+                        # нет. Отброшенные считаются, иначе «приходят все
+                        # сущности дома» снова станет невидимым.
+                        await self._deliver(payload)
 
                     elif msg_type == "result":
                         msg_id = msg.get("id")
@@ -241,28 +308,72 @@ class SimpleHAWebSocketClient:
                 "type": "subscribe_events",
                 "event_type": filter_dict.get("type", ""),
             }
-            # Фильтр сущностей уходит на сервер, а не применяется у нас. Иначе
-            # Home Assistant присылает все сущности дома — в бою 1502 против 6
-            # описанных в манифесте, — и платформа разбирает и отбивает каждое
-            # событие лишней сущности.
+            # Списка сущностей в API Home Assistant нет. Проверено на живом HA
+            # 2026-10-08 пятью вариантами подписки: принимаются `event_type`
+            # и `event_id`, а `entity_ids` и даже `entity_id` отвергаются с
+            # `extra keys not allowed`. Прежний код отправлял `entity_ids`,
+            # HA отвергал подписку, а платформа писала в журнал «subscribed» и
+            # ждала событий, которых не могло быть: `/ready` зелёный, доставки
+            # нет. Тот же класс, что #9.
             #
-            # Пустой список НЕ отправляется: в API он означает «все сущности»,
-            # и полагаться на это нельзя. Лучше подписаться на всё и отбить
-            # лишнее у себя, чем при пустом манифесте стать молчащей: соединение
-            # есть, /ready зелёный, событий нет — и это неотличимо от поломки.
-            entity_ids = filter_dict.get("entity_ids") or []
-            if entity_ids:
-                sub_msg["entity_ids"] = list(entity_ids)
+            # Поэтому фильтр применяется у нас: подписка идёт на все события,
+            # а лишние отбрасываются на входе. Отброшенные считаются — иначе
+            # «приходят все 1502» снова станет невидимым.
+            entity_ids = tuple(filter_dict.get("entity_ids") or ())
+            self.filtered_entity_ids = entity_ids
+
+            self.subscription_confirmed = False
+            self.subscription_error = None
+            self._pending_subscription_id = self._msg_id
 
             await self.ws.send(json.dumps(sub_msg))
 
-    async def get_states(self) -> Any:
-        if not self.ws or not self.connected:
-            return []
+            try:
+                await asyncio.wait_for(
+                    self._subscription_result(),
+                    timeout=SUBSCRIPTION_TIMEOUT_SEC,
+                )
+            except TimeoutError:
+                self.subscription_error = (
+                    f"HA не ответил на подписку за {SUBSCRIPTION_TIMEOUT_SEC:g} с"
+                )
+                logger.warning(
+                    f"HAAdapter: подписка на {sub_msg['event_type']!r} не "
+                    f"подтверждена ({self.subscription_error}) — события могут "
+                    f"не приходить"
+                )
 
-        self._msg_id += 1
-        msg_id = self._msg_id
-        loop = asyncio.get_event_loop()
+    async def _subscription_result(self) -> None:
+        """Дождаться ответа HA на подписку и запомнить, принял ли он её.
+
+        Returns:
+            Ничего.
+        """
+        message = await self._request_result(self._pending_subscription_id)
+        if message.get("success") is True:
+            self.subscription_confirmed = True
+            logger.warning(
+                f"HAAdapter: подписка на события подтверждена HA, "
+                f"ограничение по сущностям применяется на нашей стороне "
+                f"({len(self.filtered_entity_ids)} шт.)"
+            )
+            return
+
+        error = message.get("error") or {}
+        reason = f"{error.get('code', 'unknown')}: {error.get('message', 'без пояснения')}"
+        self.subscription_error = reason
+        logger.warning(f"HAAdapter: HA отверг подписку ({reason})")
+
+    async def _request_result(self, msg_id: int) -> dict[str, Any]:
+        """Дождаться ответа HA на запрос с указанным идентификатором.
+
+        Args:
+            msg_id: Идентификатор запроса.
+
+        Returns:
+            Ответ HA целиком: ``success``, ``result`` либо ``error``.
+        """
+        loop = asyncio.get_running_loop()
         result_future: asyncio.Future[Any] = loop.create_future()
 
         def on_result(msg: dict[str, Any]) -> None:
@@ -270,6 +381,18 @@ class SimpleHAWebSocketClient:
                 result_future.set_result(msg)
 
         self._handlers[msg_id] = on_result
+        try:
+            response = await result_future
+        finally:
+            self._handlers.pop(msg_id, None)
+        return response
+
+    async def get_states(self) -> Any:
+        if not self.ws or not self.connected:
+            return []
+
+        self._msg_id += 1
+        msg_id = self._msg_id
 
         await self.ws.send(
             json.dumps(
@@ -281,7 +404,7 @@ class SimpleHAWebSocketClient:
         )
 
         try:
-            response = await asyncio.wait_for(result_future, timeout=15)
+            response = await asyncio.wait_for(self._request_result(msg_id), timeout=15)
             return response.get("result", [])
         except TimeoutError:
             return []
@@ -681,13 +804,25 @@ class HAAdapter:
                 # и её присутствия, и это правильно: подписка — заметное событие,
                 # и INFO для неё уместен.
                 log.info("HAAdapter: subscribed to state_changed events")
-                if subscribed:
+                # Подписка считается успешной только после ответа HA. Раньше
+                # запись делалась сразу после отправки, а HA отвергал её
+                # неподдерживаемым ключом `entity_ids`: журнал врал, `/ready`
+                # был зелёный, события не приходили никогда.
+                if not self._ws_client.subscription_confirmed:
+                    reason = self._ws_client.subscription_error or "причина неизвестна"
+                    logger.warning(
+                        f"🔔 HAAdapter: подписка на state_changed НЕ подтверждена "
+                        f"({reason}); ограничение по {len(subscribed)} сущностям "
+                        f"применяется на нашей стороне"
+                    )
+                elif subscribed:
                     # WARNING, а не INFO: логи адаптера наследуют корневой
                     # обработчик, где info не виден — проверка на info молчала бы
                     # и не доказала бы ничего (урок #70).
                     logger.warning(
                         f"🔔 HAAdapter: subscribed to state_changed for "
-                        f"{len(subscribed)} entities from manifest"
+                        f"{len(subscribed)} entities from manifest "
+                        f"(фильтр на нашей стороне: HA его не поддерживает)"
                     )
                 else:
                     logger.warning(

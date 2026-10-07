@@ -54,6 +54,12 @@ class FakeWSClient:
         self.connected = True
 
     async def subscribe(self, handler, filter_dict) -> None:
+        self._pending_subscription_id = getattr(self, "_msg_id", 1)
+        self.subscription_confirmed = True
+        self.subscription_error = None
+        self.filtered_entity_ids = tuple(filter_dict.get("entity_ids", []))
+        self._filtered_out = 0
+
         async def _listen() -> None:
             await asyncio.sleep(LISTEN_DIE_DELAY)
             if type(self).listen_behavior == "raises":
