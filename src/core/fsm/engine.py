@@ -452,6 +452,25 @@ class FSMEngine:
             entity_id for entity_id in self._definitions if entity_id.startswith(f"{device_id}_")
         ]
 
+    @property
+    def event_bus(self) -> EventBus | None:
+        """Шина событий платформы, в которую движок публикует свои события.
+
+        Свойство публичное не для удобства: от его наличия зависит доставка
+        событий Home Assistant подписчикам. Адаптер публикует `state_change` на
+        эту шину (R-07 — одна шина на процесс), и пока у движка было только
+        приватное `_event_bus`, проверка `hasattr(engine, "event_bus")` давала
+        на настоящем движке `False`: адаптер уходил в запасную ветку с
+        `engine.trigger()` по идентификатору сущности Home Assistant, который
+        не является именем автомата. В бою это значило, что состояние
+        устройства обновляла только ручная синхронизация, а каждое изменение
+        состояния давало отказ `unknown_entity` (#9).
+
+        Returns:
+            Шина, с которой движок собран, либо `None`, если шины не было.
+        """
+        return self._event_bus
+
     def get_state(self, entity_id: str) -> State | None:
         """Get the current state of an entity."""
         return self._states.get(entity_id)

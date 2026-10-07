@@ -419,29 +419,29 @@ class HAAdapter:
             "context": {**context, "trace_id": trace_id},
         }
 
-        if self._engine is not None and hasattr(self._engine, "event_bus"):
+        # Доставка событий подписчикам идёт через шину платформы — ту же, что
+        # использует движок (R-07). Раньше здесь стояло
+        # `if hasattr(self._engine, "event_bus")`, и на настоящем `FSMEngine`
+        # проверка давала False: шина называлась `_event_bus`, публичного
+        # доступа к ней не было. Ветка публикации оказывалась мёртвой, а
+        # работала запасная — `engine.trigger()` по идентификатору сущности
+        # Home Assistant, который не является именем автомата, поэтому каждое
+        # изменение состояния давало отказ `unknown_entity`, а состояние
+        # устройства обновляла только ручная синхронизация (#9).
+        #
+        # Запасной ветки больше нет: подменять доставку вызовом движка нельзя,
+        # а если шины нет, публиковать некуда и это не ошибка (тесты, локальный
+        # запуск без шины).
+        bus = getattr(self._engine, "event_bus", None)
+        if bus is not None:
             try:
-                await self._engine.event_bus.publish(
+                await bus.publish(
                     event_type="state_change",
                     payload=payload,
                     trace_id=trace_id,
                 )
             except Exception as e:
                 log.error(f"HAAdapter: failed to publish event to EventBus: {e}")
-        elif self._engine is not None:
-            try:
-                trigger_name = f"{entity_id}_changed"
-                await self._engine.trigger(
-                    entity_id=entity_id,
-                    event=trigger_name,
-                    external_ctx={
-                        "new_state": new_state,
-                        "old_state": old_state,
-                        "trace_id": trace_id,
-                    },
-                )
-            except Exception as e:
-                log.error(f"HAAdapter: failed to trigger FSM: {e}")
 
         if self._event_router is not None:
             try:

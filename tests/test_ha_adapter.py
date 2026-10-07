@@ -217,37 +217,33 @@ class TestHAAdapterStateChangeHandling:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_on_state_change_fallback_to_direct_trigger(self):
-        """If no event_bus, should trigger FSM directly."""
-        import builtins
+    async def test_on_state_change_does_not_publish_without_bus(self):
+        """Движок без шины: публиковать некуда, и это не ошибка.
 
+        Прежний тест проверял обратное — что при отсутствии шины адаптер
+        вызывает `engine.trigger()` по идентификатору сущности Home Assistant.
+        Такой вызов не доставлял состояние никому (автомат называется
+        `{сущность}_{шаблон}_{приоритет}`), а на настоящем движке эта ветка была
+        единственной выполнявшейся: `hasattr(engine, "event_bus")` давал False.
+        Тест закреплял поведение, которого в бою не было, и не замечал
+        отсутствия доставки (#9). Проверка живого пути доставки —
+        `tests/test_state_change_delivery.py`.
+        """
         hass_mock = MagicMock()
-        engine_mock = MagicMock()
-
-        # Mock hasattr to return False for event_bus attribute
-        original_hasattr = builtins.hasattr
-
-        def mock_hasattr(obj, name):
-            if obj is engine_mock and name == "event_bus":
-                return False
-            return original_hasattr(obj, name)
-
+        engine_mock = MagicMock(spec=["trigger"])
         engine_mock.trigger = AsyncMock()
 
-        with patch("builtins.hasattr", side_effect=mock_hasattr):
-            adapter = HAAdapter(mode="pyscript", engine=engine_mock, hass=hass_mock)
+        adapter = HAAdapter(mode="pyscript", engine=engine_mock, hass=hass_mock)
 
-            await adapter.on_state_change(
-                entity_id="binary_sensor.motion",
-                new_state="on",
-                old_state="off",
-                context={},
-            )
+        result = await adapter.on_state_change(
+            entity_id="binary_sensor.motion",
+            new_state="on",
+            old_state="off",
+            context={},
+        )
 
-            engine_mock.trigger.assert_called_once()
-            call_args = engine_mock.trigger.call_args
-            assert call_args.kwargs["entity_id"] == "binary_sensor.motion"
-            assert call_args.kwargs["event"] == "binary_sensor.motion_changed"
+        assert result is None
+        engine_mock.trigger.assert_not_called()
 
 
 class TestHAAdapterServiceCalls:

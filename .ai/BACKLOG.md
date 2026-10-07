@@ -189,7 +189,7 @@
 | B2 | RU T081 — финальная проверка логирования всех операций (ТР-010: sync/delete ещё не пишутся) | specs/001 | ⬜ |
 | B3 | EN T047 — `DeviceSyncService`; EN T022/T023 — persistence для команд устройств | specs/001 | ⬜ |
 | B4 | `.env.example` + документация `ENCRYPTION_KEY` (EN T009/T075) | specs/001 | ⬜ |
-| B5 | Known Issue #9 — мёртвый канал `params.motion_sensor` (устранить или удалить) | PROJECT_STATE | ⬜ |
+| B5 | Known Issue #9 — `params.motion_sensor` (диагноз оказался неверным) | PROJECT_STATE | ✅ 2026-10-07: мёртвой была не доставка по `motion_sensor`, а вся доставка событий HA — `hasattr(engine, "event_bus")` давал `False` на настоящем движке. Публичное свойство `event_bus` + удаление запасной ветки `engine.trigger()`; 13 проверок на живых объектах |
 | B6 | Known Issue #10 — MockAdapter не маршрутизирует state change | PROJECT_STATE | ⬜ |
 | B7 | Known Issue #12 — `Task was destroyed` при остановке контейнера | PROJECT_STATE | ⬜ |
 | B8 | Dashboard Generator: CLI `shp generate-dashboard` (enhancement 19, Phase 9.75 остаток) | ROADMAP 9.75 | ⬜ |
