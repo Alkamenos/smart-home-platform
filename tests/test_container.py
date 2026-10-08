@@ -121,6 +121,31 @@ class TestComponentDependencies:
 
         assert isinstance(adapter, HAAdapter)
 
+    @patch.dict(os.environ, {"HA_TOKEN": "test_token"})
+    def test_adapter_receives_manual_lockout_middleware(self):
+        """Адаптер обязан получить ручную блокировку от контейнера.
+
+        Без инъекции `on_state_change` молчит при `user_id` в конверте
+        события (`if user_id and self._manual_lockout_middleware`), и
+        ручная блокировка не включается **ни одним путём** из живого
+        дома: человек выключает свет в HA, платформа не помнит об этом
+        и автоматика включает его обратно. Тесты #18 инжектировали
+        middleware напрямую в конструктор адаптера, поэтому проходили,
+        а контейнер его не передавал — дефект вскрыт живой проверкой
+        2026-10-08 (за всю историю `Recorded manual control` = 0 при
+        доказанном `user_id` в состояниях HA).
+        """
+        container = Container(manifest_path="instances/leonids_house/manifest.yaml")
+
+        adapter = container.adapter
+
+        assert adapter._manual_lockout_middleware is container.middleware, (
+            "контейнер не инжектит ManualLockoutMiddleware в адаптер: "
+            f"адаптер получил {adapter._manual_lockout_middleware!r}, "
+            f"контейнер держит {container.middleware!r} — событие с "
+            "user_id не запишет ручное управление, блокировка мертва"
+        )
+
     def test_dispatcher_depends_on_adapter(self):
         """Test CommandDispatcher receives adapter."""
         container = Container(manifest_path="instances/leonids_house/manifest.yaml")

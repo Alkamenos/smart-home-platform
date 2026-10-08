@@ -279,6 +279,20 @@ class SimpleHAWebSocketClient:
                     if msg_type == "event" and self._event_handler:
                         event_data = msg.get("event", {})
                         payload = event_data.get("data", event_data)
+                        # Контекст события лежит в конверте — рядом с `data`,
+                        # а не внутри (снято с живого HA 2026-10-08:
+                        # `event = {event_type, data, context, ...}`).
+                        # Раньше в обработчик уходило только `data`, и
+                        # `user_id` не доходил до record_manual_control:
+                        # ручная блокировка не включалась ни одним путём из
+                        # дома, хотя сами тесты #18 проходили — они собирали
+                        # сообщение с контекстом руками.
+                        if (
+                            isinstance(payload, dict)
+                            and "context" in event_data
+                            and "context" not in payload
+                        ):
+                            payload = {**payload, "context": event_data["context"]}
                         # Фильтр применяется здесь: ограничения на стороне HA
                         # нет. Отброшенные считаются, иначе «приходят все
                         # сущности дома» снова станет невидимым.

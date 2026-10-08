@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -41,7 +42,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from adapters.ha_adapter import HAAdapter
+from adapters.ha_adapter import HAAdapter, SimpleHAWebSocketClient
 from core.commands.dispatcher import CommandIntent
 from core.commands.middleware import ManualLockoutMiddleware
 from core.control_tracker import ControlTracker
@@ -315,6 +316,94 @@ class TestCommandReachesDevice:
         assert adapter.call_count == 1, (
             "заблокированная команда дошла до Home Assistant: жилец выключил "
             "свет, а платформа всё равно отправила команду включения"
+        )
+
+
+class TestRawFrameFromLiveHome:
+    """Сырой кадр живого Home Assistant доходит до записи ручного действия.
+
+    Этот тест закрывает обрыв, который тесты #18 не видели: они собирали
+    `message` с `context` **руками**, а продакшен передаёт в обработчик то,
+    что собрал `_listen_loop` из сырых байтов сокета. Живая проверка
+    2026-10-08 показала два обрыва этого конвейера, оба закрыты отдельно:
+
+    - контейнер не инжектит middleware в адаптер
+      (`tests/test_container.py::test_adapter_receives_manual_lockout_middleware`);
+    - клиент отрезал конверт события до обработчика: в `_deliver` уходило
+      только `event.data`, а `context` лежит рядом с `data`.
+
+    Структура кадра снята с настоящего HA 2026-10-08 (см. докстринг
+    `state_changed_event`): `msg = {type, id, event}` и
+    `event = {event_type, data, context, origin, time_fired}`.
+    """
+
+    #: Кадр в форме, которую HA реально шлёт (снято живьём 2026-10-08).
+    LIVE_FRAME = {
+        "type": "event",
+        "id": 1,
+        "event": {
+            "event_type": "state_changed",
+            "data": {
+                "entity_id": DEVICE,
+                "old_state": {"entity_id": DEVICE, "state": "on", "attributes": {}},
+                "new_state": {"entity_id": DEVICE, "state": "off", "attributes": {}},
+            },
+            "context": {
+                "id": "01M4DSCD53X4XE9CAGRV1YYZ0C",
+                "parent_id": None,
+                "user_id": "user-42",
+            },
+            "origin": "local",
+            "time_fired": "2026-10-08T14:00:00.000000+00:00",
+        },
+    }
+
+    @pytest.mark.asyncio
+    async def test_live_frame_records_manual_control_end_to_end(self) -> None:
+        """Кадр сокета → listen loop → обработчик → трекер помнит человека.
+
+        Ничего не подменяется: настоящий `_listen_loop` читает сырые JSON-байты
+        из очереди сокета, настоящий обработчик адаптера разбирает их. Если
+        конверт обрезается на любом участке, `user_id` не доходит до
+        `record_manual_control`, и человек выключает свет, которого автоматика
+        не запомнит.
+
+        Обработчик ставится напрямую, минуя `subscribe()`: объект подписки здесь
+        ни на что не влияет, а ожидание ответного `result` зависело бы от
+        гонки регистрации обработчика с доставкой кадра. Механизм подписки
+        проверен отдельно (B30, `tests/integration/test_websocket_disconnect_visible.py`).
+        """
+        from tests.test_ha_adapter import FakeHAWebSocket  # noqa: PLC0415
+
+        middleware, tracker = _middleware()
+        adapter = HAAdapter(
+            mode="websocket",
+            ws_url="ws://localhost:8123",
+            token="test_token",
+            manual_lockout_middleware=middleware,
+        )
+
+        ws = FakeHAWebSocket()
+        client = SimpleHAWebSocketClient(url="ws://localhost:8123", token="test_token")
+        client.ws = ws
+        client.connected = True
+        client._event_handler = adapter._handle_ws_state_change  # noqa: SLF001
+        client._listen_task = asyncio.create_task(client._listen_loop())  # noqa: SLF001
+
+        try:
+            ws.push(self.LIVE_FRAME)
+            for _ in range(200):
+                if tracker.get_last_manual(DEVICE) is not None:
+                    break
+                await asyncio.sleep(0.01)
+        finally:
+            await client.close()
+
+        assert tracker.get_last_manual(DEVICE) is not None, (
+            "живой кадр Home Assistant не включил ручную блокировку: конверт "
+            "события обрезан на пути до обработчика, user_id не дошёл до "
+            "record_manual_control — человек выключил свет, а платформа это "
+            "не заметила"
         )
 
 
