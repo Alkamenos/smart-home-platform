@@ -72,12 +72,16 @@ def _flag_enabled(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUE_VALUES
 
 
-def configure_library_logging() -> list[str]:
+def configure_library_logging(force: bool = False) -> list[str]:
     """Поднять уровень журналов библиотек, чей отладочный вывод бесполезен.
 
     Возвращается список заглушённых журналов — не для отчёта, а чтобы вызов был
     проверяемым снаружи: проверка «уровень стал INFO» проходит и при полном
     отсутствии вызова.
+
+    Args:
+        force: Принудительно установить уровень, даже если он уже был выше.
+            Нужен для вызова после импорта библиотек, которые сбрасывают уровень.
 
     Returns:
         Имена журналов, уровень которых был поднят.
@@ -89,7 +93,7 @@ def configure_library_logging() -> list[str]:
     quieted: list[str] = []
     for name in QUIET_LIBRARIES:
         log = logging.getLogger(name)
-        if log.level < quiet_level:
+        if force or log.level < quiet_level:
             log.setLevel(quiet_level)
             quieted.append(name)
     return quieted

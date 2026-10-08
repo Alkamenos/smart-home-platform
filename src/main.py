@@ -150,6 +150,11 @@ def __getattr__(name: str) -> Any:
 
 
 async def run_platform():
+    # Принудительно поднимаем уровень журналов библиотек ПОСЛЕ всех импортов.
+    # Вызов на уровне модуля не работает: websockets импортируется внутри
+    # ha_adapter.py и сбрасывает уровень обратно на NOTSET.
+    configure_library_logging(force=True)
+
     # Get project root (parent of src directory)
     project_root = Path(__file__).parent.parent
 
