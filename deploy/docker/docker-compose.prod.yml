@@ -57,6 +57,10 @@ services:
       - CLICOLOR_FORCE=1                # Универсальный флаг для CLI
       - CONFIG_PATH=/config/behavioral_platform
       - DATA_PATH=/data/behavioral_platform
+      # Часовой пояс дома для правил «светло ли сейчас» и «не ночь ли». Контейнер
+      # работает в UTC; без этой переменной окно дня считалось бы по часам
+      # контейнера и разрешало свет с 02:00 до 04:00 по местному.
+      - HOUSE_TIMEZONE=Asia/Yekaterinburg
 
     # Volumes
     volumes:
