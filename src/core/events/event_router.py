@@ -89,9 +89,13 @@ class EventRouter:
         self._manifest = manifest
         self._engine = engine
         self._sensor_to_fsms: dict[str, list[tuple[str, str]]] = {}
-        # Роль датчика («humidity», «motion») по его сущности: под этим именем
-        # значение кладётся в контекст перехода.
-        self._sensor_roles: dict[str, str] = {}
+        # Роль датчика («humidity», «motion») по паре «датчик → автомат», а не по
+        # сущности: один физический датчик может быть источником для двух комнат
+        # под разными именами (например, движение гостиной плюс влажность для
+        # вентилятора кабинета). Раньше роль запоминалась один раз на сущность
+        # через `setdefault`, и вторая комната получала маршрут без значения —
+        # условие читало ключ, которого в контексте не было.
+        self._sensor_roles: dict[tuple[str, str], str] = {}
         self._build_mapping()
 
     def _build_mapping(self) -> None:
@@ -116,11 +120,13 @@ class EventRouter:
                 # значение кладётся в контекст перехода под тем именем, которое
                 # читает условие. Без этого условие влажности читало ключ,
                 # которого в контексте нет, и вентиляция не срабатывала никогда.
-                self._sensor_roles.setdefault(sensor_id, sensor_type)
-
+                #
+                # Роль — свойство пары «датчик → автомат»: у каждой комнаты своя
+                # роль для своего автомата, даже если сущность датчика общая.
                 for event_name in events:
                     for fsm_id in room_fsm_ids:
                         self._add_mapping(sensor_id, fsm_id, event_name)
+                        self._sensor_roles[(sensor_id, fsm_id)] = sensor_type
 
         logger.info(f"EventRouter built mapping for {len(self._sensor_to_fsms)} sensors")
 
@@ -196,7 +202,7 @@ class EventRouter:
             # Значение приводится к числу, когда это возможно, иначе остаётся
             # строкой: «unavailable» не должен молча превращаться в ноль и
             # выглядеть как честное «влажность 0, значит выключить».
-            role = self._sensor_roles.get(entity_id)
+            role = self._sensor_roles.get((entity_id, fsm_entity_id))
             if role:
                 external_ctx[role] = _as_measurement(new_state)
 

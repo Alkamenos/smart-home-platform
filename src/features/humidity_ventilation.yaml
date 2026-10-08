@@ -1,5 +1,19 @@
 # Humidity Ventilation Behavior Template
 # Автоматическое управление вентиляцией на основе влажности
+#
+# Триггер — `humidity_changed`, то есть событие, которое действительно
+# публикует `EventRouter` для роли `humidity` (SENSOR_EVENT_MAP). Раньше здесь
+# стояли `humidity_high` и `humidity_normal`, которых не производил никто:
+# вентиляция по влажности не срабатывала ни разу, а приёмка в доме
+# 2026-10-08 (шаг 4 спеки 010) поймала это отказом `no_transition` по обоим
+# автоматам вентиляции — Known Issue #67.
+#
+# Различать «выше» и «ниже» порога теперь условия перехода, а не имя
+# события: `humidity_above_60`/`humidity_below_60` читают `humidity_threshold`
+# из параметров поведения, иначе зашитое в имя 60 перебивало бы настройку из
+# манифеста. Оба перехода слушают одно событие — движок выбирает исходящий
+# переход по состоянию, а отказ получает свою причину: «условие не прошло»
+# (`guard_failed`) или «данных не было» (`guard_data_missing`).
 
 initial_state: "idle"
 debounce_sec: 0.5
@@ -12,13 +26,13 @@ transitions:
   # Включение вентиляции при высокой влажности
   - from_state: "idle"
     to_state: "ventilating"
-    trigger: "humidity_high"
+    trigger: "humidity_changed"
     guard: "humidity_above_60"
     action: "fan_turn_on"
 
   # Выключение вентиляции при нормальной влажности
   - from_state: "ventilating"
     to_state: "idle"
-    trigger: "humidity_normal"
+    trigger: "humidity_changed"
     guard: "humidity_below_60"
     action: "fan_turn_off"

@@ -42,7 +42,6 @@ uncovered_platform_events:
   # События, которые платформа публикует, но ни один шаблон не слушает.
   - brightness_changed
   - closed
-  - humidity_changed
   - opened
   - temperature_changed
 
@@ -106,12 +105,10 @@ templates:
     actions: [fan_turn_on, fan_turn_off]
     guards: [humidity_above_60, humidity_below_60]
     triggers:
-      humidity_high: НЕТ ПРОИСХОДИТЕЛЯ
-      humidity_normal: НЕТ ПРОИСХОДИТЕЛЯ
-    unproduced_triggers: [humidity_high, humidity_normal]
+      humidity_changed: sensor
+    unproduced_triggers: []
     gaps:
-      - Платформа публикует humidity_changed, шаблон слушает humidity_high и humidity_normal — имена не совпадают, событие не приходит никогда.
-      - Порог зашит в имя guard'а (60), тогда как манифест задаёт поведению параметр humidity_threshold со значением 65. Параметр не читается.
+      - Имя guard'а содержит 60, хотя значение порога берётся из параметра поведения humidity_threshold. Расхождение осталось только в имени: на решение оно не влияет (движок кладёт параметры поведения в контекст условия), но читающий контракт видит «60» и считает порог зашитым.
     params:
       humidity_threshold:
         type: float

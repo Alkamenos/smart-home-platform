@@ -116,6 +116,82 @@ def _context_of(trigger: MagicMock) -> dict[str, Any]:
     return dict(kwargs.get("external_ctx") or {})
 
 
+#: Свет в комнате, где тот же датчик объявлен датчиком движения.
+LIGHT = "light.probe"
+LIGHT_FSM = f"{LIGHT}_lighting_10"
+
+
+class TestOneSensorTwoRoles:
+    """Один и тот же датчик в двух ролях: значение нужно обоим автоматам.
+
+    Датчик движения гостиной одновременно может быть источником влажности для
+    вентилятора в другой комнате. Раньше роль запоминалась один раз на сущность
+    (`setdefault`), и вторая комната получала маршрут, но не значение: условие
+    читало ключ, которого в контексте не было, и отказ назывался «данных не
+    было» — при живом датчике, который только что отчитался.
+    """
+
+    def _shared_sensor_router(self) -> EventRouter:
+        """Маршрутизатор, где один датчик — и движение, и влажность.
+
+        Returns:
+            Готовый маршрутизатор с двумя комнатами.
+        """
+        rooms = [
+            SimpleNamespace(
+                id="gostinaia",
+                devices=[SimpleNamespace(id=LIGHT)],
+                sensors={"motion": MOTION},
+            ),
+            SimpleNamespace(
+                id="kabinet",
+                devices=[SimpleNamespace(id=FAN)],
+                sensors={"humidity": MOTION},
+            ),
+        ]
+        engine = MagicMock()
+        engine.get_entities_by_device.side_effect = lambda device_id: (
+            [LIGHT_FSM] if device_id == LIGHT else [FSM_ID] if device_id == FAN else []
+        )
+        return EventRouter(SimpleNamespace(rooms=rooms), engine)
+
+    @pytest.mark.asyncio
+    async def test_value_reaches_the_second_role(self) -> None:
+        """Под второй ролью значение тоже должно доехать до условия."""
+        router = self._shared_sensor_router()
+        trigger = _captured_trigger(router)
+
+        await router.route_state_change(MOTION, new_state="75", old_state="70")
+
+        fan_call = [c for c in trigger.call_args_list if c.kwargs.get("entity_id") == FSM_ID]
+        assert fan_call, f"переход вентилятора не вызывался вовсе: {trigger.call_args_list}"
+        context = dict(fan_call[0].kwargs.get("external_ctx") or {})
+        assert context.get("humidity") == pytest.approx(75.0), (
+            "датчик объявлен в этой комнате датчиком влажности, а значение лежит "
+            f"только под чужой ролью: {context}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_first_role_keeps_its_own_name(self) -> None:
+        """Первая роль не должна потерять значение из-за второй.
+
+        Значение здесь настоящее движение (`on`), а не число: событие движения
+        роутер отфильтровывает по состоянию, и выдуманное «75» до света не
+        дошло бы вовсе — проверяла бы фильтр, а не роль.
+        """
+        router = self._shared_sensor_router()
+        trigger = _captured_trigger(router)
+
+        await router.route_state_change(MOTION, new_state="on", old_state="off")
+
+        light_call = [c for c in trigger.call_args_list if c.kwargs.get("entity_id") == LIGHT_FSM]
+        assert light_call, f"переход света не вызывался: {trigger.call_args_list}"
+        context = dict(light_call[0].kwargs.get("external_ctx") or {})
+        assert context.get("motion") == "on", (
+            f"значение датчика движения не дошло до своего автомата: {context}"
+        )
+
+
 class TestHumidityReachesTransition:
     """Влажность доходит до условия перехода."""
 

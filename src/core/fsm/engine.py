@@ -84,6 +84,33 @@ def loop_time() -> float:
         return 0.0
 
 
+def _is_measurement(value: Any) -> bool:
+    """Похоже ли значение на показание датчика.
+
+    Показание — число или строка, приводимая к числу. `None`, `unavailable`,
+    `unknown` и прочие строки показанием не являются: по ним выносить решение
+    нельзя, и отказ должен называться «данных не было», а не «значение не
+    подходит». Иначе молчащий датчик неотличим от работающего.
+
+    Args:
+        value: Значение из контекста перехода.
+
+    Returns:
+        True, если значение можно трактовать как измерение.
+    """
+    if isinstance(value, bool) or value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        try:
+            float(value)
+        except ValueError:
+            return False
+        return True
+    return False
+
+
 # @dataclass (frozen=True)
 @dataclass
 class State:
@@ -628,7 +655,14 @@ class FSMEngine:
             return REASON_GUARD_FAILED
 
         required = getattr(guard_fn, "requires", ())
-        missing = [key for key in required if context.get(key) is None]
+        # Нечитаемое значение — тоже отсутствие данных. Контракт наблюдаемых
+        # сигналов различает «датчик молчит или значение нечитаемо» (проблема
+        # данных) и «значение не подходит» (штатная работа), а `unavailable`
+        # раньше попадал во второе: молчащий датчик выглядел как исправно
+        # работающая вентиляция, у которой «просто не набралось влажности».
+        # Проверка числовая, а не сравнение с None: иначе отказ получает чужое
+        # имя, и оператору остаётся гадать, где искать.
+        missing = [key for key in required if not _is_measurement(context.get(key))]
         if missing:
             logger.debug(
                 f"Entity {entity_id}: guard {getattr(guard_fn, '__name__', guard)} "
@@ -725,6 +759,20 @@ class FSMEngine:
             name = action_fn.__name__ if hasattr(action_fn, "__name__") else str(action_fn)
             log.error(f"Action '{name}' raised exception: {e}")
             return {}
+
+    def _definition_params(self, entity_id: str) -> dict[str, Any]:
+        """Параметры поведения автомата.
+
+        Args:
+            entity_id: Идентификатор автомата.
+
+        Returns:
+            Параметры из описания автомата либо пустой словарь.
+        """
+        definition = self._definitions.get(entity_id)
+        if definition is None or not definition.params:
+            return {}
+        return dict(definition.params)
 
     def _enrich_context_for_action(self, entity_id: str, context: dict[str, Any]) -> dict[str, Any]:
         """Enrich context with target_device_id and params from FSM definition.
@@ -847,6 +895,12 @@ class FSMEngine:
 
         # Merge contexts
         merged_context = {**current_state.context}
+        # Параметры поведения видны и условиям, а не только действиям. Раньше
+        # они доезжали только до действий (`_enrich_context_for_action`), и
+        # условие читало зашитое в своё имя значение: у `humidity_above_60`
+        # порог 60 перебивал `humidity_threshold` из манифеста, то есть
+        # настройка порога вентиляции не имела силы (Known Issue #67).
+        merged_context.update(self._definition_params(entity_id))
         if external_ctx:
             merged_context.update(external_ctx)
 
