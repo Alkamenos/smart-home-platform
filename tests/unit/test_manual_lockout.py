@@ -389,6 +389,10 @@ class TestRawFrameFromLiveHome:
         client.connected = True
         client._event_handler = adapter._handle_ws_state_change  # noqa: SLF001
         client._listen_task = asyncio.create_task(client._listen_loop())  # noqa: SLF001
+        # Обработка событий вынесена в отдельную задачу (иначе команда из
+        # обработчика блокирует чтение ответа на неё), и без неё кадр из сокета
+        # не дойдёт никуда — как в бою, где задача запускается при подключении.
+        client._event_worker_task = asyncio.create_task(client._event_worker())  # noqa: SLF001
 
         try:
             ws.push(self.LIVE_FRAME)

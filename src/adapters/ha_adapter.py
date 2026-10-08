@@ -24,6 +24,7 @@ import json
 import logging
 import time
 import uuid
+from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
@@ -45,6 +46,14 @@ WS_CLOSE_TIMEOUT_SEC = 5.0
 #: события не придут, а узнать об этом можно только по отсутствию событий.
 #: Константа, а не число в коде, чтобы проверки не ждали десять секунд каждая.
 SUBSCRIPTION_TIMEOUT_SEC = 10.0
+
+#: Сколько последних контекстов своих команд помнит адаптер.
+#:
+#: Идентификаторов ровно столько, сколько команд платформа отправила за
+#: последние минуты: у каждой свой, и хранить их вечно незачем. Восемь
+#: устройств при переходах каждые несколько секунд дают порядка сотни записей,
+#: поэтому 256 — с запасом и без роста памяти.
+OWN_CONTEXT_KEEP = 256
 
 
 @runtime_checkable
@@ -98,6 +107,14 @@ class SimpleHAWebSocketClient:
         self._handlers: dict[int, Callable[..., Any]] = {}
         self._event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None
         self._listen_task: asyncio.Task[None] | None = None
+        # События обрабатываются отдельной задачей, а не прямо в цикле чтения.
+        # Иначе команда, отправленная из обработчика события (любая команда
+        # автоматики), ждёт ответа HA в том же цикле, который этот ответ и
+        # должен прочитать: чтение блокировано до таймаута. Проверено на живом
+        # HA 2026-10-08 — каждая команда стоила 15 с и теряла `context.id`.
+        # Очередь сохраняет порядок событий: автоматы зависят от него.
+        self._event_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        self._event_worker_task: asyncio.Task[None] | None = None
         # Причина последнего разрыва. Нужна, чтобы отличить молчаливый уход HA
         # от собственной остановки: без неё оба случая выглядят одинаково.
         self._disconnect_reason: str | None = None
@@ -213,6 +230,33 @@ class SimpleHAWebSocketClient:
         if self._event_handler is not None:
             await self._event_handler(payload)
 
+    async def _event_worker(self) -> None:
+        """Разбирать очередь событий, пока её читает цикл сокета.
+
+        Отдельная задача нужна для одной простой причины: команда, которую
+        автоматика отправляет в ответ на событие, ждёт ответа Home Assistant —
+        а ответ читает тот же цикл. Без раздельных задач чтение блокировалось
+        до таймаута: в бою это означало 15 секунд задержки на каждое движение
+        и потерю `context.id`, по которому своё действие отличается от
+        действия человека (живой запуск 2026-10-08).
+
+        Args:
+            Ничего.
+
+        Returns:
+            Ничего. Задача живёт до отмены.
+        """
+        while True:
+            payload = await self._event_queue.get()
+            if payload is None:
+                return
+            try:
+                await self._deliver(payload)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001 — одно событие не роняет поток
+                logger.warning(f"HAAdapter: ошибка обработки события: {e}")
+
     async def connect(self) -> None:
         if self.ws is not None:
             await self.close()
@@ -254,6 +298,7 @@ class SimpleHAWebSocketClient:
                 raise ConnectionError(f"Auth failed: {msg}")
 
             self._listen_task = asyncio.create_task(self._listen_loop())
+            self._event_worker_task = asyncio.create_task(self._event_worker())
 
         except Exception as e:
             logger.warning(f"WebSocket connection failed: {e}")
@@ -293,10 +338,10 @@ class SimpleHAWebSocketClient:
                             and "context" not in payload
                         ):
                             payload = {**payload, "context": event_data["context"]}
-                        # Фильтр применяется здесь: ограничения на стороне HA
-                        # нет. Отброшенные считаются, иначе «приходят все
-                        # сущности дома» снова станет невидимым.
-                        await self._deliver(payload)
+                        # В очередь, а не сразу в обработчик: чтение сокета не
+                        # должно ждать обработку события, иначе команда из
+                        # обработчика блокирует чтение ответа на неё самой.
+                        self._event_queue.put_nowait(payload)
 
                     elif msg_type == "result":
                         msg_id = msg.get("id")
@@ -327,6 +372,8 @@ class SimpleHAWebSocketClient:
         if self._listen_task:
             self._listen_task.cancel()
             logger.warning(f"HAAdapter: close() cancel sent, task done={self._listen_task.done()}")
+            if self._event_worker_task:
+                self._event_worker_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._listen_task
             logger.warning(
@@ -574,6 +621,14 @@ class HAAdapter:
 
         self._manual_lockout_middleware = manual_lockout_middleware
         self._event_router = event_router
+        # Контексты команд, которые отправила сама платформа. Home Assistant
+        # возвращает `context.id` на каждый вызов сервиса, и изменение состояния
+        # несёт тот же идентификатор: по нему собственная команда отличается от
+        # действия человека. Без этого первая же автоматическая команда
+        # возвращалась в адаптер как ручное действие (HA ставит `user_id`
+        # владельца токена) и включала блокировку против самой себя на 60 минут
+        # — вскрыто первым живым запуском 2026-10-08.
+        self._own_context_ids: deque[str] = deque(maxlen=OWN_CONTEXT_KEEP)
         self._ws_client: HomeAssistantWS | None = None
         self._session: aiohttp.ClientSession | None = None
         # Манифест для фильтра подписки. Не передаётся в __init__, чтобы не
@@ -631,8 +686,18 @@ class HAAdapter:
         context = context or {}
 
         user_id = context.get("user_id")
-        if user_id and self._manual_lockout_middleware:
+        # Собственная команда платформы возвращается из Home Assistant с тем же
+        # `user_id`, что и действия из приложения, и без этой проверки
+        # засчитывалась бы ручным действием: первая же автоматическая команда
+        # включала блокировку против самой себя (живой запуск 2026-10-08).
+        own_action = self._is_own_context(context.get("ha_context_id"))
+        if user_id and self._manual_lockout_middleware and not own_action:
             self._manual_lockout_middleware.record_manual_control(entity_id)
+        elif own_action:
+            logger.debug(
+                f"HAAdapter: изменение {entity_id} вызвано командой платформы, "
+                f"ручным действием не считается"
+            )
 
         trace_id = context.get("trace_id") or self._generate_trace_id()
         log = self._get_logger(trace_id)
@@ -748,6 +813,32 @@ class HAAdapter:
             log.error(f"HAAdapter: pyscript service call error: {e}")
             return False
 
+    def _remember_own_context(self, result: Any) -> None:
+        """Запомнить контекст только что отправленной команды.
+
+        Args:
+            result: Ответ Home Assistant на вызов сервиса.
+        """
+        if not isinstance(result, dict):
+            return
+        context = result.get("context")
+        if not isinstance(context, dict):
+            return
+        context_id = context.get("id")
+        if isinstance(context_id, str) and context_id:
+            self._own_context_ids.append(context_id)
+
+    def _is_own_context(self, context_id: Any) -> bool:
+        """Событие вызвано нашей командой или пришло извне.
+
+        Args:
+            context_id: Идентификатор контекста из события Home Assistant.
+
+        Returns:
+            True, если событие порождено командой платформы.
+        """
+        return isinstance(context_id, str) and context_id in self._own_context_ids
+
     async def _call_service_websocket(
         self,
         domain: str,
@@ -763,13 +854,17 @@ class HAAdapter:
         service_data = {**data, "entity_id": entity_id}
 
         try:
+            # Ответ запрашивается именно ради `context.id`: без него собственную
+            # команду не отличить от действия человека, и блокировка включается
+            # против самой платформы (живой запуск 2026-10-08).
             result = await self._ws_client.call_service(
                 domain=domain,
                 service=service,
                 service_data=service_data,
-                return_response=False,
+                return_response=True,
             )
-            return result is not None
+            self._remember_own_context(result)
+            return True
         except Exception as e:
             log.error(f"HAAdapter: WebSocket service call error: {e}")
             return False
@@ -1108,6 +1203,7 @@ class HAAdapter:
                     "trace_id": trace_id,
                     "source": "websocket",
                     "user_id": ha_context.get("user_id"),
+                    "ha_context_id": ha_context.get("id"),
                 },
             )
 
