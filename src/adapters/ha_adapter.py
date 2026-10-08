@@ -572,6 +572,16 @@ class HAAdapter:
         self._reconnect_task: asyncio.Task[None] | None = None
         self._reconnect_attempt = 0
         self._connected_once = False
+        # Причина последнего обрыва живёт на адаптере, а не на клиенте:
+        # cleanup обнуляет `_ws_client`, а каждая попытка восстановления
+        # создаёт нового клиента с пустой причиной — на клиенте она не
+        # доживала бы до `/ready` (живой обрыв 2026-10-08, B29: 20 сэмплов
+        # `/ready` подряд без единой причины). Хранение «первой причины»:
+        # пока идут неудачные попытки подключения, оператору важнее
+        # первопричина обрыва, чем симптом каждой попытки. Сбрасывается
+        # при успешном подключении, чтобы новый обрыв не объяснялся
+        # причиной старого.
+        self._last_disconnect_reason: str | None = None
         self._trace_callbacks: list[
             Callable[[str, str, str, dict[str, Any]], Coroutine[Any, Any, None]]
         ] = []
@@ -766,7 +776,7 @@ class HAAdapter:
             self._reconnect_task = asyncio.create_task(self._connect_websocket())
 
     def _record_disconnect(self, reason: str, delay: float) -> None:
-        """Зафиксировать потерю соединения: метрика + лог с номером попытки и задержкой.
+        """Зафиксировать потерю соединения: причина + метрика + лог.
 
         Инкрементирует ``websocket_disconnects_total`` и пишет WARNING только
         при реально установленном ранее соединении (``_connected_once``);
@@ -774,11 +784,24 @@ class HAAdapter:
         Импорт метрик ленивый: импорт на уровне модуля создаёт цикл
         ``core.container → ha_adapter → src.core``.
 
+        Причина запоминается **до** всякой проверки и на стороне адаптера:
+        cleanup обнуляет клиента, а ретраи создают нового, поэтому на
+        клиенте причина не доживает до наблюдателя (B29, живой обрыв
+        2026-10-08). Если у клиента есть собственная первопричина
+        (``_disconnect_reason``, записанная listen loop), она важнее
+        обобщённой классификации: исключение цикл чтения проглатывает,
+        и классификация видит только «listen task ended».
+
         Args:
-            reason: Причина обрыва (для лога).
+            reason: Причина обрыва (для лога), если у клиента своей нет.
             delay: Задержка перед следующей попыткой восстановления, сек.
         """
         from core.metrics import get_metrics_collector
+
+        client_reason = getattr(self._ws_client, "_disconnect_reason", None)
+        effective_reason = client_reason or reason
+        if getattr(self, "_last_disconnect_reason", None) is None:
+            self._last_disconnect_reason = effective_reason
 
         self._reconnect_attempt += 1
         if not self._connected_once:
@@ -786,9 +809,24 @@ class HAAdapter:
         self._connected_once = False
         get_metrics_collector().record_websocket_disconnect()
         logger.warning(
-            f"HAAdapter: WebSocket lost ({reason}), "
+            f"HAAdapter: WebSocket lost ({effective_reason}), "
             f"reconnecting (attempt {self._reconnect_attempt}, delay {delay:.1f}s)..."
         )
+
+    def _mark_connection_established(self) -> None:
+        """Обновить состояние после успешного подключения и подписки.
+
+        Отдельный метод, а не три присвоения в цикле переподключения,
+        потому что сброс причины — условие корректности хранения
+        «первой причины»: без него следующий обрыв объяснялся бы
+        причиной прошлого, и оператор принял бы старый инцидент за новый.
+
+        Returns:
+            Ничего.
+        """
+        self._reconnect_attempt = 0
+        self._connected_once = True
+        self._last_disconnect_reason = None
 
     async def _connect_websocket(self) -> None:
         """Establish WebSocket connection with exponential backoff."""
@@ -898,8 +936,7 @@ class HAAdapter:
                 logger.info("🔔 HAAdapter: listening for HA state changes...")
 
                 reconnect_delay = 1.0
-                self._reconnect_attempt = 0
-                self._connected_once = True
+                self._mark_connection_established()
                 logger.info("✅ HAAdapter: WebSocket ready, backoff reset (delay=1.0s)")
 
                 # 🆕 Инициализируем timestamp последнего события
@@ -1227,9 +1264,19 @@ class HAAdapter:
         Отдаётся наружу для `/ready`: оператор должен видеть не только факт
         отсутствия связи, но и то, кто её разорвал.
 
+        Причина хранится на адаптере, а не на клиенте: cleanup обнуляет
+        ``_ws_client``, а каждая попытка восстановления создаёт нового
+        клиента — на клиенте она не доживала бы до наблюдателя (B29,
+        живой обрыв 2026-10-08). Клиент остаётся запасным источником:
+        адаптер, собранный без ``__init__`` (тесты), и свежий клиент,
+        у которого причина ещё не записана, работают как раньше.
+
         Returns:
             Причина разрыва или ``None``, если разрывов не было.
         """
+        stored = getattr(self, "_last_disconnect_reason", None)
+        if stored is not None:
+            return stored
         if self._ws_client is None:
             return None
         return getattr(self._ws_client, "_disconnect_reason", None)
