@@ -88,7 +88,7 @@ class DeviceLifecycleService:
         self.persistence = persistence or device_service.persistence
         self.manifest_store = manifest_store
 
-    def _save_manifest(self) -> None:
+    def _save_manifest(self, *, allow_removal: bool = False) -> None:
         """Записывает живой манифест в файл через подключённое хранилище.
 
         Хранилище и сервис держат **разные** объекты манифеста: приложение
@@ -97,13 +97,19 @@ class DeviceLifecycleService:
         перенаправляется на тот объект, который правит сервис, — иначе в файл
         ушёл бы устаревший снимок, и починка молча ничего бы не сохраняла.
 
+        Args:
+            allow_removal: Разрешить запись, уменьшающую описание дома. Единственный
+                законный повод — явное удаление устройства; всё остальное
+                (включая сбойное состояние модели) обязано быть отказом, иначе
+                часть дома молча выпадает из автоматики (Known Issue #88).
+
         Raises:
             RuntimeError: Если запись манифеста не удалась.
         """
         if self.manifest_store is None:
             return
         self.manifest_store.current = self.manifest
-        self.manifest_store.save()
+        self.manifest_store.save(allow_removal=allow_removal)
 
     # ============ Добавление и изменение ============
 
@@ -436,7 +442,7 @@ class DeviceLifecycleService:
         # 4. Убрать из манифеста (запись поведений — источник конфигурации)
         #    и записать на диск: иначе устройство вернулось бы при перезапуске
         self._remove_from_manifest(device.ha_entity_id)
-        self._save_manifest()
+        self._save_manifest(allow_removal=True)
 
         # 5. Перестроить маршрутизацию под обновлённый манифест
         self._rebuild_event_routing()

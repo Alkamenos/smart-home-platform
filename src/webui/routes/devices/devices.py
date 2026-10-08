@@ -5,6 +5,7 @@ API маршруты для управления устройствами.
 Реализует фильтрацию по доступу пользователя.
 """
 
+import contextlib
 import logging
 from datetime import datetime
 from typing import Any, Literal
@@ -988,31 +989,37 @@ async def apply_devices(
     added = 0
     updated = 0
 
-    for selection in body.selections:
-        try:
-            device = _build_device_from_selection(selection, body.source_id)
-            behaviors = _build_behaviors(selection)
-            room_id = selection.target_room or _default_room_id(lifecycle.manifest)
+    # Пачка применяется одной записью манифеста: раньше файл переписывался на
+    # каждое устройство, и резервная копия успевала исчезнуть до того, как
+    # владелец заметил бы потерю (Known Issue #88).
+    store = getattr(lifecycle, "manifest_store", None)
+    batch = store.batch() if store is not None else contextlib.nullcontext()
+    with batch:
+        for selection in body.selections:
+            try:
+                device = _build_device_from_selection(selection, body.source_id)
+                behaviors = _build_behaviors(selection)
+                room_id = selection.target_room or _default_room_id(lifecycle.manifest)
 
-            device, saved = await lifecycle.add_device(
-                device, room_id=room_id, behaviors=behaviors, user_id=user_id
-            )
-            if saved:
-                added += 1
-            else:
-                updated += 1
-            applied.append(
-                _to_device_response(
-                    device,
-                    behaviors=_device_behaviors(
-                        get_lifecycle_service(request), device.ha_entity_id
-                    ),
+                device, saved = await lifecycle.add_device(
+                    device, room_id=room_id, behaviors=behaviors, user_id=user_id
                 )
-            )
-        except Exception as e:
-            reason = str(e)
-            logger.error(f"Не удалось применить {selection.device_entity_id}: {reason}")
-            failed.append(FailedDevice(ha_entity_id=selection.device_entity_id, reason=reason))
+                if saved:
+                    added += 1
+                else:
+                    updated += 1
+                applied.append(
+                    _to_device_response(
+                        device,
+                        behaviors=_device_behaviors(
+                            get_lifecycle_service(request), device.ha_entity_id
+                        ),
+                    )
+                )
+            except Exception as e:
+                reason = str(e)
+                logger.error(f"Не удалось применить {selection.device_entity_id}: {reason}")
+                failed.append(FailedDevice(ha_entity_id=selection.device_entity_id, reason=reason))
 
     logger.info(
         f"Применение завершено: добавлено {added}, обновлено {updated}, ошибок {len(failed)}"
