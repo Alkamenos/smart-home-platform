@@ -69,7 +69,13 @@ class RoomConfig(BaseModel):
 
 
 class AutomationDomainRules(BaseModel):
-    """Domain-specific automation rules."""
+    """Domain-specific automation rules.
+
+    Поля ночного света объявлены здесь, а не в коде: окно тишины и список
+    комнат, где ночью свет включить можно, — это решение владельца дома, а не
+    свойство движка. Значения попадают в параметры поведения и читаются
+    условием ``may_turn_on``.
+    """
 
     motion_enabled: bool = True
     schedule_enabled: bool = True
@@ -77,12 +83,30 @@ class AutomationDomainRules(BaseModel):
     safety_lockout_enabled: bool = False
     away_mode_enabled: bool = False
     humidity_based: bool = False
+    quiet_from: str | None = None
+    """С часа ночью движение не включает свет (``HH:MM``)."""
+    quiet_to: str | None = None
+    """До этого часа включительно — тоже ночь (``HH:MM``)."""
+    night_motion_rooms: list[str] | None = None
+    """Комнаты, где ночью свет по движению включается (санузел, кухня)."""
+    night_off_at: str | None = None
+    """Час принудительного выключения света, заданного автоматикой."""
+    morning_at: str | None = None
+    """Час снятия ночного режима."""
+    hold_sec: int | None = None
+    """Сколько горит свет после последнего движения."""
+    max_on_sec: int | None = None
+    """Потолок горения без свежих триггеров."""
 
 
 class AutomationRules(BaseModel):
     """Global automation rules and domain-specific overrides."""
 
     global_manual_lockout_min: int = 60
+    time_zone: str | None = None
+    """Часовой пояс дома. Обязателен для правил «светло ли сейчас»: дом живёт
+    в своём поясе, а контейнер — в UTC, и без этого окно дня смещается на
+    несколько часов."""
     lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     climate: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)

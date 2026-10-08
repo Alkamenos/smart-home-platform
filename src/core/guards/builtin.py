@@ -18,9 +18,11 @@ guard'а, хотя `src/features/*.yaml` на них ссылаются. Про�
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,56 @@ DEFAULT_DAY_TIME_RANGE = "07:00-23:00"
 def _now_utc() -> datetime:
     """Текущее время в UTC."""
     return datetime.now(UTC)
+
+
+def _resolve_house_tz() -> Any:
+    """Часовой пояс дома.
+
+     Условия, которые решают «светло ли сейчас» и «не ночь ли», обязаны считать
+     время в часах дома, а не контейнера: контейнер живёт в UTC, дом — в своём
+     поясе, и разница в пять часов открывала окно «день» с 02:00 до 04:00 по
+     местному. Источник — ``HOUSE_TIMEZONE``, затем ``TZ``; если обоих нет,
+     берётся локальное время с предупреждением, потому что молча угадывать не
+    льзя: неверный пояс означает ночные включения.
+
+     Returns:
+         ``tzinfo`` для расчётов времени дома.
+    """
+    for name in ("HOUSE_TIMEZONE", "TZ"):
+        value = os.environ.get(name)
+        if not value:
+            continue
+        try:
+            return ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"{name}={value!r} — неизвестный часовой пояс, беру следующий источник")
+    logger.warning(
+        "Часовой пояс дома не задан (HOUSE_TIMEZONE/TZ), беру локальное время "
+        "контейнера: если дом в другом поясе, ночные правила считаются неверно"
+    )
+    return datetime.now().astimezone().tzinfo or UTC
+
+
+#: Часовой пояс дома, разрешённый один раз при импорте.
+HOUSE_TZ: Any = _resolve_house_tz()
+
+#: Окно тишины по умолчанию: с этого часа движение не включает свет.
+DEFAULT_QUIET_FROM = "23:00"
+
+#: До этого часа (включительно) движение свет не включает.
+DEFAULT_QUIET_TO = "06:30"
+
+
+def _now_in(tz: Any) -> datetime:
+    """Текущее время в указанном часовом поясе.
+
+    Args:
+        tz: Часовой пояс.
+
+    Returns:
+        Локальное время с зоной.
+    """
+    return datetime.now(tz)
 
 
 def _parse_hhmm(value: str) -> tuple[int, int]:
@@ -60,10 +112,83 @@ def _parse_hhmm(value: str) -> tuple[int, int]:
     return hour, minute
 
 
+def make_may_turn_on(
+    *,
+    now: Callable[[Any], datetime] = _now_in,
+) -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить guard «сейчас можно включать свет».
+
+    Отвечает на вопрос, который шаблон света задаёт каждым переходом по
+    движению: сейчас человек этого хочет или пора не мешать. Ночное окно
+    (`quiet_from`–`quiet_to`) — главный ответ: внутри него движение не
+    включает свет ни в одной комнате, кроме перечисленных в
+    `night_motion_rooms` (санузел, кухня, коридор): встать за водой ночью
+    должно быть возможно.
+
+    Время считается в часах дома (`time_zone` из параметров поведения, иначе
+    `HOUSE_TIMEZONE`). Неизвестный пояс или неразобранное окно ведут к отказу:
+    «непонятная ночь» не должна разрешать включать свет.
+
+    Args:
+        now: Источник времени; подменяется в тестах.
+
+    Returns:
+        Функция ``(state, context) -> bool``.
+    """
+
+    def may_turn_on(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если момент допускает включение света."""
+        tz = _context_zone(context)
+        quiet_from = str(context.get("quiet_from") or DEFAULT_QUIET_FROM)
+        quiet_to = str(context.get("quiet_to") or DEFAULT_QUIET_TO)
+        try:
+            start = _parse_hhmm(quiet_from)
+            end = _parse_hhmm(quiet_to)
+        except ValueError:
+            logger.error(f"Нераспознанное окно тишины {quiet_from}-{quiet_to}: свет не включаю")
+            return False
+
+        current = now(tz)
+        minutes = current.hour * 60 + current.minute
+        start_minutes = start[0] * 60 + start[1]
+        end_minutes = end[0] * 60 + end[1]
+        in_quiet = (
+            start_minutes <= minutes <= end_minutes
+            if start_minutes <= end_minutes
+            else minutes >= start_minutes or minutes <= end_minutes
+        )
+        if not in_quiet:
+            return True
+
+        rooms = context.get("night_motion_rooms") or ()
+        room = str(context.get("room") or "")
+        return room in {str(item) for item in rooms}
+
+    return may_turn_on
+
+
+def _context_zone(context: dict[str, Any]) -> Any:
+    """Часовой пояс для расчёта: из контекста, иначе часовой пояс дома.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        ``tzinfo``.
+    """
+    value = context.get("time_zone")
+    if isinstance(value, str) and value:
+        try:
+            return ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"time_zone={value!r} — неизвестный пояс, беру часовой пояс дома")
+    return HOUSE_TZ
+
+
 def make_is_day_time(
     day_range: str = DEFAULT_DAY_TIME_RANGE,
     *,
-    now: Callable[[], datetime] = _now_utc,
+    now: Callable[[], datetime] | None = None,
 ) -> Callable[[Any, dict[str, Any]], bool]:
     """Построить guard «сейчас день».
 
@@ -78,6 +203,7 @@ def make_is_day_time(
     Returns:
         Функцию ``(state, context) -> bool``.
     """
+    clock = now or (lambda: _now_in(HOUSE_TZ))
     try:
         start_raw, end_raw = day_range.split("-")
         start = _parse_hhmm(start_raw)
@@ -94,7 +220,7 @@ def make_is_day_time(
 
     def is_day_time(state: Any, context: dict[str, Any]) -> bool:
         """Разрешить переход, если текущее время входит в диапазон дня."""
-        current = now()
+        current = clock()
         minutes = current.hour * 60 + current.minute
         start_minutes = start[0] * 60 + start[1]
         end_minutes = end[0] * 60 + end[1]
@@ -268,6 +394,7 @@ def build_guards(
         ),
         "humidity_above_60": make_humidity_above(),
         "humidity_below_60": make_humidity_below(),
+        "may_turn_on": make_may_turn_on(),
     }
     # Требования объявляются здесь, рядом с условием: объявление в стороне
     # разошлось бы с ним при первом же переименовании.
@@ -283,6 +410,7 @@ def build_guards(
 REGISTERED_GUARDS = (
     "is_day_time",
     "is_manual_override_enabled",
+    "may_turn_on",
     "humidity_above_60",
     "humidity_below_60",
 )

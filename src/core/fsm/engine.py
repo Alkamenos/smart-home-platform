@@ -172,6 +172,9 @@ class FSMDefinition:
         debounce_sec: Minimum time between state changes to prevent bouncing.
         params: Optional parameters from BehaviorConfig for template injection.
         target_device_id: Original device ID for routing events to the correct device.
+        room: Room the device belongs to; conditions read it from the transition
+            context (ночное окно разрешает свет в одних комнатах и запрещает в
+            других — без комнаты это правило невыполнимо).
         initial: Alias for initial_state for backward compatibility.
     """
 
@@ -182,6 +185,7 @@ class FSMDefinition:
     debounce_sec: float = 0.0
     params: dict[str, Any] = field(default_factory=dict)
     target_device_id: str | None = None
+    room: str | None = None
 
     @property
     def initial(self) -> str:
@@ -901,6 +905,9 @@ class FSMEngine:
         # порог 60 перебивал `humidity_threshold` из манифеста, то есть
         # настройка порога вентиляции не имела силы (Known Issue #67).
         merged_context.update(self._definition_params(entity_id))
+        definition_room = self._definitions.get(entity_id)
+        if definition_room is not None and definition_room.room:
+            merged_context.setdefault("room", definition_room.room)
         if external_ctx:
             merged_context.update(external_ctx)
 

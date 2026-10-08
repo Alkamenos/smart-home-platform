@@ -37,6 +37,7 @@ registered_guards:  # реестр после register_all_guards
   - humidity_below_60
   - is_day_time
   - is_manual_override_enabled
+  - may_turn_on
 
 uncovered_platform_events:
   # События, которые платформа публикует, но ни один шаблон не слушает.
@@ -119,7 +120,7 @@ templates:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
     actions: [turn_on_light, turn_off_light]
-    guards: [is_day_time, is_manual_override_enabled]
+    guards: [may_turn_on, is_manual_override_enabled]
     triggers:
       motion_detected: sensor
       manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ

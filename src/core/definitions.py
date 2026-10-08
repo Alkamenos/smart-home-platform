@@ -51,6 +51,7 @@ class YAMLFSMDefinition(BaseModel):
         debounce_sec: Минимальное время между переходами (защита от дребезга).
         params: Опциональные параметры для настройки поведения (из BehaviorConfig).
         target_device_id: ID целевого устройства для управления (оригинальный device.id).
+        room: Комната устройства; из неё берётся правило ночного света.
     """
 
     entity_id: str = Field(..., description="Уникальный идентификатор сущности")
@@ -62,6 +63,7 @@ class YAMLFSMDefinition(BaseModel):
         default_factory=dict, description="Параметры поведения из BehaviorConfig"
     )
     target_device_id: str | None = Field(None, description="ID целевого устройства для управления")
+    room: str | None = Field(None, description="Комната устройства (id комнаты в манифесте)")
 
     class Config:
         extra = "forbid"

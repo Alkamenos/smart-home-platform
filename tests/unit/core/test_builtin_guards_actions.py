@@ -334,11 +334,16 @@ class TestManifestRequirementsAreMet:
 
         guards, _ = _manifest_guard_actions()
 
+        # `may_turn_on` пришёл на смену `is_day_time` в шаблоне света: «сейчас
+        # день» отвечало на вопрос по часам контейнера и не знало ни про часовой
+        # пояс дома, ни про комнаты, где ночью свет нужен. `is_day_time` в шаблонах
+        # больше не встречается, но остаётся зарегистрированным — на него
+        # ссылаются `night_light` и внешние описания.
         assert guards == {
             "humidity_above_60",
             "humidity_below_60",
-            "is_day_time",
             "is_manual_override_enabled",
+            "may_turn_on",
         }, f"состав нужных guard'ов изменился: {sorted(guards)}"
 
         factories = {
@@ -346,6 +351,7 @@ class TestManifestRequirementsAreMet:
             "humidity_below_60": "make_humidity_below",
             "is_day_time": "make_is_day_time",
             "is_manual_override_enabled": "make_is_manual_override_enabled",
+            "may_turn_on": "make_may_turn_on",
         }
         for name in guards:
             assert hasattr(builtin, factories[name]), f"для `{name}` нет реализации"

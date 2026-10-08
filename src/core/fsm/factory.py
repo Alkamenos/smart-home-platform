@@ -286,6 +286,7 @@ class FSMFactory:
             debounce_sec=yaml_def.debounce_sec,
             params=yaml_def.params,
             target_device_id=yaml_def.target_device_id,
+            room=yaml_def.room,
         )
 
     def _validate_guards_and_actions(self, yaml_def: YAMLFSMDefinition) -> list[str]:
@@ -313,13 +314,53 @@ class FSMFactory:
 
         return warnings
 
-    def create_from_behavior(self, device_id: str, behavior: BehaviorConfig) -> list[FSMDefinition]:
+    @staticmethod
+    def _with_house_rules(
+        behavior: BehaviorConfig,
+        automation_rules: Any,
+    ) -> BehaviorConfig:
+        """Дописать в поведение правила дома, которых в нём нет.
+
+        Окно тишины, список ночных комнат и часовой пояс задаются один раз для
+        всего дома — в ``automation_rules``. Условия читают их из параметров
+        поведения, поэтому значения переносятся сюда, но **только отсутствующие**:
+        явный параметр в конкретном устройстве всегда главнее.
+
+        Args:
+            behavior: Поведение из манифеста.
+            automation_rules: Правила автоматизации дома.
+
+        Returns:
+            Новое поведение с дополненными параметрами.
+        """
+        domain_rules = getattr(automation_rules, behavior.template, None)
+        defaults: dict[str, Any] = {}
+        time_zone = getattr(automation_rules, "time_zone", None)
+        if time_zone:
+            defaults["time_zone"] = time_zone
+        for name in ("quiet_from", "quiet_to", "night_motion_rooms"):
+            value = getattr(domain_rules, name, None) if domain_rules is not None else None
+            if value is not None:
+                defaults[name] = value
+        if not defaults or all(key in behavior.params for key in defaults):
+            return behavior
+        return behavior.model_copy(update={"params": {**defaults, **behavior.params}})
+
+    def create_from_behavior(
+        self,
+        device_id: str,
+        behavior: BehaviorConfig,
+        room_id: str | None = None,
+    ) -> list[FSMDefinition]:
         """
         Создать FSM из одного поведения.
 
         Args:
             device_id: ID устройства.
             behavior: Конфигурация поведения.
+            room_id: Комната устройства из манифеста. Нужна условиям, которые
+                решают по-разному для разных комнат (ночью свет разрешён в
+                санузле и запрещён в спальне).
 
         Returns:
             list[FSMDefinition]: Список созданных определений FSM.
@@ -329,6 +370,8 @@ class FSMFactory:
         try:
             # Загружаем шаблон
             template_data = self._load_template(behavior.template)
+            if room_id is not None:
+                template_data["room"] = room_id
 
             # Применяем параметры
             modified_data = self._apply_params_to_template(
@@ -460,7 +503,7 @@ class FSMFactory:
         """
         all_definitions = []
 
-        for device in manifest.devices:
+        for room_id, device in manifest.all_devices:
             device_id = device.id
 
             if not device.behaviors:
@@ -473,7 +516,11 @@ class FSMFactory:
             logger.info(f"Processing device '{device_id}' with {len(sorted_behaviors)} behaviors")
 
             for behavior in sorted_behaviors:
-                definitions = self.create_from_behavior(device_id, behavior)
+                definitions = self.create_from_behavior(
+                    device_id,
+                    self._with_house_rules(behavior, manifest.automation_rules),
+                    room_id,
+                )
                 all_definitions.extend(definitions)
 
         logger.info(f"Created {len(all_definitions)} FSM definitions from manifest")
