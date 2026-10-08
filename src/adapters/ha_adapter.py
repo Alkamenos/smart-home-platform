@@ -24,7 +24,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import aiohttp
@@ -108,12 +108,22 @@ class SimpleHAWebSocketClient:
         # Сущности, ради которых подписывались. Фильтра на стороне HA нет
         # (проверено на живом HA 2026-10-08: `entity_ids` отвергается как
         # лишний ключ), поэтому ограничение применяется у нас.
+        #
+        # Список — замороженный снимок на момент subscribe(). Снимок слеп, если
+        # манифест меняется после старта: устройство, добавленное через
+        # /devices/apply, не получало бы собственных событий до рестарта
+        # (Known Issue #83). Поэтому адаптер ставит сюда живой провайдер —
+        # он важнее снимка и перечитывает манифест на каждом событии.
         self.filtered_entity_ids: tuple[str, ...] = ()
+        self.entity_filter_provider: Callable[[], Sequence[str]] | None = None
         # Идентификатор подписки, ответ на который ещё ожидается. Инициализируется
         # перед вызовом _subscription_result().
         self._pending_subscription_id: int = 0
         # Сколько событий отброшено фильтром сущностей.
         self._filtered_out = 0
+        # Размер фильтра при последнем наблюдении. Нужен, чтобы изменение
+        # состава подписки было видно в журнале, а не только в памяти кода.
+        self._filter_size_last_seen: int = 0
 
     @property
     def filtered_out_count(self) -> int:
@@ -124,6 +134,34 @@ class SimpleHAWebSocketClient:
         """
         return self._filtered_out
 
+    def _current_filter(self) -> Sequence[str]:
+        """Список сущностей, ради которых стоит разбирать событие.
+
+        Живой провайдер важнее снимка: провайдер перечитывает манифест
+        адаптера, поэтому устройство, добавленное после старта, проходит
+        фильтр сразу, без переподписки (Known Issue #83). Переподписка и не
+        нужна — Home Assistant шлёт все события, ограничение чисто локальное.
+        Пустой результат провайдера означает «фильтр выключен», как и пустой
+        снимок: с пустым манифестом платформа обязана разбирать всё, а не
+        молчать при зелёном /ready.
+
+        Returns:
+            Список `entity_id` для проверки; пустой, если фильтр не нужен.
+        """
+        if self.entity_filter_provider is None:
+            return self.filtered_entity_ids
+        current = self.entity_filter_provider()
+        if len(current) != self._filter_size_last_seen:
+            # WARNING: info в этом развёртывании не виден, а тихая смена
+            # состава подписки — ровно то, что в бою (Known Issue #83)
+            # обнаруживали только слепотой автоматики.
+            logger.warning(
+                f"HAAdapter: subscription filter changed: "
+                f"{self._filter_size_last_seen} -> {len(current)} entities"
+            )
+            self._filter_size_last_seen = len(current)
+        return current
+
     def _accepts(self, payload: dict[str, Any]) -> bool:
         """Относится ли событие к сущностям, ради которых подписались.
 
@@ -133,12 +171,27 @@ class SimpleHAWebSocketClient:
         Returns:
             True, если событие стоит обрабатывать.
         """
-        if not self.filtered_entity_ids:
+        entity_ids = self._current_filter()
+        if not entity_ids:
             return True
         entity_id = payload.get("entity_id")
         if not entity_id:
             return True
-        return str(entity_id) in self.filtered_entity_ids
+        return str(entity_id) in entity_ids
+
+    def _record_filtered_event(self) -> None:
+        """Отброшенное событие учитывается в метрике, а не только в памяти.
+
+        Импорт метрик ленивый, как в ``_record_disconnect`` адаптера:
+        импорт на уровне модуля создаёт цикл
+        ``core.container → ha_adapter → src.core``.
+
+        Returns:
+            Ничего.
+        """
+        from core.metrics import get_metrics_collector
+
+        get_metrics_collector().record_websocket_filtered_event()
 
     async def _deliver(self, payload: dict[str, Any]) -> None:
         """Передать событие обработчику, если оно проходит фильтр.
@@ -155,6 +208,7 @@ class SimpleHAWebSocketClient:
         """
         if not self._accepts(payload):
             self._filtered_out += 1
+            self._record_filtered_event()
             return
         if self._event_handler is not None:
             await self._event_handler(payload)
@@ -321,6 +375,10 @@ class SimpleHAWebSocketClient:
             # «приходят все 1502» снова станет невидимым.
             entity_ids = tuple(filter_dict.get("entity_ids") or ())
             self.filtered_entity_ids = entity_ids
+            # Отсчёт для лога изменений фильтра начинается со снимка подписки:
+            # первая смена состава манифеста будет видна как «N -> M», а не
+            # как «0 -> M» с потерей исходной точки.
+            self._filter_size_last_seen = len(entity_ids)
 
             self.subscription_confirmed = False
             self.subscription_error = None
@@ -766,6 +824,13 @@ class HAAdapter:
                     token=cast(str, self._token),
                     session=self._session,
                 )
+                # Живой провайдер фильтра ставится до connect()/subscribe():
+                # фильтр читает манифест в момент события, а не снимок на
+                # момент подписки. Раньше список замораживался, и устройство,
+                # добавленное через /devices/apply, оставалось слепым до
+                # рестарта (Known Issue #83). Метод — bound method, поэтому
+                # провайдер всегда видит актуальное self._manifest.
+                self._ws_client.entity_filter_provider = self._subscribed_entities
 
                 log.info(f"HAAdapter: ws_client created = {self._ws_client}")
 
@@ -780,11 +845,12 @@ class HAAdapter:
 
                 # Подписываемся на события.
                 #
-                # Список сущностей ограничивает поток на стороне Home
-                # Assistant: без него сервер присылает все сущности дома (в бою
-                # 1502 против 6 описанных в манифесте), и платформа разбирает и
-                # отбивает каждое событие лишней сущности — по сети, по разбору
-                # и по записи в историю.
+                # Фильтра на стороне Home Assistant нет: API отвергает
+                # `entity_ids` в subscribe_events (проверено на живом HA
+                # 2026-10-08), поэтому подписка идёт на все события, а
+                # ограничение применяется у нас, в _accepts. Здесь список
+                # уходит только как снимок для лога и как отправная точка
+                # для лога изменений фильтра.
                 #
                 # Пустой список означает подписку на всё: при пустом манифесте
                 # лучше получать лишнее и отбивать у себя, чем не получать

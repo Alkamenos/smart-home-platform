@@ -47,14 +47,17 @@ Home Assistant принимает в `subscribe_events` поле `entity_ids`, �
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from typing import Any
 from unittest import mock
 
 import pytest
 
+import core.metrics as core_metrics_module
 from adapters import ha_adapter as ha_adapter_module
-from adapters.ha_adapter import SimpleHAWebSocketClient
+from adapters.ha_adapter import HAAdapter, SimpleHAWebSocketClient
 
 
 ENTITY_KITCHEN = "light.kitchen"
@@ -299,4 +302,292 @@ class TestEntityListFromManifest:
         assert entities == [ENTITY_MOTION], (
             f"датчик комнаты без устройств потерян: {entities}. По нему приходят "
             f"события движения, и без него автоматика молчала бы"
+        )
+
+
+async def _client_with_live_filter(
+    snapshot: list[str],
+    provider: Any,
+    received: list[str],
+) -> SimpleHAWebSocketClient:
+    """Клиент, подписанный со снимком списка, но с живым провайдером фильтра.
+
+    Ровно то, что ставит адаптер: ``subscribe()`` запоминает снимок на момент
+    подписки, а провайдер читает манифест в момент события (Known Issue #83).
+
+    Args:
+        snapshot: Список сущностей, переданный в ``subscribe()``.
+        provider: Callable, возвращающий актуальный список сущностей.
+        received: Список, куда обработчик складывает доставленные entity_id.
+
+    Returns:
+        Клиент с установленным провайдером.
+    """
+    client = SimpleHAWebSocketClient(url="ws://fake", token="token")
+    client.ws = _Socket()
+    client.connected = True
+    client.entity_filter_provider = provider
+
+    async def handler(payload: dict[str, Any]) -> None:
+        received.append(str(payload.get("entity_id")))
+
+    await _subscribe_without_answer(
+        client,
+        handler,
+        {"type": "state_changed", "entity_ids": snapshot},
+    )
+
+    return client
+
+
+@pytest.mark.asyncio
+class TestFilterFollowsManifestLive:
+    """Фильтр читает манифест в момент события, а не снимок при подписке.
+
+    Known Issue #83: устройство, добавленное после старта, не получало
+    собственных событий до рестарта — ``filtered_entity_ids`` замораживался
+    в ``subscribe()``. Список обязан перечитываться у источника (манифест
+    адаптера) на каждом событии; переподписка не нужна, HA и так шлёт все
+    события, фильтр чисто локальный.
+    """
+
+    async def test_entity_added_after_subscribe_is_accepted(self) -> None:
+        """Сущность, добавленная после подписки, события свои получает.
+
+        Returns:
+            Ничего.
+        """
+        entities = [ENTITY_KITCHEN]
+        received: list[str] = []
+        client = await _client_with_live_filter([ENTITY_KITCHEN], lambda: list(entities), received)
+
+        # Манифест изменился после подписки: комната получила датчик движения.
+        entities = [ENTITY_KITCHEN, ENTITY_MOTION]
+
+        await client._deliver({"entity_id": ENTITY_MOTION, "new_state": "on"})
+
+        assert received == [ENTITY_MOTION], (
+            f"событие сущности, добавленной после старта, отброшено: {received}. "
+            f"Фильтр использовал снимок из subscribe() вместо актуального "
+            f"манифеста (Known Issue #83): до рестарта платформа слепа по нему"
+        )
+
+    async def test_entity_removed_from_manifest_is_dropped(self) -> None:
+        """Сущность, убранная из манифеста, перестаёт проходить фильтр.
+
+        Returns:
+            Ничего.
+        """
+        entities = [ENTITY_KITCHEN, ENTITY_MOTION]
+        received: list[str] = []
+        client = await _client_with_live_filter(
+            [ENTITY_KITCHEN, ENTITY_MOTION], lambda: list(entities), received
+        )
+
+        entities = [ENTITY_KITCHEN]
+
+        await client._deliver({"entity_id": ENTITY_MOTION, "new_state": "on"})
+
+        assert received == [], (
+            f"до обработчика дошло событие сущности, которой больше нет в "
+            f"манифесте: {received}. Живой провайдер игнорируется"
+        )
+        assert client.filtered_out_count == 1
+
+    async def test_empty_live_list_means_no_filter(self) -> None:
+        """Пустой манифест в момент события означает «фильтр выключен».
+
+        Та же семантика, что и у снимка: платформа с пустым манифестом должна
+        получать всё и отбивать у себя, а не молчать при зелёном /ready.
+
+        Returns:
+            Ничего.
+        """
+        entities = [ENTITY_KITCHEN]
+        received: list[str] = []
+        client = await _client_with_live_filter([ENTITY_KITCHEN], lambda: list(entities), received)
+
+        entities = []
+
+        await client._deliver({"entity_id": ENTITY_IRRELEVANT, "new_state": "7"})
+
+        assert received == [ENTITY_IRRELEVANT], (
+            f"пустой живой список не выключил фильтр: {received}"
+        )
+
+    async def test_frozen_snapshot_filters_when_no_provider(self) -> None:
+        """Без провайдера фильтр остаётся на снимке подписки (обратная связь).
+
+        Returns:
+            Ничего.
+        """
+        received: list[str] = []
+        client = SimpleHAWebSocketClient(url="ws://fake", token="token")
+        client.ws = _Socket()
+        client.connected = True
+
+        async def handler(payload: dict[str, Any]) -> None:
+            received.append(str(payload.get("entity_id")))
+
+        await _subscribe_without_answer(
+            client,
+            handler,
+            {"type": "state_changed", "entity_ids": [ENTITY_KITCHEN]},
+        )
+
+        await client._deliver({"entity_id": ENTITY_IRRELEVANT, "new_state": "7"})
+        await client._deliver({"entity_id": ENTITY_KITCHEN, "new_state": "on"})
+
+        assert received == [ENTITY_KITCHEN], (
+            f"снимок без провайдера перестал фильтровать: {received}"
+        )
+
+    async def test_filter_size_change_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Изменение размера фильтра видно в журнале, а не только в коде.
+
+        Returns:
+            Ничего.
+        """
+        entities = [ENTITY_KITCHEN]
+        received: list[str] = []
+        client = await _client_with_live_filter([ENTITY_KITCHEN], lambda: list(entities), received)
+
+        entities = [ENTITY_KITCHEN, ENTITY_MOTION]
+
+        with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
+            await client._deliver({"entity_id": ENTITY_KITCHEN, "new_state": "on"})
+            await client._deliver({"entity_id": ENTITY_MOTION, "new_state": "on"})
+
+        records = [
+            r.getMessage()
+            for r in caplog.records
+            if "subscription filter changed" in r.getMessage()
+        ]
+        assert len(records) == 1, (
+            f"изменение фильтра не зафиксировано в журнале (нужен ровно один "
+            f"WARNING на изменение): {records}"
+        )
+        assert "1 -> 2" in records[0], records[0]
+
+    async def test_filtered_event_increments_metric(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Отброшенное событие попадает в /metrics, а не только в память.
+
+        Returns:
+            Ничего.
+        """
+        calls: list[int] = []
+        collector = type("Collector", (), {})()
+        collector.record_websocket_filtered_event = lambda: calls.append(1)  # type: ignore[attr-defined]
+        monkeypatch.setattr(core_metrics_module, "get_metrics_collector", lambda: collector)
+
+        client = await _subscribe([ENTITY_KITCHEN])
+
+        await client._deliver({"entity_id": ENTITY_IRRELEVANT, "new_state": "7"})
+        await client._deliver({"entity_id": ENTITY_KITCHEN, "new_state": "on"})
+
+        assert calls == [1], (
+            f"счётчик websocket_filtered_events_total увеличен {len(calls)} раз "
+            f"(ожидался ровно один — на отброшенное событие)"
+        )
+
+
+@pytest.mark.asyncio
+class TestAdapterWiresLiveFilter:
+    """Адаптер ставит провайдер на клиента до подписки."""
+
+    async def test_provider_is_set_before_subscribe_and_reads_manifest(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Провайдер установлен на момент подписки и отражает изменения манифеста.
+
+        Returns:
+            Ничего.
+        """
+
+        class _Device:
+            def __init__(self, device_id: str) -> None:
+                self.id = device_id
+
+        class _Room:
+            def __init__(self, devices: list[str]) -> None:
+                self.sensors: dict[str, str] = {}
+                self.devices = [_Device(d) for d in devices]
+
+        class _Manifest:
+            def __init__(self, devices: list[str]) -> None:
+                self.rooms = [_Room(devices)]
+
+        manifest = _Manifest([ENTITY_KITCHEN])
+        received_provider: list[Any] = []
+
+        class _RecordingWSClient:
+            """Клиент, запоминающий провайдер фильтра на момент подписки."""
+
+            def __init__(
+                self,
+                url: str | None = None,
+                token: str | None = None,
+                session: Any = None,
+            ) -> None:
+                self.url = url
+                self.token = token
+                self.session = session
+                self.connected = False
+                self.subscription_confirmed = True
+                self.subscription_error = None
+                self.entity_filter_provider: Any = None
+                self._listen_task: asyncio.Task[None] | None = None
+
+            async def connect(self) -> bool:
+                self.connected = True
+                return True
+
+            async def subscribe(self, callback: Any, filter_dict: Any = None) -> None:
+                received_provider.append(self.entity_filter_provider)
+                # Выход из цикла переподключения сразу после подписки.
+                adapter._shutdown_event.set()
+
+            async def close(self) -> None:
+                self.connected = False
+
+        instance = HAAdapter.__new__(HAAdapter)
+        instance._mode = "websocket"
+        instance._ws_url = "ws://127.0.0.1:1/api/websocket"
+        instance._token = "token"
+        instance._shutdown_event = asyncio.Event()
+        instance._reconnect_task = None
+        instance._reconnect_attempt = 0
+        instance._connected_once = False
+        instance._ws_client = None
+        instance._session = None
+        instance._last_event_time = 0.0
+        instance._message_id = 0
+        instance._handlers = {}
+        instance._manifest = manifest
+        adapter = instance
+
+        monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _RecordingWSClient)
+
+        async def _fake_loop(self: Any) -> None:
+            await asyncio.sleep(3600)
+
+        monkeypatch.setattr(HAAdapter, "_heartbeat_loop", _fake_loop, raising=True)
+
+        await asyncio.wait_for(adapter._connect_websocket(), timeout=5)
+
+        assert received_provider and received_provider[0] is not None, (
+            "entity_filter_provider не установлен к моменту subscribe(): "
+            "фильтр останется замороженным снимком, и устройство, добавленное "
+            "после старта, не получит собственных событий до рестарта "
+            "(Known Issue #83)"
+        )
+
+        provider = received_provider[0]
+        assert set(provider()) == {ENTITY_KITCHEN}
+
+        manifest.rooms[0].devices.append(_Device(ENTITY_MOTION))
+
+        assert ENTITY_MOTION in provider(), (
+            "провайдер не перечитал манифест после изменения: он возвращает "
+            "снимок, а не актуальный список"
         )

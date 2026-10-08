@@ -32,6 +32,7 @@ REQUIRED_METRIC_NAMES = (
     "watchdog_last_snapshot_timestamp",
     "ha_connection_lost",
     "metrics_collection_errors_total",
+    "websocket_filtered_events_total",
 )
 
 

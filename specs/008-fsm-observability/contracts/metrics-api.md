@@ -35,8 +35,11 @@
 | `watchdog_last_snapshot_timestamp` | шкала | — |
 | `ha_connection_lost` | шкала | — |
 | `metrics_collection_errors_total` | счётчик | `stage` |
+| `websocket_filtered_events_total` | счётчик | — |
 
 Существующие семейства `device_integration_*`, `websocket_disconnects_total`, `command_dispatcher_rejections_total`, `middleware_conflicts_total`, `event_processing_latency_seconds`, `ha_adapter_connection_errors_total` сохраняются и начинают отражать фактические события.
+
+`websocket_filtered_events_total` — счётчик событий, отброшенных локальным фильтром сущностей (фильтр со стороны Home Assistant не существует, `entity_ids` в `subscribe_events` отвергается API). Счётчик обязателен, потому что сам фильтр работает молча: без него невозможно отличить «фильтр отсекает лишнее» от «события не приходят вовсе» — тот самый способ обнаружения Known Issue #83. Фильтр перечитывает манифест на каждом событии, поэтому счётчик растёт и при изменении манифеста без рестарта.
 
 ### 1.3. Соглашения об именах и значениях
 

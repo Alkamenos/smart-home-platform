@@ -98,6 +98,11 @@ class MetricsCollector:
         self._event_processing_latency: Histogram | None = None
         self._ha_connection_errors_total: Counter | None = None
         self._websocket_disconnects_total: Counter | None = None
+        # События, отброшенные локальным фильтром сущностей. Фильтр невидим
+        # по построению (он молчит об отбракованном), поэтому его работа
+        # обязана быть видна в /metrics иначе «приходят все 1502» снова
+        # станет недоказуемым (Known Issue #83).
+        self._websocket_filtered_events_total: Counter | None = None
         self._middleware_conflicts_total: Counter | None = None
         self._command_rejections_total: Counter | None = None
         self._active_fsm_instances: Gauge | None = None
@@ -328,6 +333,12 @@ class MetricsCollector:
             self._websocket_disconnects_total = counter(
                 "websocket_disconnects_total",
                 "Total number of WebSocket disconnects that triggered reconnect",
+            )
+
+            # События, отброшенные локальным фильтром сущностей
+            self._websocket_filtered_events_total = counter(
+                "websocket_filtered_events_total",
+                "Total number of WebSocket events dropped by the local entity filter",
             )
 
             # Middleware conflicts counter
@@ -617,6 +628,20 @@ class MetricsCollector:
         """Record a WebSocket disconnect that triggered a reconnect attempt."""
         if self._initialized and self._websocket_disconnects_total:
             self._websocket_disconnects_total.inc()
+
+    def record_websocket_filtered_event(self) -> None:
+        """Засчитать событие, отброшенное локальным фильтром сущностей.
+
+        Фильтр работает молча по построению: отброшенное событие не доходит
+        ни до обработчика, ни до журнала. Без счётчика невозможно отличить
+        «фильтр отсекает лишнее» от «события не приходят вовсе» (Known Issue
+        #83: ровно так и выглядела слепота по добавленному устройству).
+
+        Returns:
+            Ничего.
+        """
+        if self._initialized and self._websocket_filtered_events_total:
+            self._websocket_filtered_events_total.inc()
 
     def record_middleware_conflict(
         self,
