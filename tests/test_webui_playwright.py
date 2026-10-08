@@ -867,3 +867,93 @@ class TestResponsiveness:
 
         # Check that room cards are visible
         expect(page.locator(".room-card").first).to_be_visible()
+
+
+class TestLogsViewerKeepsReadingPlace:
+    """Просмотр журнала не уводит читателя в конец списка.
+
+    Записи приходят сверху (новые сверху), а страница перерисовывается целиком
+    каждые две секунды. Прежний код после каждой перерисовки ставил
+    `scrollTop = scrollHeight`, то есть уводил в **конец** списка — к самым
+    старым записям. Читатель, который смотрел журнал, терял место и не мог
+    прочитать то, что открыл.
+    """
+
+    @staticmethod
+    def _entry(index: int, at_top: str) -> dict:
+        """Подготовить запись журнала.
+
+        Args:
+            index: Порядковый номер записи.
+            at_top: Отметка времени.
+
+        Returns:
+            Запись в формате ответа `/api/logs`.
+        """
+        return {
+            "timestamp": f"2026-10-08T{at_top}",
+            "level": "INFO",
+            "message": f"Запись номер {index}",
+        }
+
+    def _open_logs(self, page: Page, entries: list[dict]) -> None:
+        """Открыть журнал с подменённым ответом `/api/logs`.
+
+        Args:
+            page: Страница Playwright.
+            entries: Записи журнала, новые сверху.
+        """
+        page.route(
+            "**/api/logs*",
+            lambda route: route.fulfill(status=200, content_type="application/json", json=entries),
+        )
+        page.goto(f"{SERVER_URL}/logs", wait_until="domcontentloaded")
+        expect(page.locator(".log-entry").first).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+
+    def test_viewer_starts_at_newest_entry(self, page: Page):
+        """Свежие записи видны сразу, без прокрутки в конец списка."""
+        entries = [self._entry(i, f"12:00:0{i}") for i in range(60)]
+
+        self._open_logs(page, entries)
+
+        scroll_top = page.evaluate("document.getElementById('logViewer').scrollTop")
+        assert scroll_top == 0, (
+            f"просмотр открылся не на новых записях: scrollTop={scroll_top}. "
+            "Новые записи сверху, значит и читать надо сверху — конец списка "
+            "это самые старые записи"
+        )
+
+    def test_reading_place_survives_new_entry(self, page: Page):
+        """Новая запись сверху не меняет то, что читатель видит.
+
+        Проверяется не число пикселей, а содержимое: запись добавилась сверху,
+        поэтому список сдвигается вниз ровно на её высоту, и под глазами должна
+        остаться та же строка. Иначе через две секунды читатель смотрит на
+        другое сообщение и не понимает, что произошло.
+        """
+        entries = [self._entry(i, f"12:00:{i:02d}") for i in range(60)]
+        self._open_logs(page, entries)
+
+        page.evaluate("document.getElementById('logViewer').scrollTop = 300")
+        visible = """() => {
+            const viewer = document.getElementById('logViewer');
+            const top = viewer.getBoundingClientRect().top;
+            const entry = [...viewer.querySelectorAll('.log-entry')]
+                .find(el => el.getBoundingClientRect().top >= top + 5);
+            return entry ? entry.textContent.replace(/\\s+/g, ' ').trim() : null;
+        }"""
+        before = page.evaluate(visible)
+
+        entries.insert(0, self._entry(999, "12:00:99"))
+        page.evaluate("loadLogs()")
+        page.wait_for_timeout(300)
+
+        after = page.evaluate(visible)
+
+        assert before is not None and after is not None, (
+            "под прокруткой не оказалось ни одной записи"
+        )
+        assert after == before, (
+            f"под глазами сменилась запись: было {before!r}, стало {after!r}. Новая "
+            "запись добавляется сверху и не должна двигать то, что уже прочитано"
+        )

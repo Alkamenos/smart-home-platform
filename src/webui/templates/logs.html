@@ -217,6 +217,14 @@
         </div>
 
         <!-- Log Viewer -->
+        <!-- Подсказка появляется, когда читатель смотрит историю, а записи
+             сверху уже добавились: молча перерисовывать список под ним нельзя,
+             но и о том, что список изменился, сообщать надо. -->
+        <div class="d-none mb-2" id="newEntriesHint">
+            <button class="btn btn-sm btn-outline-light" onclick="scrollToNewest()">
+                <i class="bi bi-arrow-up"></i> Новые записи сверху — показать
+            </button>
+        </div>
         <div class="log-viewer" id="logViewer"></div>
         <div class="scroll-indicator">
             <small>Scroll to see more logs or click <strong>Auto</strong> to auto-scroll</small>
@@ -284,11 +292,22 @@
             document.getElementById('errorLogs').textContent = stats.error;
         }
 
+        // Насколько «вниз» прокрутка ещё считается верхним краем списка.
+        const EDGE_PX = 8;
+
         function renderLogs() {
             const viewer = document.getElementById('logViewer');
 
+            // Положение читателя запоминается ДО перерисовки: список
+            // перерисовывается целиком, и без этого чтение теряется.
+            const previousTop = viewer.scrollTop;
+            const previousHeight = viewer.scrollHeight;
+            const wasAtTop = previousTop <= EDGE_PX;
+            const previousCount = viewer.querySelectorAll('.log-entry').length;
+
             if (filteredLogs.length === 0) {
                 viewer.innerHTML = '<div class="text-center text-muted py-4">No logs matching filter</div>';
+                hideNewEntriesHint();
                 return;
             }
 
@@ -302,10 +321,38 @@
 
             viewer.innerHTML = html;
 
-            // Auto-scroll to bottom
-            if (autoScroll) {
-                viewer.scrollTop = viewer.scrollHeight;
+            // Новые записи приходят сверху, поэтому «живой край» — верх списка.
+            // Прежняя прокрутка в `scrollHeight` уводила в конец, где самые
+            // старые записи: журнал открывался не там, где происходит.
+            if (wasAtTop) {
+                viewer.scrollTop = 0;
+                hideNewEntriesHint();
+            } else {
+                // Читатель смотрел историю: держим то же место. Записи добавились
+                // сверху, поэтому сдвиг равен разнице высот списка.
+                const addedHeight = viewer.scrollHeight - previousHeight;
+                viewer.scrollTop = Math.max(0, previousTop + addedHeight);
+                if (viewer.querySelectorAll('.log-entry').length > previousCount) {
+                    showNewEntriesHint();
+                }
             }
+        }
+
+        // Подсказка «появились новые записи» вместо молчаливой перерисовки
+        // списка под читателем.
+        function showNewEntriesHint() {
+            const hint = document.getElementById('newEntriesHint');
+            if (hint) hint.classList.remove('d-none');
+        }
+
+        function hideNewEntriesHint() {
+            const hint = document.getElementById('newEntriesHint');
+            if (hint) hint.classList.add('d-none');
+        }
+
+        function scrollToNewest() {
+            document.getElementById('logViewer').scrollTop = 0;
+            hideNewEntriesHint();
         }
 
         function escapeHtml(text) {
@@ -350,8 +397,8 @@
             const btn = document.getElementById('autoScrollBtn');
             btn.classList.toggle('active', autoScroll);
             if (autoScroll) {
-                document.getElementById('logViewer').scrollTop =
-                    document.getElementById('logViewer').scrollHeight;
+                // Включение следования возвращает к новым записям — они сверху.
+                scrollToNewest();
             }
         }
 
