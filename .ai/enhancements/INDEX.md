@@ -1,6 +1,6 @@
 # 📌 Enhancements — Индекс
 
-Единый каталог всех 29 предложений по развитию платформы.
+Единый каталог всех 30 предложений по развитию платформы.
 
 **Источник статусов:** `.ai/03_ROADMAP.md` (машиночитаемый roadmap), сверенный с фактическим кодом.
 
@@ -47,6 +47,7 @@
 | [27](27-device-discovery-wizard.md) | Device Discovery Wizard | ✅ Реализовано | — | Web UI |
 | [28](28-add-devices.md) | Добавление устройств из HA в манифест | ✅ Реализовано | — | CLI / Web UI |
 | [29](29-production-readiness-gate.md) | Production Readiness Gate (блокеры перед продакшеном) | 📝 Планирование | **CRITICAL** | Production Readiness |
+| [30](30-lighting-policy-and-global-modes.md) | Политика освещения и глобальные режимы (ночная защита, удержание, расписания, «легли спать»/«ушли»/«вечеринка») | 📝 Планирование | **HIGH** | Production Readiness |
 
 ### Сноски
 
