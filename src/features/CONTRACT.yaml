@@ -124,8 +124,8 @@ templates:
     triggers:
       motion_detected: sensor
       manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ
-      timeout: engine
       motion_cleared: sensor
+      timeout: engine
       manual_override: НЕТ ПРОИСХОДИТЕЛЯ
       manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
     unproduced_triggers: [manual_switch_on, manual_override, manual_switch_off]

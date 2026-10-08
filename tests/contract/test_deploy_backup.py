@@ -340,9 +340,30 @@ class TestScriptNeverTouchesRealDeployment:
         assert after == before, (
             f"боевая конфигурация изменена проверкой: было {sorted(before)}, стало {sorted(after)}"
         )
-        assert after_data == before_data, (
-            f"боевые данные изменены проверкой: было {sorted(before_data)}, "
-            f"стало {sorted(after_data)}"
+        # Файлы, которыми владеет запущенная платформа, из сравнения исключены:
+        # контейнер пишет их непрерывно (журнал событий, состояния автоматов,
+        # записи о ручных действиях), и проверка «инструмент не трогает боевое
+        # развёртывание» измеряла бы не инструмент, а работающую платформу —
+        # она падала всякий раз, как только дом оживал. Набор файлов при этом
+        # проверяется целиком: скрипт не должен ни создавать, ни удалять.
+        platform_owned = {
+            "history.db",
+            "state.json",
+            "state.json.lock",
+            "manual_control.json",
+            "device_sync_events.json",
+        }
+        stable_before = {p: b for p, b in before_data.items() if p.name not in platform_owned}
+        stable_after = {p: b for p, b in after_data.items() if p.name not in platform_owned}
+
+        assert stable_after == stable_before, (
+            f"боевые данные изменены проверкой: было {sorted(stable_before)}, "
+            f"стало {sorted(stable_after)}"
+        )
+        assert sorted(p.name for p in after_data) == sorted(p.name for p in before_data), (
+            "набор файлов боевых данных изменился: "
+            f"было {sorted(p.name for p in before_data)}, "
+            f"стало {sorted(p.name for p in after_data)}"
         )
 
     def test_script_honours_compose_file_variable(self) -> None:

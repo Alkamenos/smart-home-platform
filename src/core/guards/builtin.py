@@ -164,6 +164,33 @@ def make_may_turn_on(
         room = str(context.get("room") or "")
         return room in {str(item) for item in rooms}
 
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа: «ночь» или «нечем объяснить».
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``quiet_hours``, если отказ вызван ночным окном; иначе None.
+        """
+        try:
+            start = _parse_hhmm(str(context.get("quiet_from") or DEFAULT_QUIET_FROM))
+            end = _parse_hhmm(str(context.get("quiet_to") or DEFAULT_QUIET_TO))
+        except ValueError:
+            return None
+        current = now(_context_zone(context))
+        minutes = current.hour * 60 + current.minute
+        start_minutes = start[0] * 60 + start[1]
+        end_minutes = end[0] * 60 + end[1]
+        in_quiet = (
+            start_minutes <= minutes <= end_minutes
+            if start_minutes <= end_minutes
+            else minutes >= start_minutes or minutes <= end_minutes
+        )
+        return "quiet_hours" if in_quiet else None
+
+    may_turn_on.deny_reason = deny_reason  # type: ignore[attr-defined]
     return may_turn_on
 
 

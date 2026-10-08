@@ -85,7 +85,10 @@ class TestMotionTimeoutFromParams:
         """
         definition = _factory().create_from_manifest(_manifest_with_timeout(None))
 
-        assert _timeout_for(definition[0], "ON_MOTION", "timeout") == 30.0, (
+        # 600 секунд — новое значение шаблона: столько свет держится после
+        # последнего движения (удержание, #88→предложение 30). Проверка
+        # прежняя: без параметра поведения действует значение шаблона.
+        assert _timeout_for(definition[0], "ON_MOTION", "timeout") == 600.0, (
             "значение шаблона должно сохраняться"
         )
 

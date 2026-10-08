@@ -323,3 +323,82 @@ class TestHouseRulesReachTheGuard:
             "правило дома перезаписало явный параметр устройства: настройка "
             "конкретного светильника должна быть главнее"
         )
+
+
+class TestNightDenialIsNamed:
+    """Ночной отказ называет себя, чтобы журнал был понятен без догадок."""
+
+    def test_quiet_hours_named_in_the_morning(self) -> None:
+        """Днём условие разрешает, и отказ не выдумывается.
+
+        Returns:
+            Ничего.
+        """
+        guard = _at(datetime(2026, 10, 8, 12, 0, tzinfo=HOUSE))
+
+        assert guard.deny_reason(None, _ctx(DAY_ROOM)) is None  # type: ignore[attr-defined]
+
+    def test_quiet_hours_named_at_night(self) -> None:
+        """Ночью отказ называется ночным окном."""
+        guard = _at(datetime(2026, 10, 8, 23, 30, tzinfo=HOUSE))
+
+        assert guard.deny_reason(None, _ctx(DAY_ROOM)) == "quiet_hours"  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_engine_records_quiet_hours_reason(self) -> None:
+        """Движок записывает названную условием причину, а не общую."""
+        from core.action_handlers import register_all_actions
+        from core.control_tracker import ControlTracker
+        from core.events.fsm_events import REASON_QUIET_HOURS
+        from core.fsm.engine import FSMEngine
+        from core.fsm.factory import FSMFactory
+        from core.guards.builtin import register_all_guards
+        from core.models.manifest import (
+            BehaviorConfig,
+            DeviceConfig,
+            InstanceConfig,
+            Manifest,
+            RoomConfig,
+        )
+        from core.registry import Registry
+
+        night = datetime(2026, 10, 8, 23, 30, tzinfo=HOUSE)
+        registry = Registry()
+        register_all_actions(registry)
+        register_all_guards(registry, ControlTracker())
+        # Часы подменяются ДО сборки автомата: фабрика берёт условие из реестра
+        # один раз и вставляет вызов в переход, поэтому подмена после сборки
+        # осталась бы незамеченной — ровно так проверка и врала бы.
+        registry.register_guard("may_turn_on", make_may_turn_on(now=lambda _tz: night))
+
+        engine = FSMEngine()
+        manifest = Manifest(
+            version=1,
+            instance=InstanceConfig(
+                id="probe", name="Probe", owner="probe", created_at="2026-01-01T00:00:00Z"
+            ),
+            rooms=[
+                RoomConfig(
+                    id="spalnia",
+                    name="Спальня",
+                    sensors={"motion": "binary_sensor.probe"},
+                    devices=[
+                        DeviceConfig(
+                            id="light.probe",
+                            type="light",
+                            behaviors=[BehaviorConfig(template="lighting", priority=10, params={})],
+                        )
+                    ],
+                )
+            ],
+        )
+        FSMFactory(engine=engine, registry=registry, event_bus=None).create_and_register(manifest)
+
+        await engine.trigger(
+            "light.probe_lighting_10", "motion_detected", {"motion": True, "room": "spalnia"}
+        )
+
+        assert engine.rejection_counts().get(REASON_QUIET_HOURS) == 1, (
+            f"ночной отказ не назван ночным окном: {engine.rejection_counts()}. По "
+            "журналу нельзя отличить тихое время от молчащего датчика"
+        )

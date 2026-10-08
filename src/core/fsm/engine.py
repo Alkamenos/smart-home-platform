@@ -25,6 +25,7 @@ from loguru import logger
 from core.events.fsm_events import (
     EVENT_FSM_REJECTED,
     EVENT_FSM_TRANSITIONED,
+    GUARD_DENIAL_REASONS,
     OUTCOME_REJECTED,
     OUTCOME_TRANSITIONED,
     REASON_DEBOUNCED,
@@ -707,6 +708,40 @@ class FSMEngine:
             log.error(f"Guard '{name}' raised exception: {e}, denying transition")
             return False
 
+    @staticmethod
+    def _guard_denial_reason(
+        guard: str | Callable[..., bool] | None,
+        state: Any,
+        context: dict[str, Any],
+    ) -> str | None:
+        """Имя причины, которым условие само называет свой отказ.
+
+        Условие остаётся функцией «да/нет»: поднимать из него исключение или
+        менять контракт значило бы тронуть все существующие условия. Вместо
+        этого условие может объявить помощника ``deny_reason`` — функцию
+        ``(state, context) -> str | None``. Возвращается только причина из
+        ограниченного словаря: показатели не должны набирать произвольные
+        метки из текста шаблонов.
+
+        Args:
+            guard: Имя условия либо сама функция.
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо None.
+        """
+        guard_fn = guard if callable(guard) else None
+        explain = getattr(guard_fn, "deny_reason", None)
+        if explain is None:
+            return None
+        try:
+            reason = explain(state, context)
+        except Exception as exc:  # noqa: BLE001 — объяснение не должно ломать отказ
+            logger.debug(f"Условие не смогло назвать причину отказа: {exc}")
+            return None
+        return reason if reason in GUARD_DENIAL_REASONS else None
+
     async def _execute_action(
         self,
         action: str | Callable[..., Any] | None,
@@ -923,7 +958,13 @@ class FSMEngine:
             if missing is None and not self._evaluate_guard(
                 transition.guard, entity_id, merged_context, log
             ):
-                missing = REASON_GUARD_FAILED
+                # Условие может назвать причину сама (`may_turn_on` знает, что
+                # отказало из-за ночного окна), но словарь причин ограничен:
+                # неизвестное имя не должно плодить метки в показателях.
+                missing = (
+                    self._guard_denial_reason(transition.guard, current_state, merged_context)
+                    or REASON_GUARD_FAILED
+                )
 
             if missing is not None:
                 guard_denials.setdefault(missing, str(transition.guard))
@@ -1025,11 +1066,16 @@ class FSMEngine:
         # и неподходящее значение — разные ситуации, и оператор должен видеть
         # какую именно. Если отказов не было (все переходы прошли), причина
         # прежняя.
-        reason = (
-            REASON_GUARD_DATA_MISSING
-            if REASON_GUARD_DATA_MISSING in guard_denials
-            else REASON_GUARD_FAILED
-        )
+        # Причина выбирается из названных самими условиями: отсутствие данных
+        # важнее прочих (это поломка данных, а не штатная работа), дальше —
+        # названная причина вроде ночного окна, и только потом общее
+        # «условие не прошло». Раньше список понимал только первые два, и
+        # ночной отказ приходил как безликое `guard_failed`.
+        if REASON_GUARD_DATA_MISSING in guard_denials:
+            reason = REASON_GUARD_DATA_MISSING
+        else:
+            named = next((name for name in guard_denials if name in GUARD_DENIAL_REASONS), None)
+            reason = named or REASON_GUARD_FAILED
         self._record_rejection(entity_id, event, reason)
         self._publish_rejection(entity_id, event, current_state.current_state, reason, trace_id)
         return False

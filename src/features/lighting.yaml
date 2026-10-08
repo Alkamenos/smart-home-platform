@@ -24,8 +24,9 @@
 #
 # СОСТОЯНИЯ:
 #   - OFF: Свет выключен
-#   - ON_MOTION: Свет включен по движению (автоматически)
-#   - ON_MANUAL: Свет включен вручную (пользовательское переопределение)
+#   - ON_MOTION: Горит, есть свежее движение
+#   - ON_HOLD: Горит, движения нет, ждём `motion_timeout_sec`
+#   - ON_MANUAL: Горит по решению человека
 #
 # ПРИМЕЧАНИЕ: entity_id будет переопределен фабрикой на основе device_id и priority
 
@@ -35,6 +36,7 @@ debounce_sec: 0.5
 states:
   - "OFF"
   - "ON_MOTION"
+  - "ON_HOLD"
   - "ON_MANUAL"
 
 transitions:
@@ -56,35 +58,64 @@ transitions:
     trigger: "manual_switch_on"
     action: "turn_on_light"
 
-  # Из ON_MOTION можно перейти в OFF при отсутствии движения (таймаут)
+  # Удержание: после движения свет горит `motion_timeout_sec`, и каждое новое
+  # движение продлевает горение.
+  #
+  # Раньше снятие движения выключало свет сразу, а таймер стоял 30 секунд: человек
+  # вставал с дивана — и свет гас, хотя в комнате ещё кто-то есть. Требование
+  # владельца — «не выключать, если движение было недавно».
+  - from_state: "ON_MOTION"
+    to_state: "ON_HOLD"
+    trigger: "motion_cleared"
+    action: null
+    timeout_sec: 600.0
+
+  # Новое движение возвращает горение в режим движения и перевзводит таймер
+  - from_state: "ON_HOLD"
+    to_state: "ON_MOTION"
+    trigger: "motion_detected"
+    action: null
+    timeout_sec: 600.0
+
+  # Удержание истекло — выключаем
+  - from_state: "ON_HOLD"
+    to_state: "OFF"
+    trigger: "timeout"
+    action: "turn_off_light"
+    timeout_sec: 600.0
+
+  # Повторное «движение снято» в состоянии ожидания: таймер продлевается, свет
+  # остаётся гореть, и событие не кончается отказом
+  - from_state: "ON_HOLD"
+    to_state: "ON_HOLD"
+    trigger: "motion_cleared"
+    action: null
+    timeout_sec: 600.0
+
+  # Из ON_MOTION можно перейти в OFF по таймауту (если движение не возобновилось
+  # и состояние ожидания не успел отработать)
   - from_state: "ON_MOTION"
     to_state: "OFF"
     trigger: "timeout"
     action: "turn_off_light"
-    timeout_sec: 30.0  # Автоматический переход через 30 секунд
+    timeout_sec: 600.0
 
-  # Из ON_MOTION можно перейти в OFF при снятии движения
-  #
-  # Перехода не было, и это порождало отказы: датчик шлёт `motion_cleared` из
-  # `ON_MOTION` постоянно, а шаблон такого триггера не содержал — все события
-  # заканчивались `no_transition`. Пока перехода нет, свет гас только по таймауту,
-  # то есть через `timeout_sec` после последнего движения, а не сразу после его
-  # прекращения.
-  #
-  # `timeout_sec` здесь не задаётся намеренно: снятие движения выключает свет
-  # сразу. Если бы переход по `motion_cleared` получил ещё и таймаут, ожидание
-  # стало бы вторым способом выключить то же самое, а выключение задержалось бы
-  # на него.
-  - from_state: "ON_MOTION"
-    to_state: "OFF"
-    trigger: "motion_cleared"
-    action: "turn_off_light"
-
-  # Из ON_MOTION можно перейти в ON_MANUAL при ручном вмешательстве
+  # Из ON_MOTION — ручное состояние
   - from_state: "ON_MOTION"
     to_state: "ON_MANUAL"
     trigger: "manual_override"
     guard: "is_manual_override_enabled"  # Функция в Registry
+
+  # Из ON_MOTION можно перейти в ON_MANUAL при ручном вмешательстве
+  - from_state: "ON_HOLD"
+    to_state: "ON_MANUAL"
+    trigger: "manual_override"
+    guard: "is_manual_override_enabled"  # Функция в Registry
+
+  - from_state: "ON_HOLD"
+    to_state: "OFF"
+    trigger: "manual_switch_off"
+    action: "turn_off_light"
 
   # Из ON_MANUAL можно перейти в OFF при ручном выключении
   - from_state: "ON_MANUAL"
