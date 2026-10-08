@@ -670,7 +670,6 @@
 
         container.innerHTML = pageDevices.map((device) => {
             const checked = state.selected.has(device.entity_id);
-            const preferred = device.area_id || state.defaultRoom;
             return `
             <div class="card device-card ${checked ? 'selected' : ''}" data-entity-id="${escapeHtml(device.entity_id)}">
                 <div class="device-header">
@@ -706,8 +705,17 @@
             </div>`;
         }).join('');
 
+        // Комната по умолчанию — это свойство устройства (его область в HA или
+        // выбранная вручную комната), а не одно значение на весь список: раньше
+        // оно вычислялось внутри `.map()`, где до конца строки не дошло, и
+        // обращение после `.join()` кончалось `preferred is not defined` — весь
+        // список устройств пропадал, а страница сообщала «источник недоступен».
+        const roomsByDevice = new Map(
+            pageDevices.map((device) => [device.entity_id, device])
+        );
         container.querySelectorAll('.device-room').forEach((select) => {
-            select.value = preferred;
+            const device = roomsByDevice.get(select.dataset.entityId);
+            select.value = device ? (device.area_id || state.defaultRoom || '') : '';
             select.addEventListener('click', (event) => event.stopPropagation());
             select.addEventListener('change', () => {
                 state.defaultRoom = select.value;

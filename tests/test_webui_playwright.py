@@ -957,3 +957,112 @@ class TestLogsViewerKeepsReadingPlace:
             f"под глазами сменилась запись: было {before!r}, стало {after!r}. Новая "
             "запись добавляется сверху и не должна двигать то, что уже прочитано"
         )
+
+
+class TestDiscoveryWizardListsDevices:
+    """Мастер обнаружения показывает устройства источника.
+
+    Страница падала с `preferred is not defined`: переменная была объявлена
+    внутри `.map()`, а использовалась после него, то есть любая отрисовка
+    списка устройств кончалась исключением. Ошибка ловилась как «источник
+    недоступен», устройств — ноль, и при этом `/discovery-data` отдавал их
+    полностью: смотреть надо было на саму страницу, а не на ответ API.
+
+    Ответ источника подменяется: у стенда нет живого Home Assistant, и без
+    подмены проверка измеряла бы не страницу, а достижимость чужого дома.
+    """
+
+    @staticmethod
+    def _devices(count: int = 3) -> list[dict]:
+        """Подготовить список устройств в форме ответа `/discovery-data`.
+
+        Args:
+            count: Сколько устройств вернуть.
+
+        Returns:
+            Список устройств.
+        """
+        return [
+            {
+                "entity_id": f"light.probe_{index}",
+                "friendly_name": f"Проба {index}",
+                "state": "off",
+                "area_id": "gostinaia",
+                "area_name": "Гостиная",
+                "device_type": "light",
+            }
+            for index in range(count)
+        ]
+
+    def _open_with_devices(self, page: Page, devices: list[dict] | None = None) -> None:
+        """Открыть мастер с подменённым ответом источника.
+
+        Args:
+            page: Страница Playwright.
+            devices: Устройства для подмены; по умолчанию — три пробы.
+        """
+        source_id = _ensure_ha_source_exists()
+        assert source_id, "источник не создан — проверять нечего"
+        payload = {
+            "source_id": source_id,
+            "areas": [],
+            "available_devices": self._devices() if devices is None else devices,
+            "error": None,
+        }
+        page.route(
+            "**/discovery-data*",
+            lambda route: route.fulfill(status=200, content_type="application/json", json=payload),
+        )
+        # Список комнат тоже подменяется: страница берёт его из /api/rooms, а
+        # на стенде он пуст, и проверка подстановки комнаты измеряла бы
+        # содержимое чужого манифеста вместо логики страницы.
+        page.route(
+            "**/api/rooms",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                json={
+                    "rooms": [
+                        {"id": "gostinaia", "name": "Гостиная"},
+                        {"id": "kitchen", "name": "Kitchen"},
+                    ]
+                },
+            ),
+        )
+        page.goto(f"{SERVER_URL}/discovery?source_id={source_id}", wait_until="domcontentloaded")
+
+    def test_devices_are_listed(self, page: Page):
+        """Открытая страница показывает карточки устройств."""
+        self._open_with_devices(page)
+
+        expect(page.locator(".device-card").first).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+        assert page.locator(".device-card").count() == 3, (
+            "страница показала не все устройства из ответа источника"
+        )
+
+    def test_page_does_not_report_source_unavailable(self, page: Page):
+        """Живой ответ источника не превращается в «источник недоступен»."""
+        self._open_with_devices(page)
+        expect(page.locator(".device-card").first).to_be_visible(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+
+        assert "Источник недоступен" not in page.inner_text("body"), (
+            "страница назвала источник недоступным при успешном ответе: ошибка "
+            "разбора списка выдаётся за недоступность источника"
+        )
+
+    def test_device_room_defaults_to_device_area(self, page: Page):
+        """Комната устройства по умолчанию — его область в Home Assistant."""
+        self._open_with_devices(page)
+        select = page.locator(".device-room").first
+        expect(select).to_be_attached(timeout=DEFAULT_ACTION_TIMEOUT_MS)
+
+        options = select.locator("option")
+        values = [options.nth(i).get_attribute("value") for i in range(options.count())]
+        assert "gostinaia" in values, (
+            f"комнаты стенда не содержат gostinaia: {values} — проверять "
+            "подстановку не на чем, манифест стенда отличается от боевого"
+        )
+        assert select.input_value() == "gostinaia", (
+            "комната по умолчанию не подставилась: у устройства область "
+            f"gostinaia, а в списке {select.input_value()!r}"
+        )
