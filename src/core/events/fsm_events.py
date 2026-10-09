@@ -72,6 +72,12 @@ REASON_QUIET_HOURS: Final[str] = "quiet_hours"
 #: включил «спим» (требование 2026-10-09: лог должен позволять сравнить
 #: поведение с ожидаемой логикой).
 REASON_SLEEP_MODIFIER: Final[str] = "sleep_modifier"
+#: Отказ ночника: модификатор «мы спим» известен и выключен — штатное решение
+#: (ночник работает только, пока владелец спит). Раньше оно оставалось
+#: ``guard_failed`` — «условие отказало», — и утренний анализ не мог отличить
+#: «ночник не включался, потому что не спим» от поломки: в живом журнале
+#: 2026-10-09 каждое вечернее движение давало ночнику guard_failed.
+REASON_MODIFIER_OFF: Final[str] = "modifier_off"
 #: Отказ, потому что светло: солнце над горизонтом или часы дома говорят «день».
 #:
 #: Раньше такой отказ не имел своего имени и попадал в ``guard_failed`` —
@@ -87,7 +93,13 @@ REASON_DAYLIGHT: Final[str] = "daylight"
 #: нём не срабатывает; без имени отказ выглядел бы одинаково и при «спим», и
 #: при «состояние не прочитано» — утром эти две ситуации надо различать.
 GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
-    {REASON_QUIET_HOURS, REASON_SLEEP_MODIFIER, REASON_GUARD_DATA_MISSING, REASON_DAYLIGHT}
+    {
+        REASON_QUIET_HOURS,
+        REASON_SLEEP_MODIFIER,
+        REASON_MODIFIER_OFF,
+        REASON_GUARD_DATA_MISSING,
+        REASON_DAYLIGHT,
+    }
 )
 
 # Формат времени во всех разделах интерфейса (FR-023)

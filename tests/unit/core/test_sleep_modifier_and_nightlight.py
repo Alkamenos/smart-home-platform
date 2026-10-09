@@ -215,6 +215,24 @@ class TestNightlightIsDimAndRed:
             f"ночник включается без проверки «мы спим»: {entry}"
         )
 
+    def test_nightlight_denial_is_named_not_silent(self) -> None:
+        """Отказ ночника называет причину: «не спим» или «данных нет».
+
+        В живом журнале 2026-10-09 каждое вечернее движение давало ночнику
+        ``guard_failed`` — «условие отказало», из чего не понятно ничего.
+        Правило владельца о логах: молчаливый отказ — дефект.
+
+        Returns:
+            Ничего.
+        """
+        guard = make_modifier_is_on()
+
+        assert guard.deny_reason(None, {"sleep_modifier_on": False}) == "modifier_off", (  # type: ignore[attr-defined]
+            "ночник не включился, потому что не спим, а причина не названа"
+        )
+        assert guard.deny_reason(None, {}) == "guard_data_missing"  # type: ignore[attr-defined]
+        assert guard.deny_reason(None, {"sleep_modifier_on": True}) is None  # type: ignore[attr-defined]
+
     def test_nightlight_timeout_actually_turns_light_off(self) -> None:
         """По таймауту ночник выключает свет, а не только отпускает устройство.
 

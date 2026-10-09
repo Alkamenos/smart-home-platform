@@ -232,14 +232,17 @@ class SimpleHAWebSocketClient:
             was = self.asleep
             self.asleep = state == "on"
             # off -> on — владелец включил «мы спим»: свет пора гасить.
-            # Повторное on уведомление не дублирует. Строка нужна для утреннего
-            # анализа: событие переключения должно быть видно в журнале с
-            # фактическим временем, а не только по косвенным переходам.
-            if state == "on" and was is not True:
+            # Повторное on уведомление не дублирует. WARNING, а не INFO: INFO
+            # адаптера в docker-журнале не виден (корневой обработчик, урок
+            # #70), а переключение модификатора — заметное событие утреннего
+            # анализа: по нему видно, когда свет гасили и когда перестали.
+            turning_on = state == "on" and was is not True
+            turning_off = state == "off" and was is True
+            if turning_on:
                 self._pending_sleep_started = True
-                logger.info(
-                    f"Модификатор «мы спим» включился ({entity}): запрошено событие sleep_started"
-                )
+            if turning_on or turning_off:
+                verb = "включился: запрошено событие sleep_started" if turning_on else "выключился"
+                logger.warning(f"Модификатор «мы спим» {verb} ({entity})")
         return entity in entity_ids
 
     @staticmethod
@@ -1073,7 +1076,9 @@ class HAAdapter:
         state = payload.get("state") if isinstance(payload, dict) else None
         if state in ("on", "off"):
             client.asleep = state == "on"
-            logger.info(f"HAAdapter: «мы спим» = {client.asleep} (модификатор {entity})")
+            # WARNING как в подписке (#70): INFO адаптера в docker-журнале не
+            # виден, а прочитанное состояние — основа всех решений «спим».
+            logger.warning(f"HAAdapter: «мы спим» = {client.asleep} (модификатор {entity})")
 
     async def _refresh_daylight(self) -> None:
         """Обновить признак «светло ли сейчас» по данным Home Assistant.

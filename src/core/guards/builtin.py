@@ -350,24 +350,28 @@ def make_modifier_is_on() -> Callable[[Any, dict[str, Any]], bool]:
         return context.get("sleep_modifier_on") is True
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
-        """Назвать причину отказа: «данных нет», если состояние неизвестно.
+        """Назвать причину отказа: «не спим» или «данных нет».
 
-        «Не спим» — штатный отказ: условие остаётся без названной причины, и в
-        журнале остаётся его имя. «Не прочитали сущность» — поломка данных, и по
-        имени причины утром видно, что ночник не работал из-за неё, а не из-за
-        расписания.
+        Обе причины именуются: «ночник не включался, потому что не спим» —
+        штатное вечернее решение, а «состояние не прочитано» — поломка данных.
+        Молчаливый ``guard_failed`` сливал бы их: в живом журнале 2026-10-09
+        каждое вечернее движение выглядело одинаково, и утренний анализ
+        (правило о логах) не мог их различить.
 
         Args:
             state: Текущее состояние автомата.
             context: Контекст перехода.
 
         Returns:
-            ``guard_data_missing``, если состояние модификатора неизвестно;
-            иначе None.
+            ``modifier_off``, если модификатор выключен; ``guard_data_missing``,
+            если состояние неизвестно; иначе None (отказа нет).
         """
         del state
-        if context.get("sleep_modifier_on") is None:
+        modifier = context.get("sleep_modifier_on")
+        if modifier is None:
             return "guard_data_missing"
+        if modifier is False:
+            return "modifier_off"
         return None
 
     modifier_is_on.deny_reason = deny_reason  # type: ignore[attr-defined]

@@ -206,3 +206,52 @@ class TestModifierFlipNotifiesPlatform:
         await client._deliver(payload)  # noqa: SLF001
 
         assert client.asleep is True
+
+    async def test_turning_off_is_visible_in_docker_journal(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Выключение модификатора тоже видно: утром важно, когда «спим» кончилось.
+
+        Returns:
+            Ничего.
+        """
+        import logging
+
+        client = _client()
+        client.asleep = True
+        payload = _payload(state_changed_event(MODIFIER, new_state="off", old_state="on"))
+
+        with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
+            await client._deliver(payload)  # noqa: SLF001
+
+        assert any("выключился" in record.message for record in caplog.records), (
+            "выключение модификатора молчит на INFO — в docker-журнале его не будет"
+        )
+        assert client._pending_sleep_started is False  # noqa: SLF001
+
+    async def test_turning_on_is_visible_in_docker_journal(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Переключение модификатора обязано быть видно в docker-журнале.
+
+        Адаптер пишет через корневой обработчик stdlib, где INFO не виден
+        (урок #70: проверка на INFO молчала и ничего не доказывала). Утренний
+        анализ (правило владельца) требует видеть момент, когда свет гасят
+        «по спим», — значит запись WARNING.
+
+        Returns:
+            Ничего.
+        """
+        import logging
+
+        client = _client()
+        client.asleep = False
+        payload = _payload(state_changed_event(MODIFIER, new_state="on", old_state="off"))
+
+        with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
+            await client._deliver(payload)  # noqa: SLF001
+
+        assert any(
+            record.levelname == "WARNING" and "включился" in record.message
+            for record in caplog.records
+        ), "переключение модификатора молчит на INFO: в docker-журнале его не будет"
