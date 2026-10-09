@@ -504,6 +504,63 @@ def create_app(
             len(device.behaviors) for room in current_manifest.rooms for device in room.devices
         )
 
+        # T009-T010: Snapshot состояний дома и решения автоматов (FR-001, FR-005)
+        engine = getattr(request.app.state, "container", None)
+        if engine is not None:
+            engine = getattr(engine, "engine", None)
+        adapter = getattr(request.app.state, "container", None)
+        if adapter is not None:
+            adapter = getattr(adapter, "adapter", None)
+
+        snapshot_dict: dict[str, Any] = {}
+        decisions_dict: dict[str, Any] = {}
+        snapshot_at = 0.0
+        home_reachable = True
+
+        if engine is not None and adapter is not None:
+            try:
+                # T008: Прочитать снимок состояний
+                from core.services.state_snapshot import StateSnapshot
+
+                snapshot_service = StateSnapshot(adapter, cache_ttl_sec=5.0)
+                snapshot = await snapshot_service.read()
+
+                snapshot_at = snapshot.at
+                home_reachable = snapshot.reachable
+
+                # Конвертируем в словарь для шаблона
+                snapshot_dict = {
+                    entity_id: {
+                        "entity_id": state.entity_id,
+                        "state": state.state,
+                        "unit_of_measurement": state.unit_of_measurement,
+                        "available": state.available,
+                    }
+                    for entity_id, state in snapshot.states.items()
+                }
+
+                # T005: Решения по всем автоматам в манифесте (по комнатам)
+                for room in current_manifest.rooms:
+                    for device in room.devices:
+                        # fsm_id == идентификатор в системе (обычно entity_id)
+                        fsm_id = getattr(device, "entity_id", None)
+                        if fsm_id:
+                            decision = engine.explain(fsm_id)
+                            if decision:
+                                decisions_dict[fsm_id] = {
+                                    "at": decision.at,
+                                    "outcome": decision.outcome,
+                                    "reason_code": decision.reason_code,
+                                    "reason_text": decision.reason_text,
+                                    "trigger": decision.trigger,
+                                }
+            except Exception as e:
+                logger.warning(f"Failed to read snapshot or decisions: {e}")
+
+        # T010: can_control по роли пользователя
+        user_role = getattr(request.state, "user_role", "viewer")
+        can_control = user_role in ("controller", "admin")
+
         return templates.TemplateResponse(
             request,
             "index.html",
@@ -514,6 +571,12 @@ def create_app(
                 "total_behaviors": total_behaviors,
                 "user_id": getattr(request.app.state, "default_user_id", None) or "admin_user",
                 "user_is_admin": bool(getattr(request.app.state, "default_user_is_admin", False)),
+                # T009-T010: Новые ключи контекста
+                "snapshot": snapshot_dict,
+                "decisions": decisions_dict,
+                "snapshot_at": snapshot_at,
+                "home_reachable": home_reachable,
+                "can_control": can_control,
             },
         )
 
