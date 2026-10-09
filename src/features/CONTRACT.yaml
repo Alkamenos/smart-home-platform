@@ -38,6 +38,7 @@ registered_guards:  # реестр после register_all_guards
   - is_day_time
   - is_manual_override_enabled
   - may_turn_on
+  - modifier_is_on
 
 uncovered_platform_events:
   # События, которые платформа публикует, но ни один шаблон не слушает.
@@ -128,9 +129,10 @@ templates:
       timeout: engine
       quiet_hours_started: НЕТ ПРОИСХОДИТЕЛЯ
       day_started: НЕТ ПРОИСХОДИТЕЛЯ
+      sleep_started: НЕТ ПРОИСХОДИТЕЛЯ
       manual_override: НЕТ ПРОИСХОДИТЕЛЯ
       manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
-    unproduced_triggers: [manual_switch_on, quiet_hours_started, day_started, manual_override, manual_switch_off]
+    unproduced_triggers: [manual_switch_on, quiet_hours_started, day_started, sleep_started, manual_override, manual_switch_off]
     gaps:
       - motion_cleared публикуется платформой, но перехода по нему нет — движение кончилось, свет горит до таймаута. Это сценарий «свет с задержкой», а не дефект; отдельная задача на выбор поведения.
       - manual_switch_on и manual_switch_off нигде не порождаются. Ручной путь управления устройством в платформе отсутствует как класс (пункт 3 веб-плана), поэтому и manual_override не имеет источника.
@@ -148,14 +150,14 @@ templates:
   night_light:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
-    actions: [turn_on_night_light, release_device, turn_off_night_light]
-    guards: []
+    actions: [turn_on_night_light, turn_off_night_light]
+    guards: [modifier_is_on]
     triggers:
       motion_detected: sensor
       timeout: engine
       manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
-      schedule_end: НЕТ ПРОИСХОДИТЕЛЯ
-    unproduced_triggers: [manual_switch_off, schedule_end]
+      day_started: НЕТ ПРОИСХОДИТЕЛЯ
+    unproduced_triggers: [manual_switch_off, day_started]
     gaps:
       - schedule_end не порождается — расписание не выключает ночной свет.
       - У состояния ON_NIGHT нет guard'а на ночь, поэтому оно достижимо и днём через motion_detected.

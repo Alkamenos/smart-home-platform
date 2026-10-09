@@ -23,6 +23,12 @@ from loguru import logger
 from .commands.dispatcher import CommandIntent
 
 
+#: Яркость ночника в процентах (требование владельца 2026-10-09: «яркость 3%»).
+NIGHTLIGHT_BRIGHTNESS_PCT = 3
+#: Цвет ночника — чистый красный: убирает голубую часть спектра, которая будит.
+NIGHTLIGHT_RGB_COLOR: tuple[int, int, int] = (255, 0, 0)
+
+
 def extract_device_id(context: dict[str, Any]) -> str | None:
     """
     Extract device ID from context using fallback chain.
@@ -117,7 +123,13 @@ def turn_off_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
 
 def turn_on_night_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     """
-    Create a CommandIntent to turn on a night light with low brightness.
+    Create a CommandIntent to turn on a night light: 3% и красный.
+
+    Требование владельца (2026-10-09): пока включён модификатор «мы спим»,
+    ночник даёт 3% яркости чистым красным (255, 0, 0) — яркий свет ночью
+    сбивает циркадные ритмы, а красный почти не даёт голубой части спектра.
+    Значения меняются через манифест (``brightness_pct``, ``rgb_color``);
+    прежний параметр ``brightness`` (0–255) уважается, если задан явно.
 
     Args:
         state: Current FSM state (not used for this action).
@@ -135,15 +147,30 @@ def turn_on_night_light(state: Any, context: dict[str, Any]) -> CommandIntent | 
 
     priority = context.get("priority", 50)
     source = context.get("source", "night_light")
-    brightness = context.get("brightness", 30)  # Default low brightness for night light
 
-    logger.info(f"Creating turn_on_night_light intent for {entity_id} (brightness={brightness})")
+    data: dict[str, Any] = {}
+    if context.get("brightness_pct") is not None:
+        data["brightness_pct"] = context["brightness_pct"]
+    elif context.get("brightness") is not None:
+        # Прежний параметр в шкале 0–255 — уважается, но дефолт теперь в
+        # процентах: HA принимает brightness_pct напрямую и без перевода.
+        data["brightness"] = context["brightness"]
+    else:
+        data["brightness_pct"] = NIGHTLIGHT_BRIGHTNESS_PCT
+    if context.get("rgb_color"):
+        data["rgb_color"] = context["rgb_color"]
+    else:
+        data["rgb_color"] = list(NIGHTLIGHT_RGB_COLOR)
+
+    # Всё, что уйдёт в Home Assistant, печатается целиком: утром по журналу
+    # должно быть видно, каким именно светом включён ночник.
+    logger.info(f"Creating turn_on_night_light intent for {entity_id} data={data}")
 
     return CommandIntent(
         device_id=entity_id,
         domain="light",
         service="turn_on",
-        data={"brightness": brightness},
+        data=data,
         priority=priority,
         source=source,
     )

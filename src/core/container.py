@@ -260,6 +260,23 @@ class Container:
                 # присылает все сущности дома (в бою 1502 против 6 описанных),
                 # и платформа отбивает каждое событие лишней сущности.
                 self._adapter._manifest = self.manifest
+                # Модификатор «мы спим» — сущность Home Assistant, которой
+                # владелец управляет сам (автоматизацией на своё расписание).
+                # Платформа читает состояние и по нему решает, можно ли
+                # включать яркий свет; без имени сущности условие его просто
+                # не найдёт и решит по солнцу.
+                sleep_modifier = self.manifest.automation_rules.lighting.sleep_modifier
+                if sleep_modifier:
+                    self._adapter.sleep_modifier_entity = sleep_modifier
+                    # Включение модификатора гасит свет: клиент адаптера ловит
+                    # переключение и зовёт этот колбэк («свет над столом
+                    # выключается по модификатору», требование владельца
+                    # 2026-10-09).
+                    self._adapter.on_sleep_started = self._on_sleep_started
+                    logger.info(
+                        f"Модификатор «мы спим»: {sleep_modifier} — состояние "
+                        "владелец задаёт сам, платформа только читает"
+                    )
             else:
                 self._adapter = MockAdapter(engine=self.fsm)
                 self._adapter.set_event_router(self.event_router)
@@ -571,6 +588,31 @@ class Container:
         self._day_cycle = DayCycleService(clock=clock, engine=self.fsm)
         self._day_cycle.start()
         logger.info(f"Суточный цикл света: {self._day_cycle.describe()}")
+
+    async def _on_sleep_started(self) -> None:
+        """Свет погасить, когда модификатор «мы спим» включился.
+
+        Колбэк адаптера: клиент ловит переключение сущности в Home Assistant
+        и зовёт этот метод. Доставка та же, что у событий суточного цикла, —
+        событие уходит только автоматам, у которых на него есть переход, а
+        не веером всем: остальные отвергли бы его как несвойственное.
+
+        Почему выключение, а не просто «не включать»: требование владельца —
+        «свет над столом выключается по модификатору мы спим». Если свет горит,
+        когда владелец ложится спать, гаснуть он должен именно в этот момент,
+        а не ждать движения или утреннего расписания.
+
+        Returns:
+            Ничего. Отказ одного автомата не мешает доставке остальным.
+        """
+        from core.services.day_cycle import deliver_to_automata
+
+        recipients = self.fsm.entities_with_trigger("sleep_started")
+        logger.info(
+            "Модификатор «мы спим» включён: sleep_started "
+            f"→ {len(recipients)} автоматов ({', '.join(recipients)})"
+        )
+        await deliver_to_automata(self.fsm, "sleep_started", "Модификатор «мы спим»")
 
     def house_timezone(self) -> Any:
         """Часовой пояс дома из правил автоматизации.

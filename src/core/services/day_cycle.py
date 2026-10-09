@@ -23,6 +23,37 @@ from core.fsm.engine import FSMEngine
 from core.scheduling.daily import DailyClock
 
 
+async def deliver_to_automata(
+    engine: FSMEngine,
+    event: str,
+    source: str = "Суточный цикл",
+) -> None:
+    """Отправить событие всем автоматам, которые на него реагируют.
+
+    Общая доставка для событий, которые приходят не от датчика: будильник
+    суток (``quiet_hours_started``, ``day_started``) и переключение
+    модификатора «мы спим» (``sleep_started``). Событие получает только тот
+    автомат, у которого на него есть переход, — остальные не шумят.
+
+    Args:
+        engine: Движок автоматов.
+        event: Имя события, например ``sleep_started``.
+        source: Подпись отказов в журнале; по ней утром видно, откуда событие.
+
+    Returns:
+        Ничего.
+    """
+    for entity_id in engine.entities_with_trigger(event):
+        try:
+            # Дебаунс не применяется: событие не дребезг датчика, а
+            # отбрасывание означало бы «свет не погас вовремя».
+            await engine.trigger(entity_id, event, respect_debounce=False)
+        except Exception:  # noqa: BLE001 — одно устройство не роняет остальные
+            # Ошибка одного автомата не должна останавливать доставку: иначе
+            # сломанный светильник отменяет выключение всего дома.
+            logger.warning(f"{source}: {entity_id} не обработал {event}")
+
+
 class DayCycleService:
     """Расписание суток, отправленное автоматам.
 
@@ -45,15 +76,7 @@ class DayCycleService:
         Returns:
             Ничего.
         """
-        for entity_id in self.engine.entities_with_trigger(event):
-            try:
-                # Дебаунс не применяется: событие по часам не дребезг датчика,
-                # а отбрасывание означало бы «свет не погас вовремя».
-                await self.engine.trigger(entity_id, event, respect_debounce=False)
-            except Exception:  # noqa: BLE001 — одно устройство не роняет цикл
-                # Ошибка одного автомата не должна останавливать расписание: иначе
-                # сломанный светильник отменяет выключение всего дома.
-                logger.warning(f"Суточный цикл: {entity_id} не обработал {event}")
+        await deliver_to_automata(self.engine, event)
 
     def start(self) -> None:
         """Запустить цикл в фоне.

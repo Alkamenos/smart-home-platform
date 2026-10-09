@@ -138,6 +138,19 @@ class SimpleHAWebSocketClient:
         self._pending_subscription_id: int = 0
         # Сколько событий отброшено фильтром сущностей.
         self._filtered_out = 0
+        # Спим ли сейчас: True — модификатор «мы спим» включён в Home Assistant.
+        # Модификатором управляет владелец: он сам включает и выключает его
+        # автоматизацией, а платформа только читает. None — сущности нет.
+        self.asleep: bool | None = None
+        # Сущность-модификатор; ставится адаптером перед подпиской.
+        self.sleep_modifier_entity: str | None = None
+        # Уведомление платформы о включении «мы спим»: модификатор гасит свет,
+        # но событие устройства это не событие устройства — сущность не входит
+        # в подписку и фильтр её всегда отбрасывает. Поэтому переключение
+        # ловится здесь, в разборе, и доносится отдельным путём в _deliver.
+        self.on_sleep_started: Callable[[], Awaitable[None]] | None = None
+        # Запрошено ли уведомление; флаг живёт одно событие.
+        self._pending_sleep_started = False
         # Светло ли сейчас: True — солнце над горизонтом, None — неизвестно.
         # ``sun.sun`` в манифест не входит, но его состояние снимается здесь, до
         # отбрасывания события фильтром: без него условие «темно ли» не знает, что
@@ -201,13 +214,53 @@ class SimpleHAWebSocketClient:
         if not entity_id:
             return True
         entity = str(entity_id)
+        state = self._new_state(payload)
         # Солнце в фильтр манифеста не входит, но его состояние нужно условию
         # «темно ли»: без него движение включает свет при дневном свете
         # (жалоба владельца 2026-10-09). Событие всё равно приходит — HA шлёт
         # все state_changed, — поэтому состояние снимается здесь, до отбрасывания.
         if entity == "sun.sun":
-            self.daylight = payload.get("new_state") != "below_horizon"
+            # В событии new_state — словарь, а не строка: прежнее сравнение со
+            # строкой было всегда ложно, и после заката платформа считала день —
+            # вечером движение не включало свет (вскрыто живым разбором потока
+            # 2026-10-09). Нераспознанное состояние (например, unavailable)
+            # прежнее значение не трогает: «нет данных» не должно выглядеть как
+            # «светло».
+            if state in ("above_horizon", "below_horizon"):
+                self.daylight = state == "above_horizon"
+        elif entity == self.sleep_modifier_entity and state in ("on", "off"):
+            was = self.asleep
+            self.asleep = state == "on"
+            # off -> on — владелец включил «мы спим»: свет пора гасить.
+            # Повторное on уведомление не дублирует. Строка нужна для утреннего
+            # анализа: событие переключения должно быть видно в журнале с
+            # фактическим временем, а не только по косвенным переходам.
+            if state == "on" and was is not True:
+                self._pending_sleep_started = True
+                logger.info(
+                    f"Модификатор «мы спим» включился ({entity}): запрошено событие sleep_started"
+                )
         return entity in entity_ids
+
+    @staticmethod
+    def _new_state(payload: dict[str, Any]) -> Any:
+        """Состояние сущности из события в его настоящей форме.
+
+        Home Assistant шлёт ``new_state`` словарём ``{"entity_id": ..., "state":
+        ...}``. Сравнение такого словаря со строкой всегда ложно — на этом
+        ошибочно строились и проверка солнца, и чтение модификатора: событие
+        «мы спим включился» платформа не видела вообще.
+
+        Args:
+            payload: Событие от HA (``event.data``).
+
+        Returns:
+            Строка состояния или None, если в событии её нет.
+        """
+        raw = payload.get("new_state")
+        if isinstance(raw, dict):
+            return raw.get("state")
+        return raw
 
     def _record_filtered_event(self) -> None:
         """Отброшенное событие учитывается в метрике, а не только в памяти.
@@ -236,7 +289,20 @@ class SimpleHAWebSocketClient:
         Returns:
             Ничего.
         """
-        if not self._accepts(payload):
+        accepted = self._accepts(payload)
+        # Переключение «мы спим» доносится до платформы до проверки фильтра:
+        # сущность модификатора в подписку не входит, фильтр её отбрасывает
+        # всегда, а гасить свет по включению модификатора — требование владельца
+        # («свет над столом выключается по модификатору», 2026-10-09).
+        if self._pending_sleep_started:
+            self._pending_sleep_started = False
+            notify = self.on_sleep_started
+            if notify is not None:
+                try:
+                    await notify()
+                except Exception as exc:  # noqa: BLE001 — отказ уведомления не роняет поток событий
+                    logger.warning(f"HAAdapter: sleep_started не доставлен: {exc}")
+        if not accepted:
             self._filtered_out += 1
             self._record_filtered_event()
             return
@@ -634,6 +700,14 @@ class HAAdapter:
 
         self._manual_lockout_middleware = manual_lockout_middleware
         self._event_router = event_router
+        # Сущность Home Assistant «мы спим»; задаётся правилами освещения в
+        # манифесте. Значение читает служба суточного цикла при старте.
+        self.sleep_modifier_entity: str | None = None
+        # Уведомление о включении «мы спим»: контейнер ставит сюда свою
+        # функцию, адаптер отдаёт её клиенту в момент чтения модификатора —
+        # как только сущность стала известна, клиент начинает ловить её
+        # переключения и присылает событие sleep_started.
+        self.on_sleep_started: Callable[[], Awaitable[None]] | None = None
         # Контексты команд, которые отправила сама платформа. Home Assistant
         # возвращает `context.id` на каждый вызов сервиса, и изменение состояния
         # несёт тот же идентификатор: по нему собственная команда отличается от
@@ -950,6 +1024,57 @@ class HAAdapter:
         self._connected_once = True
         self._last_disconnect_reason = None
 
+    async def _refresh_sleep_modifier(self) -> None:
+        """Прочитать состояние «мы спим» при подключении.
+
+        Модификатором управляет владелец в Home Assistant: он включает его
+        автоматизацией на ночь и выключает утром. Платформа только читает
+        состояние — и обязана прочитать его сразу, иначе до первого события от
+        этой сущности дом решит, что все спят (или что никто не спит).
+
+        Args:
+            Ничего.
+
+        Returns:
+            Ничего. Отсутствие сущности — не ошибка: правила описывают дом, где
+            модификатора может не быть.
+        """
+        entity = self.sleep_modifier_entity
+        client = self._ws_client
+        session = self._session
+        if not entity or client is None or session is None:
+            return
+        # Клиенту сущность нужна до самой подписки: он следит за её состоянием
+        # в потоке событий, и без имени фильтр её просто пропустит.
+        client.sleep_modifier_entity = entity
+        # И уведомление — вместе с именем: как только клиент знает сущность, он
+        # начинает ловить её переключения и шлёт sleep_started платформе.
+        client.on_sleep_started = self.on_sleep_started
+        http_url = cast(str, self._ws_url)
+        base = http_url.replace("wss://", "https://").replace("ws://", "http://")
+        url = f"{base.split('/api/websocket')[0].rstrip('/')}/api/states/{entity}"
+        try:
+            async with session.get(
+                url,
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status != 200:
+                    logger.warning(
+                        f"Модификатор «{entity}» не прочитан: Home Assistant "
+                        f"ответил {response.status}"
+                    )
+                    return
+                payload = await response.json()
+        except Exception as exc:  # noqa: BLE001 — подключение важнее модификатора
+            logger.warning(f"Модификатор «{entity}» не прочитан: {exc}")
+            return
+
+        state = payload.get("state") if isinstance(payload, dict) else None
+        if state in ("on", "off"):
+            client.asleep = state == "on"
+            logger.info(f"HAAdapter: «мы спим» = {client.asleep} (модификатор {entity})")
+
     async def _refresh_daylight(self) -> None:
         """Обновить признак «светло ли сейчас» по данным Home Assistant.
 
@@ -967,6 +1092,8 @@ class HAAdapter:
         """
         if self._ws_client is None or self._session is None:
             return
+        await self._refresh_sleep_modifier()
+
         http_url = cast(str, self._ws_url)
         rest_base = http_url.replace("wss://", "https://").replace("ws://", "http://")
         # Адрес сокета указывает на сам WebSocket-эндпоинт (`/api/websocket`);
@@ -1271,6 +1398,10 @@ class HAAdapter:
                     "user_id": ha_context.get("user_id"),
                     "ha_context_id": ha_context.get("id"),
                     "daylight": getattr(self._ws_client, "daylight", None),
+                    # «Мы спим» приходит из Home Assistant: сущность есть, но её
+                    # состояние платформе неизвестно — тогда решает неё, а не
+                    # часы платформы (см. условие may_turn_on).
+                    "sleep_modifier_on": getattr(self._ws_client, "asleep", None),
                 },
             )
 

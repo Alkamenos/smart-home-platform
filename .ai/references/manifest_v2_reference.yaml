@@ -1,0 +1,101 @@
+# Справочный манифест прошлой версии платформы (v2) — источник идентификаторов
+#
+# Взят из: https://github.com/Alkamenos/smart-home-platform/blob/v2/instances/leonid_house/manifest.yaml
+# (предоставлен владельцем 2026-10-09). Здесь — только световая часть и
+# идентификаторы; полная структура v2 (климат, вентиляция, шторы) лежит в
+# ветке v2 upstream-репозитория.
+#
+# Зачем хранится: боевой манифест deploy/docker/config/manifest.yaml описывает
+# 8 из ~46 светильников дома, и при расширении идентификаторы берутся отсюда,
+# а не методом перебора. Проверено в HA 2026-10-09: почти все сущности живы.
+#
+# Статус сущностей на 2026-10-09 (REST Home Assistant):
+#   живы: все, кроме light.ulichnaia_girlianda (unavailable) и
+#   sensor.datchik_osveshchennosti_illuminance (unavailable — датчик
+#   освещённости есть, но сейчас не отвечает: именно тот случай «сбоев
+#   датчика», под который нужен фолбэк на солнце/часы).
+#
+# Ключевые отличия структуры v2:
+#   - освещение описывалось ГРУППАМИ светильников (features.lighting.groups),
+#     не комнатами с автоматами;
+#   - «тёмно» решалось по датчику освещённости (dark_lux: 20 / light_lux: 40,
+#     гистерезис) плюс высота солнца (sun_dark_elevation: -3);
+#   - ночной режим — input_boolean.vecher («вечер»), у санузла собственный
+#     флаг input_boolean.light_bathroom_no_night_auto;
+#   - у кухонного стола уже был ночник (nightlight: brightness 40, цвет
+#     [255, 150, 60], off_min: 3) — текущее требование владельца его
+#     переопределяет: 3% и чистый красный [255, 0, 0], таймаут 5 мин.
+
+# Светильники и группы (v2)
+lights:
+  yard_floodlights: switch.group_lights_outdoor_floodlights  # улица/двор основное
+  street_night: light.night_light                              # уличное ночное
+  office: light.workroom_lights                                # кабинет
+  office_lampa: light.nastolnaia_lampa                         # кабинет, настольная
+  office_kus: light.kus                                        # кабинет, «кусь»
+  bedroom: light.svet_v_spalne_right                           # спальня
+  living_room_mirror: light.podsvetka_zerkala                  # гостиная, зеркало
+  guest_bedroom: light.torsher                                 # гостевая, торшер
+  kitchen_work: switch.kitchen_lights                          # кухня, рабочая
+  table: light.table_lights                                    # кухня, обеденный стол
+  container: light.svet_v_konteinere                           # контейнер
+  bathroom: light.vykliuchatel_sanuzel_switch1                 # санузел
+  garland_terrace: light.girlianda_terassa                     # гирлянда терраса
+  garland_street: light.ulichnaia_girlianda                    # гирлянда уличная (unavailable)
+  garland_windows: light.girlianda_na_oknakh                   # гирлянда окна
+  xmas_a2: light.girlianda_a2                                  # рождественская уличная
+  bedroom_backlight: switch.svet_v_spalne_flip_indicator_light # подсветка спальни
+
+# Датчики движения (v2 знал три; в доме есть ещё terassa)
+motion_sensors:
+  gostinnaia: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy
+  konteiner: binary_sensor.datchik_dvizheniia_konteiner_occupancy
+  sanuzel: binary_sensor.vykliuchatel_sanuzel_presence
+
+# Освещённость (v2: «тёмно» по датчику с гистерезисом, фолбэк на солнце)
+illuminance:
+  sensor: sensor.datchik_osveshchennosti_illuminance  # 2026-10-09: unavailable
+  dark_lux: 20
+  light_lux: 40
+
+# Флаги-модификаторы v2 (в HA остались)
+flags:
+  night: input_boolean.vecher                 # «вечер» v2 — сегодня ночное освещение
+  sleep: input_boolean.sleep_mode             # «мы спим» (текущая задача)
+  bathroom_no_night_auto: input_boolean.light_bathroom_no_night_auto  # on
+  away: input_boolean.my_doma
+
+# Климат v2 (сущности живы — материал для фичи climate, см. BACKLOG)
+climate_sensors:
+  - sensor.datchik_temperatury_gostinnaia_temperature
+  - sensor.datchik_temperatury_sanuzel_temperature
+  - sensor.datchik_temperatury_spalnia_temperature
+  - sensor.datchik_temperatury_kabinet_temperature
+  - sensor.datchik_temperatury_gostevaia_spalnia_temperature
+  - sensor.temperatura_na_ulitse_srednee
+climate_actuators:
+  - switch.obogrevatel_gostinnaia
+  - switch.obogrevatel_sanuzel
+  - switch.obogrevatel_spalnia
+  - switch.obogrevatel_kabinet
+  - switch.maslianyi_radiator
+  - climate.esphome_web_0d22a4_ac_name       # кондиционер гостиная
+  - climate.termostat_gostinaia              # напольное, managed_by_platform: false
+climate_setpoints:
+  - input_number.temperatura
+  - input_number.maksimalno_komfortnaia_temperatura
+  - input_number.temperatura_v_sanuzle
+season_flag: input_boolean.zima
+
+# Вентиляция v2 (сущности живы)
+ventilation:
+  - fan.base_smart
+  - fan.base_smart_2
+  - fan.vykliuchatel_sanuzel_switch2         # вытяжка санузла
+
+# Шторы v2
+covers:
+  - cover.shtora_v_spalne
+  - cover.shtora_v_kabinete
+  - cover.shtora_v_gostinnoi_levaia
+  - cover.shtora_v_gostinnoi_pravaia

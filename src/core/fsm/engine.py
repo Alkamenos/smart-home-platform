@@ -114,7 +114,11 @@ def _is_measurement(value: Any) -> bool:
 
 #: События, чьи команды обходят блокировку человека: это правила безопасности
 #: («не горит всю ночь»), а не удобство автоматики.
-SAFETY_EVENTS: frozenset[str] = frozenset({"quiet_hours_started"})
+#:
+#: ``sleep_started`` здесь потому же: модификатор «мы спим» гасит свет во
+#: всех состояниях, включая включённый человеком из приложения — свет, который
+#: горит, пока все спят, важнее часа локаута.
+SAFETY_EVENTS: frozenset[str] = frozenset({"quiet_hours_started", "sleep_started"})
 
 
 # @dataclass (frozen=True)
