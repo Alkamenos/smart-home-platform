@@ -29,7 +29,9 @@ from webui.app import create_app
 SHOULD_COLORIZE = os.getenv("FORCE_COLOR", "true").lower() in ("1", "true", "yes", "on")
 
 # Уровень логирования из переменной окружения
-LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG")
+LOG_LEVEL = os.getenv(
+    "LOG_LEVEL", "INFO"
+)  # Дефолт INFO (не DEBUG, чтобы не спамить WebSocket логами)
 
 # Цветной формат для loguru
 COLORED_FORMAT = (
@@ -57,11 +59,14 @@ logger.add(
     enqueue=False,  # Без очереди для синхронности логов в Docker
 )
 
-# Журналы библиотек поднимаются отдельно от LOG_LEVEL. При DEBUG библиотека
-# WebSocket писала бинарный обмен (`> PING b3 d2 62 82 [binary, 4 bytes]`) на
-# каждое сообщение — 80% объёма журнала, из-за чего в нём не было видно ничего
-# о работе платформы. Поднимается уровень конкретных библиотек, а не всех:
-# `sqlalchemy` и прочие на DEBUG дают полезный вывод.
+# Отключаем DEBUG логи для WebSocket библиотек (спам бинарными сообщениями)
+logging.getLogger("websockets").setLevel(logging.INFO)
+logging.getLogger("websockets.client").setLevel(logging.INFO)
+logging.getLogger("websockets.server").setLevel(logging.INFO)
+logging.getLogger("asyncio").setLevel(logging.INFO)
+logging.getLogger("aiohttp").setLevel(logging.INFO)
+
+# Остальные библиотеки настраиваются отдельно
 configure_library_logging()
 
 # Опционально: лог в файл (без цветов)
