@@ -483,6 +483,30 @@ class FSMEngine:
                 # автомат ждал бы триггера, который не придёт. Взводится здесь,
                 # а не в пути перехода, потому что перехода при старте нет.
                 self._schedule_restored_timeout(definition, saved_state, restored_age)
+
+                # Холодный старт deco_light: если вернулись в ON_DECO днём,
+                # выключаем (Known Issue #89: гирлянда горит после перезагрузки днём)
+                if "deco_light" in definition.entity_id and saved_state == "ON_DECO":
+                    try:
+                        if hasattr(self, "_guards") and "is_day_time" in self._guards:
+                            day_guard = self._guards["is_day_time"]
+                            time_zone = "UTC"
+                            if definition.params:
+                                time_zone = definition.params.get("time_zone", "UTC")
+                            is_day = day_guard(None, {"time_zone": time_zone})
+                            if is_day:
+                                # Переводим в OFF
+                                self._states[definition.entity_id] = State(
+                                    current_state="OFF",
+                                    entered_at=loop_time(),
+                                    context=saved_context,
+                                )
+                                logger.info(
+                                    f"Cold start: deco_light {definition.entity_id} was ON_DECO but it's daytime, "
+                                    f"resetting to OFF"
+                                )
+                    except Exception as e:
+                        logger.warning(f"Cold start check for deco_light failed: {e}")
             else:
                 logger.warning(
                     f"Saved state '{saved_state}' for entity {definition.entity_id} is invalid, "
