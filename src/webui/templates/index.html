@@ -368,6 +368,32 @@
             background: rgba(0, 212, 255, 0.2);
         }
 
+        .device-toggle,
+        .device-edit {
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            border: none;
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .device-toggle:hover,
+        .device-edit:hover {
+            background: rgba(0, 212, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .device-toggle:active,
+        .device-edit:active {
+            transform: scale(0.95);
+        }
+
         .empty-state {
             text-align: center;
             padding: 3rem 1rem;

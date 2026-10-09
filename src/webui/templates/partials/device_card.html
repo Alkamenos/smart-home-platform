@@ -26,6 +26,14 @@
                     <i class="bi bi-toggle2-on"></i>
                 </button>
             {% endif %}
+            <button class="device-edit"
+                    hx-get="/devices/{{ loop.index0 }}/edit"
+                    hx-target="#edit-modal-content"
+                    data-bs-toggle="modal"
+                    data-bs-target="#editModal"
+                    title="Редактировать устройство">
+                <i class="bi bi-pencil"></i>
+            </button>
         </div>
     </div>
 
@@ -76,6 +84,17 @@
             <div class="state-value text-muted">
                 состояние неизвестно
             </div>
+            <!-- Показываем информацию о FSM даже без HA состояния -->
+            {% if decision %}
+                <div class="state-reason">
+                    Последняя команда: {{ decision.reason_text }}
+                    {% if decision.at > 0 %}
+                        <span class="reason-time">
+                            ({{ relative_time(decision.at) }})
+                        </span>
+                    {% endif %}
+                </div>
+            {% endif %}
         {% endif %}
     </div>
 
