@@ -139,7 +139,7 @@ class TestFSMDecisionGuardDenial:
                 ),
             ),
         )
-        engine.register(entity_id, definition)
+        engine.register_definition(definition)
 
         # Попытка переход OFF -> ON, но условие отвергнет
         await engine.trigger(entity_id, "turn_on")
@@ -147,9 +147,7 @@ class TestFSMDecisionGuardDenial:
         decision = engine.explain(entity_id)
         assert decision is not None
         assert decision.outcome == "denied", "Отверженный переход — outcome='denied'"
-        assert decision.reason_code in GUARD_DENIAL_REASONS.values(), (
-            "Код должен быть из GUARD_DENIAL_REASONS"
-        )
+        assert decision.reason_code == "guard_failed", "Универсальный отказ по условию"
         assert decision.reason_text, "При отказе есть объяснение"
         assert decision.trigger == "turn_on", "Триггер записывается всегда"
 
@@ -173,15 +171,16 @@ class TestFSMDecisionGuardDenial:
                 ),
             ),
         )
-        engine.register(entity_id, definition)
+        engine.register_definition(definition)
 
         await engine.trigger(entity_id, "turn_on")
         decision = engine.explain(entity_id)
 
         assert decision is not None
-        assert decision.reason_code in GUARD_DENIAL_REASONS.values(), (
-            f"Код должен быть в GUARD_DENIAL_REASONS; получено {decision.reason_code}, вариантов {list(GUARD_DENIAL_REASONS.values())}"
-        )
+        # Любой код из GUARD_DENIAL_REASONS плюс fallback "guard_failed"
+        assert (
+            decision.reason_code in GUARD_DENIAL_REASONS or decision.reason_code == "guard_failed"
+        ), f"Код должен быть в GUARD_DENIAL_REASONS или fallback; получено {decision.reason_code}"
 
 
 class TestFSMDecisionNoTransition:
@@ -223,7 +222,7 @@ class TestFSMDecisionNone:
                 ),
             ),
         )
-        engine.register(entity_id, definition)
+        engine.register_definition(definition)
 
         await engine.trigger(entity_id, "wait")
 
@@ -267,7 +266,7 @@ class TestFSMDecisionReasonTextMatchesLog:
                 ),
             ),
         )
-        engine.register(entity_id, definition)
+        engine.register_definition(definition)
 
         # Ловим логируемую причину
         # (она пишется в _guard_rejection_reason; проверим, что engine.explain отдаёт то же)
@@ -350,7 +349,7 @@ async def test_integration_transition_and_decision(
 ) -> None:
     """Интеграция: переход и решение согласованы."""
     entity_id = "light.test"
-    engine.register(entity_id, simple_definition)
+    engine.register_definition(simple_definition)
 
     # Переход OFF -> ON
     await engine.trigger(entity_id, "turn_on")

@@ -33,6 +33,7 @@ from core.events.fsm_events import (
     REASON_GUARD_FAILED,
     REASON_NO_STATE,
     REASON_NO_TRANSITION,
+    REASON_TEXT,
     REASON_UNKNOWN_ENTITY,
     build_transition_payload,
 )
@@ -176,6 +177,26 @@ class Transition:
 
 
 @dataclass(frozen=True)
+class Decision:
+    """
+    Immutable record of an FSM decision: what was done and why.
+
+    Attributes:
+        at: Unix timestamp when the decision was made.
+        outcome: The decision outcome: 'on', 'off', 'none', or 'denied'.
+        reason_code: Machine-readable reason code from GUARD_DENIAL_REASONS or action.
+        reason_text: Human-readable reason (must be non-empty always, except outcome='none').
+        trigger: The event name that triggered this decision.
+    """
+
+    at: float
+    outcome: str  # 'on' | 'off' | 'none' | 'denied'
+    reason_code: str | None
+    reason_text: str
+    trigger: str | None
+
+
+@dataclass(frozen=True)
 class FSMDefinition:
     """
     Immutable definition of a Finite State Machine.
@@ -256,6 +277,10 @@ class FSMEngine:
         # где шум полезен. Нераспознанное значение флага шум не включает: тот же
         # принцип, что и в `SHADOW_MODE`.
         self._log_every_rejection = _flag_enabled(ENV_LOG_REJECTIONS)
+        # Последнее решение по каждому автомату (требование FR-005, FR-008).
+        # Хранится только одно: карточка отвечает на вопрос «почему сейчас», а не
+        # «что было ночью» — за историю отвечает журнал.
+        self._decisions: dict[str, Decision] = {}
 
     def rejection_counts(self) -> dict[str, int]:
         """Сколько отказов было по каждой причине.
@@ -277,6 +302,15 @@ class FSMEngine:
             reason: Причина отказа.
         """
         self._rejection_counts[reason] = self._rejection_counts.get(reason, 0) + 1
+
+        # Record the decision (T005, FR-005)
+        self._record_decision(
+            entity_id=entity_id,
+            outcome="denied",
+            reason_code=reason,
+            reason_text=None,  # Will be determined from reason_code
+            trigger=event,
+        )
 
         if self._log_every_rejection:
             # Флаг возвращает прежнее поведение целиком: каждый отказ пишется.
@@ -522,6 +556,64 @@ class FSMEngine:
     def get_state(self, entity_id: str) -> State | None:
         """Get the current state of an entity."""
         return self._states.get(entity_id)
+
+    def explain(self, entity_id: str) -> Decision | None:
+        """Get the last decision made for an entity.
+
+        Returns the most recent decision (outcome, reason, when), or None if
+        the entity has never had a decision (never registered or never triggered).
+
+        Args:
+            entity_id: The entity to query.
+
+        Returns:
+            Decision record or None.
+        """
+        return self._decisions.get(entity_id)
+
+    def _get_reason_text(self, reason_code: str) -> str:
+        """Get human-readable text for a reason code.
+
+        Falls back to the reason_code itself if not found in REASON_TEXT dictionary.
+
+        Args:
+            reason_code: The machine-readable reason code.
+
+        Returns:
+            Human-readable reason text.
+        """
+        return REASON_TEXT.get(reason_code, reason_code)
+
+    def _record_decision(
+        self,
+        entity_id: str,
+        outcome: str,
+        reason_code: str | None,
+        reason_text: str | None,
+        trigger: str | None,
+    ) -> None:
+        """Record a decision (transition or rejection).
+
+        Args:
+            entity_id: The entity making the decision.
+            outcome: 'on', 'off', 'none', or 'denied'.
+            reason_code: Machine-readable reason code (from GUARD_DENIAL_REASONS or action name).
+            reason_text: Human-readable reason (if None, determined from reason_code).
+            trigger: The event that triggered this decision.
+        """
+        if reason_text is None and reason_code is not None:
+            reason_text = self._get_reason_text(reason_code)
+        if reason_text is None:
+            reason_text = "неизвестно"
+
+        decision = Decision(
+            at=time.time(),
+            outcome=outcome,
+            reason_code=reason_code,
+            reason_text=reason_text,
+            trigger=trigger,
+        )
+        self._decisions[entity_id] = decision
 
     def get_all_states(self) -> dict[str, State]:
         """Get all current states of all entities."""
@@ -1078,6 +1170,29 @@ class FSMEngine:
                 f"triggered by '{event}'"
                 + (f" (guard: {transition.guard})" if transition.guard else "")
                 + (f" (action: {transition.action})" if transition.action else "")
+            )
+
+            # Record the decision (T005, FR-005)
+            action_name = transition.action if isinstance(transition.action, str) else None
+            outcome = "none"
+            reason_code = None
+            if action_name:
+                # Determine on/off from action name (T007)
+                if "_off" in action_name.lower():
+                    outcome = "off"
+                    reason_code = "action_off"
+                elif "_on" in action_name.lower() or action_name.lower().startswith("turn_on"):
+                    outcome = "on"
+                    reason_code = "action_on"
+                else:
+                    outcome = "on"  # Assume on for unknown actions
+                    reason_code = "action"
+            self._record_decision(
+                entity_id=entity_id,
+                outcome=outcome,
+                reason_code=reason_code,
+                reason_text=None,  # Will be determined
+                trigger=event,
             )
 
             # Publish after the new state is written, so a subscriber reading the

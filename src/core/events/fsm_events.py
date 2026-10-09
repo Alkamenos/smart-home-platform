@@ -120,6 +120,30 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
     }
 )
 
+# Человеческие формулировки причин отказа (T007, FR-008).
+# Используются в интерфейсе (карточка) и совпадают с журналом.
+REASON_TEXT: Final[dict[str, str]] = {
+    REASON_UNKNOWN_ENTITY: "сущность не найдена",
+    REASON_NO_STATE: "состояние не инициализировано",
+    REASON_DEBOUNCED: "слишком быстрые события",
+    REASON_NO_TRANSITION: "нет подходящего переходов",
+    REASON_GUARD_FAILED: "условие не пройдено",  # fallback for unknown guard denials
+    REASON_GUARD_DATA_MISSING: "нет данных для проверки",
+    REASON_QUIET_HOURS: "ночное окно закрыто",
+    REASON_SLEEP_MODIFIER: "выключено модификатором сна",
+    REASON_MODIFIER_OFF: "ночник отключен",
+    REASON_DAYLIGHT: "светло",
+    REASON_SETPOINT_UNAVAILABLE: "уставка недоступна",
+    REASON_CLIMATE_DISABLED: "климат отключен",
+    REASON_AC_NOT_ALLOWED: "кондиционер запрещен",
+    REASON_AC_FORBIDDEN_IN_WINTER: "кондиционер зимой не разрешен",
+    REASON_MANAGED_BY_HARDWARE: "управляется отдельным контроллером",
+    # Коды действий (T007)
+    "action_on": "включено по расписанию",
+    "action_off": "выключено по расписанию",
+    "action": "изменено по расписанию",
+}
+
 # Формат времени во всех разделах интерфейса (FR-023)
 TIMESTAMP_FORMAT: Final[str] = "%Y-%m-%dT%H:%M:%S.%f"
 
