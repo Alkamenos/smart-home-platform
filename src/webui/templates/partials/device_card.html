@@ -31,6 +31,8 @@
 
     <div class="device-state">
         {% set state = snapshot.get(device.entity_id) %}
+        {% set decision = decisions.get(device.entity_id) %}
+        
         {% if state %}
             {% if state.available %}
                 <div class="state-value">
@@ -49,6 +51,18 @@
             {% else %}
                 <div class="state-value text-warning">
                     <i class="bi bi-exclamation-triangle"></i> не отвечает
+                </div>
+            {% endif %}
+            
+            <!-- T020: Причина решения (история 2) -->
+            {% if decision %}
+                <div class="state-reason">
+                    {{ decision.reason_text }}
+                    {% if decision.at > 0 %}
+                        <span class="reason-time">
+                            ({{ relative_time(decision.at) }})
+                        </span>
+                    {% endif %}
                 </div>
             {% endif %}
             

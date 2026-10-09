@@ -540,7 +540,7 @@
             }
         }
 
-        /* T015: Состояние и поведения на карточке (история 1) */
+        /* T015-T020: Состояние, поведения и причина (истории 1-2) */
         .device-state {
             padding-top: 0.5rem;
             border-top: 1px solid rgba(255, 255, 255, 0.05);
@@ -553,6 +553,22 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+        }
+
+        .state-reason {
+            font-size: 0.85rem;
+            color: #ccc;
+            margin-top: 0.3rem;
+            padding: 0.3rem 0.5rem;
+            background: rgba(0, 212, 255, 0.05);
+            border-left: 2px solid rgba(0, 212, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        .reason-time {
+            font-size: 0.75rem;
+            color: #999;
+            margin-left: 0.3rem;
         }
 
         .state-timestamp {
@@ -724,8 +740,17 @@
                     </button>
                 </div>
 
-                <!-- T015: Макросы для отображения (история 1) -->
+                <!-- T015-T020: Макросы для отображения (истории 1-2) -->
                 {% macro timestamp_display(ts) -%}
+                    {% if ts > 0 %}
+                        {%- set now = now() if now is callable else 0 -%}
+                        {%- if (now - ts) < 60 %}только что{%- elif (now - ts) < 3600 %}{{ ((now - ts) / 60) | int }} мин назад{%- else %}{{ ((now - ts) / 3600) | int }} ч назад{%- endif -%}
+                    {% else %}
+                        неизвестно
+                    {% endif %}
+                {%- endmacro %}
+
+                {% macro relative_time(ts) -%}
                     {% if ts > 0 %}
                         {%- set now = now() if now is callable else 0 -%}
                         {%- if (now - ts) < 60 %}только что{%- elif (now - ts) < 3600 %}{{ ((now - ts) / 60) | int }} мин назад{%- else %}{{ ((now - ts) / 3600) | int }} ч назад{%- endif -%}
