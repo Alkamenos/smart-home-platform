@@ -98,10 +98,14 @@ def turn_off_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
 
     priority = context.get("priority", 50)
     source = context.get("source", "lighting")
+    # Пометку ставит движок для событий расписания: выключение по часам обязано
+    # пройти, даже если человек вечером трогал этот свет.
+    bypass_lockout = bool(context.get("bypass_lockout", False))
 
     logger.info(f"Creating turn_off_light intent for {entity_id}")
 
     return CommandIntent(
+        bypass_lockout=bypass_lockout,
         device_id=entity_id,
         domain="light",
         service="turn_off",

@@ -34,6 +34,12 @@ class CommandIntent(BaseModel):
         last_updated: Timestamp of the last activity (capture or refresh).
         ttl_seconds: Time-to-live since last activity; 0 means immediate
             expiry. Must be >= 0.
+        bypass_lockout: Command is a safety rule, not automation convenience, and
+            is not cancelled by manual lockout. Set for the nightly extinguish:
+            otherwise "the light never burns all night" stops holding exactly on
+            the evenings when someone touched that light — checked in the house
+            2026-10-09, the scheduled turn-off was rejected by the lockout and the
+            street lighting stayed on.
     """
 
     device_id: str
@@ -44,6 +50,7 @@ class CommandIntent(BaseModel):
     source: str
     last_updated: float = Field(default_factory=time.time)
     ttl_seconds: float = Field(default=3600.0, ge=0)
+    bypass_lockout: bool = False
 
     def refresh(self) -> None:
         """Extend the intent's life by resetting ``last_updated`` to now."""

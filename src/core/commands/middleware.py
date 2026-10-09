@@ -194,6 +194,13 @@ class ManualLockoutMiddleware(Middleware):
             self.record_manual_control(device_id)
             return intent
 
+        # Ночное выключение по часам — правило безопасности, а не удобство
+        # автоматики, поэтому блокировку человека оно обходит. Иначе «не горит
+        # всю ночь» нарушается ровно в те вечера, когда человек трогал свет:
+        # проверено в боре 2026-10-09, уличное освещение осталось гореть.
+        if intent.bypass_lockout:
+            return intent
+
         # Check if we're in a lockout period for automated commands
         if self._is_in_lockout_period(device_id, domain):
             last_manual = self._control_tracker.get_last_manual(device_id)

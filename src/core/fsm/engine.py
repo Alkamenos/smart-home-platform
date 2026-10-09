@@ -112,6 +112,11 @@ def _is_measurement(value: Any) -> bool:
     return False
 
 
+#: События, чьи команды обходят блокировку человека: это правила безопасности
+#: («не горит всю ночь»), а не удобство автоматики.
+SAFETY_EVENTS: frozenset[str] = frozenset({"quiet_hours_started"})
+
+
 # @dataclass (frozen=True)
 @dataclass
 class State:
@@ -972,6 +977,12 @@ class FSMEngine:
         definition_room = self._definitions.get(entity_id)
         if definition_room is not None and definition_room.room:
             merged_context.setdefault("room", definition_room.room)
+        # События суточного расписания — правило безопасности, а не удобство
+        # автоматики: выключение по часам обязано обойти блокировку человека.
+        # Иначе «не горит всю ночь» нарушается ровно в те вечера, когда человек
+        # вмешивался в свет (проверено в боре 2026-10-09).
+        if event in SAFETY_EVENTS:
+            merged_context["bypass_lockout"] = True
         if external_ctx:
             merged_context.update(external_ctx)
 
