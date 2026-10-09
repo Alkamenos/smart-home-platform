@@ -41,7 +41,13 @@ class TestBehaviorParamsEndpoint:
             assert "effective" in spec, f"у параметра нет отметки действенности: {spec}"
 
     def test_should_mark_inert_params(self, isolated_client: TestClient) -> None:
-        """Инертный параметр помечен — иначе форма покажет его как рабочий.
+        """Действующие параметры климата помечены действующими.
+
+        Проверка переписана 2026-10-09: она утверждала, что ``hysteresis``
+        инертен, и это было верно — параметр читался только валидатором, а шаблон
+        климата не работал вовсе. Теперь его читает условие обогрева, и форма
+        обязана показать его рабочим: иначе владелец стёр бы гистерезис,
+        считая его неработающим, и обогреватель начал бы дрожать на границе цели.
 
         Args:
             isolated_client: HTTP-клиент от имени администратора.
@@ -50,7 +56,13 @@ class TestBehaviorParamsEndpoint:
 
         assert response.status_code == 200, response.text
         params = response.json()["params"]
-        assert params["hysteresis"]["effective"] is False
+        assert params["hysteresis"]["effective"] is True, (
+            "гистерезис читает условие may_heat — форма обязана показать его "
+            "работающим, иначе владелец стёр бы действующую настройку"
+        )
+        assert params["run_minutes"]["effective"] is True, (
+            "длительность работы обогревателя читает heater_timer_on"
+        )
         assert params["target_temp"]["effective"] is True
 
     def test_should_return_404_for_unknown_template(self, isolated_client: TestClient) -> None:

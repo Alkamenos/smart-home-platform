@@ -170,19 +170,71 @@ class TestLayer5ConsistencyAndReference:
 class TestInertParamsAreAcceptedButReported:
     """Инертный параметр принимается, но помечается."""
 
-    def test_should_report_inert_params_without_failing(self, contract: dict) -> None:
+    def test_should_report_inert_params_without_failing(self) -> None:
         """Инертный параметр не роняет запрос — иначе правка манифеста сломается.
 
-        Раньше примером был `motion_timeout_sec`, но он стал действующим
-        (см. `test_params_affect_behavior.py`), поэтому примером стал `hysteresis`.
+        Проверка переписана 2026-10-09: она держалась на боевом примере
+        (`motion_timeout_sec`, потом `hysteresis`, потом `schedule`), и все три за
+        это время стали действующими — примеры кончились. Механизм замечания
+        проверяется на подделанном контракте: он нужен и для параметров, которых
+        ещё нет в боевом доме, а привязка к одному шаблону делала проверку
+        хрупкой — стоило параметру заработать, и падала проверка не по делу.
+
+        Returns:
+            Ничего.
+        """
+        stub = {
+            "templates": {
+                "climate_control": {
+                    "params": {
+                        "hysteresis": {
+                            "type": "float",
+                            "range": "0-2",
+                            "effective": False,
+                            "note": "Задел на будущее, код пока не читает.",
+                        }
+                    }
+                }
+            }
+        }
+
+        notes = validate_behavior("climate_control", {"hysteresis": 0.5}, stub)
+
+        assert notes == ["hysteresis"], (
+            f"инертный параметр должен возвращаться замечанием, а не ошибкой; получено {notes}"
+        )
+
+    def test_should_have_no_inert_params_in_live_contract(self, contract: dict) -> None:
+        """В боевом контракте не осталось полей, которые ничего не делают.
+
+        Пока такое поле есть, форма предлагает владельцу настройку, которая
+        ничего не меняет: он стёр бы её — и потерял бы управление, которого
+        думал, что у него нет.
 
         Args:
             contract: Контракт шаблонов.
         """
-        notes = validate_behavior("climate_control", {"hysteresis": 0.5}, contract)
-        assert notes == ["hysteresis"], (
-            "инертный параметр должен возвращаться замечанием, а не ошибкой"
-        )
+        inert = [
+            f"{template}.{name}"
+            for template, spec in contract["templates"].items()
+            for name, param in (spec.get("params") or {}).items()
+            if param.get("effective") is False
+        ]
+
+        assert not inert, f"в контракте остались инертные параметры: {inert}"
+
+    def test_should_not_report_now_working_climate_params(self, contract: dict) -> None:
+        """Рабочие параметры климата замечанием не сопровождаются.
+
+        Если бы `hysteresis` снова попал в замечания, владелец увидел бы в форме
+        действующую настройку как «ни на что не влияет» — и счёл бы платформу
+        сломанной, хотя она работает.
+
+        Args:
+            contract: Контракт шаблонов.
+        """
+        assert validate_behavior("climate_control", {"hysteresis": 0.5}, contract) == []
+        assert validate_behavior("climate_control", {"run_minutes": 20}, contract) == []
 
     def test_should_not_report_effective_params(self, contract: dict) -> None:
         """Рабочие параметры замечанием не сопровождаются.

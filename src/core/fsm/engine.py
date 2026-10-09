@@ -118,7 +118,13 @@ def _is_measurement(value: Any) -> bool:
 #: ``sleep_started`` здесь потому же: модификатор «мы спим» гасит свет во
 #: всех состояниях, включая включённый человеком из приложения — свет, который
 #: горит, пока все спят, важнее часа локаута.
-SAFETY_EVENTS: frozenset[str] = frozenset({"quiet_hours_started", "sleep_started"})
+#:
+#: ``sunrise_started``, ``sunset_started`` и ``day_started`` — события смены
+#: суток: они включают и выключают вечерний свет по расписанию дня, и человек,
+#: щёлкнувший гирлянду в приложении, не должен оставлять её гореть до утра.
+SAFETY_EVENTS: frozenset[str] = frozenset(
+    {"quiet_hours_started", "sleep_started", "sunset_started", "sunrise_started", "day_started"}
+)
 
 
 # @dataclass (frozen=True)
@@ -981,6 +987,13 @@ class FSMEngine:
         definition_room = self._definitions.get(entity_id)
         if definition_room is not None and definition_room.room:
             merged_context.setdefault("room", definition_room.room)
+        # Устройство автомата — тоже в контекст, и по той же причине, что и
+        # параметры поведения: условие блокировки (`is_manual_override_enabled`)
+        # ищет, к какому устройству относится ручное действие, и без этого поля
+        # видела пустой контекст и запрещала переход на защите от локаута.
+        # Раньше это поле доезжало только до действий.
+        if definition_room is not None and definition_room.target_device_id:
+            merged_context.setdefault("target_device_id", definition_room.target_device_id)
         # События суточного расписания — правило безопасности, а не удобство
         # автоматики: выключение по часам обязано обойти блокировку человека.
         # Иначе «не горит всю ночь» нарушается ровно в те вечера, когда человек

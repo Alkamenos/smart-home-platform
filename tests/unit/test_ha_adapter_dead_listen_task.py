@@ -111,6 +111,10 @@ def adapter() -> HAAdapter:
     instance._last_event_time = 0.0
     instance._message_id = 0
     instance._handlers = {}
+    # Колбэки смены суток: адаптер здесь создан в обход __init__, поэтому
+    # поля проставляются вручную, как и остальные.
+    instance.on_sunset = None
+    instance.on_sunrise = None
     return instance
 
 

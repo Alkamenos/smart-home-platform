@@ -270,6 +270,185 @@ def _climate_intent(context: dict[str, Any], service: str, source: str) -> Comma
     )
 
 
+#: Сколько минут обогреватель работает по одному решению, если в манифесте дли��ость
+#: не задана (минуты).
+#:
+#: Значение по умолчанию подобрано так, чтобы обогреватель успевал набрать
+#: температуру, но не работал вхолостую, если датчик показывает, что уже достигнуто.
+#: Каждое следующее решение принимается по свежему показанию датчика.
+DEFAULT_HEATER_RUN_MINUTES = 15
+
+
+def _heater_intent(
+    context: dict[str, Any],
+    domain: str,
+    service: str,
+    source: str,
+    data: dict[str, Any] | None = None,
+) -> CommandIntent | None:
+    """Собрать команду обогревателю в его собственном домене.
+
+    Обогреватель — это `switch.*` с таймером `number.*`, а не `climate.*`:
+    команды для кондиционера и термостатов тут не годятся, Home Assistant их
+    отвергнет, и отказ выглядел бы как «устройство не отвечает».
+
+    Args:
+        context: Контекст перехода с ``entity_id`` обогревателя.
+        domain: Домен команды: ``number`` для таймера, ``switch`` для включения.
+        service: Сервис Home Assistant.
+        source: Источник для аудита и блокировок; по нему видно, каким путём
+            пошла команда — через таймер или без него.
+        data: Дополнительные поля команды.
+
+    Returns:
+        Команда либо ``None``, если обогреватель не указан.
+    """
+    entity_id = extract_device_id(context)
+    if not entity_id:
+        logger.warning(f"{source}: нет entity_id обогревателя в контексте")
+        return None
+    return CommandIntent(
+        device_id=entity_id,
+        domain=domain,
+        service=service,
+        data=data or {},
+        priority=context.get("priority", 50),
+        source=source,
+    )
+
+
+def heater_timer_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить обогреватель на заданное время через его собственный таймер.
+
+    Требование владельца (FR-004): обогреватель включается «на 15 минут», а не
+    просто «включить». Пока идёт таймер обогревателя, платформа не обязана
+    ничего решать; когда таймер истечёт, придёт новое показание датчика и
+    решение будет принято заново. Так обогреватель не может остаться включённым
+    навсегда, даже если датчик температуры перестанет отвечать.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id``, ``heater_timer`` и ``run_minutes``.
+
+    Returns:
+        Команда таймеру обогревателя либо команда включения, если таймер в
+        манифесте не задан; ``None`` без обогревателя.
+    """
+    del state
+    timer = context.get("heater_timer")
+    entity_id = extract_device_id(context)
+    if not entity_id:
+        logger.warning("heater_timer_on: нет entity_id обогревателя в контексте")
+        return None
+
+    minutes = context.get("run_minutes", DEFAULT_HEATER_RUN_MINUTES)
+    if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes <= 0:
+        minutes = DEFAULT_HEATER_RUN_MINUTES
+
+    if not timer:
+        logger.warning(
+            f"Обогреватель {entity_id} включается без таймера: таймер не задан в "
+            "манифесте, выключит датчик. Если датчик откажет, обогреватель "
+            "останется работать — это защита, которой у нас больше нет"
+        )
+        return _heater_intent(context, "switch", "turn_on", "heater_on_no_timer")
+
+    return _heater_intent(
+        context,
+        "number",
+        "set_value",
+        "heater_timer_on",
+        data={"value": minutes},
+    )
+
+
+def heater_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить обогреватель напрямую, без его таймера.
+
+    Отдельное действие нужно для домов, где таймера нет вовсе, и для ручной
+    правки поведения; решение «через таймер или напрямую» принимает
+    `heater_timer_on`, а этот путь оставлен явным.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` обогревателя.
+
+    Returns:
+        Команда включения либо ``None`` без обогревателя.
+    """
+    del state
+    return _heater_intent(context, "switch", "turn_on", "heater_on")
+
+
+def heater_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Выключить обогреватель: цель достигнута или время работы вышло.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` обогревателя.
+
+    Returns:
+        Команда выключения либо ``None`` без обогревателя.
+    """
+    del state
+    return _heater_intent(context, "switch", "turn_off", "heater_off")
+
+
+def ac_cool_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить охлаждение кондиционером на потолок комфорта.
+
+    Охлаждать платформа умеет только до той температуры, которую владелец назвал
+    комфортной (`comfort_max`). Охлаждать «прохладнее» без его решения — значит
+    перестудить дом и получить ту же жалобу, с которой начиналось: слишком жарко
+    или слишком холодно, но не по вашему слову.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` кондиционера и ``comfort_max``.
+
+    Returns:
+        Команда ``climate.set_temperature`` либо ``None``, если нет кондиционера
+        или потолка комфорта.
+    """
+    del state
+    comfort_max = context.get("comfort_max")
+    if comfort_max is None or isinstance(comfort_max, bool):
+        logger.warning("ac_cool_on: нет потолка комфорта — охлаждать не к чему")
+        return None
+    entity_id = extract_device_id(context)
+    if not entity_id:
+        logger.warning("ac_cool_on: нет entity_id кондиционера в контексте")
+        return None
+    # Потолок комфорта едет в команду именно как температура: `_climate_intent`
+    # читает `target_temp`, и без подстановки `climate.set_temperature` ушёл бы
+    # без неё — как в дефекте #71, только наоборот (там терялось заданное, здесь
+    # не подставлялось рассчитанное).
+    return _climate_intent(
+        {**context, "target_temp": comfort_max},
+        "set_temperature",
+        "ac_cool_on",
+    )
+
+
+def ac_forced_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Немедленно выключить кондиционер — защита зимой.
+
+    Кондиционер, работающий на охлаждение при отрицательной температуре, повреждает
+    компрессор (FR-011). Поэтому зимой любая команда его включения гасится сразу,
+    а владелец получает уведомление: молча выключенный кондиционер выглядит как
+    «платформа решила не охлаждать», и поломку техники никто не заметит.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` кондиционера.
+
+    Returns:
+        Команда ``climate.turn_off`` либо ``None`` без кондиционера.
+    """
+    del state
+    return _climate_intent(context, "turn_off", "ac_forced_off")
+
+
 def climate_heat(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     """Включить отопление на заданную температуру.
 
@@ -381,6 +560,14 @@ ACTION_HANDLERS: dict[str, Any] = {
     "climate_heat": climate_heat,
     "climate_cool": climate_cool,
     "climate_off": climate_off,
+    # Обогрев комнат по датчику (спека 011). Обогреватель — это `switch.*` с
+    # таймером `number.*`, поэтому у него свои действия: команда таймеру вместо
+    # `climate.set_temperature`, который адресован кондиционерам и термостатам.
+    "heater_timer_on": heater_timer_on,
+    "heater_on": heater_on,
+    "heater_off": heater_off,
+    "ac_cool_on": ac_cool_on,
+    "ac_forced_off": ac_forced_off,
     "fan_turn_on": fan_turn_on,
     "fan_turn_off": fan_turn_off,
 }

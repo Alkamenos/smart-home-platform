@@ -127,6 +127,10 @@ def adapter(monkeypatch: pytest.MonkeyPatch) -> HAAdapter:
     instance._connected_once = True
     instance._ws_client = None
     instance._session = None
+    # Колбэки смены суток: адаптер здесь создан в обход __init__, поэтому
+    # поля проставляются вручную, как и остальные.
+    instance.on_sunset = None
+    instance.on_sunrise = None
     # Событий не было давно: сразу попадаем в ветку «устарело».
     instance._last_event_time = time.time() - 1000
     monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _StaleWebSocketClient)

@@ -72,6 +72,19 @@ REASON_QUIET_HOURS: Final[str] = "quiet_hours"
 #: включил «спим» (требование 2026-10-09: лог должен позволять сравнить
 #: поведение с ожидаемой логикой).
 REASON_SLEEP_MODIFIER: Final[str] = "sleep_modifier"
+#: Причины климата (спека 011). Каждая отвечает на свой вопрос утреннего
+#: анализа, и склеивать их нельзя: «уставку не прочитали», «уставка 95 °C»,
+#: «климат выключен владельцем» и «в комнате свой термостат» — это четыре разные
+#: ситуации, и по одной записи в журнале утром должно быть видно, что именно
+#: мешало.
+#:
+#: Уставка вне диапазона отделена от её отсутствия: молчаливый отказ при
+#: сломанной настройке выглядел бы как «данных нет», и поломка жила бы годами.
+REASON_SETPOINT_UNAVAILABLE: Final[str] = "setpoint_unavailable"
+REASON_CLIMATE_DISABLED: Final[str] = "climate_disabled"
+REASON_AC_NOT_ALLOWED: Final[str] = "ac_not_allowed"
+REASON_AC_FORBIDDEN_IN_WINTER: Final[str] = "ac_forbidden_in_winter"
+REASON_MANAGED_BY_HARDWARE: Final[str] = "managed_by_hardware"
 #: Отказ ночника: модификатор «мы спим» известен и выключен — штатное решение
 #: (ночник работает только, пока владелец спит). Раньше оно оставалось
 #: ``guard_failed`` — «условие отказало», — и утренний анализ не мог отличить
@@ -99,6 +112,11 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
         REASON_MODIFIER_OFF,
         REASON_GUARD_DATA_MISSING,
         REASON_DAYLIGHT,
+        REASON_SETPOINT_UNAVAILABLE,
+        REASON_CLIMATE_DISABLED,
+        REASON_AC_NOT_ALLOWED,
+        REASON_AC_FORBIDDEN_IN_WINTER,
+        REASON_MANAGED_BY_HARDWARE,
     }
 )
 

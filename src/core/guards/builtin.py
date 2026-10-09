@@ -589,6 +589,14 @@ def build_guards(
         "humidity_below_60": make_humidity_below(),
         "may_turn_on": make_may_turn_on(),
         "modifier_is_on": make_modifier_is_on(),
+        "below_setpoint": make_below_setpoint(),
+        "at_or_above_setpoint": make_at_or_above_setpoint(),
+        "climate_is_enabled": make_climate_is_enabled(),
+        "managed_by_hardware_ok": make_managed_by_hardware_ok(),
+        "stops_on_sleep": make_stops_on_sleep(),
+        "stops_on_sunrise": make_stops_on_sunrise(),
+        "may_heat": make_may_heat(),
+        "may_stop_heating": make_may_stop_heating(),
     }
     # Требования объявляются здесь, рядом с условием: объявление в стороне
     # разошлось бы с ним при первом же переименовании.
@@ -601,6 +609,497 @@ def build_guards(
 
 #: Имена guard'ов, которые должны существовать в реестре движка.
 #: Используется проверкой целостности: сверка с шаблонами по имени.
+#: Гистерезис обогревателя по умолчанию, °C.
+#:
+#: Меньше — обогреватель дёргается на каждом градусе колебаний датчика, больше —
+#: промахивается мимо комфорта и перегревает комнату. Полградуса — компромисс
+#: между ними, и он же виден в поведении: обогреватель начинает работу заранее,
+#: но не «дрожит» на границе.
+DEFAULT_HYSTERESIS = 0.5
+
+#: Границы целевой температуры, °C.
+#:
+#: Уставка вне этих границ — поломка настройки, а не пожелание владельца:
+#: 95 °C в комнате означает, что число пришло из другой сущности или из
+#: неисправного сценария. Дальше этого климат не идёт: сначала в журнал, иначе
+#: молчаливый перегрев.
+MIN_SETPOINT = 5.0
+MAX_SETPOINT = 35.0
+
+
+def _temperature_value(context: dict[str, Any]) -> float | None:
+    """Показание датчика комнаты как число.
+
+    Значение приходит в контексте под именем роли датчика (``temperature``) и
+    роутер уже приводит его к числу, когда это возможно
+    (``event_router.py::_as_measurement``). Остаётся отсечь нечисловые значения:
+    ``unavailable``, ``unknown``, пустая строка — это отсутствие данных, а не
+    ноль градусов.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Температура в градусах либо ``None``, если показания пригодных нет.
+    """
+    raw = context.get("temperature")
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _setpoint_value(context: dict[str, Any]) -> tuple[float | None, bool]:
+    """Целевая температура дома и признак, что она пригодна.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Пара ``(уставка, пригодна ли она)``. Уставка ``None`` означает «не
+        прочитана»; пригодность False при непустой уставке означает «прочитана,
+        но вне диапазона» — для утреннего анализа это разные поломки.
+    """
+    raw = context.get("climate_setpoint")
+    if raw is None or isinstance(raw, bool):
+        return None, False
+    try:
+        setpoint = float(raw)
+    except (TypeError, ValueError):
+        return None, False
+    if not (MIN_SETPOINT <= setpoint <= MAX_SETPOINT):
+        return None, False
+    return setpoint, True
+
+
+def _hysteresis_value(context: dict[str, Any]) -> float:
+    """Гистерезис из контекста, с запасным значением.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Ширина мёртвой зоны в градусах; нечитаемое значение заменяется
+        умолчанием, а не нулём: нулевой гистерезис означал бы работу обогревателя
+        на границе цели.
+    """
+    raw = context.get("hysteresis", DEFAULT_HYSTERESIS)
+    if isinstance(raw, bool) or raw is None:
+        return DEFAULT_HYSTERESIS
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_HYSTERESIS
+    return value if 0.0 <= value <= 2.0 else DEFAULT_HYSTERESIS
+
+
+def _colder_than_setpoint(context: dict[str, Any]) -> bool | None:
+    """Холоднее ли в комнате, чем целевая температура, с учётом гистерезиса.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        True, если обогревать нужно; False, если не нужно; ``None``, если
+        решения принимать не на чем — нет показания или уставки.
+    """
+    temperature = _temperature_value(context)
+    setpoint, usable = _setpoint_value(context)
+    if temperature is None or not usable or setpoint is None:
+        return None
+    return temperature < setpoint - _hysteresis_value(context)
+
+
+def make_below_setpoint() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «в комнате холоднее цели — обогреватель нужен».
+
+    Сравнивает показание датчика комнаты с целевой температурой дома за вычетом
+    гистерезиса. Гистерезис обязателен не для красоты: без него обогреватель
+    включается и выключается на границе цели, и датчик, шлющий показания часто,
+    заставит его работать впустую.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def below_setpoint(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если в комнате холоднее цели.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если обогревать нужно.
+        """
+        del state  # состояние на решение не влияет: решают датчик и уставка
+        return _colder_than_setpoint(context) is True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа: «данных нет» или «уставка негодна».
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``setpoint_unavailable``, если уставка прочитана, но вне диапазона;
+            ``guard_data_missing``, если не хватает показания или уставки;
+            иначе None (решение «не греть» причины не требует — оно не отказ).
+        """
+        del state
+        raw = context.get("climate_setpoint")
+        if raw is not None and not isinstance(raw, bool):
+            _, usable = _setpoint_value(context)
+            if not usable:
+                return "setpoint_unavailable"
+        return "guard_data_missing" if _colder_than_setpoint(context) is None else None
+
+    below_setpoint.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return below_setpoint
+
+
+def make_at_or_above_setpoint() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «цель достигнута — обогреватель можно выключать».
+
+    Зеркало условия включения с одной важной разницей: обогреватель выключается
+    **сразу** при достижении цели, без гистерезиса. Держать его включённым
+    ещё полградуса — значит перегревать комнату, которая уже достаточно тёплая.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def at_or_above_setpoint(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если комната не холоднее цели.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если цель достигнута.
+        """
+        del state
+        colder = _colder_than_setpoint(context)
+        return colder is False
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа: данных не хватает либо обогревать нужно.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``guard_data_missing`` при отсутствии данных; ``None`` в остальных
+            случаях — в том числе когда обогревать ещё нужно: это не отказ, а
+            штатная работа условия.
+        """
+        del state
+        return "guard_data_missing" if _colder_than_setpoint(context) is None else None
+
+    at_or_above_setpoint.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return at_or_above_setpoint
+
+
+def make_climate_is_enabled() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «климат не выключен владельцем».
+
+    Фиче-флаг ``input_boolean.feature_climate`` — это право владельца остановить
+    климат одной кнопкой, не трогая конфигурацию платформы (FR-013). Отсутствие
+    флага в доме — **не** отказ: в таких домах климат просто работает, иначе
+    фича молча выключалась бы везде, где флаг не настроен.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def climate_is_enabled(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если владелец не выключил климат.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если климат включён.
+        """
+        del state
+        enabled = context.get("climate_enabled")
+        return True if enabled is None else bool(enabled)
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа: климат выключен владельцем.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``climate_disabled`` при выключенном флаге; иначе None.
+        """
+        del state
+        return None if context.get("climate_enabled") is not False else "climate_disabled"
+
+    climate_is_enabled.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return climate_is_enabled
+
+
+def make_managed_by_hardware_ok() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «в комнате нет штатного термостата».
+
+    В гостиной стоит аппаратный термостат, который сам держит температуру и
+    управляет тёплым полом. Платформа, включившая там свой обогреватель, создала
+    бы в одной комнате два регулятора, а они будут бороться: термостат греет по
+    своей уставке, обогреватель — по платформенной (FR-007).
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def managed_by_hardware_ok(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если комната не отдана штатному термостату.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если комнатой управляет платформа.
+        """
+        del state
+        return context.get("managed_by_hardware") is not True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа: комнатой управляет термостат.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``managed_by_hardware`` для комнат с термостатом; иначе None.
+        """
+        del state
+        return None if context.get("managed_by_hardware") is not True else "managed_by_hardware"
+
+    managed_by_hardware_ok.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return managed_by_hardware_ok
+
+
+def make_stops_on_sleep() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «этот свет гаснет по модификатору „мы спим“».
+
+    Разделяет два правила выключения вечернего света. Гирлянда на террасе
+    гаснет, когда владелец ложится спать (FR-001 спеки вечернего света);
+    ночное освещение — нет, оно горит до рассвета. Одно условие на переход
+    означает, что различие живёт в параметре поведения `off_by`, а не в двух
+    почти одинаковых шаблонах.
+    """
+
+    def stops_on_sleep(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить выключение по «мы спим», если так задано поведением.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если свет этого поведения гаснет по модификатору.
+        """
+        del state
+        return str(context.get("off_by", "")).strip().lower() == "sleep"
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Объяснить отказ: это не тот свет, который гаснет по модификатору.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``None``. Отказ здесь — не поломка: свет просто живёт по другому
+            правилу, и в журнале это выглядит как `guard_failed`, что верно.
+        """
+        del state
+        return None
+
+    stops_on_sleep.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return stops_on_sleep
+
+
+def make_stops_on_sunrise() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «этот свет гаснет по рассвету».
+
+    Зеркало `stops_on_sleep`: ночное освещение горит до рассвета, гирлянда — до
+    отбоя. Оба условия не могут быть ложными: пустое или незнакомое `off_by`
+    должно гасить свет обоими способами, чтобы забытый параметр не оставил
+    гирлянду гореть всю ночь.
+    """
+
+    def stops_on_sunrise(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить выключение по рассвету.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если свет этого поведения гаснет по рассвету.
+        """
+        del state
+        off_by = str(context.get("off_by", "")).strip().lower()
+        return off_by in {"sunrise", ""}
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Объяснить отказ: это не тот свет, который гаснет по рассвету.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``None`` — см. `make_stops_on_sleep`.
+        """
+        del state
+        return None
+
+    stops_on_sunrise.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return stops_on_sunrise
+
+
+def make_may_heat() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «в этой комнате обогреватель нужен и им можно греть».
+
+    Одно условие вместо трёх — не уплотнение, а требование движка: на переход
+    допускается ровно одно имя условия (`YAMLTransition.guard`, строка), а
+    менять это — значит менять структуру FSMDefinition, что конституция I
+    разрешает только по явному согласованию. Значит, объединять решения должен
+    сам модуль условий.
+
+    Проверки идут по цене ошибки, и порядок не декоративен: право владельца
+    (выключил климат) важнее того, что комната чуть-чуть не хватает до цели,
+    а «в комнате свой термостат» важнее замера — платформа не должна дергать
+    обогреватель там, где решение принимает штатное устройство. Первое же
+    невыполненное условие и называет причину: утром в журнале видно, что
+    мешало, а не «условие не прошло».
+    """
+
+    def may_heat(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если обогревать нужно и это допустимо.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если обогреватель можно включать.
+        """
+        del state
+        return _heating_denial(context) is None
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа — первую по порядку проверок.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины отказа либо ``None``, когда греть можно.
+        """
+        del state
+        return _heating_denial(context)
+
+    may_heat.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return may_heat
+
+
+def _heating_denial(context: dict[str, Any]) -> str | None:
+    """Первая по порядку причина, по которой греть нельзя.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Имя причины либо ``None``, если обогревать можно.
+    """
+    enabled = context.get("climate_enabled")
+    if enabled is False:
+        return "climate_disabled"
+    if context.get("managed_by_hardware") is True:
+        return "managed_by_hardware"
+
+    colder = _colder_than_setpoint(context)
+    if colder is None:
+        raw = context.get("climate_setpoint")
+        if raw is not None and not isinstance(raw, bool):
+            _, usable = _setpoint_value(context)
+            if not usable:
+                return "setpoint_unavailable"
+        return "guard_data_missing"
+    return None if colder else "not_cold_enough"
+
+
+def _not_cold_enough_reason(_state: Any, context: dict[str, Any]) -> str | None:
+    """Причина, по которой переход к обогреву не нужен: «и так достаточно тепло».
+
+    Это не поломка и не запрет владельца: комната в порядке, и движок запишет
+    это как `guard_failed`. Называть причину здесь незачем — называть нечего,
+    а выдуманное имя в журнале вводило бы в заблуждение при утреннем разборе.
+
+    Args:
+        state: Текущее состояние автомата.
+        context: Контекст перехода.
+
+    Returns:
+        Всегда ``None``.
+    """
+    del _state, context
+    return None
+
+
+def make_may_stop_heating() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «цель достигнута — обогреватель можно выключать».
+
+    Зеркало `may_heat` со стороны выключения: комната не холоднее цели и климат
+    не запрещён. Проверка «климат выключен» здесь лишняя — выключать обогреватель
+    не вредно даже тогда, когда владелец отключил климат, — но оставлена ради
+    симметрии: решение «выключить» принимается по тем же данным, что и «включить».
+    """
+
+    def may_stop_heating(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить выключение, если цель достигнута.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если обогреватель пора выключать.
+        """
+        del state
+        return _colder_than_setpoint(context) is False
+
+    may_stop_heating.deny_reason = _not_cold_enough_reason  # type: ignore[attr-defined]
+    return may_stop_heating
+
+
 REGISTERED_GUARDS = (
     "is_day_time",
     "is_manual_override_enabled",
@@ -608,6 +1107,14 @@ REGISTERED_GUARDS = (
     "modifier_is_on",
     "humidity_above_60",
     "humidity_below_60",
+    "below_setpoint",
+    "at_or_above_setpoint",
+    "climate_is_enabled",
+    "managed_by_hardware_ok",
+    "stops_on_sleep",
+    "stops_on_sunrise",
+    "may_heat",
+    "may_stop_heating",
 )
 
 

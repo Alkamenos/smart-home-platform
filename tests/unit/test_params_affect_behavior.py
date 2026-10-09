@@ -134,24 +134,39 @@ class TestClimateTargetTemperature:
         assert intent.data["temperature"] == 24.0
 
 
-class TestHysteresisStillNotEffective:
-    """`hysteresis` остаётся нерабочим, и это зафиксировано."""
+class TestHysteresisIsNowEffective:
+    """`hysteresis` стал действующим, и контракт это отражает.
 
-    def test_should_not_promise_hysteresis_in_manifest_params(self) -> None:
-        """Контракт не должен обещать работающий `hysteresis`.
+    Проверка переписана 2026-10-09. Прежняя утверждала обратное: параметр был
+    инертен, потому что шаблон климата слушал несуществующие события
+    (`temperature_low` вместо `temperature_changed`) и не имел условий — держаться
+    было не на чем. Имена событий исправлены, решение перешло в условие `may_heat`,
+    и гистерезис читается (`guards/builtin.py::_hysteresis_value`).
+    """
 
-        Сделать его действующим можно только вместе с правкой имён событий
-        (`temperature_low` → `temperature_changed`) и guard'ами по
-        температуре: без них климат не срабатывает вовсе, и параметру не на чем
-        действовать. Пока это не сделано, метка `effective: false` обязана стоять.
+    def test_should_promise_working_hysteresis(self) -> None:
+        """Контракт обещает работающий `hysteresis` — и он действительно работает.
+
+        Returns:
+            Ничего.
         """
         contract = yaml.safe_load(
             (_repo_root() / "src" / "features" / "CONTRACT.yaml").read_text(encoding="utf-8")
         )
-        hysteresis = contract["templates"]["climate_control"]["params"]["hysteresis"]
+        climate = contract["templates"]["climate_control"]
+        hysteresis = climate["params"]["hysteresis"]
 
-        assert hysteresis["effective"] is False
-        assert "ИНЕРТЕН" in hysteresis["note"]
+        assert hysteresis["effective"] is True, (
+            "гистерезис читается условием may_heat: без него обогреватель "
+            "включается и выключается на границе цели"
+        )
+        assert "ИНЕРТЕН" not in hysteresis["note"], (
+            f"подпись противоречит effective: {hysteresis['note']}"
+        )
+        assert climate["unproduced_triggers"] == [], (
+            "климат слушает только порождаемые события; непустой список означал "
+            "бы, что часть переходов не сработает никогда"
+        )
 
 
 def _repo_root() -> Any:

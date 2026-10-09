@@ -564,6 +564,10 @@ class TestAdapterWiresLiveFilter:
         instance._message_id = 0
         instance._handlers = {}
         instance._manifest = manifest
+        # Колбэки смены суток: адаптер создан в обход __init__, поэтому поля
+        # проставляются вручную, как и остальные.
+        instance.on_sunset = None
+        instance.on_sunrise = None
         adapter = instance
 
         monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _RecordingWSClient)

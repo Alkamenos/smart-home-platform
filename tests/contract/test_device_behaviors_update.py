@@ -198,8 +198,14 @@ class TestBehaviorsUpdate:
         assert response.status_code == 400, response.text
         assert "слой 3" in response.text, response.text
 
-    def test_should_accept_inert_param_and_report_it(self, isolated_client: TestClient) -> None:
-        """Инертный параметр сохраняется, но попадает в список замечаний.
+    def test_should_accept_now_working_climate_param(self, isolated_client: TestClient) -> None:
+        """Гистерезис климата сохраняется как действующий и не попадает в замечания.
+
+        Проверка переписана 2026-10-09. Раньше она утверждала, что `hysteresis`
+        инертен, и требовала видеть его в `inert_params` — тогда это было правдой:
+        параметр читался только валидатором. Теперь его читает условие обогрева,
+        и если бы он остался в замечаниях, владелец видел бы действующую
+        настройку как «ни на что не влияет» и счёл бы платформу сломанной.
 
         Args:
             isolated_client: HTTP-клиент от имени администратора.
@@ -220,8 +226,9 @@ class TestBehaviorsUpdate:
         )
 
         assert response.status_code == 200, response.text
-        assert "hysteresis" in response.json()["inert_params"], (
-            "инертный параметр сохранён молча — форма покажет его как рабочий"
+        assert "hysteresis" not in response.json()["inert_params"], (
+            "гистерезис читается условием may_heat и работает: попадание в "
+            "inert_params сказало бы владельцу, что настройка пустая"
         )
 
     def test_should_reject_unknown_template(self, isolated_client: TestClient) -> None:

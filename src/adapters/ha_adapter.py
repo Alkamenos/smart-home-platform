@@ -151,6 +151,13 @@ class SimpleHAWebSocketClient:
         self.on_sleep_started: Callable[[], Awaitable[None]] | None = None
         # Запрошено ли уведомление; флаг живёт одно событие.
         self._pending_sleep_started = False
+        # Смена суток для декоративного света: закат включает вечернее
+        # освещение, рассвет его гасит. Тот же путь, что и у модификатора, —
+        # солнце вне подписки, и состояние снимается здесь, в разборе.
+        self.on_sunset: Callable[[], Awaitable[None]] | None = None
+        self.on_sunrise: Callable[[], Awaitable[None]] | None = None
+        self._pending_sunset = False
+        self._pending_sunrise = False
         # Светло ли сейчас: True — солнце над горизонтом, None — неизвестно.
         # ``sun.sun`` в манифест не входит, но его состояние снимается здесь, до
         # отбрасывания события фильтром: без него условие «темно ли» не знает, что
@@ -208,13 +215,18 @@ class SimpleHAWebSocketClient:
             True, если событие стоит обрабатывать.
         """
         entity_ids = self._current_filter()
-        if not entity_ids:
-            return True
         entity_id = payload.get("entity_id")
         if not entity_id:
             return True
         entity = str(entity_id)
         state = self._new_state(payload)
+        # Солнце и модификатор разбираются **до** раннего выхода по фильтру.
+        #
+        # Прежний порядок выходил сразу при пустом фильтре, а фильтр пуст, когда
+        # манифест недоступен или в доме ещё нет ни одного устройства. Тогда
+        # платформа молча переставала следить за солнцем и за «мы спим»: вечернее
+        # освещение не включалось бы по закату, а свет не гас бы по отбою — и
+        # нигде в журнале не было бы ни слова о том, почему.
         # Солнце в фильтр манифеста не входит, но его состояние нужно условию
         # «темно ли»: без него движение включает свет при дневном свете
         # (жалоба владельца 2026-10-09). Событие всё равно приходит — HA шлёт
@@ -227,7 +239,26 @@ class SimpleHAWebSocketClient:
             # прежнее значение не трогает: «нет данных» не должно выглядеть как
             # «светло».
             if state in ("above_horizon", "below_horizon"):
+                was_bright = self._state_field(payload, "old_state")
                 self.daylight = state == "above_horizon"
+                # Смена суток — событие для декоративного света: гирлянда на
+                # террасе и ночное освещение включаются по закату, а ночное
+                # освещение гаснет по рассвету (требования владельца
+                # 2026-10-09). Датчика освещённости в доме нет и он сломан, а
+                # солнце Home Assistant публикует всегда.
+                #
+                # О смене судит `old_state` из самого события, а не наше
+                # remembered-поле `daylight`: если состояние солнца не прочитано
+                # при подключении (сеть, рестарт), поле пустое, и настоящий
+                # закат вечером прошёл бы молча — гирлянда не загорелась бы.
+                # Событие с `old_state` = unknown (первое после подключения)
+                # сменой не считается: что было до нас, платформа не знает, а
+                # выдумывать закат среди ночи — значит включить свет, когда все
+                # спят.
+                if state == "below_horizon" and was_bright == "above_horizon":
+                    self._pending_sunset = True
+                elif state == "above_horizon" and was_bright == "below_horizon":
+                    self._pending_sunrise = True
         elif entity == self.sleep_modifier_entity and state in ("on", "off"):
             was = self.asleep
             self.asleep = state == "on"
@@ -243,7 +274,10 @@ class SimpleHAWebSocketClient:
             if turning_on or turning_off:
                 verb = "включился: запрошено событие sleep_started" if turning_on else "выключился"
                 logger.warning(f"Модификатор «мы спим» {verb} ({entity})")
-        return entity in entity_ids
+        # Пустой фильтр — это «манифест недоступен», а не «событие чужое»:
+        # событие пропускается наружу, как и прежде, иначе при сбое манифеста
+        # платформа перестала бы видеть вообще всё.
+        return entity in entity_ids if entity_ids else True
 
     @staticmethod
     def _new_state(payload: dict[str, Any]) -> Any:
@@ -261,6 +295,22 @@ class SimpleHAWebSocketClient:
             Строка состояния или None, если в событии её нет.
         """
         raw = payload.get("new_state")
+        if isinstance(raw, dict):
+            return raw.get("state")
+        return raw
+
+    @staticmethod
+    def _state_field(payload: dict[str, Any], key: str) -> Any:
+        """Состояние сущности из события по имени поля.
+
+        Args:
+            payload: Событие от HA (`event.data`).
+            key: Имя поля: `new_state` или `old_state`.
+
+        Returns:
+            Строка состояния или None, если её нет.
+        """
+        raw = payload.get(key)
         if isinstance(raw, dict):
             return raw.get("state")
         return raw
@@ -305,6 +355,22 @@ class SimpleHAWebSocketClient:
                     await notify()
                 except Exception as exc:  # noqa: BLE001 — отказ уведомления не роняет поток событий
                     logger.warning(f"HAAdapter: sleep_started не доставлен: {exc}")
+        # Закат и рассвет — по тому же пути и по той же причине: солнце вне
+        # подписки, а вечернему освещению нужно знать о смене суток. Флаг живёт
+        # одно событие, поэтому повторная доставка невозможна.
+        for pending, callback, name in (
+            ("_pending_sunset", self.on_sunset, "sunset"),
+            ("_pending_sunrise", self.on_sunrise, "sunrise"),
+        ):
+            if not getattr(self, pending):
+                continue
+            setattr(self, pending, False)
+            if callback is None:
+                continue
+            try:
+                await callback()
+            except Exception as exc:  # noqa: BLE001 — отказ уведомления не роняет поток событий
+                logger.warning(f"HAAdapter: {name} не доставлен: {exc}")
         if not accepted:
             self._filtered_out += 1
             self._record_filtered_event()
@@ -711,6 +777,11 @@ class HAAdapter:
         # как только сущность стала известна, клиент начинает ловить её
         # переключения и присылает событие sleep_started.
         self.on_sleep_started: Callable[[], Awaitable[None]] | None = None
+        # Уведомления о смене суток для декоративного света. Ставятся
+        # контейнером так же, как on_sleep_started: без них событие заката или
+        # рассвета никто не услышит, и вечернее освещение не включится.
+        self.on_sunset: Callable[[], Awaitable[None]] | None = None
+        self.on_sunrise: Callable[[], Awaitable[None]] | None = None
         # Контексты команд, которые отправила сама платформа. Home Assistant
         # возвращает `context.id` на каждый вызов сервиса, и изменение состояния
         # несёт тот же идентификатор: по нему собственная команда отличается от
@@ -1172,6 +1243,12 @@ class HAAdapter:
                 # рестарта (Known Issue #83). Метод — bound method, поэтому
                 # провайдер всегда видит актуальное self._manifest.
                 self._ws_client.entity_filter_provider = self._subscribed_entities
+                # Уведомления о смене суток ставятся здесь, а не рядом с
+                # чтением модификатора: декоративному свету закат нужен всегда,
+                # а в доме без модификатора «мы спим» его чтение не происходит
+                # вовсе — и вечернее освещение молча не включалось бы.
+                self._ws_client.on_sunset = self.on_sunset
+                self._ws_client.on_sunrise = self.on_sunrise
 
                 log.info(f"HAAdapter: ws_client created = {self._ws_client}")
 

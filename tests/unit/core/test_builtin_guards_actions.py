@@ -343,10 +343,15 @@ class TestManifestRequirementsAreMet:
         # `modifier_is_on` появился с ночником (2026-10-09): его включение
         # обусловлено модификатором «мы спим», а не одним движением — иначе
         # ночник зажигался днём.
+        # `may_heat` и `may_stop_heating` — составные условия климата: движок
+        # допускает на переход одно имя guard'а, а решение «греть» требует трёх
+        # проверок (право владельца, чужой термостат, замер температуры).
         assert guards == {
             "humidity_above_60",
             "humidity_below_60",
             "is_manual_override_enabled",
+            "may_heat",
+            "may_stop_heating",
             "may_turn_on",
             "modifier_is_on",
         }, f"состав нужных guard'ов изменился: {sorted(guards)}"
@@ -358,6 +363,8 @@ class TestManifestRequirementsAreMet:
             "is_manual_override_enabled": "make_is_manual_override_enabled",
             "may_turn_on": "make_may_turn_on",
             "modifier_is_on": "make_modifier_is_on",
+            "may_heat": "make_may_heat",
+            "may_stop_heating": "make_may_stop_heating",
         }
         for name in guards:
             assert hasattr(builtin, factories[name]), f"для `{name}` нет реализации"

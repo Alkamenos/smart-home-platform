@@ -21,11 +21,16 @@ engine_events:
   timeout: таймер взводится по исходящим переходам состояния с триггером timeout.
 
 registered_actions:  # реестр после register_all_actions
+  - ac_cool_on
+  - ac_forced_off
   - climate_cool
   - climate_heat
   - climate_off
   - fan_turn_off
   - fan_turn_on
+  - heater_off
+  - heater_on
+  - heater_timer_on
   - release_device
   - turn_off_light
   - turn_off_night_light
@@ -33,45 +38,118 @@ registered_actions:  # реестр после register_all_actions
   - turn_on_night_light
 
 registered_guards:  # реестр после register_all_guards
+  - at_or_above_setpoint
+  - below_setpoint
+  - climate_is_enabled
   - humidity_above_60
   - humidity_below_60
   - is_day_time
   - is_manual_override_enabled
+  - managed_by_hardware_ok
+  - may_heat
+  - may_stop_heating
   - may_turn_on
   - modifier_is_on
+  - stops_on_sleep
+  - stops_on_sunrise
 
 uncovered_platform_events:
   # События, которые платформа публикует, но ни один шаблон не слушает.
   - brightness_changed
   - closed
   - opened
-  - temperature_changed
 
 templates:
   climate_control:
     reachable: true
-    in_manifest: [kitchen, living_room]
-    actions: [climate_heat, climate_cool, climate_off]
-    guards: []
+    in_manifest: []
+    actions: [heater_timer_on, heater_off]
+    guards: [may_heat, may_stop_heating]
     triggers:
-      temperature_low: НЕТ ПРОИСХОДИТЕЛЯ
-      temperature_high: НЕТ ПРОИСХОДИТЕЛЯ
-      temperature_reached: НЕТ ПРОИСХОДИТЕЛЯ
-    unproduced_triggers: [temperature_low, temperature_high, temperature_reached]
+      temperature_changed: sensor
+      timeout: engine
+    unproduced_triggers: []
     gaps:
-      - Платформа публикует temperature_changed, шаблон слушает temperature_low, temperature_high и temperature_reached — имена не совпадают, событие не приходит никогда.
-      - У переходов нет guard'ов и порогов. Даже после исправления имён любое изменение температуры включало бы обогрев, а возврат к норме выключал бы. Порог должен стать параметром поведения.
+      - Условие «греть» составное (may_heat), потому что движок допускает на переход ровно одно имя guard'а: перечислить проверки по отдельности шаблон не может, и менять это — значит менять структуру FSMDefinition (конституция I — только по явному согласованию).
+      - Целевая температура берётся из automation_rules.climate.setpoint_entity, а не из параметра target_temp шаблона: уставку ведёт Home Assistant, и вторая копия числа разошлась бы с первой (FR-001 спеки 011).
     params:
       target_temp:
         type: float
         range: "5-35"
         effective: true
-        note: "Целевая температура. Уходит в команду climate.set_temperature (action_handlers.py:_climate_intent); старое имя target_temperature принимается для совместимости."
+        note: "Целевая температура в градусах. Уходит в команду climate.set_temperature кондиционера (action_handlers.py:ac_cool_on); для обогрева цель берётся из automation_rules.climate, а не отсюда."
       hysteresis:
         type: float
-        range: "0-5"
-        effective: false
-        note: "Гистерезис. ИНЕРТЕН: читается только валидатором."
+        range: "0-2"
+        effective: true
+        note: "Ширина мёртвой зоны обогревателя, °C. Читает условие may_heat (guards/builtin.py:_hysteresis_value); по умолчанию 0.5."
+      run_minutes:
+        type: float
+        range: "1-180"
+        effective: true
+        note: "На сколько минут включается обогреватель через его таймер. Читает действие heater_timer_on; по умолчанию 15 минут."
+      heater_timer:
+        type: str
+        range: "entity_id"
+        effective: true
+        note: "Сущность таймера обогревателя (number.*_countdown). Читает heater_timer_on; без неё обогреватель включается напрямую, и защиты от перегрева при отказе датчика нет."
+      managed_by_hardware:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "В комнате стоит штатный термостат; платформа обогревателем здесь не управляет (guards/builtin.py:make_may_heat)."
+    params:
+      target_temp:
+        type: float
+        range: "5-35"
+        effective: true
+        note: "Целевая температура в градусах. Уходит в команду climate.set_temperature кондиционера (action_handlers.py:ac_cool_on); для обогрева цель берётся из automation_rules.climate, а не отсюда."
+      hysteresis:
+        type: float
+        range: "0-2"
+        effective: true
+        note: "Ширина мёртвой зоны обогревателя, °C. Читает условие may_heat (guards/builtin.py:_hysteresis_value); по умолчанию 0.5."
+      run_minutes:
+        type: float
+        range: "1-180"
+        effective: true
+        note: "На сколько минут включается обогреватель через его таймер. Читает действие heater_timer_on; по умолчанию 15 минут."
+      heater_timer:
+        type: str
+        range: "entity_id"
+        effective: true
+        note: "Сущность таймера обогревателя (number.*_countdown). Читает heater_timer_on; без неё обогреватель включается напрямую, и защиты от перегрева при отказе датчика нет."
+      managed_by_hardware:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "В комнате стоит штатный термостат; платформа обогревателем здесь не управляет (guards/builtin.py:make_may_heat)."
+  deco_light:
+    reachable: true
+    in_manifest: []
+    actions: [turn_on_light, turn_off_light]
+    guards: [is_manual_override_enabled, stops_on_sleep, stops_on_sunrise]
+    triggers:
+      sunset_started: НЕТ ПРОИСХОДИТЕЛЯ
+      sleep_started: НЕТ ПРОИСХОДИТЕЛЯ
+      sunrise_started: НЕТ ПРОИСХОДИТЕЛЯ
+      day_started: НЕТ ПРОИСХОДИТЕЛЯ
+    unproduced_triggers: [sunset_started, sleep_started, sunrise_started, day_started]
+    gaps:
+      - События заката и рассвета порождает адаптер по состоянию sun.sun, а не роутер: солнце не входит в манифест и в подписку, поэтому в карте SENSOR_EVENT_MAP его нет. Шаблон слушает то, чего роутер не публикует, и это нормально ровно до тех пор, пока события доставляет контейнер.
+      - Включение по датчику освещённости не сделано: датчик сломан и ждёт замены (B31). Солнце уходит, а в доме ещё светло — при замене датчика для вечернего света это разные триггеры, и подменять один другим нельзя.
+    params:
+      off_by:
+        type: str
+        range: "sleep|sunrise"
+        effective: true
+        note: "Когда гаснет вечерний свет. `sleep` — по модификатору «мы спим» (гирлянда на террасе), `sunrise` — по рассвету (ночное освещение). Читают условия stops_on_sleep и stops_on_sunrise; без значения работает только выключение по рассвету."
+    params:
+      off_by:
+        type: str
+        range: "sleep|sunrise"
+        effective: true
+        note: "Когда гаснет вечерний свет. `sleep` — по модификатору «мы спим» (гирлянда на террасе), `sunrise` — по рассвету (ночное освещение). Читают условия stops_on_sleep и stops_on_sunrise; без значения работает только выключение по рассвету."
   generic_cover:
     reachable: false
     in_manifest: []
@@ -117,6 +195,12 @@ templates:
         range: "0-100"
         effective: true
         note: "Порог включения вентиляции; читается guard'ом — единственный параметр этого шаблона с силой."
+    params:
+      humidity_threshold:
+        type: float
+        range: "0-100"
+        effective: true
+        note: "Порог включения вентиляции; читается guard'ом — единственный параметр этого шаблона с силой."
   lighting:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -147,6 +231,17 @@ templates:
         range: "30-3600"
         effective: true
         note: "Задержка выключения. Переопределяет timeout_sec только у переходов с триггером timeout (factory.py:_timeout_from_params); у остальных переходов timeout_sec — верхняя граница ожидания, и подменять её неверно."
+    params:
+      brightness:
+        type: int
+        range: "0-255"
+        effective: true
+        note: "Яркость включения; уходит в команду HA."
+      motion_timeout_sec:
+        type: int
+        range: "30-3600"
+        effective: true
+        note: "Задержка выключения. Переопределяет timeout_sec только у переходов с триггером timeout (factory.py:_timeout_from_params); у остальных переходов timeout_sec — верхняя граница ожидания, и подменять её неверно."
   night_light:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -161,6 +256,17 @@ templates:
     gaps:
       - schedule_end не порождается — расписание не выключает ночной свет.
       - У состояния ON_NIGHT нет guard'а на ночь, поэтому оно достижимо и днём через motion_detected.
+    params:
+      brightness:
+        type: int
+        range: "0-255"
+        effective: true
+        note: "Ночная яркость; уходит в команду HA."
+      schedule:
+        type: str
+        range: "ЧЧ:ММ-ЧЧ:ММ"
+        effective: true
+        note: "Окно ночного режима. Сейчас ИНЕРТЕН: читается только валидатором."
     params:
       brightness:
         type: int
@@ -204,3 +310,4 @@ templates:
     unproduced_triggers: [turn_on, increase_speed, decrease_speed, turn_off, manual_change]
     gaps:
       - Ни одного из пяти действий в реестре нет — шаблон неисполним целиком. Вне объёма варианта (a).
+

@@ -63,6 +63,7 @@ class PlatformContext:
     fsm_bridge: Any = None
     watchdog: Any = None
     day_cycle: Any = None
+    deco_watcher: Any = None
     deployment: Any = None
 
     async def shutdown(self) -> None:
@@ -83,6 +84,11 @@ class PlatformContext:
         if self.day_cycle is not None:
             await self.day_cycle.stop()
             self.day_cycle = None
+        # Сверка вечернего света — такой же фоновой исполнитель, как суточный
+        # цикл: она тоже шлёт команды в HA, поэтому останавливается до адаптера.
+        if self.deco_watcher is not None:
+            await self.deco_watcher.stop()
+            self.deco_watcher = None
         await self.adapter.stop()
         await self.fsm.shutdown()
         await self.dispatcher.stop()
@@ -90,6 +96,7 @@ class PlatformContext:
 
 if TYPE_CHECKING:
     from core.services.day_cycle import DayCycleService
+    from core.services.deco_light_watcher import DecorativeLightWatcher
 
 
 class Container:
@@ -142,6 +149,7 @@ class Container:
         self._middleware: ManualLockoutMiddleware | None = None
         # Суточный цикл света создаётся при сборке по правилам манифеста.
         self._day_cycle: DayCycleService | None = None
+        self._deco_watcher: DecorativeLightWatcher | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
@@ -277,6 +285,10 @@ class Container:
                         f"Модификатор «мы спим»: {sleep_modifier} — состояние "
                         "владелец задаёт сам, платформа только читает"
                     )
+                # Закат и рассвет нужны декоративному свету независимо от
+                # модификатора, поэтому подключаются всегда.
+                self._adapter.on_sunset = self._on_sunset
+                self._adapter.on_sunrise = self._on_sunrise
             else:
                 self._adapter = MockAdapter(engine=self.fsm)
                 self._adapter.set_event_router(self.event_router)
@@ -504,9 +516,11 @@ class Container:
         # и сторож не выключен настройкой (FR-017, FR-019).
         self._start_watchdog()
         self._start_day_cycle()
+        self._start_deco_watcher()
 
         return PlatformContext(
             day_cycle=self._day_cycle,
+            deco_watcher=self._deco_watcher,
             manifest=self.manifest,
             event_bus=self.event_bus,
             fsm=self.fsm,
@@ -613,6 +627,67 @@ class Container:
             f"→ {len(recipients)} автоматов ({', '.join(recipients)})"
         )
         await deliver_to_automata(self.fsm, "sleep_started", "Модификатор «мы спим»")
+
+    async def _on_sunset(self) -> None:
+        """Солнце зашло: вечернему освещению пора включиться.
+
+        Колбэк адаптера. Гирлянда на террасе и ночное освещение — не свет от
+        движения, а вечерний свет: они включаются по закату, а не когда мимо
+        кто-то прошёл (требование владельца 2026-10-09).
+
+        Returns:
+            Ничего.
+        """
+        from core.services.day_cycle import deliver_to_automata
+
+        await deliver_to_automata(self.fsm, "sunset_started", "Закат")
+
+    async def _on_sunrise(self) -> None:
+        """Солнце взошло: ночному освещению пора погаснуть.
+
+        Колбэк адаптера. Ночное освещение горит до рассвета — в отличие от
+        гирлянды, которая гаснет по модификатору «мы спим».
+
+        Returns:
+            Ничего.
+        """
+        from core.services.day_cycle import deliver_to_automata
+
+        await deliver_to_automata(self.fsm, "sunrise_started", "Рассвет")
+
+    def _start_deco_watcher(self) -> None:
+        """Запустить сверку вечернего света, если это возможно.
+
+        Закат бывает один раз в сутки, и событие легко теряется: рестарт
+        платформы вечером, обрыв связи в момент перехода через горизонт,
+        поведение добавлено в манифест после заката. Всё это случилось в доме
+        за один вечер, и ночное освещение не загорелось.
+
+        Returns:
+            Ничего.
+        """
+        adapter = self._adapter
+        if adapter is None:
+            return
+
+        def _daylight() -> Any:
+            return getattr(getattr(adapter, "_ws_client", None), "daylight", None)
+
+        from core.services.deco_light_watcher import DecorativeLightWatcher
+
+        self._deco_watcher = DecorativeLightWatcher(engine=self.fsm, daylight_supplier=_daylight)
+        # Как сторож и суточный цикл: в синхронной сборке (тесты, Container.build()
+        # без цикла событий) запуск пропускается — фоновая задача без работающего
+        # цикла завершилась бы сразу, и вместо тихой пустоты осталось бы висящее
+        # задание.
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Сверка вечернего света не запущена: нет работающего цикла событий")
+            self._deco_watcher = None
+            return
+        self._deco_watcher.start()
+        logger.info(f"Сверка вечернего света: {self._deco_watcher.describe()}")
 
     def house_timezone(self) -> Any:
         """Часовой пояс дома из правил автоматизации.
