@@ -488,6 +488,8 @@ class FSMEngine:
                 # выключаем (Known Issue #89: гирлянда горит после перезагрузки днём)
                 if "deco_light" in definition.entity_id and saved_state == "ON_DECO":
                     try:
+                        should_off = False
+                        is_day = False
                         if hasattr(self, "_guards") and "is_day_time" in self._guards:
                             day_guard = self._guards["is_day_time"]
                             time_zone = "UTC"
@@ -497,7 +499,7 @@ class FSMEngine:
                             if is_day:
                                 should_off = True
                         # Проверка модификатора "мы спим"
-                        elif hasattr(self, "_adapter"):
+                        if not should_off and hasattr(self, "_adapter"):
                             try:
                                 sleep_st = self._adapter.get_state("input_boolean.sleep_mode")
                                 if sleep_st and sleep_st.get("state") == "on":
