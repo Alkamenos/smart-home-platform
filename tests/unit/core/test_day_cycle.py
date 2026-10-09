@@ -205,6 +205,35 @@ class TestLightsGoOutOnSchedule:
         assert ignored == [], f"несуществующее событие нашло адресатов: {ignored}"
 
 
+class TestScheduleExtinguishesLightTheAutomatThinksIsOff:
+    """Погасить нужно и тот свет, о котором автомат не знает.
+
+    Свет может гореть, а автомат считать его выключенным: человек включил
+    выключателем, движения не было, состояние автомата о горении не знает.
+    Проверено в боре 2026-10-09: уличное освещение горело, автомат считал его
+    выключенным, и расписание в назначенный час не сделало ничего.
+    """
+
+    @pytest.mark.asyncio
+    async def test_command_goes_even_from_off_state(self) -> None:
+        """Из состояния «выключено» команда выключения всё равно уходит.
+
+        Returns:
+            Ничего.
+        """
+        service = _service(dt.datetime(2026, 10, 9, 22, 59, tzinfo=HOUSE))
+        dispatcher = service.dispatcher  # type: ignore[attr-defined]
+        states = {value.current_state for value in service.engine.get_all_states().values()}
+        assert states == {"OFF"}, f"проверка должна идти с выключенными автоматами: {states}"
+
+        await service.handle("quiet_hours_started")
+
+        services = [intent.service for intent in dispatcher.intents]
+        assert services == ["turn_off"] * len(service.engine.get_all_states()), (
+            f"расписание не погасило свет, о котором автомат не знает: {services}"
+        )
+
+
 class TestScheduleSurvivesDebounce:
     """Расписание применяется, даже если только что было движение.
 

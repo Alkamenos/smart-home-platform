@@ -208,3 +208,66 @@ async def test_run_fires_and_keeps_going() -> None:
     assert seen == ["evening"]
     assert clock.fired[-1][1] == "evening"
     assert TICK_SEC > 0
+
+
+class TestFreshStartStillFires:
+    """Расписание работает сразу после запуска, без «разогрева»."""
+
+    @pytest.mark.asyncio
+    async def test_event_after_start_is_fired(self) -> None:
+        """Событие, наступающее через минуту после старта, наступает.
+
+        Returns:
+            Ничего.
+        """
+        now = [dt.datetime(2026, 10, 9, 14, 0, tzinfo=HOUSE)]
+        seen: list[str] = []
+        clock = DailyClock(
+            {dt.time(14, 1): "quiet_hours_started"},
+            timezone=HOUSE,
+            now=lambda: now[0],
+            sleep=lambda _s: asyncio.sleep(0),
+        )
+
+        async def on_event(name: str) -> None:
+            seen.append(name)
+
+        task = asyncio.create_task(clock.run(on_event))
+        for _ in range(3):
+            now[0] += dt.timedelta(seconds=30)
+            await asyncio.sleep(0)
+        clock.stop()
+        task.cancel()
+
+        assert seen == ["quiet_hours_started"], (
+            f"свежий запуск не выстрелил ни разу: {seen}. Без точки отсчёта цикл "
+            "не знает, что считать пропущенным, и ждёт следующих суток"
+        )
+
+    @pytest.mark.asyncio
+    async def test_events_before_start_are_not_fired(self) -> None:
+        """Событие, случившееся до запуска, повторно не выстреливает.
+
+        Returns:
+            Ничего.
+        """
+        now = [dt.datetime(2026, 10, 9, 23, 30, tzinfo=HOUSE)]
+        seen: list[str] = []
+        clock = DailyClock(
+            {dt.time(23, 0): "quiet_hours_started"},
+            timezone=HOUSE,
+            now=lambda: now[0],
+            sleep=lambda _s: asyncio.sleep(0),
+        )
+
+        async def on_event(name: str) -> None:
+            seen.append(name)
+
+        task = asyncio.create_task(clock.run(on_event))
+        for _ in range(2):
+            now[0] += dt.timedelta(seconds=30)
+            await asyncio.sleep(0)
+        clock.stop()
+        task.cancel()
+
+        assert seen == [], f"событие прошлого дня выстрелило при старте: {seen}"
