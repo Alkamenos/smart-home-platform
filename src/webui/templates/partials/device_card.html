@@ -1,9 +1,9 @@
 <!--
   ~ T013: Карточка устройства с состоянием.
-  ~ 
+  ~
   ~ Показывает: название, состояние, единица, доступность, время снимка.
   ~ Используется для управляемых устройств (свет, выключатель, обогреватель).
-  ~ 
+  ~
   ~ Copyright 2026 Leonid Artemev
   ~ SPDX-License-Identifier: Apache-2.0
   -->
@@ -20,7 +20,7 @@
         </h5>
         <div class="device-actions">
             {% if can_control and device.behaviors %}
-                <button class="device-toggle" 
+                <button class="device-toggle"
                         onclick="toggleDevice('{{ device.entity_id }}')"
                         title="Переключить состояние">
                     <i class="bi bi-toggle2-on"></i>
@@ -32,7 +32,7 @@
     <div class="device-state">
         {% set state = snapshot.get(device.entity_id) %}
         {% set decision = decisions.get(device.entity_id) %}
-        
+
         {% if state %}
             {% if state.available %}
                 <div class="state-value">
@@ -53,7 +53,7 @@
                     <i class="bi bi-exclamation-triangle"></i> не отвечает
                 </div>
             {% endif %}
-            
+
             <!-- T020: Причина решения (история 2) -->
             {% if decision %}
                 <div class="state-reason">
@@ -65,7 +65,7 @@
                     {% endif %}
                 </div>
             {% endif %}
-            
+
             <div class="state-timestamp">
                 данные на {{ timestamp_display(snapshot_at) }}
                 {% if not home_reachable %}

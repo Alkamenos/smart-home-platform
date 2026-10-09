@@ -310,4 +310,3 @@ templates:
     unproduced_triggers: [turn_on, increase_speed, decrease_speed, turn_off, manual_change]
     gaps:
       - Ни одного из пяти действий в реестре нет — шаблон неисполним целиком. Вне объёма варианта (a).
-
