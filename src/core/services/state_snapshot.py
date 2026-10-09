@@ -173,13 +173,12 @@ class StateSnapshot:
             Список состояний из HA или None при ошибке.
         """
         try:
-            # Адаптер должен иметь метод get_states() через WebSocket клиент
-            ws_client = getattr(self._adapter, "_ws_client", None)
-            if ws_client is None:
-                logger.warning("StateSnapshot: HA WebSocket client not available")
+            # Адаптер имеет метод get_states() для чтения всех состояний из HA
+            if not hasattr(self._adapter, "get_states"):
+                logger.warning("StateSnapshot: adapter has no get_states() method")
                 return None
 
-            states = await ws_client.get_states()
+            states = await self._adapter.get_states()
             return states if isinstance(states, list) else None
         except Exception as e:
             logger.error(f"StateSnapshot: failed to get states from adapter: {e}")

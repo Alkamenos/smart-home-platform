@@ -38,63 +38,38 @@
     </div>
 
     <div class="device-state">
-        {% set state = snapshot.get(device.entity_id) %}
-        {% set decision = decisions.get(device.entity_id) %}
+        {% set decision = decisions.get(device.entity_id) if decisions else None %}
 
-        {% if state %}
-            {% if state.available %}
-                <div class="state-value">
-                    {% if state.unit_of_measurement %}
-                        {{ state.state }} {{ state.unit_of_measurement }}
-                    {% else %}
-                        {% if state.state == 'on' %}
-                            <span class="badge bg-success">включено</span>
-                        {% elif state.state == 'off' %}
-                            <span class="badge bg-secondary">выключено</span>
-                        {% else %}
-                            {{ state.state }}
-                        {% endif %}
-                    {% endif %}
-                </div>
-            {% else %}
-                <div class="state-value text-warning">
-                    <i class="bi bi-exclamation-triangle"></i> не отвечает
-                </div>
-            {% endif %}
+        <!-- Показываем информацию о последнем решении (есть или нет HA состояния) -->
+        {% if decision %}
+            <div class="state-value">
+                {% if decision.outcome == 'on' %}
+                    <span class="badge bg-success">включено</span>
+                {% elif decision.outcome == 'off' %}
+                    <span class="badge bg-secondary">выключено</span>
+                {% elif decision.outcome == 'denied' %}
+                    <span class="badge bg-danger">блокировано</span>
+                {% else %}
+                    <span class="badge bg-secondary">нет команды</span>
+                {% endif %}
+            </div>
 
             <!-- T020: Причина решения (история 2) -->
-            {% if decision %}
-                <div class="state-reason">
-                    {{ decision.reason_text }}
-                    {% if decision.at > 0 %}
-                        <span class="reason-time">
-                            ({{ relative_time(decision.at) }})
-                        </span>
-                    {% endif %}
-                </div>
-            {% endif %}
-
-            <div class="state-timestamp">
-                данные на {{ timestamp_display(snapshot_at) }}
-                {% if not home_reachable %}
-                    <span class="badge bg-warning">нет связи</span>
+            <div class="state-reason">
+                {{ decision.reason_text }}
+                {% if decision.at > 0 %}
+                    <span class="reason-time">
+                        ({{ relative_time(decision.at) }})
+                    </span>
                 {% endif %}
             </div>
         {% else %}
             <div class="state-value text-muted">
-                состояние неизвестно
+                <i class="bi bi-info-circle"></i> нет информации
             </div>
-            <!-- Показываем информацию о FSM даже без HA состояния -->
-            {% if decision %}
-                <div class="state-reason">
-                    Последняя команда: {{ decision.reason_text }}
-                    {% if decision.at > 0 %}
-                        <span class="reason-time">
-                            ({{ relative_time(decision.at) }})
-                        </span>
-                    {% endif %}
-                </div>
-            {% endif %}
+            <div class="state-reason">
+                Автомат ещё не принимал решений
+            </div>
         {% endif %}
     </div>
 

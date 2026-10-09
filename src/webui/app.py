@@ -517,29 +517,10 @@ def create_app(
         snapshot_at = 0.0
         home_reachable = True
 
-        if engine is not None and adapter is not None:
+        if engine is not None:
             try:
-                # T008: Прочитать снимок состояний
-                from core.services.state_snapshot import StateSnapshot
-
-                snapshot_service = StateSnapshot(adapter, cache_ttl_sec=5.0)
-                snapshot = await snapshot_service.read()
-
-                snapshot_at = snapshot.at
-                home_reachable = snapshot.reachable
-
-                # Конвертируем в словарь для шаблона
-                snapshot_dict = {
-                    entity_id: {
-                        "entity_id": state.entity_id,
-                        "state": state.state,
-                        "unit_of_measurement": state.unit_of_measurement,
-                        "available": state.available,
-                    }
-                    for entity_id, state in snapshot.states.items()
-                }
-
                 # T005: Решения по всем автоматам в манифесте (по комнатам)
+                # Snapshot будет загружаться асинхронно на странице через API
                 for room in current_manifest.rooms:
                     for device in room.devices:
                         # fsm_id == идентификатор в системе (обычно entity_id)
@@ -555,11 +536,17 @@ def create_app(
                                     "trigger": decision.trigger,
                                 }
             except Exception as e:
-                logger.warning(f"Failed to read snapshot or decisions: {e}")
+                logger.warning(f"Failed to read decisions: {e}")
 
         # T010: can_control по роли пользователя
         user_role = getattr(request.state, "user_role", "viewer")
         can_control = user_role in ("controller", "admin")
+
+        logger.info(
+            f"index: snapshot={len(snapshot_dict)} items, "
+            f"decisions={len(decisions_dict)} items, "
+            f"home_reachable={home_reachable}"
+        )
 
         return templates.TemplateResponse(
             request,
