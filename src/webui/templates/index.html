@@ -539,6 +539,111 @@
                 font-size: 1.2rem;
             }
         }
+
+        /* T015: Состояние и поведения на карточке (история 1) */
+        .device-state {
+            padding-top: 0.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .state-value {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .state-timestamp {
+            font-size: 0.75rem;
+            color: #999;
+            margin-top: 0.25rem;
+        }
+
+        .device-behaviors {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+        }
+
+        .behavior-badge {
+            background: rgba(0, 212, 255, 0.15);
+            color: var(--accent);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .device-id {
+            font-size: 0.8rem;
+            color: #999;
+            font-family: monospace;
+            display: block;
+            margin-top: 0.2rem;
+        }
+
+        .device-name {
+            margin-bottom: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .empty-state {
+            padding: 2rem 1.25rem;
+            text-align: center;
+            color: #999;
+        }
+
+        /* Сенсоры */
+        .sensor-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .sensor-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sensor-name {
+            margin-bottom: 0;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #ccc;
+        }
+
+        .sensor-icon {
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        .sensor-value {
+            font-size: 0.95rem;
+            color: #fff;
+            display: flex;
+            align-items: baseline;
+            gap: 0.3rem;
+        }
+
+        .value-number {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .value-unit {
+            font-size: 0.8rem;
+            color: #999;
+        }
     </style>
 </head>
 <body data-user-id="{{ user_id }}"
@@ -618,6 +723,39 @@
                         <i class="bi bi-plus-circle"></i> Add Room
                     </button>
                 </div>
+
+                <!-- T015: Макросы для отображения (история 1) -->
+                {% macro timestamp_display(ts) -%}
+                    {% if ts > 0 %}
+                        {%- set now = now() if now is callable else 0 -%}
+                        {%- if (now - ts) < 60 %}только что{%- elif (now - ts) < 3600 %}{{ ((now - ts) / 60) | int }} мин назад{%- else %}{{ ((now - ts) / 3600) | int }} ч назад{%- endif -%}
+                    {% else %}
+                        неизвестно
+                    {% endif %}
+                {%- endmacro %}
+
+                {% macro behavior_title(template) -%}
+                    {% if template == 'lighting' %}свет от движения
+                    {% elif template == 'deco_light' %}вечерний свет
+                    {% elif template == 'climate' %}климат
+                    {% else %}{{ template }}{% endif %}
+                {%- endmacro %}
+
+                {% macro sensor_icon(role) -%}
+                    {% if role == 'temperature' %}bi bi-thermometer
+                    {% elif role == 'humidity' %}bi bi-droplet
+                    {% elif role == 'motion' %}bi bi-activity
+                    {% elif role == 'contact' %}bi bi-door-closed
+                    {% else %}bi bi-info-circle{% endif %}
+                {%- endmacro %}
+
+                {% macro sensor_title(role) -%}
+                    {% if role == 'temperature' %}температура
+                    {% elif role == 'humidity' %}влажность
+                    {% elif role == 'motion' %}движение
+                    {% elif role == 'contact' %}контакт
+                    {% else %}датчик{% endif %}
+                {%- endmacro %}
 
                 <div class="room-grid" id="rooms-container">
                     {% for room in manifest.rooms %}
