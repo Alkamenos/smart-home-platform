@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test test-verbose test-fast test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm
+.PHONY: help test test-verbose test-fast test-block check-fast test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm
 
 # Default target
 help:
@@ -11,9 +11,11 @@ help:
 	@echo "  make install-dev   - Install development dependencies"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test          - Run all tests with coverage (full suite)"
+	@echo "  make test          - Run all tests with coverage (full suite, before commit)"
 	@echo "  make test-verbose  - Run tests with verbose output + HTML report"
-	@echo "  make test-fast     - Run tests without coverage (faster)"
+	@echo "  make test-fast     - Fast inner loop: no coverage, no waiting tests (~37s)"
+	@echo "  make test-block BLOCK=lighting - Run one block by marker (core|adapter|webui|lighting|manifest)"
+	@echo "  make check-fast    - Lint + types + fast tests in one command"
 	@echo "  make test-browser  - Run browser tests (separate: see note below)"
 	@echo "  make test-integration - Run integration tests with real HA in Docker"
 	@echo "  make watch         - Run tests in watch mode (auto-rerun on changes)"
@@ -70,8 +72,23 @@ test:
 test-verbose:
 	pytest -v --cov=. --cov-report=term-missing --cov-report=html
 
+# Быстрый внутренний цикл (B30): без покрытия и без проверок с реальными
+# ожиданиями — они занимают около 45 с и запускаются перед коммитом вместе с
+# полным прогоном. Измерено 2026-10-09: полный набор 2 мин 12 с, этот — 37 с.
 test-fast:
-	pytest --no-cov
+	pytest --no-cov -m "not slow" tests/unit tests/integration
+
+# Проверить один блок: make test-block BLOCK=lighting (core, adapter, webui,
+# lighting, manifest). Метки расставляются по пути файла и имени проверки.
+test-block:
+	@if [ -z "$(BLOCK)" ]; then \
+		echo "Usage: make test-block BLOCK=lighting"; \
+		exit 1; \
+	fi
+	pytest --no-cov -m "$(BLOCK)"
+
+# Внутренний цикл целиком: статика и быстрые тесты одной командой.
+check-fast: lint type-check test-fast
 
 # Браузерные тесты — объявленное исключение, поэтому отдельной целью,
 # а не молчаливым исчезновением из результата.

@@ -140,6 +140,7 @@ class TestDeviceCache:
         assert device_cache.get("key_10") is not None
         assert device_cache.get_size() == 10
 
+    @pytest.mark.slow
     def test_cache_ttl_expiration(self, device_cache, sample_device):
         """Тест: истечение TTL."""
         key = f"device:{sample_device.id}"
@@ -154,6 +155,7 @@ class TestDeviceCache:
         assert device_cache.cache_misses == 1
         assert device_cache.invalidations >= 1
 
+    @pytest.mark.slow
     def test_cache_extend_ttl(self, device_cache, sample_device):
         """Тест: продление TTL элемента."""
         key = f"device:{sample_device.id}"
@@ -190,6 +192,7 @@ class TestDeviceCache:
             # Но "source:" должны остаться
             assert device_cache.get(f"source:{i}") is not None
 
+    @pytest.mark.slow
     def test_cache_cleanup_expired(self, device_cache):
         """Тест: очистка истекших записей."""
         # Добавляем элементы

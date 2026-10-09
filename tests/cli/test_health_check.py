@@ -64,6 +64,7 @@ def test_unreachable_port_returns_one(monkeypatch: pytest.MonkeyPatch) -> None:
     assert run_health_check(timeout=1.0) == 1
 
 
+@pytest.mark.slow
 def test_timeout_returns_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """Сервер не отвечает дольше таймаута → exit 1."""
     server, port = _serve(status_code=200, delay=2.0)

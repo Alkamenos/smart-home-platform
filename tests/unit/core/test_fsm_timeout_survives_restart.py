@@ -225,6 +225,7 @@ class TestTimeoutSurvivesRestart:
             "контейнера (Known Issue #78)"
         )
 
+    @pytest.mark.slow
     async def test_restored_timer_uses_remaining_time(self) -> None:
         """Восстановленный таймер считает остаток, а не полный срок.
 

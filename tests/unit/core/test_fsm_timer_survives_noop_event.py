@@ -104,6 +104,7 @@ def _lighting_definition() -> FSMDefinition:
 class TestNoopEventKeepsTimer:
     """Событие без перехода не отменяет отложенный переход."""
 
+    @pytest.mark.slow
     async def test_repeated_noop_events_do_not_starve_timer(self) -> None:
         """Пока идут события без перехода, отложенный переход наступает.
 

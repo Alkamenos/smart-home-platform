@@ -144,6 +144,7 @@ async def test_unregister_cancels_timers():
     assert entity_id not in engine._timers
 
 
+@pytest.mark.slow
 async def test_hot_reload_no_memory_leak():
     """Test that 10+ hot reloads don't cause memory leaks."""
     # Start tracking memory

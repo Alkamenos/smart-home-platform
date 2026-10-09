@@ -100,6 +100,7 @@ class TestCloseTimeout:
     """Ограничение закрытия."""
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_should_return_when_websocket_never_closes(self) -> None:
         """На молчащем сокете `close()` возвращается за разумное время.
 

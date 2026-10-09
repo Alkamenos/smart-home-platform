@@ -64,6 +64,8 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.helpers.ha_stub import HAUnavailable, stub_ha
 
+from core.persistence.event_store import EventStore
+
 
 #: Заголовки администратора. Админ проходит проверку прав всегда
 #: (`devices.py:65-66`), поэтому используется как роль по умолчанию.
@@ -144,6 +146,26 @@ def isolated_workdir(project_root: Path, monkeypatch: pytest.MonkeyPatch) -> Ite
     finally:
         os.chdir(previous_cwd)
         shutil.rmtree(work_dir, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def reset_module_level_stores() -> Iterator[None]:
+    """Обнулять хранилища, созданные на уровне модуля, после каждого теста.
+
+    ``webui.routes`` держит ``event_store``, созданный **при импорте**: путь к базе
+    вычисляется один раз. Тесты изолируются через ``DATA_PATH``, поэтому база
+    указывает на временный каталог, который следующая проверка удаляет, — и
+    падение вылезает не там, где причина: ``/api/overrides`` отвечал «unable to open
+    database file» только в общем прогоне, а по одиночке проходил.
+
+    Returns:
+        Ничего.
+    """
+    yield
+    from webui import routes as webui_routes
+
+    if getattr(webui_routes, "event_store", None) is not None:
+        webui_routes.event_store = EventStore()
 
 
 @pytest.fixture

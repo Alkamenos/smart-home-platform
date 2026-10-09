@@ -140,3 +140,49 @@ def browser_context_args():
 # Итог: ~15 секунд напрасного ожидания и мёртвый процесс на каждый прогон.
 # Рабочий вариант для E2E — собственная фикстура `start_webui_server` в
 # `tests/test_webui_playwright.py` на фабрике `tests.e2e_app:create_e2e_app`.
+
+#: Путь файла → метка блока. Расставляется автоматически, чтобы блоковые метки
+#: не приходилось проставлять в сотнях проверок вручную и чтобы они не
+#: разъезжались с реальной структурой тестов.
+_BLOCK_MARKERS: tuple[tuple[str, str], ...] = (
+    ("/tests/unit/core/", "core"),
+    ("/tests/unit/webui/", "webui"),
+    ("/tests/contract/", "webui"),
+    ("/tests/integration/", "core"),
+)
+
+#: Слово в имени проверки или модуля → метка блока.
+_KEYWORD_MARKERS: tuple[tuple[str, str], ...] = (
+    ("adapter", "adapter"),
+    ("ha_", "adapter"),
+    ("websocket", "adapter"),
+    ("lighting", "lighting"),
+    ("night_protection", "lighting"),
+    ("humidity", "lighting"),
+    ("ventilation", "lighting"),
+    ("schedule", "lighting"),
+    ("manifest", "manifest"),
+    ("discovery", "manifest"),
+    ("device_lifecycle", "manifest"),
+    ("webui", "webui"),
+)
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Разметить проверки метками блоков по пути файла и имени.
+
+    Args:
+        config: Конфигурация pytest (не используется).
+        items: Собранные проверки.
+    """
+    del config  # метки выводятся из пути и имён, а не из настроек
+    for item in items:
+        path = str(getattr(item, "fspath", "")).replace("\\", "/")
+        for fragment, marker in _BLOCK_MARKERS:
+            if fragment in path:
+                item.add_marker(marker)
+        module = getattr(getattr(item, "module", None), "__name__", "")
+        haystack = f"{item.name} {module}".lower()
+        for keyword, marker in _KEYWORD_MARKERS:
+            if keyword in haystack:
+                item.add_marker(marker)

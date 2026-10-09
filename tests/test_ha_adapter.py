@@ -674,6 +674,7 @@ class TestSimpleHAWebSocketClient:
             assert client.connected is False
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_ws_client_subscribe_sends_message(self):
         """subscribe() should send subscription message to WS."""
         client = SimpleHAWebSocketClient(

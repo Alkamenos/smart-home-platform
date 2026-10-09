@@ -535,6 +535,7 @@ class TestSceneManagerIntegration:
         assert result is True
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_goodnight_sequence_scenario(self) -> None:
         """Test goodnight sequence with delays."""
         goodnight_scene = SceneConfig(
