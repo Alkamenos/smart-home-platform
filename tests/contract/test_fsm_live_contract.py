@@ -121,6 +121,12 @@ class TestFSMStateEndpoint:
                         "device_entity_id": "switch.no_automation",
                         "name": "Без автоматики",
                         "device_type": "switch",
+                        # Комната указывается явно: устройство без комнаты и без
+                        # области в Home Assistant больше не размещается молча в
+                        # первой комнате манифеста — из-за этого в описании дома
+                        # однажды оказалось двадцать чужих светильников
+                        # (Known Issue #88).
+                        "target_room": "kitchen",
                     }
                 ],
             },

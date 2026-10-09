@@ -999,7 +999,10 @@ async def apply_devices(
             try:
                 device = _build_device_from_selection(selection, body.source_id)
                 behaviors = _build_behaviors(selection)
-                room_id = selection.target_room or _default_room_id(lifecycle.manifest)
+                # Комната: выбранная владельцем либо область устройства в HA.
+                # Молчаливый выбор «первой комнаты» и есть причина, по которой
+                # двадцать чужих светильников оказались в кухне (Known Issue #88).
+                room_id = selection.target_room or _default_room_id(lifecycle.manifest, device)
 
                 device, saved = await lifecycle.add_device(
                     device, room_id=room_id, behaviors=behaviors, user_id=user_id
@@ -1062,22 +1065,50 @@ def _find_room(manifest: Any, room_id: str) -> Any:
     return next((room for room in manifest.rooms if room.id == room_id), None)
 
 
-def _default_room_id(manifest: Any) -> str:
-    """Возвращает комнату по умолчанию.
+def _default_room_id(manifest: Any, device: Any = None) -> str:
+    """Комната устройства: из его области в Home Assistant — и больше никак.
+
+    Раньше здесь возвращалась **первая комната манифеста**, и устройства без
+    явно выбранной комнаты молча складывались в неё: в боевом манифесте первой
+    была ``kitchen``, и туда попали двадцать светильников, которых в описании
+    дома быть не должно (Known Issue #88). Молчаливое размещение устройства в
+    чужой комнате означает, что им управляет датчик не той комнаты, поэтому
+    источник комнаты теперь один — область устройства в Home Assistant, а если
+    её нет среди комнат манифеста, добавление отказывается.
 
     Args:
         manifest: Модель манифеста.
+        device: Устройство, для которого ищется комната.
 
     Returns:
-        Идентификатор первой комнаты.
+        Идентификатор комнаты устройства.
 
     Raises:
-        ValueError: Если в манифесте нет ни одной комнаты.
+        ValueError: Если в манифесте нет комнат или область устройства среди них
+            не значится.
     """
     if not manifest.rooms:
         msg = "В манифесте нет комнат: добавьте комнату перед добавлением устройств"
         raise ValueError(msg)
-    return manifest.rooms[0].id
+
+    area_id = getattr(device, "ha_area_id", None)
+    if area_id:
+        known = {room.id for room in manifest.rooms}
+        if str(area_id) in known:
+            return str(area_id)
+        msg = (
+            f"Устройство из области {area_id!r}: такой комнаты нет в манифесте. "
+            "Укажите комнату вручную — молчаливый выбор другой означил бы, что "
+            "устройством управляет датчик не той комнаты"
+        )
+        raise ValueError(msg)
+
+    msg = (
+        "Устройство без комнаты: выберите комнату или добавьте область "
+        "в Home Assistant. Размещать наугад нельзя — устройство перестаёт "
+        "управляться датчиками своей комнаты"
+    )
+    raise ValueError(msg)
 
 
 def _build_device_from_selection(selection: DeviceSelection, source_id: UUID) -> Any:
