@@ -13,7 +13,8 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass
-from typing import Any, cast
+from datetime import time as dt_time
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
@@ -61,6 +62,7 @@ class PlatformContext:
     event_router: EventRouter
     fsm_bridge: Any = None
     watchdog: Any = None
+    day_cycle: Any = None
     deployment: Any = None
 
     async def shutdown(self) -> None:
@@ -75,9 +77,19 @@ class PlatformContext:
         logger.warning("Container.shutdown() called")
         if self.watchdog is not None:
             await self.watchdog.stop()
+        # Суточный цикл останавливается до адаптера: он шлёт команды в HA, и
+        # остановка соединения раньше расписания означала бы неотправленные
+        # события в журнале отказа при штатном выключении.
+        if self.day_cycle is not None:
+            await self.day_cycle.stop()
+            self.day_cycle = None
         await self.adapter.stop()
         await self.fsm.shutdown()
         await self.dispatcher.stop()
+
+
+if TYPE_CHECKING:
+    from core.services.day_cycle import DayCycleService
 
 
 class Container:
@@ -128,6 +140,8 @@ class Container:
         self._adapter: HAAdapter | MockAdapter | None = None
         self._dispatcher: CommandDispatcher | None = None
         self._middleware: ManualLockoutMiddleware | None = None
+        # Суточный цикл света создаётся при сборке по правилам манифеста.
+        self._day_cycle: DayCycleService | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
@@ -472,8 +486,10 @@ class Container:
         # Сторож: цикл проверок запускается, только если работает цикл событий
         # и сторож не выключен настройкой (FR-017, FR-019).
         self._start_watchdog()
+        self._start_day_cycle()
 
         return PlatformContext(
+            day_cycle=self._day_cycle,
             manifest=self.manifest,
             event_bus=self.event_bus,
             fsm=self.fsm,
@@ -509,6 +525,68 @@ class Container:
             logger.debug("Watchdog not started: no running event loop")
             return
         watchdog.start()
+
+    def _start_day_cycle(self) -> None:
+        """Запустить суточный цикл: гасить свет по часам, поднимать дом утром.
+
+        Расписание берётся из правил освещения манифеста (`night_off_at`,
+        `morning_at`) и живёт в часах дома: контейнер работает в UTC, и «23:00»
+        здесь — это 23:00 дома, иначе свет гаснет в час ночи по-контейнерски.
+
+        Как и сторож, не запускается без работающего цикла событий: фоновая
+        задача без него завершилась бы сразу и оставила бы висящее задание.
+        """
+        from core.scheduling.daily import DailyClock
+        from core.services.day_cycle import DayCycleService
+
+        rules = self.manifest.automation_rules.lighting
+        events: dict[Any, str] = {}
+        for value, name in (
+            (getattr(rules, "night_off_at", None), "quiet_hours_started"),
+            (getattr(rules, "morning_at", None), "day_started"),
+        ):
+            if not value:
+                continue
+            try:
+                hour, minute = (int(part) for part in str(value).split(":", 1))
+            except ValueError:
+                logger.warning(f"Расписание света «{value}» не разобрано: событие пропущено")
+                continue
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                logger.warning(f"Расписание света «{value}» вне диапазона: событие пропущено")
+                continue
+            events[dt_time(hour, minute)] = name
+
+        if not events:
+            logger.info("Суточный цикл не задан: выключение по часам не работает")
+            return
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Суточный цикл не запущен: нет работающего цикла событий")
+            return
+
+        clock = DailyClock(events, timezone=self.house_timezone())
+        self._day_cycle = DayCycleService(clock=clock, engine=self.fsm)
+        self._day_cycle.start()
+        logger.info(f"Суточный цикл света: {self._day_cycle.describe()}")
+
+    def house_timezone(self) -> Any:
+        """Часовой пояс дома из правил автоматизации.
+
+        Returns:
+            ``ZoneInfo`` дома либо пояс процесса, если не задан.
+        """
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        name = getattr(self.manifest.automation_rules, "time_zone", None)
+        if name:
+            try:
+                return ZoneInfo(name)
+            except ZoneInfoNotFoundError:
+                logger.warning(f"time_zone={name!r} неизвестен: беру часовой пояс процесса")
+        return ZoneInfo("UTC")
 
     def _publish_fsm_inventory(self) -> None:
         """Опубликовать число зарегистрированных автоматов в показателях.

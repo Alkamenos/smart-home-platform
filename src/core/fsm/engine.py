@@ -512,6 +512,27 @@ class FSMEngine:
         """Get all current states of all entities."""
         return dict(self._states)
 
+    def entities_with_trigger(self, trigger: str) -> list[str]:
+        """Автоматы, в описаниях которых есть переход по этому событию.
+
+        Нужно суточному циклу: он знает время («в 23:00 пора гасить»), но не
+        знает, какие устройства вообще умеют гаситься по часам. Событие,
+        которого нет ни в одном описании, отправлялось бы всем автоматам подряд
+        и порождало отказ «нет такого перехода» у каждого, кто гасить не
+        умеет — то есть шум в журнале и счётчике отказов вместо тишины.
+
+        Args:
+            trigger: Имя события.
+
+        Returns:
+            Идентификаторы автоматов с таким переходом.
+        """
+        return [
+            entity_id
+            for entity_id, definition in self._definitions.items()
+            if any(transition.trigger == trigger for transition in definition.transitions)
+        ]
+
     def device_id_of(self, entity_id: str) -> str | None:
         """Получить устройство автомата по его описанию.
 
@@ -850,10 +871,16 @@ class FSMEngine:
         entity_id: str,
         event: str,
         external_ctx: dict[str, Any] | None = None,
+        respect_debounce: bool = True,
         trace_id: str | None = None,
     ) -> bool:
         """
         Trigger an event for an entity's FSM.
+
+        ``respect_debounce`` снимается событиями, которые приходят не от датчика:
+        суточным расписанием и ручными командами. Дебаунс существует ради
+        дребезга датчиков, а «погасить весь свет в 23:00» он превращал в
+        «свет не погас»: событие, пришедшее сразу после движения, отбрасывалось.
 
         Args:
             entity_id: The entity identifier.
@@ -901,8 +928,10 @@ class FSMEngine:
         current_state = self._states[entity_id]
         now = asyncio.get_event_loop().time()
 
-        # Check debounce
-        if entity_id in self._last_transition_time:
+        # Check debounce. События вне датчиков (расписание суток, ручные команды)
+        # отсечкой не отбрасываются: иначе расписание, наступившее сразу после
+        # движения, молча пропадало бы, и свет горел бы до утра.
+        if respect_debounce and entity_id in self._last_transition_time:
             elapsed = now - self._last_transition_time[entity_id]
             if elapsed < definition.debounce_sec:
                 log.debug(
