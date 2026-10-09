@@ -111,11 +111,11 @@ def _manifest() -> Manifest:
     )
 
 
-def _build() -> tuple[FSMEngine, EventRouter, _RecordingDispatcher]:
+def _build() -> tuple[FSMEngine, EventRouter, _RecordingDispatcher, dict[str, Any]]:
     """Собрать боевой конвейер освещения.
 
     Returns:
-        Движок, роутер и помнящий команды диспетчер.
+        Движок, роутер, помнящий команды диспетчер и контекст «темно».
     """
     registry = Registry()
     register_all_actions(registry)
@@ -130,9 +130,13 @@ def _build() -> tuple[FSMEngine, EventRouter, _RecordingDispatcher]:
     engine = FSMEngine()
     dispatcher = _RecordingDispatcher()
     engine.set_command_dispatcher(dispatcher)  # type: ignore[arg-type]
+    # «Темно» в бою кладёт в контекст адаптер (состояние солнца из Home Assistant).
+    # Здесь — так же явно: без него условие отвечает по времени суток, днём
+    # включения не будет, и проверка упала бы мимо своего предмета — удержания.
+    day_context: dict[str, Any] = {"daylight": False}
     manifest = _manifest()
     FSMFactory(engine=engine, registry=registry, event_bus=None).create_and_register(manifest)
-    return engine, EventRouter(manifest, engine), dispatcher
+    return engine, EventRouter(manifest, engine), dispatcher, day_context
 
 
 def _state(engine: FSMEngine) -> str | None:
@@ -166,11 +170,11 @@ class TestHoldAfterMotionClears:
     @pytest.mark.asyncio
     async def test_light_stays_on_when_motion_clears(self) -> None:
         """После снятия движения свет горит и команда выключения не уходит."""
-        engine, router, dispatcher = _build()
+        engine, router, dispatcher, context = _build()
 
-        await router.route_state_change(MOTION, "on", "off")
+        await router.route_state_change(MOTION, "on", "off", context=context)
         await asyncio.sleep(GAP_SEC)
-        await router.route_state_change(MOTION, "off", "on")
+        await router.route_state_change(MOTION, "off", "on", context=context)
 
         assert _state(engine) != "OFF", (
             "снятие движения выключило свет сразу: человек ещё в комнате, а "
@@ -183,13 +187,13 @@ class TestHoldAfterMotionClears:
     @pytest.mark.asyncio
     async def test_new_motion_extends_the_hold(self) -> None:
         """Новое движение возвращает автомат в режим движения и продлевает горение."""
-        engine, router, dispatcher = _build()
+        engine, router, dispatcher, context = _build()
 
-        await router.route_state_change(MOTION, "on", "off")
+        await router.route_state_change(MOTION, "on", "off", context=context)
         await asyncio.sleep(GAP_SEC)
-        await router.route_state_change(MOTION, "off", "on")
+        await router.route_state_change(MOTION, "off", "on", context=context)
         await asyncio.sleep(GAP_SEC)
-        await router.route_state_change(MOTION, "on", "off")
+        await router.route_state_change(MOTION, "on", "off", context=context)
 
         assert _state(engine) == "ON_MOTION", (
             f"новое движение должно вернуть автомат в режим движения, а он в "
@@ -205,11 +209,11 @@ class TestHoldAfterMotionClears:
     @pytest.mark.asyncio
     async def test_hold_expires_and_turns_the_light_off(self) -> None:
         """По истечении удержания свет выключается сам."""
-        engine, router, dispatcher = _build()
+        engine, router, dispatcher, context = _build()
 
-        await router.route_state_change(MOTION, "on", "off")
+        await router.route_state_change(MOTION, "on", "off", context=context)
         await asyncio.sleep(GAP_SEC)
-        await router.route_state_change(MOTION, "off", "on")
+        await router.route_state_change(MOTION, "off", "on", context=context)
         await asyncio.sleep(GAP_SEC)
         # Таймер удержания в бою прожит бы десять минут; здесь событие
         # `timeout` приходит само — так же, как его порождает движок по таймеру.
@@ -229,7 +233,7 @@ class TestHoldAfterMotionClears:
         Args:
             Ничего.
         """
-        engine, _, _ = _build()
+        engine, _, _, _ = _build()
         definition = engine._definitions.get(FSM)  # noqa: SLF001
         assert definition is not None, "автомат не создан"
 

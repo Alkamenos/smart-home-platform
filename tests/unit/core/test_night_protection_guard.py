@@ -58,7 +58,11 @@ def _at(moment: datetime) -> Any:
 
 
 def _ctx(room: str, **params: Any) -> dict[str, Any]:
-    """Контекст перехода: комната и параметры поведения.
+    """Контекст перехода: комната, темнота и параметры поведения.
+
+    По умолчанию ``daylight=False`` — проверки этого файла про ночное окно, а не
+    про солнце: без состояния солнца условие в дневное время отвечает «нельзя»
+    и проверки окон не проходят. Про солнце отдельно — ``test_motion_needs_darkness``.
 
     Args:
         room: Идентификатор комнаты.
@@ -67,6 +71,7 @@ def _ctx(room: str, **params: Any) -> dict[str, Any]:
     Returns:
         Контекст для условия.
     """
+    params.setdefault("daylight", False)
     return {"room": room, **params}
 
 

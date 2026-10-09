@@ -131,17 +131,12 @@ def start_webui_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str
     project_root = Path(__file__).resolve().parent.parent
     work_dir = tmp_path_factory.mktemp("webui_e2e")
     manifest_copy = work_dir / "manifest.yaml"
-    # Копируется БОЕВОЙ манифест, а не instances/leonids_house: контейнер читает
-    # /config/behavioral_platform/manifest.yaml (CONFIG_PATH, src/main.py:148), то
-    # есть deploy/docker/config/manifest.yaml. Файл в instances/ — копия из слоя
-    # образа, её никто не читает: 4 комнаты против 13. Проверки на ней смотрели бы
-    # на конфигурацию, которой не разворачивают.
-    deployed = project_root / "deploy" / "docker" / "config" / "manifest.yaml"
-    source_manifest = (
-        deployed
-        if deployed.exists()
-        else (project_root / "instances" / "leonids_house" / "manifest.yaml")
-    )
+    # Копируется ДЕМО-экземпляр из репозитория, а не боевой манифест: проверки
+    # интерфейса не должны зависеть от состава дома. Раньше здесь копировался
+    # боевой файл, и стоило убрать из него комнату (чистка 2026-10-09), как упали
+    # четыре проверки редактора поведения: они добавляют устройство в kitchen,
+    # которой в доме нет и быть не должно.
+    source_manifest = project_root / "instances" / "leonids_house" / "manifest.yaml"
     shutil.copy(source_manifest, manifest_copy)
 
     env = {

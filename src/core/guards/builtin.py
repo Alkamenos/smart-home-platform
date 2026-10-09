@@ -75,6 +75,10 @@ HOUSE_TZ: Any = _resolve_house_tz()
 #: Окно тишины по умолчанию: с этого часа движение не включает свет.
 DEFAULT_QUIET_FROM = "23:00"
 
+#: Границы дня для запасного решения, когда состояние солнца ещё неизвестно.
+DEFAULT_DAY_START_MINUTES = 7 * 60
+DEFAULT_DAY_END_MINUTES = 23 * 60
+
 #: До этого часа (включительно) движение свет не включает.
 DEFAULT_QUIET_TO = "06:30"
 
@@ -112,21 +116,69 @@ def _parse_hhmm(value: str) -> tuple[int, int]:
     return hour, minute
 
 
+def _context_zone(context: dict[str, Any]) -> Any:
+    """Часовой пояс для расчёта: из контекста, иначе часовой пояс дома.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        ``tzinfo``.
+    """
+    value = context.get("time_zone")
+    if isinstance(value, str) and value:
+        try:
+            return ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            logger.warning(f"time_zone={value!r} — неизвестный пояс, беру часовой пояс дома")
+    return HOUSE_TZ
+
+
+def _dark_enough(context: dict[str, Any], current: datetime) -> bool:
+    """Темно ли так, что движение должно включать свет.
+
+    Датчиков освещённости в доме нет, поэтому «темно» определяется по солнцу,
+    которое Home Assistant публикует всегда (``sun.sun``), а состояние приходит в
+    контексте события (``daylight``). Пока данных нет (платформа только поднялась
+    и ещё не видела ни одного события от солнца), решение падает на время суток в
+    часах дома: ночью — можно, днём — нельзя. Без этого движение днём включало бы
+    свет там, где и так светло (жалоба владельца 2026-10-09).
+
+    Args:
+        context: Контекст перехода.
+        current: Время, для которого считается решение.
+
+    Returns:
+        True, если темно.
+    """
+    daylight = context.get("daylight")
+    if isinstance(daylight, bool):
+        return not daylight
+    minutes = current.hour * 60 + current.minute
+    return not (DEFAULT_DAY_START_MINUTES <= minutes < DEFAULT_DAY_END_MINUTES)
+
+
 def make_may_turn_on(
     *,
     now: Callable[[Any], datetime] = _now_in,
 ) -> Callable[[Any, dict[str, Any]], bool]:
     """Построить guard «сейчас можно включать свет».
 
-    Отвечает на вопрос, который шаблон света задаёт каждым переходом по
-    движению: сейчас человек этого хочет или пора не мешать. Ночное окно
-    (`quiet_from`–`quiet_to`) — главный ответ: внутри него движение не
-    включает свет ни в одной комнате, кроме перечисленных в
-    `night_motion_rooms` (санузел, кухня, коридор): встать за водой ночью
-    должно быть возможно.
+    Отвечает сразу на два вопроса, которые шаблон задаёт каждым переходом по
+    движению. Первый — прочь ли из ночи: внутри окна тишины движение не включает
+    свет нигде, кроме перечисленных в ``night_motion_rooms`` комнат (санузел,
+    контейнер): встать за водой ночью должно быть можно. Второй — темно ли
+    настолько, что свет вообще нужен: при дневном свете включение бессмысленно, и
+    владелец на это указал прямо (свет над столом зажигался среди дня).
 
-    Время считается в часах дома (`time_zone` из параметров поведения, иначе
-    `HOUSE_TIMEZONE`). Неизвестный пояс или неразобранное окно ведут к отказу:
+    Темнота определяется по солнцу: датчиков освещённости в доме нет, а
+    ``sun.sun`` Home Assistant публикует всегда, и его состояние приходит в
+    контексте события (``daylight``). Пока данных нет — платформа только что
+    поднялась и ещё не видела событий от солнца — решение падает на время суток в
+    часах дома: ночью можно, днём нельзя.
+
+    Время считается в часах дома (``time_zone`` из параметров поведения, иначе
+    ``HOUSE_TIMEZONE``). Неизвестный пояс или неразобранное окно ведут к отказу:
     «непонятная ночь» не должна разрешать включать свет.
 
     Args:
@@ -137,8 +189,18 @@ def make_may_turn_on(
     """
 
     def may_turn_on(state: Any, context: dict[str, Any]) -> bool:
-        """Разрешить переход, если момент допускает включение света."""
-        tz = _context_zone(context)
+        """Разрешить переход, если момент допускает включение света.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если включать можно.
+        """
+        del state  # состояние на решение не влияет: решает момент и комната
+
+        current = now(_context_zone(context))
         quiet_from = str(context.get("quiet_from") or DEFAULT_QUIET_FROM)
         quiet_to = str(context.get("quiet_to") or DEFAULT_QUIET_TO)
         try:
@@ -148,7 +210,8 @@ def make_may_turn_on(
             logger.error(f"Нераспознанное окно тишины {quiet_from}-{quiet_to}: свет не включаю")
             return False
 
-        current = now(tz)
+        room = str(context.get("room") or "")
+        night_rooms = {str(item) for item in context.get("night_motion_rooms") or ()}
         minutes = current.hour * 60 + current.minute
         start_minutes = start[0] * 60 + start[1]
         end_minutes = end[0] * 60 + end[1]
@@ -157,12 +220,11 @@ def make_may_turn_on(
             if start_minutes <= end_minutes
             else minutes >= start_minutes or minutes <= end_minutes
         )
-        if not in_quiet:
-            return True
 
-        rooms = context.get("night_motion_rooms") or ()
-        room = str(context.get("room") or "")
-        return room in {str(item) for item in rooms}
+        if in_quiet:
+            # Ночью свет нужен только в комнатах, которые владелец назвал ночными.
+            return room in night_rooms
+        return _dark_enough(context, current)
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
         """Назвать причину отказа: «ночь» или «нечем объяснить».
@@ -174,6 +236,7 @@ def make_may_turn_on(
         Returns:
             ``quiet_hours``, если отказ вызван ночным окном; иначе None.
         """
+        del state
         try:
             start = _parse_hhmm(str(context.get("quiet_from") or DEFAULT_QUIET_FROM))
             end = _parse_hhmm(str(context.get("quiet_to") or DEFAULT_QUIET_TO))
@@ -192,24 +255,6 @@ def make_may_turn_on(
 
     may_turn_on.deny_reason = deny_reason  # type: ignore[attr-defined]
     return may_turn_on
-
-
-def _context_zone(context: dict[str, Any]) -> Any:
-    """Часовой пояс для расчёта: из контекста, иначе часовой пояс дома.
-
-    Args:
-        context: Контекст перехода.
-
-    Returns:
-        ``tzinfo``.
-    """
-    value = context.get("time_zone")
-    if isinstance(value, str) and value:
-        try:
-            return ZoneInfo(value)
-        except ZoneInfoNotFoundError:
-            logger.warning(f"time_zone={value!r} — неизвестный пояс, беру часовой пояс дома")
-    return HOUSE_TZ
 
 
 def make_is_day_time(

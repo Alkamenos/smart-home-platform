@@ -138,6 +138,12 @@ class SimpleHAWebSocketClient:
         self._pending_subscription_id: int = 0
         # Сколько событий отброшено фильтром сущностей.
         self._filtered_out = 0
+        # Светло ли сейчас: True — солнце над горизонтом, None — неизвестно.
+        # ``sun.sun`` в манифест не входит, но его состояние снимается здесь, до
+        # отбрасывания события фильтром: без него условие «темно ли» не знает, что
+        # на улице, и движение включает свет при дневном свете (жалоба владельца
+        # 2026-10-09).
+        self.daylight: bool | None = None
         # Размер фильтра при последнем наблюдении. Нужен, чтобы изменение
         # состава подписки было видно в журнале, а не только в памяти кода.
         self._filter_size_last_seen: int = 0
@@ -194,7 +200,14 @@ class SimpleHAWebSocketClient:
         entity_id = payload.get("entity_id")
         if not entity_id:
             return True
-        return str(entity_id) in entity_ids
+        entity = str(entity_id)
+        # Солнце в фильтр манифеста не входит, но его состояние нужно условию
+        # «темно ли»: без него движение включает свет при дневном свете
+        # (жалоба владельца 2026-10-09). Событие всё равно приходит — HA шлёт
+        # все state_changed, — поэтому состояние снимается здесь, до отбрасывания.
+        if entity == "sun.sun":
+            self.daylight = payload.get("new_state") != "below_horizon"
+        return entity in entity_ids
 
     def _record_filtered_event(self) -> None:
         """Отброшенное событие учитывается в метрике, а не только в памяти.
@@ -937,6 +950,55 @@ class HAAdapter:
         self._connected_once = True
         self._last_disconnect_reason = None
 
+    async def _refresh_daylight(self) -> None:
+        """Обновить признак «светло ли сейчас» по данным Home Assistant.
+
+        Событие солнца приходит только на восходе и закате, поэтому после
+        перезапуска платформы состояние неизвестно до следующего рассвета. Без
+        этого чтения условие «темно ли» отвечал бы по времени суток, и движение
+        днём не включало бы свет вообще — автоматика молчала бы до утра.
+
+        Args:
+            Ничего.
+
+        Returns:
+            Ничего. Неудача не прерывает подключение: без состояния солнца
+            решение падает на время суток.
+        """
+        if self._ws_client is None or self._session is None:
+            return
+        http_url = cast(str, self._ws_url)
+        rest_base = http_url.replace("wss://", "https://").replace("ws://", "http://")
+        # Адрес сокета указывает на сам WebSocket-эндпоинт (`/api/websocket`);
+        # без его отбрасывания REST-запрос уходил на несуществующий адрес и
+        # отвечал 404, а состояние солнца оставалось неизвестным до заката.
+        base_path = rest_base.split("/api/websocket")[0].rstrip("/")
+        url = f"{base_path}/api/states/sun.sun"
+        try:
+            async with self._session.get(
+                url,
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status != 200:
+                    logger.warning(
+                        f"Солнце: Home Assistant ответил {response.status} — "
+                        "светлость определится по времени суток"
+                    )
+                    return
+                payload = await response.json()
+        except Exception as exc:  # noqa: BLE001 — подключение важнее освещённости
+            logger.warning(f"Солнце: не удалось прочитать состояние ({exc})")
+            return
+
+        state = payload.get("state") if isinstance(payload, dict) else None
+        if state in ("above_horizon", "below_horizon"):
+            self._ws_client.daylight = state == "above_horizon"
+            logger.info(
+                "HAAdapter: освещённость получена от Home Assistant, "
+                f"на улице {'светло' if self._ws_client.daylight else 'темно'}"
+            )
+
     async def _connect_websocket(self) -> None:
         """Establish WebSocket connection with exponential backoff."""
         reconnect_delay = 1.0
@@ -1043,6 +1105,10 @@ class HAAdapter:
                         "ALL state_changed events"
                     )
                 logger.info("🔔 HAAdapter: listening for HA state changes...")
+
+                # Освещённость нужна сразу при подключении: событие солнца придёт
+                # только на восходе или закате.
+                await self._refresh_daylight()
 
                 reconnect_delay = 1.0
                 self._mark_connection_established()
@@ -1204,6 +1270,7 @@ class HAAdapter:
                     "source": "websocket",
                     "user_id": ha_context.get("user_id"),
                     "ha_context_id": ha_context.get("id"),
+                    "daylight": getattr(self._ws_client, "daylight", None),
                 },
             )
 
