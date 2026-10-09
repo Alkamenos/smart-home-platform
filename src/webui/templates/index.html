@@ -936,6 +936,44 @@
             console.log('Filter by:', category);
         }
 
+        // T024: Управление устройством (история 3)
+        async function toggleDevice(entityId) {
+            const currentCard = document.querySelector(`[data-device="${entityId}"]`);
+            if (!currentCard) {
+                console.error(`Device card not found for ${entityId}`);
+                return;
+            }
+
+            const stateEl = currentCard.querySelector('.state-value');
+            const currentState = stateEl ? stateEl.textContent.trim() : 'off';
+            const targetState = currentState === 'on' || currentState.includes('включено')
+                ? 'off'
+                : 'on';
+
+            try {
+                const response = await fetch(`/devices/${encodeURIComponent(entityId)}/command`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-ID': document.body.dataset.userId || '',
+                    },
+                    body: JSON.stringify({ action: targetState })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(`Ошибка: ${error.detail || 'не удалось выполнить команду'}`);
+                    return;
+                }
+
+                console.log(`Device ${entityId} toggle to ${targetState} sent`);
+            } catch (error) {
+                console.error(`Failed to toggle device ${entityId}:`, error);
+                alert('Ошибка подключения');
+            }
+        }
+
+
         // FSM Modal
         function showFSM(deviceId) {
             const modalEl = document.getElementById('fsmModal');
