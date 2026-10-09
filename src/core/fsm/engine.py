@@ -495,16 +495,26 @@ class FSMEngine:
                                 time_zone = definition.params.get("time_zone", "UTC")
                             is_day = day_guard(None, {"time_zone": time_zone})
                             if is_day:
-                                # Переводим в OFF
-                                self._states[definition.entity_id] = State(
-                                    current_state="OFF",
-                                    entered_at=loop_time(),
-                                    context=saved_context,
-                                )
-                                logger.info(
-                                    f"Cold start: deco_light {definition.entity_id} was ON_DECO but it's daytime, "
-                                    f"resetting to OFF"
-                                )
+                                should_off = True
+                        # Проверка модификатора "мы спим"
+                        elif hasattr(self, "_adapter"):
+                            try:
+                                sleep_st = self._adapter.get_state("input_boolean.sleep_mode")
+                                if sleep_st and sleep_st.get("state") == "on":
+                                    should_off = True
+                            except Exception:
+                                pass
+                        if should_off:
+                            # Переводим в OFF
+                            self._states[definition.entity_id] = State(
+                                current_state="OFF",
+                                entered_at=loop_time(),
+                                context=saved_context,
+                            )
+                            reason = " (daytime)" if is_day else " (sleep_mode=on)"
+                            logger.info(
+                                f"Cold start: deco_light {definition.entity_id} was ON_DECO but resetting to OFF{reason}"
+                            )
                     except Exception as e:
                         logger.warning(f"Cold start check for deco_light failed: {e}")
             else:
