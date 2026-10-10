@@ -338,7 +338,7 @@ class FSMFactory:
         time_zone = getattr(automation_rules, "time_zone", None)
         if time_zone:
             defaults["time_zone"] = time_zone
-        for name in ("quiet_from", "quiet_to", "night_motion_rooms"):
+        for name in ("quiet_from", "quiet_to", "night_motion_rooms", "always_on_motion_rooms"):
             value = getattr(domain_rules, name, None) if domain_rules is not None else None
             if value is not None:
                 defaults[name] = value

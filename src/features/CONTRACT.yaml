@@ -128,7 +128,7 @@ templates:
     reachable: true
     in_manifest: []
     actions: [turn_on_light, turn_off_light]
-    guards: [is_manual_override_enabled, stops_on_sleep, stops_on_sunrise]
+    guards: [is_manual_override_enabled, stops_on_sleep]
     triggers:
       sunset_started: НЕТ ПРОИСХОДИТЕЛЯ
       sleep_started: НЕТ ПРОИСХОДИТЕЛЯ
@@ -143,13 +143,13 @@ templates:
         type: str
         range: "sleep|sunrise"
         effective: true
-        note: "Когда гаснет вечерний свет. `sleep` — по модификатору «мы спим» (гирлянда на террасе), `sunrise` — по рассвету (ночное освещение). Читают условия stops_on_sleep и stops_on_sunrise; без значения работает только выключение по рассвету."
+        note: "Разводит только выключение по модификатору «мы спим». `sleep` — гаснет и по отбою, и по рассвету (гирлянда на террасе); `sunrise` — живёт до рассвета и отбоем не гасится (ночное освещение). По рассвету гаснут оба: среди бела дня декоративный свет не нужен (журнал 2026-10-10: гирлянда горела весь день, потому что рассвет для off_by=sleep был отказом guard_failed). Читает условие stops_on_sleep."
     params:
       off_by:
         type: str
         range: "sleep|sunrise"
         effective: true
-        note: "Когда гаснет вечерний свет. `sleep` — по модификатору «мы спим» (гирлянда на террасе), `sunrise` — по рассвету (ночное освещение). Читают условия stops_on_sleep и stops_on_sunrise; без значения работает только выключение по рассвету."
+        note: "Разводит только выключение по модификатору «мы спим». `sleep` — гаснет и по отбою, и по рассвету (гирлянда на террасе); `sunrise` — живёт до рассвета и отбоем не гасится (ночное освещение). По рассвету гаснут оба: среди бела дня декоративный свет не нужен (журнал 2026-10-10: гирлянда горела весь день, потому что рассвет для off_by=sleep был отказом guard_failed). Читает условие stops_on_sleep."
   generic_cover:
     reachable: false
     in_manifest: []

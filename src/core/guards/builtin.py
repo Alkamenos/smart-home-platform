@@ -238,6 +238,17 @@ def make_may_turn_on(
 
         room = str(context.get("room") or "")
         night_rooms = {str(item) for item in context.get("night_motion_rooms") or ()}
+
+        # Комната без окон. Солнце над горизонтом освещает только те комнаты,
+        # где есть окно: в санузле и контейнере днём ровно так же темно, как и
+        # ночью, и единственный свет там — электрический. Отказ по «светло» в
+        # таких комнатах означал, что датчик движения срабатывал, а свет не
+        # включался (боевой дефект 2026-10-10, отказ `daylight` в санузле).
+        # Поэтому солнце здесь не спрашивается вовсе.
+        always_rooms = {str(item) for item in context.get("always_on_motion_rooms") or ()}
+        if room in always_rooms:
+            return True
+
         minutes = current.hour * 60 + current.minute
         start_minutes = start[0] * 60 + start[1]
         end_minutes = end[0] * 60 + end[1]
@@ -303,8 +314,13 @@ def make_may_turn_on(
             # только свет, и ниже.
             room = str(context.get("room") or "")
             night_rooms = {str(item) for item in context.get("night_motion_rooms") or ()}
-            if room not in night_rooms:
+            always_rooms = {str(item) for item in context.get("always_on_motion_rooms") or ()}
+            if room not in night_rooms and room not in always_rooms:
                 return "quiet_hours"
+        room = str(context.get("room") or "")
+        if room in {str(item) for item in context.get("always_on_motion_rooms") or ()}:
+            # Комната без окон: солнце не влияет, отказано быть не может.
+            return None
         if not _dark_enough(context, current):
             return "daylight"
         return None
@@ -944,12 +960,17 @@ def make_stops_on_sleep() -> Callable[[Any, dict[str, Any]], bool]:
 
 
 def make_stops_on_sunrise() -> Callable[[Any, dict[str, Any]], bool]:
-    """Построить условие «этот свет гаснет по рассвету».
+    """ЗАБРОШЕНО. Условие больше не используется ни одним шаблоном.
 
-    Зеркало `stops_on_sleep`: ночное освещение горит до рассвета, гирлянда — до
-    отбоя. Оба условия не могут быть ложными: пустое или незнакомое `off_by`
-    должно гасить свет обоими способами, чтобы забытый параметр не оставил
-    гирлянду гореть всю ночь.
+    Изначально разводило выключение вечернего света: `off_by: "sunrise"` —
+    гаснет по рассвету, `off_by: "sleep"` — по отбою. Из-за этого рассвет для
+    гирлянды становился отказом, и она горела весь день (журнал 2026-10-10).
+
+    Теперь рассвет гасит любой декоративный свет безусловно, а `off_by`
+    разводит только выключение по отбою (`stops_on_sleep`). Функция оставлена
+    до конца жизни реестра: удаление затрагивает и список зарегистрированных
+    условий, и шаблоны, которые ещё не обновлены. Пользоваться ей нельзя —
+    это ловушка, возвращающая боевой дефект.
     """
 
     def stops_on_sunrise(state: Any, context: dict[str, Any]) -> bool:
@@ -960,26 +981,11 @@ def make_stops_on_sunrise() -> Callable[[Any, dict[str, Any]], bool]:
             context: Контекст перехода.
 
         Returns:
-            True, если свет этого поведения гаснет по рассвету.
+            Всегда True: рассвет гасит вечерний свет при любом `off_by`.
         """
-        del state
-        off_by = str(context.get("off_by", "")).strip().lower()
-        return off_by in {"sunrise", ""}
+        del state, context
+        return True
 
-    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
-        """Объяснить отказ: это не тот свет, который гаснет по рассвету.
-
-        Args:
-            state: Текущее состояние автомата.
-            context: Контекст перехода.
-
-        Returns:
-            ``None`` — см. `make_stops_on_sleep`.
-        """
-        del state
-        return None
-
-    stops_on_sunrise.deny_reason = deny_reason  # type: ignore[attr-defined]
     return stops_on_sunrise
 
 

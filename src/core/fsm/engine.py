@@ -483,42 +483,6 @@ class FSMEngine:
                 # автомат ждал бы триггера, который не придёт. Взводится здесь,
                 # а не в пути перехода, потому что перехода при старте нет.
                 self._schedule_restored_timeout(definition, saved_state, restored_age)
-
-                # Холодный старт deco_light: если вернулись в ON_DECO днём,
-                # выключаем (Known Issue #89: гирлянда горит после перезагрузки днём)
-                if "deco_light" in definition.entity_id and saved_state == "ON_DECO":
-                    try:
-                        should_off = False
-                        is_day = False
-                        if hasattr(self, "_guards") and "is_day_time" in self._guards:
-                            day_guard = self._guards["is_day_time"]
-                            time_zone = "UTC"
-                            if definition.params:
-                                time_zone = definition.params.get("time_zone", "UTC")
-                            is_day = day_guard(None, {"time_zone": time_zone})
-                            if is_day:
-                                should_off = True
-                        # Проверка модификатора "мы спим"
-                        if not should_off and hasattr(self, "_adapter"):
-                            try:
-                                sleep_st = self._adapter.get_state("input_boolean.sleep_mode")
-                                if sleep_st and sleep_st.get("state") == "on":
-                                    should_off = True
-                            except Exception:
-                                pass
-                        if should_off:
-                            # Переводим в OFF
-                            self._states[definition.entity_id] = State(
-                                current_state="OFF",
-                                entered_at=loop_time(),
-                                context=saved_context,
-                            )
-                            reason = " (daytime)" if is_day else " (sleep_mode=on)"
-                            logger.info(
-                                f"Cold start: deco_light {definition.entity_id} was ON_DECO but resetting to OFF{reason}"
-                            )
-                    except Exception as e:
-                        logger.warning(f"Cold start check for deco_light failed: {e}")
             else:
                 logger.warning(
                     f"Saved state '{saved_state}' for entity {definition.entity_id} is invalid, "
