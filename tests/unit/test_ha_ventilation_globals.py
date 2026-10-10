@@ -143,7 +143,7 @@ class TestVentilationGlobalsRead:
     async def test_feature_flag_is_read(self) -> None:
         """Фиче-флаг вентиляции читается."""
         adapter, client = _adapter_with_states({"input_boolean.feature_ventilation": "off"})
-        adapter.ventilation_entities = {"feature": "input_boolean.feature_ventilation"}
+        adapter.ventilation_entities = {"ventilation_feature": "input_boolean.feature_ventilation"}
 
         await HAAdapter._refresh_ventilation_globals(adapter)  # type: ignore[arg-type]
 

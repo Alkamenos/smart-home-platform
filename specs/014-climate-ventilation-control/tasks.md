@@ -56,11 +56,11 @@ contracts/interface-contracts.md, quickstart.md
 
 - [x] T007 [P] Расширить `AutomationDomainRules` полями климата (`setpoint_entity`, `comfort_max_entity`, `season_entity`, `feature_entity`, `ac_gate_entity`, `setpoint_min`, `setpoint_max`) в `src/core/models/manifest.py`
 - [x] T008 [P] Расширить `AutomationDomainRules` полями вентиляции (`feature_entity`, `enable_entity`, `airing_entity`, `exhaust_entity`, `outside_temp_entity`, `manual_lockout_min`) в `src/core/models/manifest.py`
-- [ ] T009 Чтение сущностей климата в адаптере по образцу `_refresh_sleep_modifier` (`ha_adapter.py:1101-1152`), ключи `climate_setpoint`, `comfort_max`, `is_winter`, `climate_enabled`, `ac_allowed` — `src/adapters/ha_adapter.py`
-- [ ] T010 Чтение сущностей вентиляции в адаптере, ключи `ventilation_on`, `airing_on`, `exhaust_on`, `ventilation_enabled`, `outside_temperature` — `src/adapters/ha_adapter.py`
-- [ ] T011 Прокинуть ключи в контекст события рядом с `daylight` и `sleep_modifier_on` (`ha_adapter.py:1473-1488`) — `src/adapters/ha_adapter.py`
+- [x] T009 Чтение сущностей климата в адаптере по образцу `_refresh_sleep_modifier` (`ha_adapter.py:1101-1152`), ключи `climate_setpoint`, `comfort_max`, `is_winter`, `climate_enabled`, `ac_allowed` — `src/adapters/ha_adapter.py`
+- [x] T010 Чтение сущностей вентиляции в адаптере, ключи `ventilation_on`, `airing_on`, `exhaust_on`, `ventilation_enabled`, `outside_temperature` — `src/adapters/ha_adapter.py`
+- [x] T011 Прокинуть ключи в контекст события рядом с `daylight` и `sleep_modifier_on` (`ha_adapter.py:1473-1488`) — `src/adapters/ha_adapter.py`
 - [x] T012 Сопоставление «шаблон → домен» явной таблицей вместо сравнения строк; сейчас `getattr` даёт `None` для климата и вентиляции (FR-035, `factory.py:336`) — `src/core/fsm/factory.py`
-- [ ] T013 Задать `timeout_sec` в переходе `HEATING → IDLE` по `timeout`; комментарий в шаблоне описывает несуществующее поведение (FR-004, FR-005, `research.md` D4) — `src/features/climate_control.yaml`
+- [x] T013 Задать `timeout_sec` в переходе `HEATING → IDLE` по `timeout`; комментарий в шаблоне описывает несуществующее поведение (FR-004, FR-005, `research.md` D4) — `src/features/climate_control.yaml`
 - [x] T014 Отсутствие действия в реестре — ошибка загрузки, не WARNING; сейчас переход проходит как успешный и молча ничего не выполняет (`research.md` D8) — `src/core/fsm/factory.py`
 
 **Checkpoint**: T001–T006 зелёные, три разрыва закрыты. Без этого

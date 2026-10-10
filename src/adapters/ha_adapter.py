@@ -164,6 +164,21 @@ class SimpleHAWebSocketClient:
         # на улице, и движение включает свет при дневном свете (жалоба владельца
         # 2026-10-09).
         self.daylight: bool | None = None
+        # Глобальные сущности климата и вентиляции (спека 014). Имена сущностей
+        # приходят из правил дома, значения — отсюда. None означает «не прочитано
+        # или неизвестно», и это **не** то же, что False или ноль: условия
+        # трактуют неизвестное как «решать не на чем», а не как «не зима» и не
+        # как «в комнате ноль градусов».
+        self.climate_setpoint: float | None = None
+        self.comfort_max: float | None = None
+        self.is_winter: bool | None = None
+        self.climate_enabled: bool | None = None
+        self.ac_allowed: bool | None = None
+        self.ventilation_on: bool | None = None
+        self.airing_on: bool | None = None
+        self.exhaust_on: bool | None = None
+        self.ventilation_enabled: bool | None = None
+        self.outside_temperature: float | None = None
         # Размер фильтра при последнем наблюдении. Нужен, чтобы изменение
         # состава подписки было видно в журнале, а не только в памяти кода.
         self._filter_size_last_seen: int = 0
@@ -731,6 +746,35 @@ if TYPE_CHECKING:
     from core.events.event_router import EventRouter
 
 
+#: Роли глобальных сущностей климата и вентиляции и поле клиента, которое они
+#: заполняют. Ключ роли совпадает с ключом в правилах дома
+#: (``automation_rules.climate`` / ``.ventilation``), значение — с полем, которое
+#: читает условие.
+#:
+#: Отдельная таблица, а не разбор имени: читаемость важнее экономии строки, а
+#: при несовпадении имён тест укажет на конкретное место.
+GLOBAL_ENTITY_FIELDS: dict[str, str] = {
+    "setpoint": "climate_setpoint",
+    "comfort_max": "comfort_max",
+    "season": "is_winter",
+    "feature": "climate_enabled",
+    "ac_gate": "ac_allowed",
+    "enable": "ventilation_on",
+    "airing": "airing_on",
+    "exhaust": "exhaust_on",
+    "ventilation_feature": "ventilation_enabled",
+    "outside_temp": "outside_temperature",
+}
+
+#: Сущности, значение которых — булево: ``on``/``off`` из Home Assistant.
+_BOOLEAN_ROLES = frozenset(
+    {"season", "feature", "ac_gate", "enable", "airing", "exhaust", "ventilation_feature"}
+)
+
+#: Сущности, значение которых — число: ``number.*`` и ``sensor.*`` температуры.
+_NUMERIC_ROLES = frozenset({"setpoint", "comfort_max", "outside_temp"})
+
+
 class HAAdapter:
     """
     Adapter for bidirectional communication with Home Assistant.
@@ -772,6 +816,11 @@ class HAAdapter:
         # Сущность Home Assistant «мы спим»; задаётся правилами освещения в
         # манифесте. Значение читает служба суточного цикла при старте.
         self.sleep_modifier_entity: str | None = None
+        # Сущности глобальных значений климата и вентиляции: роль → entity_id.
+        # Задаются контейнером из правил дома и читаются при подключении, иначе
+        # до первого события платформа не знает ни уставки, ни сезона.
+        self.climate_entities: dict[str, str] = {}
+        self.ventilation_entities: dict[str, str] = {}
         # Уведомление о включении «мы спим»: контейнер ставит сюда свою
         # функцию, адаптер отдаёт её клиенту в момент чтения модификатора —
         # как только сущность стала известна, клиент начинает ловить её
@@ -1151,6 +1200,151 @@ class HAAdapter:
             # виден, а прочитанное состояние — основа всех решений «спим».
             logger.warning(f"HAAdapter: «мы спим» = {client.asleep} (модификатор {entity})")
 
+    async def _read_entity_state(self, entity: str) -> str | None:
+        """Прочитать состояние одной сущности через REST.
+
+        Args:
+            entity: Идентификатор сущности.
+
+        Returns:
+            Состояние как строка либо ``None``, если сущность не ответила.
+        """
+        client = self._ws_client
+        session = self._session
+        if client is None or session is None:
+            return None
+        base = cast(str, self._ws_url)
+        base = base.replace("wss://", "https://").replace("ws://", "http://")
+        url = f"{base.split('/api/websocket')[0].rstrip('/')}/api/states/{entity}"
+        try:
+            async with session.get(
+                url,
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status != 200:
+                    logger.warning(
+                        f"Глобальная сущность {entity} не прочитана: "
+                        f"Home Assistant ответил {response.status}"
+                    )
+                    return None
+                payload = await response.json()
+        except Exception as exc:  # noqa: BLE001 — подключение важнее значения
+            logger.warning(f"Глобальная сущность {entity} не прочитана: {exc}")
+            return None
+
+        state = payload.get("state") if isinstance(payload, dict) else None
+        return str(state) if state is not None else None
+
+    async def _refresh_climate_globals(self) -> None:
+        """Прочитать глобальные значения климата при подключении.
+
+        Условия обогрева и охлаждения читают `climate_setpoint`, `is_winter` и
+        остальные, но до 2026-10-10 писателя не было нигде: в бою `may_heat`
+        всегда получал «данных нет», и обогрев не включался ни в одной комнате.
+        Читается сразу при подключении, иначе до первого события от этих
+        сущностей дом ничего не знает о цели.
+
+        Returns:
+            Ничего.
+        """
+        client = self._ws_client
+        if client is None:
+            return
+        for role, entity in self.climate_entities.items():
+            state = await self._read_entity_state(entity)
+            self._store_global(client, GLOBAL_ENTITY_FIELDS, role, state, entity)
+
+    async def _refresh_ventilation_globals(self) -> None:
+        """Прочитать глобальные значения вентиляции при подключении.
+
+        Право владельца выключить вентиляцию и режимы проветривания и вытяжки
+        живут в Home Assistant. Не прочитав их при подключении, платформа до
+        первого события считала бы, что вентиляция включена, а проветривания
+        нет.
+
+        Returns:
+            Ничего.
+        """
+        client = self._ws_client
+        if client is None:
+            return
+        for role, entity in self.ventilation_entities.items():
+            state = await self._read_entity_state(entity)
+            self._store_global(client, GLOBAL_ENTITY_FIELDS, role, state, entity)
+
+    @staticmethod
+    def _store_global(
+        client: Any,
+        fields: dict[str, str],
+        role: str,
+        state: str | None,
+        entity: str,
+    ) -> None:
+        """Положить прочитанное значение в поле клиента.
+
+        Args:
+            client: Клиент WebSocket.
+            fields: Таблица «роль → поле».
+            role: Роль сущности.
+            state: Прочитанное состояние либо ``None``.
+            entity: Идентификатор сущности, для журнала.
+
+        Returns:
+            Ничего.
+        """
+        field = fields.get(role)
+        if field is None:
+            logger.warning(
+                f"Роль глобальной сущности '{role}' не описана, {entity} прочитан в никуда"
+            )
+            return
+        if state is None:
+            # Неизвестное остаётся неизвестным: ноль градусов означал бы «зима»,
+            # а False — «модификатор выключен», и решение ушло бы в сторону.
+            return
+        if role in _BOOLEAN_ROLES:
+            if state not in ("on", "off"):
+                return
+            setattr(client, field, state == "on")
+        elif role in _NUMERIC_ROLES:
+            try:
+                setattr(client, field, float(state))
+            except ValueError:
+                logger.warning(f"Глобальная сущность {entity} не прочитана как число: {state!r}")
+                return
+        else:  # pragma: no cover - защита от новой роли без ветки
+            logger.warning(f"Роль '{role}' не описана среди читаемых значений")
+            return
+        # WARNING, а не INFO: INFO адаптера в docker-журнале не виден (урок #70),
+        # а прочитанные значения — основа решений климата и вентиляции.
+        logger.warning(f"HAAdapter: {entity} = {getattr(client, field)}")
+
+    def _global_context(self) -> dict[str, Any]:
+        """Прочитанные глобальные значения одним словарём.
+
+        Returns:
+            Словарь «поле клиента → значение» для контекста события.
+        """
+        client = self._ws_client
+        if client is None:
+            return {}
+        fields = sorted(set(GLOBAL_ENTITY_FIELDS.values()))
+        return {name: getattr(client, name, None) for name in fields}
+
+    def _event_context(self) -> dict[str, Any]:
+        """Контекст события: солнце, сон и глобальные значения.
+
+        Returns:
+            Словарь контекста без привязки к конкретному событию.
+        """
+        client = self._ws_client
+        return {
+            "daylight": getattr(client, "daylight", None),
+            "sleep_modifier_on": getattr(client, "asleep", None),
+            **self._global_context(),
+        }
+
     async def _refresh_daylight(self) -> None:
         """Обновить признак «светло ли сейчас» по данным Home Assistant.
 
@@ -1169,6 +1363,11 @@ class HAAdapter:
         if self._ws_client is None or self._session is None:
             return
         await self._refresh_sleep_modifier()
+        # Климат и вентиляция читают те же признаки, что и освещение, но иначе:
+        # без уставки и сезона до первого события от этих сущностей условия
+        # получают «данных нет» и решения не принимают вовсе.
+        await self._refresh_climate_globals()
+        await self._refresh_ventilation_globals()
 
         http_url = cast(str, self._ws_url)
         rest_base = http_url.replace("wss://", "https://").replace("ws://", "http://")
@@ -1484,6 +1683,10 @@ class HAAdapter:
                     # состояние платформе неизвестно — тогда решает неё, а не
                     # часы платформы (см. условие may_turn_on).
                     "sleep_modifier_on": getattr(self._ws_client, "asleep", None),
+                    # Глобальные значения климата и вентиляции. Неизвестное
+                    # едет как None: условие читает его как «решать не на чём»,
+                    # а не как «не зима» и не как «в комнате ноль градусов».
+                    **self._global_context(),
                 },
             )
 

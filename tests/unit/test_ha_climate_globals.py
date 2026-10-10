@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pytest
@@ -185,6 +186,104 @@ class TestClimateGlobalsRead:
             "непрочитанная уставка должна остаться неизвестной: ноль градусов "
             "означал бы «в комнате ноль», и обогрев поехал бы вслепую"
         )
+
+
+class TestNumericGlobalsAreLogged:
+    """Числовые значения не только пишутся, но и попадают в журнал.
+
+    Регрессия 2026-10-10: в числовой ветке ``_store_global`` стоял ``return``
+    до записи в журнал, поэтому уставка и уличная температура сохранялись, но
+    не печатались — и в бою выглядело так, будто платформа их не читает.
+    """
+
+    def test_setpoint_value_is_logged(self, caplog: Any) -> None:
+        """Уставка попадает в журнал.
+
+        Args:
+            caplog: Захват журнала.
+
+        Returns:
+            Ничего.
+        """
+        client = _StubWsClient()
+        with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
+            HAAdapter._store_global(  # type: ignore[arg-type]
+                client,
+                {"setpoint": "climate_setpoint"},
+                "setpoint",
+                "21.5",
+                "input_number.temperatura",
+            )
+
+        assert client.climate_setpoint == 21.5
+        assert any("input_number.temperatura" in record.message for record in caplog.records), (
+            f"уставка записана, но в журнал не попала: {[r.message for r in caplog.records]}"
+        )
+
+    def test_outside_temperature_value_is_logged(self, caplog: Any) -> None:
+        """Уличная температура попадает в журнал.
+
+        Args:
+            caplog: Захват журнала.
+
+        Returns:
+            Ничего.
+        """
+        client = _StubWsClient()
+        with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
+            HAAdapter._store_global(  # type: ignore[arg-type]
+                client,
+                {"outside_temp": "outside_temperature"},
+                "outside_temp",
+                "11.84",
+                "sensor.temperatura_na_ulitse_srednee",
+            )
+
+        assert client.outside_temperature == 11.84
+        assert any(
+            "temperatura_na_ulitse_srednee" in record.message for record in caplog.records
+        ), "уличная температура записана, но в журнал не попала"
+
+    def test_unreadable_number_is_reported(self, caplog: Any) -> None:
+        """Нечитаемое число называется в журнале, а не молча отбрасывается.
+
+        Args:
+            caplog: Захват журнала.
+
+        Returns:
+            Ничего.
+        """
+        client = _StubWsClient()
+        with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
+            HAAdapter._store_global(  # type: ignore[arg-type]
+                client,
+                {"setpoint": "climate_setpoint"},
+                "setpoint",
+                "unavailable",
+                "input_number.temperatura",
+            )
+
+        assert client.climate_setpoint is None
+        assert any("не прочитана как число" in record.message for record in caplog.records), (
+            "нечитаемое число должно называться: иначе решает поломка, а не сбой данных"
+        )
+
+    def test_unknown_role_is_reported(self, caplog: Any) -> None:
+        """Неизвестная роль называется: иначе значение молча пропадает.
+
+        Args:
+            caplog: Захват журнала.
+
+        Returns:
+            Ничего.
+        """
+        client = _StubWsClient()
+        with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
+            HAAdapter._store_global(  # type: ignore[arg-type]
+                client, {}, "no_such_role", "on", "input_boolean.что_то"
+            )
+
+        assert any("не описана" in record.message for record in caplog.records)
 
 
 class TestClimateGlobalsReachContext:

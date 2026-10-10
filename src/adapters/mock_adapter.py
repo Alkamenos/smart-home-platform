@@ -46,6 +46,21 @@ class MockAdapter:
         self._fsm_engine: Any = None
         self._service_calls: list[dict[str, Any]] = []
         self._started: bool = False
+        # Глобальные сущности климата и вентиляции: роли и значения. Объявлены
+        # здесь, а не только в HAAdapter, потому что контейнер обращается к ним
+        # через общий тип адаптера, а подменой может быть и mock (тесты).
+        self.climate_entities: dict[str, str] = {}
+        self.ventilation_entities: dict[str, str] = {}
+        self.climate_setpoint: float | None = None
+        self.comfort_max: float | None = None
+        self.is_winter: bool | None = None
+        self.climate_enabled: bool | None = None
+        self.ac_allowed: bool | None = None
+        self.ventilation_on: bool | None = None
+        self.airing_on: bool | None = None
+        self.exhaust_on: bool | None = None
+        self.ventilation_enabled: bool | None = None
+        self.outside_temperature: float | None = None
         self.log = logger.bind(component="mock_adapter")
 
     @property

@@ -289,10 +289,64 @@ class Container:
                 # модификатора, поэтому подключаются всегда.
                 self._adapter.on_sunset = self._on_sunset
                 self._adapter.on_sunrise = self._on_sunrise
+
+                # Уставка, сезон, потолок комфорта и выключалка вентиляции —
+                # те же глобальные признаки, только климата и вентиляции.
+                # Без них условия получают «данных нет»: до 2026-10-10 писателя
+                # не существовало, и обогрев не включался ни в одной комнате.
+                self._bind_global_entities()
             else:
                 self._adapter = MockAdapter(engine=self.fsm)
                 self._adapter.set_event_router(self.event_router)
         return self._adapter
+
+    def _bind_global_entities(self) -> None:
+        """Передать адаптеру имена глобальных сущностей климата и вентиляции.
+
+        Имена берутся из правил дома, значения читает адаптер при подключении.
+        Роль в правилах совпадает с ролью в таблице ``GLOBAL_ENTITY_FIELDS``,
+        поэтому сопоставление не выдумывает имён: неизвестная роль молча
+        останется без сущности, и условие получит «данных нет».
+
+        Returns:
+            Ничего.
+        """
+        rules = self.manifest.automation_rules
+        adapter = self._adapter
+        if adapter is None:
+            return
+        for field_name in (
+            "setpoint_entity",
+            "comfort_max_entity",
+            "season_entity",
+            "feature_entity",
+            "ac_gate_entity",
+        ):
+            role = field_name.removesuffix("_entity")
+            entity = getattr(rules.climate, field_name, None)
+            if entity:
+                adapter.climate_entities[role] = entity
+
+        for field_name in (
+            "feature_entity",
+            "enable_entity",
+            "airing_entity",
+            "exhaust_entity",
+            "outside_temp_entity",
+        ):
+            entity = getattr(rules.ventilation, field_name, None)
+            if not entity:
+                continue
+            # Роль `feature` занята климатом, поэтому у вентиляции она своя.
+            role = field_name.removesuffix("_entity")
+            if role == "feature":
+                role = "ventilation_feature"
+            adapter.ventilation_entities[role] = entity
+
+        logger.info(
+            f"Глобальные сущности: климат {adapter.climate_entities}, "
+            f"вентиляция {adapter.ventilation_entities}"
+        )
 
     @property
     def dispatcher(self) -> CommandDispatcher:
