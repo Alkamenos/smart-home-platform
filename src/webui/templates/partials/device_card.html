@@ -8,37 +8,54 @@
   ~ SPDX-License-Identifier: Apache-2.0
   -->
 
-<div class="device-card" data-device="{{ device.entity_id }}">
+{% from "partials/_macros.html" import relative_time, behavior_title %}
+
+<div class="device-card" data-device="{{ device.id }}">
     <div class="device-header">
         <h5 class="device-name">
             {% if device.name %}
                 {{ device.name }}
-                <span class="device-id">{{ device.entity_id }}</span>
+                <span class="device-id">{{ device.id }}</span>
             {% else %}
-                {{ device.entity_id }}
+                {{ device.id }}
             {% endif %}
         </h5>
         <div class="device-actions">
             {% if can_control and device.behaviors %}
                 <button class="device-toggle"
-                        onclick="toggleDevice('{{ device.entity_id }}')"
+                        onclick="toggleDevice('{{ device.id }}')"
                         title="Переключить состояние">
                     <i class="bi bi-toggle2-on"></i>
                 </button>
             {% endif %}
             <button class="device-edit"
-                    hx-get="/devices/{{ loop.index0 }}/edit"
+                    hx-get="/devices/{{ room_index }}/edit"
                     hx-target="#edit-modal-content"
                     data-bs-toggle="modal"
                     data-bs-target="#editModal"
                     title="Редактировать устройство">
                 <i class="bi bi-pencil"></i>
             </button>
+            {% if user_is_admin | default(false, true) %}
+                <form class="device-delete-form"
+                      hx-post="/devices/{{ room_index }}/{{ device.id }}/delete"
+                      hx-confirm="Удалить устройство {{ device.id }}? Его автоматика и настройки будут удалены безвозвратно."
+                      hx-target="#room-{{ room_index }}"
+                      hx-swap="outerHTML swap:1s">
+                    <input type="hidden" name="user_id"
+                           value="{{ user_id | default('admin_user', true) }}">
+                    <input type="hidden" name="is_admin"
+                           value="{{ 'true' if user_is_admin | default(true, true) else 'false' }}">
+                    <button type="submit" class="device-delete" title="Удалить устройство">
+                        <i class="bi bi-trash"></i> Удалить
+                    </button>
+                </form>
+            {% endif %}
         </div>
     </div>
 
     <div class="device-state">
-        {% set decision = decisions.get(device.entity_id) if decisions else None %}
+        {% set decision = decisions.get(device.id) if decisions else None %}
 
         <!-- Показываем информацию о последнем решении (есть или нет HA состояния) -->
         {% if decision %}

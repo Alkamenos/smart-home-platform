@@ -766,47 +766,12 @@
                     </button>
                 </div>
 
-                <!-- T015-T020: Макросы для отображения (истории 1-2) -->
-                {% macro timestamp_display(ts) -%}
-                    {% if ts > 0 %}
-                        {%- set now = now() if now is callable else 0 -%}
-                        {%- if (now - ts) < 60 %}только что{%- elif (now - ts) < 3600 %}{{ ((now - ts) / 60) | int }} мин назад{%- else %}{{ ((now - ts) / 3600) | int }} ч назад{%- endif -%}
-                    {% else %}
-                        неизвестно
-                    {% endif %}
-                {%- endmacro %}
-
-                {% macro relative_time(ts) -%}
-                    {% if ts > 0 %}
-                        {%- set now = now() if now is callable else 0 -%}
-                        {%- if (now - ts) < 60 %}только что{%- elif (now - ts) < 3600 %}{{ ((now - ts) / 60) | int }} мин назад{%- else %}{{ ((now - ts) / 3600) | int }} ч назад{%- endif -%}
-                    {% else %}
-                        неизвестно
-                    {% endif %}
-                {%- endmacro %}
-
-                {% macro behavior_title(template) -%}
-                    {% if template == 'lighting' %}свет от движения
-                    {% elif template == 'deco_light' %}вечерний свет
-                    {% elif template == 'climate' %}климат
-                    {% else %}{{ template }}{% endif %}
-                {%- endmacro %}
-
-                {% macro sensor_icon(role) -%}
-                    {% if role == 'temperature' %}bi bi-thermometer
-                    {% elif role == 'humidity' %}bi bi-droplet
-                    {% elif role == 'motion' %}bi bi-activity
-                    {% elif role == 'contact' %}bi bi-door-closed
-                    {% else %}bi bi-info-circle{% endif %}
-                {%- endmacro %}
-
-                {% macro sensor_title(role) -%}
-                    {% if role == 'temperature' %}температура
-                    {% elif role == 'humidity' %}влажность
-                    {% elif role == 'motion' %}движение
-                    {% elif role == 'contact' %}контакт
-                    {% else %}датчик{% endif %}
-                {%- endmacro %}
+                {# Макросы вынесены в отдельный партиал: карточки устройств и
+                   датчиков перерисовываются и самостоятельно (удаление
+                   устройства, редактирование комнаты), и макрос, объявленный
+                   здесь, в таком рендере просто не существует — карточка падала
+                   с «behavior_title is undefined». #}
+                {% from "partials/_macros.html" import timestamp_display, relative_time, behavior_title, sensor_icon, sensor_title %}
 
                 <div class="room-grid" id="rooms-container">
                     {% for room in manifest.rooms %}

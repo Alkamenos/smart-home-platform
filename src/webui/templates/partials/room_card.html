@@ -21,8 +21,13 @@
         <div class="room-actions">
             {% set active_devices = [] %}
             {% for device in room.devices %}
-                {% set state = snapshot.get(device.entity_id) %}
-                {% if state and state.available and state.state == 'on' %}
+                {# Считаем по последнему решению автомата, а не по снимку HA:
+                   снимок приходит не из всех маршрутов (карточка перерисовывается
+                   и при удалении), и партиал не должен от него зависеть. Это не
+                   живое состояние Home Assistant — решение платформы о том, что
+                   она последней отдавала команду «включить». #}
+                {% set decision = decisions.get(device.id) if decisions else None %}
+                {% if decision and decision.outcome == 'on' %}
                     {% set _ = active_devices.append(device) %}
                 {% endif %}
             {% endfor %}
