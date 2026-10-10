@@ -361,3 +361,55 @@ class TestTemplateListsItsOwnTriggers:
 
         missing = used - set(ACTION_HANDLERS)
         assert not missing, f"действия шаблона не зарегистрированы: {sorted(missing)}"
+
+
+class TestTimerIsArmed:
+    """Таймер автомата должен взводиться, иначе переход по нему не сработает.
+
+    Разрыв 2026-10-10 (`research.md` D4): комментарий в шаблоне утверждает, что
+    «`timeout_sec` подставляет фабрика из `run_minutes`». Проверено:
+    `_timeout_from_params` (`factory.py:30-56`) читает **только**
+    `motion_timeout_sec` и **только** для триггера `timeout` — имя `run_minutes`
+    не знает. А сам переход `HEATING → IDLE` по `timeout` поля `timeout_sec` не
+    содержит, поэтому таймер не взводится и переход не срабатывает никогда.
+
+    Защита «датчик молчит — обогреватель доработает по своему таймеру и
+    выключится» (FR-043) на уровне автомата не работает: сам таймер
+    обогревателя в Home Assistant сработает, но решение автомата не придёт.
+    """
+
+    def test_heating_template_declares_timeout(self) -> None:
+        """Переход по таймеру объявляет `timeout_sec`.
+
+        Returns:
+            Ничего.
+        """
+        template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
+
+        timeouts = [t for t in template["transitions"] if t.get("trigger") == "timeout"]
+
+        assert timeouts, "в шаблоне должен быть переход по таймеру: без него ожидание не на что"
+        for transition in timeouts:
+            assert transition.get("timeout_sec"), (
+                f"переход {transition['from_state']} -> {transition['to_state']} "
+                "по таймеру не задаёт timeout_sec: таймер не взведётся, и "
+                "переход никогда не сработает"
+            )
+
+    def test_timeout_matches_expected_run_time(self) -> None:
+        """Таймер автомата совпадает со временем работы по умолчанию.
+
+        Returns:
+            Ничего.
+        """
+        from core.action_handlers import DEFAULT_HEATER_RUN_MINUTES
+
+        template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
+        timeouts = [t for t in template["transitions"] if t.get("trigger") == "timeout"]
+
+        assert timeouts[0]["timeout_sec"] == DEFAULT_HEATER_RUN_MINUTES * 60, (
+            f"таймер автомата ({timeouts[0]['timeout_sec']} с) должен совпадать "
+            f"со временем работы обогревателя ({DEFAULT_HEATER_RUN_MINUTES * 60} с): "
+            "истекло устройство — истекло и ожидание автомата, иначе решение "
+            "приходит позже, чем свет уже погас"
+        )
