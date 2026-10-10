@@ -253,6 +253,7 @@ class TestHouseRulesReachTheGuard:
 
     def test_behavior_gets_quiet_hours_and_room(self) -> None:
         """Устройство получает окно тишины и свою комнату."""
+        from core.action_handlers import register_all_actions
         from core.control_tracker import ControlTracker
         from core.fsm.engine import FSMEngine
         from core.fsm.factory import FSMFactory
@@ -270,6 +271,10 @@ class TestHouseRulesReachTheGuard:
 
         registry = Registry()
         register_all_guards(registry, ControlTracker())
+        # Действия тоже: с 2026-10-10 отсутствующее действие в реестре —
+        # ошибка сборки поведения, а не предупреждение (T014), поэтому
+        # тест, собирающий автомат, обязан иметь полный реестр.
+        register_all_actions(registry)
         engine = FSMEngine()
         manifest = Manifest(
             version=1,

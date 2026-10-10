@@ -16,10 +16,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from core.action_handlers import register_all_actions
+from core.control_tracker import ControlTracker
 from core.events.event_bus import EventBus
 from core.events.event_router import EventRouter
 from core.fsm.engine import FSMEngine
 from core.fsm.factory import FSMFactory
+from core.guards.builtin import register_all_guards
 from core.models.device import Device
 from core.models.manifest import (
     AutomationDomainRules,
@@ -117,6 +119,10 @@ def factory(engine: FSMEngine) -> FSMFactory:
     """
     registry = Registry()
     register_all_actions(registry)
+    # Условия тоже: с 2026-10-10 отсутствующее действие или условие —
+    # ошибка сборки поведения, а не предупреждение (T014), поэтому фабрика
+    # для реальных компонентов обязана иметь полный реестр.
+    register_all_guards(registry, ControlTracker())
     return FSMFactory(engine=engine, registry=registry, event_bus=None)
 
 
@@ -326,13 +332,17 @@ class TestDeviceLifecycleUpdate:
             room_id="kitchen",
             behaviors=[
                 BehaviorConfig(template="lighting", priority=10),
-                BehaviorConfig(template="generic_switch", priority=20),
+                BehaviorConfig(template="night_light", priority=20),
             ],
         )
 
+        # Шаблон выбран рабочий, а не `generic_switch`: у того в коде нет
+        # действий (`turn_on_switch` и прочие не зарегистрированы), и с 2026-10-10
+        # такое поведение отбрасывается при сборке. Тест проверяет замену
+        # состава поведений, а не конкретный шаблон.
         assert _fsm_ids_of(lifecycle.engine, "light.kitchen") == [
-            "light.kitchen_generic_switch_20",
             "light.kitchen_lighting_10",
+            "light.kitchen_night_light_20",
         ]
 
     async def test_update_device_should_record_audit_event(

@@ -11,6 +11,7 @@ FSM Factory - Фабрика для создания FSM на основе ко�
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,82 @@ from core.definitions import YAMLFSMDefinition, YAMLTransition
 from core.fsm.engine import FSMDefinition, FSMEngine, Transition
 from core.models.manifest import BehaviorConfig
 from core.registry import Registry
+
+
+class TemplateLoadError(Exception):
+    """Шаблон поведения нельзя собрать.
+
+    Отдельный тип нужен, чтобы отличить «опечатка в имени действия» от
+    «сломан сам Python-код». Первое — ошибка владельца манифеста, и её надо
+    показать с именем устройства; второе — дефект платформы, и его надо
+    чинить, а не показывать как «устройство пропущено».
+    """
+
+
+class MissingTemplateError(TemplateLoadError, FileNotFoundError):
+    """Шаблон поведения не найден в каталоге ``features/``.
+
+    Наследует и ``TemplateLoadError`` (поведение не собрано — устройство
+    пропускается, платформа работает), и ``FileNotFoundError``: отсутствие
+    файла шаблона было и остаётся ошибкой о файле, о которой уже знают
+    вызывающие (`tests/test_fsm_factory.py:162`).
+    """
+
+
+@dataclass(frozen=True)
+class SkippedBehavior:
+    """Поведение, которое не удалось собрать.
+
+    Attributes:
+        device_id: Устройство, ради которого поведение собиралось.
+        template: Имя шаблона поведения.
+        reason: Что именно не так, с именем опечатки.
+    """
+
+    device_id: str
+    template: str
+    reason: str
+
+
+@dataclass
+class LoadReport:
+    """Что получилось и что не получилось при сборке манифеста.
+
+    Нужен для устойчивой загрузки: решение владельца 2026-10-10 — «платформа
+    должна быть максимально устойчивой, но при этом сообщать о любых
+    проблемах». Устойчивость без отчёта — это молчаливая поломка, поэтому
+    пропуски обязаны быть видны и в журнале, и в готовности.
+    """
+
+    loaded: int = 0
+    """Сколько определений собрано."""
+
+    skipped: list[SkippedBehavior] = field(default_factory=list)
+    """Какие поведения не собраны и почему."""
+
+    @property
+    def ok(self) -> bool:
+        """Нет ли пропусков.
+
+        Returns:
+            True, когда всё собралось.
+        """
+        return not self.skipped
+
+    def as_dict(self) -> dict[str, Any]:
+        """Сведения о загрузке для сводки готовности.
+
+        Returns:
+            Словарь со счётчиками и списком пропусков.
+        """
+        return {
+            "loaded": self.loaded,
+            "ok": self.ok,
+            "skipped": [
+                {"device_id": item.device_id, "template": item.template, "reason": item.reason}
+                for item in self.skipped
+            ],
+        }
 
 
 # Каталог с YAML-шаблонами автоматизаций: src/features/
@@ -54,6 +131,87 @@ def _timeout_from_params(yaml_transition: YAMLTransition, params: dict | None) -
     if isinstance(override, bool) or not isinstance(override, (int, float)) or override <= 0:
         return default
     return float(override)
+
+
+#: Сопоставление «шаблон → домен правил». Ключ — имя шаблона поведения,
+#: значение — имя секции в ``automation_rules``.
+#:
+#: Раньше здесь стояло ``getattr(automation_rules, behavior.template, None)``,
+#: то есть сравнение строк. Имена совпадали только у освещения, а шаблоны
+#: климата и вентиляции называются иначе, чем домены, поэтому ``getattr`` давал
+#: ``None`` и доменные правила не применялись **никогда** — при этом манифест
+#: загружался без единой ошибки (`research.md` D3).
+TEMPLATE_DOMAINS: dict[str, str] = {
+    "lighting": "lighting",
+    "night_light": "lighting",
+    "deco_light": "lighting",
+    "climate_control": "climate",
+    "humidity_ventilation": "ventilation",
+    "ventilation_modes": "ventilation",
+}
+
+#: Значения доменных правил, переносимые в параметры поведения. Условия читают
+#: их оттуда: движок раскладывает параметры поведения в контекст перехода
+#: (``FSMEngine._definition_params``).
+#:
+#: Список разделён по доменам намеренно. Общий список означал бы, что границы
+#: уставки климата попадают в параметры освещения — и наоборот: лишние поля в
+#: параметрах поведения попадают в веб-интерфейс и в контракт, где их видно
+#: как настройку, которой нет.
+_DOMAIN_RULE_NAMES: dict[str, tuple[str, ...]] = {
+    "lighting": (
+        "quiet_from",
+        "quiet_to",
+        "night_motion_rooms",
+        "always_on_motion_rooms",
+    ),
+    "climate": ("setpoint_min", "setpoint_max"),
+    "ventilation": ("manual_lockout_min",),
+}
+
+
+def _domain_rules_for_template(automation_rules: Any, template_name: str) -> Any:
+    """Правила домена, к которому относится шаблон.
+
+    Args:
+        automation_rules: Правила автоматизации дома.
+        template_name: Имя шаблона поведения.
+
+    Returns:
+        Объект правил домена либо ``None``, если шаблон домену не принадлежит.
+    """
+    domain = TEMPLATE_DOMAINS.get(template_name)
+    if domain is None:
+        return None
+    return getattr(automation_rules, domain, None)
+
+
+def _apply_domain_rules_to_behavior(behavior: Any, automation_rules: Any) -> Any:
+    """Перенести доменные значения в параметры поведения.
+
+    Явный параметр устройства главнее доменного: иначе настройка, которую задал
+    владелец в конкретной комнате, молча перетиралась бы общим значением дома.
+
+    Args:
+        behavior: Поведение из манифеста.
+        automation_rules: Правила автоматизации дома.
+
+    Returns:
+        Поведение с дополненными параметрами либо исходное без изменений.
+    """
+    domain = TEMPLATE_DOMAINS.get(behavior.template)
+    domain_rules = _domain_rules_for_template(automation_rules, behavior.template)
+    defaults: dict[str, Any] = {}
+    time_zone = getattr(automation_rules, "time_zone", None)
+    if time_zone:
+        defaults["time_zone"] = time_zone
+    for name in _DOMAIN_RULE_NAMES.get(domain or "", ()):
+        value = getattr(domain_rules, name, None) if domain_rules is not None else None
+        if value is not None:
+            defaults[name] = value
+    if not defaults or all(key in behavior.params for key in defaults):
+        return behavior
+    return behavior.model_copy(update={"params": {**defaults, **behavior.params}})
 
 
 def _resolve_features_dir(features_dir: str | None) -> Path:
@@ -333,12 +491,13 @@ class FSMFactory:
         Returns:
             Новое поведение с дополненными параметрами.
         """
-        domain_rules = getattr(automation_rules, behavior.template, None)
+        domain = TEMPLATE_DOMAINS.get(behavior.template)
+        domain_rules = _domain_rules_for_template(automation_rules, behavior.template)
         defaults: dict[str, Any] = {}
         time_zone = getattr(automation_rules, "time_zone", None)
         if time_zone:
             defaults["time_zone"] = time_zone
-        for name in ("quiet_from", "quiet_to", "night_motion_rooms", "always_on_motion_rooms"):
+        for name in _DOMAIN_RULE_NAMES.get(domain or "", ()):
             value = getattr(domain_rules, name, None) if domain_rules is not None else None
             if value is not None:
                 defaults[name] = value
@@ -386,10 +545,15 @@ class FSMFactory:
             # Валидация через Pydantic
             yaml_def = YAMLFSMDefinition.model_validate(modified_data)
 
-            # Проверка guard/action функций
-            warnings = self._validate_guards_and_actions(yaml_def)
-            for warning in warnings:
-                logger.warning(warning)
+            # Проверка guard/action функций. Раньше здесь был WARNING, и это
+            # означало худший исход: опечатка в имени действия проходила
+            # молча, `action_fn` оставался `None`, переход выполнялся вхолостую,
+            # а дом выглядел исправным. Теперь это ошибка сборки — поведение
+            # пропускается, а причина попадает в отчёт о загрузке
+            # (`research.md` D8, решение владельца 2026-10-10).
+            problems = self._validate_guards_and_actions(yaml_def)
+            if problems:
+                raise TemplateLoadError("; ".join(problems))
 
             # Если в params есть schedule, создаем guard функцию для проверки расписания
             schedule_guard_fn = None
@@ -410,12 +574,16 @@ class FSMFactory:
                     device_id, fsm_def.entity_id, behavior.params, behavior.template
                 )
 
+        except TemplateLoadError:
+            raise
         except FileNotFoundError as e:
             logger.error(str(e))
+            raise MissingTemplateError(str(e)) from e
         except Exception as e:
             logger.error(
                 f"Failed to create FSM from behavior '{behavior.template}' for device '{device_id}': {e}"
             )
+            raise TemplateLoadError(str(e)) from e
 
         return definitions
 
@@ -501,7 +669,29 @@ class FSMFactory:
         Returns:
             list[FSMDefinition]: Список всех созданных определений FSM.
         """
-        all_definitions = []
+        definitions, report = self.create_from_manifest_reported(manifest)
+        return definitions
+
+    def create_from_manifest_reported(
+        self, manifest: Any
+    ) -> tuple[list[FSMDefinition], LoadReport]:
+        """Создать FSM и вернуть отчёт о том, что не получилось.
+
+        Изоляция по устройству, а не по шаблону: два устройства в одной комнате
+        могут пользоваться одним шаблоном, и поломка одного поведения не должна
+        выключать соседнее. Решение владельца 2026-10-10: «платформа должна быть
+        максимально устойчивой, но при этом сообщать о любых проблемах» —
+        обе половины обязательны, поэтому пропуски собираются в отчёт, а не
+        только пишутся в журнал.
+
+        Args:
+            manifest: Валидированный объект Manifest.
+
+        Returns:
+            Кортеж из собранных определений и отчёта о пропусках.
+        """
+        all_definitions: list[FSMDefinition] = []
+        report = LoadReport()
 
         for room_id, device in manifest.all_devices:
             device_id = device.id
@@ -516,15 +706,39 @@ class FSMFactory:
             logger.info(f"Processing device '{device_id}' with {len(sorted_behaviors)} behaviors")
 
             for behavior in sorted_behaviors:
-                definitions = self.create_from_behavior(
-                    device_id,
-                    self._with_house_rules(behavior, manifest.automation_rules),
-                    room_id,
-                )
+                try:
+                    definitions = self.create_from_behavior(
+                        device_id,
+                        self._with_house_rules(behavior, manifest.automation_rules),
+                        room_id,
+                    )
+                except Exception as exc:  # noqa: BLE001 — одно устройство не должно ронять дом
+                    reason = str(exc) or type(exc).__name__
+                    report.skipped.append(
+                        SkippedBehavior(
+                            device_id=device_id,
+                            template=behavior.template,
+                            reason=reason,
+                        )
+                    )
+                    logger.error(
+                        f"Поведение '{behavior.template}' устройства '{device_id}' "
+                        f"пропущено: {reason}"
+                    )
+                    continue
                 all_definitions.extend(definitions)
 
-        logger.info(f"Created {len(all_definitions)} FSM definitions from manifest")
-        return all_definitions
+        report.loaded = len(all_definitions)
+        if report.skipped:
+            logger.error(
+                f"Из манифеста не собрано {len(report.skipped)} поведений, "
+                f"работают {report.loaded}: {report.as_dict()['skipped']}"
+            )
+        logger.info(
+            f"Created {len(all_definitions)} FSM definitions from manifest "
+            f"({len(report.skipped)} skipped)"
+        )
+        return all_definitions, report
 
     def register_in_engine(self, definitions: list[FSMDefinition]) -> None:
         """

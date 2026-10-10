@@ -117,6 +117,102 @@ class AutomationDomainRules(BaseModel):
     max_on_sec: int | None = None
     """Потолок горения без свежих триггеров."""
 
+    # ─── Климат (спека 014) ───
+    # Уставка и прочие признаки живут в Home Assistant: владелец меняет их сам,
+    # и второе место, где ту же логику можно сломать, только вредит. Платформа
+    # читает — и потому обязана знать, откуда читать.
+    setpoint_entity: str | None = None
+    """Сущность целевой температуры (например ``input_number.temperatura``)."""
+    comfort_max_entity: str | None = None
+    """Сущность потолка комфорта, выше которого в комнате жарко."""
+    season_entity: str | None = None
+    """Сущность сезона: зимой кондиционер включать нельзя."""
+    feature_entity: str | None = None
+    """Признак «фича включена»; при выключенном платформа только наблюдает."""
+    ac_gate_entity: str | None = None
+    """Разрешение владельца на кондиционер."""
+    setpoint_min: float = 5.0
+    """Нижняя граница допустимой уставки."""
+    setpoint_max: float = 30.0
+    """Верхняя граница допустимой уставки."""
+
+    # ─── Вентиляция (спека 014) ───
+    enable_entity: str | None = None
+    """Выключалка вентиляции владельца; ``off`` сильнее любого правила."""
+    airing_entity: str | None = None
+    """Проветривание: максимальный приток на заданный срок."""
+    exhaust_entity: str | None = None
+    """Режим вытяжки по отдельной кнопке."""
+    outside_temp_entity: str | None = None
+    """Уличная температура: по разнице с комнатой выбирается режим."""
+
+    @field_validator(
+        "setpoint_entity",
+        "comfort_max_entity",
+        "season_entity",
+        "feature_entity",
+        "ac_gate_entity",
+        "enable_entity",
+        "airing_entity",
+        "exhaust_entity",
+        "outside_temp_entity",
+    )
+    @classmethod
+    def _reject_blank_entity(cls, value: str | None) -> str | None:
+        """Отвергнуть пустую сущность.
+
+        Пустая строка даёт пустую подписку, и отказ выглядит как штатная
+        работа: «настроил, а не работает» без единого сообщения. Ошибка
+        загрузки манифеста честнее — она указывает строку.
+
+        Args:
+            value: Значение поля.
+
+        Returns:
+            Значение без изменений либо ``None``.
+        """
+        if value is not None and not value.strip():
+            raise ValueError("имя сущности не может быть пустым")
+        return value
+
+    @field_validator("manual_lockout_min")
+    @classmethod
+    def _reject_negative_lockout(cls, value: int | None) -> int | None:
+        """Отвергнуть отрицательный срок блокировки.
+
+        Args:
+            value: Значение поля.
+
+        Returns:
+            Значение без изменений либо ``None``.
+        """
+        if value is not None and value < 0:
+            raise ValueError("срок ручной блокировки не может быть отрицательным")
+        return value
+
+    @field_validator("setpoint_max")
+    @classmethod
+    def _check_setpoint_range(cls, value: float, info: Any) -> float:
+        """Проверить, что границы уставки заданы в правильном порядке.
+
+        Обратный порядок означал бы, что любая уставка «вне диапазона» и
+        отказ по ней приходят в запутанном виде, а владелец не понимает, что
+        исправлять.
+
+        Args:
+            value: Значение поля.
+            info: Контекст валидации с остальными полями.
+
+        Returns:
+            Значение без изменений.
+        """
+        lower = (info.data or {}).get("setpoint_min")
+        if lower is not None and value <= lower:
+            raise ValueError(
+                f"верхняя граница уставки ({value}) должна быть больше нижней ({lower})"
+            )
+        return value
+
 
 class AutomationRules(BaseModel):
     """Global automation rules and domain-specific overrides."""

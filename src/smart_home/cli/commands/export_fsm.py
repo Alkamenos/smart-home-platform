@@ -62,6 +62,16 @@ def generate_fsms_from_manifest(manifest: dict[str, Any]) -> list[tuple[str, FSM
 
     engine = FSMEngine()
     registry = Registry()
+    # Реестр должен быть полным: с 2026-10-10 отсутствующее действие или
+    # условие — ошибка сборки поведения, а не предупреждение в журнал. Выгрузка
+    # схемы строит те же автоматы, что и платформа, и с пустым реестром
+    # половина устройств молча выпадала из схемы.
+    from core.action_handlers import register_all_actions
+    from core.control_tracker import ControlTracker
+    from core.guards.builtin import register_all_guards
+
+    register_all_guards(registry, ControlTracker())
+    register_all_actions(registry)
     event_bus = EventBus()
     factory = FSMFactory(engine=engine, registry=registry, event_bus=event_bus)
 

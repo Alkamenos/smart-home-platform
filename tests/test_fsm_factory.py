@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from core.fsm.engine import FSMEngine
-from core.fsm.factory import FSMFactory
+from core.fsm.factory import FSMFactory, TemplateLoadError
 from core.models.manifest import BehaviorConfig, DeviceConfig, Manifest
 from core.registry import Registry
 
@@ -290,17 +290,23 @@ transitions:
         assert definitions[0].initial_state == "OFF"
 
     def test_create_from_behavior_missing_template(self, tmp_path):
-        """Creating FSM with missing template logs error."""
+        """Отсутствующий шаблон поднимает ошибку, а не возвращает пустоту.
+
+        Раньше здесь ожидался пустой список: ошибка глушилась, и вызывающий код
+        не мог отличить «устройства нет» от «шаблон не нашёлся». С 2026-10-10
+        невозможность собрать поведение — ошибка (`TemplateLoadError`), и её
+        ловит загрузка манифеста, чтобы пропустить устройство и сообщить о нём.
+        """
         engine = FSMEngine()
         registry = Registry()
         factory = FSMFactory(engine, registry, features_dir=str(tmp_path))
 
         behavior = BehaviorConfig(template="nonexistent", priority=10, params={})
 
-        definitions = factory.create_from_behavior("light.kitchen", behavior)
+        with pytest.raises(TemplateLoadError) as exc:
+            factory.create_from_behavior("light.kitchen", behavior)
 
-        # Should return empty list on error
-        assert len(definitions) == 0
+        assert "nonexistent" in str(exc.value), "ошибка обязана называть отсутствующий шаблон"
 
     def test_create_from_behavior_with_schedule(self, factory_with_registry):
         """Creating FSM with schedule param adds schedule guard."""
