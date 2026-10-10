@@ -98,32 +98,6 @@ templates:
         range: "true/false"
         effective: true
         note: "В комнате стоит штатный термостат; платформа обогревателем здесь не управляет (guards/builtin.py:make_may_heat)."
-    params:
-      target_temp:
-        type: float
-        range: "5-35"
-        effective: true
-        note: "Целевая температура в градусах. Уходит в команду climate.set_temperature кондиционера (action_handlers.py:ac_cool_on); для обогрева цель берётся из automation_rules.climate, а не отсюда."
-      hysteresis:
-        type: float
-        range: "0-2"
-        effective: true
-        note: "Ширина мёртвой зоны обогревателя, °C. Читает условие may_heat (guards/builtin.py:_hysteresis_value); по умолчанию 0.5."
-      run_minutes:
-        type: float
-        range: "1-180"
-        effective: true
-        note: "На сколько минут включается обогреватель через его таймер. Читает действие heater_timer_on; по умолчанию 15 минут."
-      heater_timer:
-        type: str
-        range: "entity_id"
-        effective: true
-        note: "Сущность таймера обогревателя (number.*_countdown). Читает heater_timer_on; без неё обогреватель включается напрямую, и защиты от перегрева при отказе датчика нет."
-      managed_by_hardware:
-        type: bool
-        range: "true/false"
-        effective: true
-        note: "В комнате стоит штатный термостат; платформа обогревателем здесь не управляет (guards/builtin.py:make_may_heat)."
   deco_light:
     reachable: true
     in_manifest: []
@@ -138,12 +112,6 @@ templates:
     gaps:
       - События заката и рассвета порождает адаптер по состоянию sun.sun, а не роутер: солнце не входит в манифест и в подписку, поэтому в карте SENSOR_EVENT_MAP его нет. Шаблон слушает то, чего роутер не публикует, и это нормально ровно до тех пор, пока события доставляет контейнер.
       - Включение по датчику освещённости не сделано: датчик сломан и ждёт замены (B31). Солнце уходит, а в доме ещё светло — при замене датчика для вечернего света это разные триггеры, и подменять один другим нельзя.
-    params:
-      off_by:
-        type: str
-        range: "sleep|sunrise"
-        effective: true
-        note: "Разводит только выключение по модификатору «мы спим». `sleep` — гаснет и по отбою, и по рассвету (гирлянда на террасе); `sunrise` — живёт до рассвета и отбоем не гасится (ночное освещение). По рассвету гаснут оба: среди бела дня декоративный свет не нужен (журнал 2026-10-10: гирлянда горела весь день, потому что рассвет для off_by=sleep был отказом guard_failed). Читает условие stops_on_sleep."
     params:
       off_by:
         type: str
@@ -195,12 +163,6 @@ templates:
         range: "0-100"
         effective: true
         note: "Порог включения вентиляции; читается guard'ом — единственный параметр этого шаблона с силой."
-    params:
-      humidity_threshold:
-        type: float
-        range: "0-100"
-        effective: true
-        note: "Порог включения вентиляции; читается guard'ом — единственный параметр этого шаблона с силой."
   lighting:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -231,17 +193,6 @@ templates:
         range: "30-3600"
         effective: true
         note: "Задержка выключения. Переопределяет timeout_sec только у переходов с триггером timeout (factory.py:_timeout_from_params); у остальных переходов timeout_sec — верхняя граница ожидания, и подменять её неверно."
-    params:
-      brightness:
-        type: int
-        range: "0-255"
-        effective: true
-        note: "Яркость включения; уходит в команду HA."
-      motion_timeout_sec:
-        type: int
-        range: "30-3600"
-        effective: true
-        note: "Задержка выключения. Переопределяет timeout_sec только у переходов с триггером timeout (factory.py:_timeout_from_params); у остальных переходов timeout_sec — верхняя граница ожидания, и подменять её неверно."
   night_light:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
@@ -256,17 +207,6 @@ templates:
     gaps:
       - schedule_end не порождается — расписание не выключает ночной свет.
       - У состояния ON_NIGHT нет guard'а на ночь, поэтому оно достижимо и днём через motion_detected.
-    params:
-      brightness:
-        type: int
-        range: "0-255"
-        effective: true
-        note: "Ночная яркость; уходит в команду HA."
-      schedule:
-        type: str
-        range: "ЧЧ:ММ-ЧЧ:ММ"
-        effective: true
-        note: "Окно ночного режима. Сейчас ИНЕРТЕН: читается только валидатором."
     params:
       brightness:
         type: int
