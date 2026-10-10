@@ -1,0 +1,335 @@
+---
+
+description: "Задачи по реализации климата и вентиляции под управлением платформы"
+---
+
+# Tasks: Климат и вентиляция под управлением платформы
+
+**Input**: Design documents from `/specs/014-climate-ventilation-control/`
+
+**Prerequisites**: plan.md, spec.md, research.md, data-model.md,
+contracts/interface-contracts.md, quickstart.md
+
+**Tests**: тесты обязательны — конституция II требует TDD, и каждая задача
+теста помечена как падающая до реализации. Без пометки `[P]` тесты одной
+истории пишутся подряд, потому что проверяют одну и ту же функцию.
+
+**Organization**: задачи сгруппированы по историям; каждая история — отдельный
+проверяемый кусок.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: можно параллельно (разные файлы, нет зависимостей)
+- **[Story]**: к какой истории относится
+- Пути указаны точно
+
+## Порядок, который здесь необычен
+
+Первая фаза — не «подготовка проекта», а **разрывы в существующем коде**.
+Климат сегодня не работает ни в одной комнате: ключи контекста никто не
+пишет, доменные правила не доезжают, таймер не взводится
+(`research.md`, раздел «Итог»). Эти три разрыва закрываются первыми, иначе
+истории не на чём строить.
+
+---
+
+## Phase 1: Разрывы в существующем коде
+
+**Purpose**: То, без чего ни одна история не работает.
+
+**Почему первым**: `climate_setpoint` и `climate_enabled` читаются условиями,
+но писателя нет нигде (`research.md` D1). В бою `may_heat` всегда получает
+«данных нет» и обогрев не включается. Это невыполненная T007 спеки 011.
+
+### Тесты
+
+> **Сначала тесты, убедиться что падают**
+
+- [ ] T001 [P] Тест: ключ `climate_setpoint` доезжает в контекст перехода — `tests/unit/test_ha_climate_globals.py`
+- [ ] T002 [P] Тест: ключи `is_winter`, `climate_enabled`, `ac_allowed`, `comfort_max` доезжают — `tests/unit/test_ha_climate_globals.py`
+- [ ] T003 [P] Тест: ключи `ventilation_on`, `airing_on`, `exhaust_on`, `ventilation_enabled`, `outside_temperature` доезжают — `tests/unit/test_ha_ventilation_globals.py`
+- [ ] T004 [P] Тест: доменные правила климата попадают в параметры поведения — `tests/unit/core/test_factory_domain_rules.py`
+- [ ] T005 [P] Тест: отсутствие действия в реестре проваливает загрузку манифеста — `tests/unit/core/test_factory_missing_action.py`
+- [ ] T006 [P] Тест: таймер перехода климата взводится из `timeout_sec` шаблона — `tests/integration/climate/test_heating_by_sensor.py`
+
+### Реализация
+
+- [ ] T007 [P] Расширить `AutomationDomainRules` полями климата (`setpoint_entity`, `comfort_max_entity`, `season_entity`, `feature_entity`, `ac_gate_entity`, `setpoint_min`, `setpoint_max`) в `src/core/models/manifest.py`
+- [ ] T008 [P] Расширить `AutomationDomainRules` полями вентиляции (`feature_entity`, `enable_entity`, `airing_entity`, `exhaust_entity`, `outside_temp_entity`, `manual_lockout_min`) в `src/core/models/manifest.py`
+- [ ] T009 Чтение сущностей климата в адаптере по образцу `_refresh_sleep_modifier` (`ha_adapter.py:1101-1152`), ключи `climate_setpoint`, `comfort_max`, `is_winter`, `climate_enabled`, `ac_allowed` — `src/adapters/ha_adapter.py`
+- [ ] T010 Чтение сущностей вентиляции в адаптере, ключи `ventilation_on`, `airing_on`, `exhaust_on`, `ventilation_enabled`, `outside_temperature` — `src/adapters/ha_adapter.py`
+- [ ] T011 Прокинуть ключи в контекст события рядом с `daylight` и `sleep_modifier_on` (`ha_adapter.py:1473-1488`) — `src/adapters/ha_adapter.py`
+- [ ] T012 Сопоставление «шаблон → домен» явной таблицей вместо сравнения строк; сейчас `getattr` даёт `None` для климата и вентиляции (FR-035, `factory.py:336`) — `src/core/fsm/factory.py`
+- [ ] T013 Задать `timeout_sec` в переходе `HEATING → IDLE` по `timeout`; комментарий в шаблоне описывает несуществующее поведение (FR-004, FR-005, `research.md` D4) — `src/features/climate_control.yaml`
+- [ ] T014 Отсутствие действия в реестре — ошибка загрузки, не WARNING; сейчас переход проходит как успешный и молча ничего не выполняет (`research.md` D8) — `src/core/fsm/factory.py`
+
+**Checkpoint**: T001–T006 зелёные, три разрыва закрыты. Без этого
+истории ниже написаны вхолостую.
+
+---
+
+## Phase 2: User Story 1 — Комнаты держат заданную температуру (P1) 🎯 MVP
+
+**Goal**: обогреватели включаются по показанию датчика и своей уставке, через
+собственный таймер.
+
+**Independent Test**: поднять `input_number.temperatura` до 23 и дождаться
+показания датчика — обогреватели включаются; опустить уставку — гаснут
+независимо друг от друга. Боевая проверка: шаг 2 `quickstart.md`.
+
+### Тесты
+
+- [ ] T015 [P] [US1] Тесты `may_heat`: холоднее цели включает (FR-002), мёртвая зона не включает (FR-006), `managed_by_hardware` не включает (FR-008), комната без датчика исключена (FR-009) — `tests/unit/core/test_climate_guards.py`
+- [ ] T016 [P] [US1] Тесты `may_stop_heating`: достижение цели выключает без гистерезиса (FR-003) — `tests/unit/core/test_climate_guards.py`
+- [ ] T017 [P] [US1] Тесты действий таймера: `number.set_value` с минутами (FR-004, FR-005), `switch.turn_off` на выключении (FR-003) — `tests/unit/core/test_climate_actions.py`
+- [ ] T018 [US1] Сквозной тест обогрева: датчик → решение → команда таймеру (FR-001, FR-002); обратный путь `HEATING → IDLE` по достижении цели (FR-003) — `tests/integration/climate/test_heating_by_sensor.py`
+
+### Реализация
+
+- [ ] T019 [US1] Объявить требуемые данные климатических условий в `GUARD_DATA_REQUIREMENTS` (`builtin.py:549-552`), FR-009, FR-037, FR-038, FR-039: `may_heat` и `may_stop_heating` требуют `temperature`; `climate_setpoint` **не** объявлять — любое число прошло бы как измерение и отказ об уставке стал бы недостижим — `src/core/guards/builtin.py`
+- [ ] T020 [US1] Заполнить `bypass_lockout` в климатических командах (FR-006, FR-007); сейчас `_heater_intent` его не заполняет, обход блокировки работает только для света (`research.md` D11) — `src/core/action_handlers.py`
+- [ ] T021 [US1] Объявить параметры `climate_control` в контракте (FR-005, FR-006, FR-008): `heater_timer`, `run_minutes` (1–43200, по умолчанию 15), `hysteresis` (0–5, 0.5), `managed_by_hardware`; без этого веб-интерфейс отвергнет параметр — `src/features/CONTRACT.yaml`
+- [ ] T022 [US1] Прописать комнаты с обогревом в боевой манифест: спальня, санузел, кабинет, гостевая спальня; гостиную с `managed_by_hardware: true` — `instances/leonids_house/manifest.yaml`
+- [ ] T023 [US1] Регенерация контракта шаблонов после новых условий и параметров — `tools/gen_template_contract.py`
+- [ ] T024 [US1] Боевая проверка шага 2 из `specs/014-climate-ventilation-control/quickstart.md`: обогрев, отключение по достижении цели, работа по таймеру при отказе датчика, гостиная не трогается, ручная блокировка уважается
+
+**Checkpoint**: дом держит температуру; каждая комната решает по своему
+датчику; гостиная не задействована.
+
+---
+
+## Phase 3: User Story 5 — Отказ датчика (P5)
+
+**Goal**: нет данных → решение не принимается, причина в журнале, обогреватель
+не зависает.
+
+**Почему здесь, а не после вентиляции**: правила одинаковы для всех
+потребителей и проверяются проще всего — достаточно сделать показание
+нечитаемым. Ставится рядом с обогревом, пока обогрев работает.
+
+**Independent Test**: сделать `sensor.datchik_temperatury_spalnia_temperature`
+недоступным — обогрев спальни прекращается с записью в журнале, остальные
+комнаты работают; вернуть датчик — комната оживает без перезапуска.
+
+### Тесты
+
+- [ ] T025 [P] [US5] Тесты: нечитаемое показание равно отсутствию данных, а не нулю (FR-037) (`_is_measurement`, `engine.py:89-113`) — `tests/unit/core/test_sensor_failure_handling.py`
+- [ ] T026 [P] [US5] Тесты: отказ одного датчика не меняет решения других комнат (FR-041) — `tests/integration/climate/test_sensor_failure_isolation.py`
+- [ ] T027 [P] [US5] Тесты: обогреватель дорабатывает по таймеру при отказе датчика и выключается (FR-043) — `tests/integration/climate/test_sensor_failure_isolation.py`
+- [ ] T028 [P] [US5] Тесты: возврат показания возвращает комнату в работу без перезапуска (FR-042) — `tests/integration/climate/test_sensor_failure_isolation.py`
+- [ ] T029 [P] [US5] Тесты: молчащий датчик порождает не больше одной записи в минуту (FR-040, FR-045, FR-047, SC-016) — `tests/unit/core/test_rejection_throttle.py`
+- [ ] T030 [P] [US5] Тесты: заряд батареи ниже 20 % даёт предупреждение с именем датчика (FR-033, FR-045, FR-048) (FR-048) — `tests/unit/core/test_sensor_battery_watch.py`
+
+### Реализация
+
+- [ ] T031 [US5] Ограничить частоту записей об отказе по одной сущности (FR-047); сейчас причина пишется молча после первого упоминания, и для климата нужно то же, но с явным счётчиком — `src/core/fsm/engine.py`
+- [ ] T032 [US5] Отслеживание заряда батарей датчиков и предупреждение при падении ниже порога (FR-033, FR-048) — `src/core/services/sensor_health.py`
+- [ ] T033 [US5] Зарегистрировать сервис в контейнере; в синхронной сборке запуск пропускается, как у `deco_light_watcher` (`container.py:679-687`) — `src/core/container.py`
+- [ ] T034 [US5] Боевая проверка шага 3 из `specs/014-climate-ventilation-control/quickstart.md`: отказ датчика, изоляция комнат, возврат без перезапуска, таймер как страховка, заряд батареи
+
+**Checkpoint**: отказ датчика не приводит ни к сюрпризу, ни к зависшему
+обогреву.
+
+---
+
+## Phase 4: User Story 2 — Кондиционер летом (P2)
+
+**Goal**: охлаждение выше потолка комфорта, зимой невозможно — ни решением
+платформы, ни ручной командой.
+
+**Independent Test**: при `zima` = on поднять показание выше потолка и
+включить гейт — кондиционер не включится, причина `ac_forbidden_in_winter`;
+затем `zima` = off и охлаждение включится.
+
+### Тесты
+
+- [ ] T035 [P] [US2] Тесты `may_cool`: зимой запрещено (FR-014, FR-011), гейт выключен — запрещено (FR-013), гейт включён и не зима — разрешено; потолок комфорта обязателен (FR-012) — `tests/unit/core/test_climate_guards.py`
+- [ ] T036 [P] [US2] Тесты: `climate_setpoint` вне диапазона `setpoint_min`/`setpoint_max` даёт отказ, а не запасное значение (FR-034, FR-044) — `tests/unit/core/test_climate_guards.py`
+- [ ] T037 [P] [US2] Тесты действий кондиционера: `climate.set_temperature` с потолком (FR-013), `set_hvac_mode` (FR-016) — `tests/unit/core/test_climate_actions.py`
+- [ ] T038 [P] [US2] Тесты: кондиционер, включённый вне платформы зимой, выключается с предупреждением (FR-015) — `tests/integration/climate/test_ac_winter_guard.py`
+- [ ] T039 [P] [US2] Тесты: осушение и охлаждение — одно решение, не два (FR-017): охлаждение приоритетнее осушения — `tests/integration/climate/test_ac_modes.py`
+
+### Реализация
+
+- [ ] T040 [US2] Условие `may_cool`: разрешает вне зимы (FR-011, FR-014), при включённом гейте (FR-013) и выше потолка (FR-012); каждое непройденное условие называет свою причину; каждое непройденное условие называет свою причину — `src/core/guards/builtin.py`
+- [ ] T041 [US2] Причины отказов `ac_not_allowed`, `ac_forbidden_in_winter`, `not_above_comfort` в словаре причин — `src/core/events/fsm_events.py`
+- [ ] T042 [US2] Действия `ac_cool_to` (`climate.set_temperature`) и `ac_set_mode` (`climate.set_hvac_mode`) в реестре — `src/core/action_handlers.py`
+- [ ] T043 [US2] Состояние `COOLING` и переходы в шаблоне; состояние `DRYING` для осушения — одно состояние автомата, а не два: `hvac_mode` у кондиционера общий, два автомата дрались бы за один режим — `src/features/climate_control.yaml`
+- [ ] T044 [US2] Прописать кондиционер гостиной в боевой манифест с учётом того, что в той же комнате термостат (FR-018) — `instances/leonids_house/manifest.yaml`
+- [ ] T045 [US2] Регенерация контракта шаблонов — `tools/gen_template_contract.py`
+- [ ] T046 [US2] Боевая проверка запретов из шага 4 `specs/014-climate-ventilation-control/quickstart.md`; **саму охлаждение проверять летом**, записать дату проверки в `.ai/01_PROJECT_STATE.md`
+
+**Checkpoint**: зимой кондиционер не включается ничем; летом охлаждает.
+
+---
+
+## Phase 5: User Story 3 — Дом дышит (P3)
+
+**Goal**: рекуператоры работают в режиме, выбранном по погоде и времени суток;
+скорость задаётся отдельно; проветривание само отключается.
+
+**Independent Test**: включить `input_boolean.provetrivanie` — оба
+рекуператора в режиме максимального притока, через час вернулись к обычному
+режиму сами; включить вытяжку — вентилятор санузла работает.
+
+### Тесты
+
+- [ ] T047 [P] [US3] Тесты `mode_for_weather`: улица холоднее — режим зимы, теплее — режим лета (FR-019), улица недоступна — отказ `outside_temp_missing` (FR-029) — `tests/unit/core/test_ventilation_guards.py`
+- [ ] T048 [P] [US3] Тесты `speed_within_limits`: скорость 0–100 (FR-020), мёртвая зона колебаний (FR-030), ночной потолок только понижает (FR-022, FR-023) — `tests/unit/core/test_ventilation_guards.py`
+- [ ] T049 [P] [US3] Тесты выключалки владельца: `ventilation_on` = off → скорость 0, никакое правило её не поднимает (FR-027) — `tests/unit/core/test_ventilation_guards.py`
+- [ ] T050 [P] [US3] Тесты действий: `fan.set_percentage`, `fan.set_preset_mode`, `fan.turn_on`/`turn_off` для вытяжки без скорости (FR-028) — `tests/unit/core/test_ventilation_actions.py`
+- [ ] T051 [P] [US3] Тест: режим и скорость независимы — смена скорости не сбрасывает режим и наоборот (FR-021) — `tests/integration/ventilation/test_mode_and_speed_independent.py`
+- [ ] T052 [P] [US3] Тест: проветривание отключается само по таймеру (FR-024, FR-025, FR-026) — `tests/integration/ventilation/test_airing_timeout.py`
+- [ ] T053 [P] [US3] Тест: отказ датчика улицы останавливает только пересчёт скорости; обогрев и остальная вентиляция работают (FR-046) — `tests/integration/ventilation/test_outside_sensor_failure.py`
+
+### Реализация
+
+- [ ] T054 [US3] Условия `mode_for_weather` и `speed_within_limits`: режим выбирается из списка устройства (FR-019), скорость 0–100 (FR-020) как `speed_normal + |ΔT| × speed_delta_gain` с нулём в мёртвой зоне `delta_deadband` (FR-030) — `src/core/guards/builtin.py`
+- [ ] T055 [US3] Условие `owner_wants_airing` и `sensor_is_alive` — `src/core/guards/builtin.py`
+- [ ] T056 [US3] Причины отказов `ventilation_disabled`, `turned_off_by_owner`, `outside_temp_missing`, `sensor_stale` — `src/core/events/fsm_events.py`
+- [ ] T057 [US3] Действия `fan_set_percentage` (`set_percentage`), `fan_set_preset` (`set_preset_mode`), `fan_apply_mode_and_speed` (два намерения подряд; атомарности в системе нет, порядок — по доставке), `exhaust_on`/`exhaust_off` — `src/core/action_handlers.py`
+- [ ] T058 [US3] Новый шаблон `ventilation_modes` с состояниями `IDLE`, `SUPPLY`, `AIRING`, `EXHAUST` (FR-024, FR-025, FR-026); `AIRING` выходит по `timeout` через `airing_seconds`; `EXHAUST` отдельно, потому что вытяжка меняет направление, а не скорость — `src/features/ventilation_modes.yaml`
+- [ ] T059 [US3] Объявить параметры `ventilation_modes` в контракте с диапазонами из `data-model.md` §5; режимы — параметры, а не константы: список принадлежит устройству, и замена рекуператора не должна требовать правки кода — `src/features/CONTRACT.yaml`
+- [ ] T060 [US3] Прописать оба рекуператора и вытяжку в боевой манифест — `instances/leonids_house/manifest.yaml`
+- [ ] T061 [US3] Регенерация контракта шаблонов — `tools/gen_template_contract.py`
+- [ ] T062 [US3] Боевая проверка шага 5 `quickstart.md`: выключалка, режим, независимость скорости, ночной предел, проветривание с самоотключением, вытяжка, сценарий «жарко у печи», колебания не дёргают вентилятор
+
+**Checkpoint**: дом дышит по погоде; проветривание само гаснет; выключалка
+владельца сильнее любого правила.
+
+---
+
+## Phase 6: User Story 4 — Контроль владельца (P4)
+
+**Goal**: ручное вмешательство уважается, фиче-флаги отключают автоматику,
+каждый отказ объяснён.
+
+**Why last**: это сквозная проверка того, что должно работать во всех
+историях. Проверять раньше — проверять нечего.
+
+**Independent Test**: выключить `input_boolean.ventiliatsiia` — оба
+рекуператора в 0 в течение 60 секунд; изменить скорость руками — платформа не
+перебивает.
+
+### Тесты
+
+- [ ] T063 [P] [US4] Тесты: фиче-флаг климата выключен → ни одной команды; флаг вентиляции выключен → ни одной команды (FR-031, SC-011) — `tests/unit/core/test_feature_flags.py`
+- [ ] T064 [P] [US4] Тесты: ручная блокировка переживает автоматику для климата и вентиляции (FR-007, FR-010) — `tests/unit/core/test_manual_lockout_climate.py`
+- [ ] T065 [P] [US4] Тест: у 100 % отказов названа причина — ни одного `guard_failed` без причины (FR-032) — `tests/unit/core/test_every_denial_is_named.py`
+
+### Реализация
+
+- [ ] T066 [US4] Проверить сквозное действие `bypass_lockout` только для событий из `SAFETY_EVENTS` (`engine.py:126-128`): собственная команда платформы блокировку не обходит — `src/core/action_handlers.py`
+- [ ] T067 [US4] Исключить мёртвые сущности из манифеста: `climate.kitchen_ac`, `climate.beok_tr9b_thermostat*` отвечают `unavailable` (FR-036); недоступная сущность исключается, а не ломает загрузку — `instances/leonids_house/manifest.yaml`
+- [ ] T068 [US4] Боевая проверка шага 6 `quickstart.md`: ручная блокировка, оба фиче-флага, объяснение отказов, граница влияния отказа
+
+**Checkpoint**: платформа уступает человеку и объясняет каждое решение.
+
+---
+
+## Phase 7: Наблюдение в течение суток
+
+**Purpose**: критерии, которые нельзя закрыть в первый день.
+
+- [ ] T069 Собрать показания температур за сутки и посчитать долю в пределах ±1 °C (SC-001) — по процедуре `specs/014-climate-ventilation-control/quickstart.md`
+- [ ] T070 Найти самую длинную работу обогревателя за сутки (SC-002) — по процедуре `specs/014-climate-ventilation-control/quickstart.md`
+- [ ] T071 Разобрать журнал за сутки: у 100 % решений есть причина (SC-003, SC-015) — по процедуре `specs/014-climate-ventilation-control/quickstart.md`
+- [ ] T072 Записать результаты наблюдения в `.ai/01_PROJECT_STATE.md` рядом с историей фичи; без записи через месяц нечем подтвердить, что критерий закрыт
+
+---
+
+## Phase 8: Завершение
+
+- [ ] T073 [P] Обновить `.ai/01_PROJECT_STATE.md`: что работает, что проверено в доме, что ждёт лета
+- [ ] T074 [P] Обновить `.ai/BACKLOG.md`: закрыть F6 о климате, если health check построен на сделанном; отметить, что датчик террасы на 1 % и ждёт замены
+- [ ] T075 [P] Регенерация полного контракта шаблонов после всех историй — `tools/gen_template_contract.py`
+- [ ] T076 Полный прогон: `python -m pytest tests/ -q`, `make lint`, `make type-check`, `make test`
+
+---
+
+## Dependencies & Execution Order
+
+### Phase Dependencies
+
+- **Phase 1 (разрывы)**: ни от чего не зависит. Блокирует всё остальное.
+- **Phase 2 (US1 обогрев)**: требует Phase 1.
+- **Phase 3 (US5 отказ датчика)**: требует Phase 1; проверяется на обогреве из
+  Phase 2, но код независим.
+- **Phase 4 (US2 кондиционер)**: требует Phase 1.
+- **Phase 5 (US3 вентиляция)**: требует Phase 1.
+- **Phase 6 (US4 контроль)**: требует 2, 4, 5 — проверяет всё сразу.
+- **Phase 7 (наблюдение)**: требует 2 и 3, сутки времени.
+- **Phase 8 (завершение)**: требует всех историй.
+
+### Story Dependencies
+
+- **US1 (P1)**: только Phase 1. Первый, даёт пользу зимой.
+- **US5 (P5)**: только Phase 1. Код независим от US1, проверка — на обогреве.
+- **US2 (P2)**: только Phase 1. Климат охлаждения не пересекается с обогревом:
+  разные состояния одного автомата.
+- **US3 (P3)**: только Phase 1. Начинать после US1: оба используют чтение
+  глобальных сущностей, и вместе проверяют его дешевле.
+- **US4 (P4)**: требует US1, US2, US3.
+
+### Within Each Story
+
+- Тесты падают до реализации.
+- Условия → причины отказов → действия → шаблон → манифест → контракт.
+- Контракт регенерируется **после** действий и условий, иначе проверка контракта
+  падает на промежуточном состоянии.
+
+### Parallel Opportunities
+
+- T001–T006 (тесты разрывов) — все параллельны.
+- T007–T008 (модель манифеста) — параллельны между собой, но не с T009–T011:
+  адаптер читает поля модели.
+- T015–T017 (тесты US1) — параллельны.
+- T025–T030 (тесты US5) — параллельны.
+- T035–T039 (тесты US2) — параллельны.
+- T047–T053 (тесты US3) — параллельны.
+- Phase 3, 4, 5 можно вести параллельно друг с другом: файлы разные, кроме
+  `guards/builtin.py` и `fsm_events.py` — там работа последовательная.
+
+---
+
+## Parallel Example: Phase 1
+
+```bash
+# Все тесты разрывов пишутся разом — они падают на текущем коде:
+Task: "Тест: ключ climate_setpoint доезжает в контекст перехода"
+Task: "Тест: доменные правила климата попадают в параметры поведения"
+Task: "Тест: таймер перехода климата взводится из timeout_sec шаблона"
+```
+
+---
+
+## Implementation Strategy
+
+### MVP: US1 — обогрев
+
+1. Phase 1 — три разрыва (без них обогрев не заработает ни в одной комнате).
+2. Phase 2 — обогрев.
+3. **Остановиться и проверить в доме** (шаг 2 `quickstart.md`).
+4. Дом держит температуру — это первая ощутимая польза.
+
+### Дальше
+
+- Phase 3 — отказ датчиков; правила общие, проверяются быстро.
+- Phase 4 — кондиционер; код готов к зиме, боевая проверка летом.
+- Phase 5 — вентиляция; самая объёмная.
+- Phase 6 — сквозная проверка контроля владельца.
+- Phase 7 — наблюдение за сутки и запись результатов.
+
+---
+
+## Notes
+
+- [P] = разные файлы, нет зависимостей
+- [Story] даёт прослеживаемость от требования до задачи
+- Тесты обязательны: конституция II
+- `guard_failures` и `bypass_lockout` проверяются в историях, где появляются,
+  и повторно в US4
+- Остановиться можно на любом checkpoint — каждая история проверяема сама по
+  себе
+- Перед боевой проверкой US1 убедиться, что Home Assistant не автоматизирует
+  климат: две системы будут драться за одни конвекторы
