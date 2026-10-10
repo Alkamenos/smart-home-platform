@@ -124,7 +124,18 @@ class EventRouter:
                 # Роль — свойство пары «датчик → автомат»: у каждой комнаты своя
                 # роль для своего автомата, даже если сущность датчика общая.
                 for event_name in events:
+                    # Событие идёт только тем автоматам, которые его
+                    # слушают. В комнате с датчиком движения и датчиком
+                    # температуры автоматов два, и раньше оба получали оба
+                    # события: автомат климата отвечал на движение
+                    # `no_transition`, и в журнале это читалось как «свет
+                    # отказал», хотя свет тут ни при чём (FR-032).
+                    listeners: set[str] | None = None
+                    if hasattr(type(self._engine), "entities_with_trigger"):
+                        listeners = set(self._engine.entities_with_trigger(event_name))
                     for fsm_id in room_fsm_ids:
+                        if listeners is not None and fsm_id not in listeners:
+                            continue
                         self._add_mapping(sensor_id, fsm_id, event_name)
                         self._sensor_roles[(sensor_id, fsm_id)] = sensor_type
 

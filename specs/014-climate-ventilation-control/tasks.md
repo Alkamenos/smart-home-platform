@@ -82,7 +82,7 @@ contracts/interface-contracts.md, quickstart.md
 - [x] T015 [P] [US1] Тесты `may_heat`: холоднее цели включает (FR-002), мёртвая зона не включает (FR-006), `managed_by_hardware` не включает (FR-008), комната без датчика исключена (FR-009) — `tests/unit/core/test_climate_guards.py`
 - [x] T016 [P] [US1] Тесты `may_stop_heating`: достижение цели выключает без гистерезиса (FR-003) — `tests/unit/core/test_climate_guards.py`
 - [x] T017 [P] [US1] Тесты действий таймера: `number.set_value` с минутами (FR-004, FR-005), `switch.turn_off` на выключении (FR-003) — `tests/unit/core/test_climate_actions.py`
-- [ ] T018 [US1] Сквозной тест обогрева: датчик → решение → команда таймеру (FR-001, FR-002); обратный путь `HEATING → IDLE` по достижении цели (FR-003) — `tests/integration/climate/test_heating_by_sensor.py`
+- [x] T018 [US1] Сквозной тест обогрева: датчик → решение → команда таймеру (FR-001, FR-002); обратный путь `HEATING → IDLE` по достижении цели (FR-003) — `tests/integration/climate/test_heating_by_sensor.py`
 
 ### Реализация
 
