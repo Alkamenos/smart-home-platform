@@ -1272,6 +1272,21 @@ class HAAdapter:
             # виден, а прочитанное состояние — основа всех решений «спим».
             logger.warning(f"HAAdapter: «мы спим» = {client.asleep} (модификатор {entity})")
 
+    async def get_entity_state(self, entity_id: str) -> str | None:
+        """Прочитать состояние одной сущности через REST.
+
+        Наружу, а не только для внутреннего чтения: наблюдение за батарейками
+        (спека 014, FR-048) и будущая сквозная проверка здоровья дома
+        (`BACKLOG.md`, F6) спрашивают состояние по имени, а не по событию.
+
+        Args:
+            entity_id: Идентификатор сущности.
+
+        Returns:
+            Состояние как строка либо ``None``, если сущность не ответила.
+        """
+        return await self._read_entity_state(entity_id)
+
     async def _read_entity_state(self, entity: str) -> str | None:
         """Прочитать состояние одной сущности через REST.
 

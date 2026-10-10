@@ -41,6 +41,7 @@ registered_guards:  # реестр после register_all_guards
   - at_or_above_setpoint
   - below_setpoint
   - climate_is_enabled
+  - has_usable_reading
   - humidity_above_60
   - humidity_below_60
   - is_day_time
@@ -64,7 +65,7 @@ templates:
     reachable: true
     in_manifest: []
     actions: [heater_timer_on, heater_off]
-    guards: [may_heat, may_stop_heating]
+    guards: [may_heat, has_usable_reading, may_stop_heating]
     triggers:
       temperature_changed: sensor
       timeout: engine

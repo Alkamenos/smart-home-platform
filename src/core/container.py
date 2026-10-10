@@ -571,6 +571,7 @@ class Container:
         self._start_watchdog()
         self._start_day_cycle()
         self._start_deco_watcher()
+        self._start_sensor_health()
 
         return PlatformContext(
             day_cycle=self._day_cycle,
@@ -742,6 +743,52 @@ class Container:
             return
         self._deco_watcher.start()
         logger.info(f"Сверка вечернего света: {self._deco_watcher.describe()}")
+
+    def _start_sensor_health(self) -> None:
+        """Запустить наблюдение за батарейками датчиков, если это возможно.
+
+        Датчик на севшей батарейке замолкает, и о проблеме узнают по молчанию —
+        то есть потеряв датчик. Наблюдение читает заряд заранее и предупреждает,
+        пока датчик ещё жив.
+
+        Returns:
+            Ничего.
+        """
+        adapter = self._adapter
+        if adapter is None:
+            return
+
+        # Батарейка названа по датчику: ESPHome публикует заряд отдельной
+        # сущностью с тем же префиксом. Список берётся из манифеста, а не
+        # сканируется по дому: подписка на всё — Known Issue #82.
+        batteries: list[str] = []
+        for room in self.manifest.rooms:
+            for sensor_id in (room.sensors or {}).values():
+                if "_battery" not in sensor_id:
+                    batteries.append(f"{sensor_id.rsplit('_', 1)[0]}_battery")
+
+        # Датчики вне манифеста (уличные, терраса) в список не попадают, хотя
+        # их батарейки тоже садятся: добавляются явно в правилах дома.
+        rules = self.manifest.automation_rules
+        for domain in (rules.lighting, rules.climate, rules.ventilation):
+            for entity in getattr(domain, "battery_watch_entities", None) or ():
+                if entity not in batteries:
+                    batteries.append(entity)
+
+        if not batteries:
+            return
+
+        from core.services.sensor_health import SensorHealthService
+
+        self._sensor_health: Any = SensorHealthService(adapter=adapter, battery_entities=batteries)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Наблюдение за батарейками не запущено: нет работающего цикла событий")
+            self._sensor_health = None
+            return
+        self._sensor_health.start()
+        logger.info(f"Наблюдение за батарейками: {batteries}")
 
     def house_timezone(self) -> Any:
         """Часовой пояс дома из правил автоматизации.

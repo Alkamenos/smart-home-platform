@@ -346,9 +346,13 @@ class TestManifestRequirementsAreMet:
         # `may_heat` и `may_stop_heating` — составные условия климата: движок
         # допускает на переход одно имя guard'а, а решение «греть» требует трёх
         # проверок (право владельца, чужой термостат, замер температуры).
+        # `has_usable_reading` появилось 2026-10-10: переход «ничего не делать»
+        # без него срабатывал и при молчащем датчике, и комната без показаний
+        # выглядела отапливаемой при нуле отказов в журнале (FR-038).
         assert guards == {
             "humidity_above_60",
             "humidity_below_60",
+            "has_usable_reading",
             "is_manual_override_enabled",
             "may_heat",
             "may_stop_heating",
@@ -365,6 +369,7 @@ class TestManifestRequirementsAreMet:
             "modifier_is_on": "make_modifier_is_on",
             "may_heat": "make_may_heat",
             "may_stop_heating": "make_may_stop_heating",
+            "has_usable_reading": "make_has_usable_reading",
         }
         for name in guards:
             assert hasattr(builtin, factories[name]), f"для `{name}` нет реализации"

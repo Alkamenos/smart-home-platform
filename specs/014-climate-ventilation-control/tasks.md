@@ -113,18 +113,18 @@ contracts/interface-contracts.md, quickstart.md
 
 ### Тесты
 
-- [ ] T025 [P] [US5] Тесты: нечитаемое показание равно отсутствию данных, а не нулю (FR-037) (`_is_measurement`, `engine.py:89-113`) — `tests/unit/core/test_sensor_failure_handling.py`
-- [ ] T026 [P] [US5] Тесты: отказ одного датчика не меняет решения других комнат (FR-041) — `tests/integration/climate/test_sensor_failure_isolation.py`
-- [ ] T027 [P] [US5] Тесты: обогреватель дорабатывает по таймеру при отказе датчика и выключается (FR-043) — `tests/integration/climate/test_sensor_failure_isolation.py`
-- [ ] T028 [P] [US5] Тесты: возврат показания возвращает комнату в работу без перезапуска (FR-042) — `tests/integration/climate/test_sensor_failure_isolation.py`
-- [ ] T029 [P] [US5] Тесты: молчащий датчик порождает не больше одной записи в минуту (FR-040, FR-045, FR-047, SC-016) — `tests/unit/core/test_rejection_throttle.py`
-- [ ] T030 [P] [US5] Тесты: заряд батареи ниже 20 % даёт предупреждение с именем датчика (FR-033, FR-045, FR-048) (FR-048) — `tests/unit/core/test_sensor_battery_watch.py`
+- [x] T025 [P] [US5] Тесты: нечитаемое показание равно отсутствию данных, а не нулю (FR-037) (`_is_measurement`, `engine.py:89-113`) — `tests/unit/core/test_sensor_failure_handling.py`
+- [x] T026 [P] [US5] Тесты: отказ одного датчика не меняет решения других комнат (FR-041) — `tests/integration/climate/test_sensor_failure_isolation.py`
+- [x] T027 [P] [US5] Тесты: обогреватель дорабатывает по таймеру при отказе датчика и выключается (FR-043) — `tests/integration/climate/test_sensor_failure_isolation.py`
+- [x] T028 [P] [US5] Тесты: возврат показания возвращает комнату в работу без перезапуска (FR-042) — `tests/integration/climate/test_sensor_failure_isolation.py`
+- [x] T029 [P] [US5] Тесты: молчащий датчик порождает не больше одной записи в минуту (FR-040, FR-045, FR-047, SC-016) — `tests/unit/core/test_rejection_throttle.py`
+- [x] T030 [P] [US5] Тесты: заряд батареи ниже 20 % даёт предупреждение с именем датчика (FR-033, FR-045, FR-048) (FR-048) — `tests/unit/core/test_sensor_battery_watch.py`
 
 ### Реализация
 
-- [ ] T031 [US5] Ограничить частоту записей об отказе по одной сущности (FR-047); сейчас причина пишется молча после первого упоминания, и для климата нужно то же, но с явным счётчиком — `src/core/fsm/engine.py`
-- [ ] T032 [US5] Отслеживание заряда батарей датчиков и предупреждение при падении ниже порога (FR-033, FR-048) — `src/core/services/sensor_health.py`
-- [ ] T033 [US5] Зарегистрировать сервис в контейнере; в синхронной сборке запуск пропускается, как у `deco_light_watcher` (`container.py:679-687`) — `src/core/container.py`
+- [x] T031 [US5] Ограничить частоту записей об отказе по одной сущности (FR-047); сейчас причина пишется молча после первого упоминания, и для климата нужно то же, но с явным счётчиком — `src/core/fsm/engine.py`
+- [x] T032 [US5] Отслеживание заряда батарей датчиков и предупреждение при падении ниже порога (FR-033, FR-048) — `src/core/services/sensor_health.py`
+- [x] T033 [US5] Зарегистрировать сервис в контейнере; в синхронной сборке запуск пропускается, как у `deco_light_watcher` (`container.py:679-687`) — `src/core/container.py`
 - [ ] T034 [US5] Боевая проверка шага 3 из `specs/014-climate-ventilation-control/quickstart.md`: отказ датчика, изоляция комнат, возврат без перезапуска, таймер как страховка, заряд батареи
 
 **Checkpoint**: отказ датчика не приводит ни к сюрпризу, ни к зависшему

@@ -555,6 +555,7 @@ GUARD_DATA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     # причины в журнале означают разное: «датчик молчит» и «уставка негодна».
     "may_heat": ("temperature",),
     "may_stop_heating": ("temperature",),
+    "has_usable_reading": ("temperature",),
 }
 
 
@@ -619,6 +620,7 @@ def build_guards(
         "stops_on_sunrise": make_stops_on_sunrise(),
         "may_heat": make_may_heat(),
         "may_stop_heating": make_may_stop_heating(),
+        "has_usable_reading": make_has_usable_reading(),
     }
     # Требования объявляются здесь, рядом с условием: объявление в стороне
     # разошлось бы с ним при первом же переименовании.
@@ -924,6 +926,47 @@ def make_managed_by_hardware_ok() -> Callable[[Any, dict[str, Any]], bool]:
     return managed_by_hardware_ok
 
 
+def make_has_usable_reading() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «показание пригодно, чтобы что-то решать».
+
+    Существует ради одного перехода в климате: «ничего не делать» — тоже
+    решение, и оно обязано быть объяснимо. Переход без условия срабатывал и при
+    молчащем датчике, и журнал показывал ноль отказов при комнате, которая не
+    отапливалась (боевой разбор 2026-10-10; FR-038).
+    """
+
+    def has_usable_reading(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить, если показание датчика пригодно.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если показание можно использовать для решения.
+        """
+        del state
+        return _temperature_value(context) is not None
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Объяснить отказ: данных нет.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``guard_data_missing`` либо ``None``.
+        """
+        del state
+        if _temperature_value(context) is not None:
+            return None
+        return "guard_data_missing"
+
+    has_usable_reading.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return has_usable_reading
+
+
 def make_stops_on_sleep() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «этот свет гаснет по модификатору „мы спим“».
 
@@ -1127,6 +1170,7 @@ REGISTERED_GUARDS = (
     "stops_on_sunrise",
     "may_heat",
     "may_stop_heating",
+    "has_usable_reading",
 )
 
 
