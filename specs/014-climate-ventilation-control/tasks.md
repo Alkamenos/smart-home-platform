@@ -45,12 +45,12 @@ contracts/interface-contracts.md, quickstart.md
 
 > **Сначала тесты, убедиться что падают**
 
-- [ ] T001 [P] Тест: ключ `climate_setpoint` доезжает в контекст перехода — `tests/unit/test_ha_climate_globals.py`
-- [ ] T002 [P] Тест: ключи `is_winter`, `climate_enabled`, `ac_allowed`, `comfort_max` доезжают — `tests/unit/test_ha_climate_globals.py`
-- [ ] T003 [P] Тест: ключи `ventilation_on`, `airing_on`, `exhaust_on`, `ventilation_enabled`, `outside_temperature` доезжают — `tests/unit/test_ha_ventilation_globals.py`
-- [ ] T004 [P] Тест: доменные правила климата попадают в параметры поведения — `tests/unit/core/test_factory_domain_rules.py`
-- [ ] T005 [P] Тест: отсутствие действия в реестре проваливает загрузку манифеста — `tests/unit/core/test_factory_missing_action.py`
-- [ ] T006 [P] Тест: таймер перехода климата взводится из `timeout_sec` шаблона — `tests/integration/climate/test_heating_by_sensor.py`
+- [x] T001 [P] Тест: ключ `climate_setpoint` доезжает в контекст перехода — `tests/unit/test_ha_climate_globals.py`
+- [x] T002 [P] Тест: ключи `is_winter`, `climate_enabled`, `ac_allowed`, `comfort_max` доезжают — `tests/unit/test_ha_climate_globals.py`
+- [x] T003 [P] Тест: ключи `ventilation_on`, `airing_on`, `exhaust_on`, `ventilation_enabled`, `outside_temperature` доезжают — `tests/unit/test_ha_ventilation_globals.py`
+- [x] T004 [P] Тест: доменные правила климата попадают в параметры поведения — `tests/unit/core/test_factory_domain_rules.py`
+- [x] T005 [P] Тест: отсутствие действия в реестре проваливает загрузку манифеста — `tests/unit/core/test_factory_missing_action.py`
+- [x] T006 [P] Тест: таймер перехода климата взводится из `timeout_sec` шаблона — `tests/integration/climate/test_heating_by_sensor.py`
 
 ### Реализация
 
