@@ -314,6 +314,11 @@ def _heater_intent(
         data=data or {},
         priority=context.get("priority", 50),
         source=source,
+        # Признак обхода блокировки едет из события: движок ставит его для
+        # событий из SAFETY_EVENTS (`engine.py:126-128`). Без этого суточное
+        # событие не погасило бы обогреватель, включённый человеком, а
+        # «ручное вмешательство переживает автоматику» держалось бы случайно.
+        bypass_lockout=bool(context.get("bypass_lockout", False)),
     )
 
 

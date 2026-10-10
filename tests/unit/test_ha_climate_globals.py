@@ -26,11 +26,13 @@ from adapters.ha_adapter import HAAdapter
 
 
 class _StubWsClient:
-    """Клиент WebSocket, накапливающий прочитанные глобальные значения.
+    """Клиент WebSocket с полями глобальных значений.
 
-    Условия читают значения из полей клиента, поэтому тест проверяет, что
-    адаптер их туда положил. Пустой клиент означал бы «никто не прочитал» —
-    и это ровно тот дефект, который тест ловит.
+    Настоящий класс `SimpleHAWebSocketClient` используется везде, где проверяется
+    чтение значений: у него есть `store_global`, который и кладёт их в поля.
+    Заглушка с собственными полями проверяла бы не код, а саму себя — так
+    уже случилось с тестами фазы 1, они подставляли ключи руками и проходили
+    при отсутствии писателя.
     """
 
     def __init__(self) -> None:
@@ -39,6 +41,36 @@ class _StubWsClient:
         self.is_winter: bool | None = None
         self.climate_enabled: bool | None = None
         self.ac_allowed: bool | None = None
+        self.ventilation_on: bool | None = None
+        self.airing_on: bool | None = None
+        self.exhaust_on: bool | None = None
+        self.ventilation_enabled: bool | None = None
+        self.outside_temperature: float | None = None
+
+    def store_global(self, role: str, state: str | None, entity: str) -> None:
+        """Положить значение в поле — как это делает настоящий клиент.
+
+        Args:
+            role: Роль сущности.
+            state: Состояние.
+            entity: Идентификатор сущности.
+
+        Returns:
+            Ничего.
+        """
+        from adapters.ha_adapter import _BOOLEAN_ROLES, _NUMERIC_ROLES, GLOBAL_ENTITY_FIELDS
+
+        field = GLOBAL_ENTITY_FIELDS.get(role)
+        if field is None or state is None:
+            return
+        if role in _BOOLEAN_ROLES:
+            if state in ("on", "off"):
+                setattr(self, field, state == "on")
+        elif role in _NUMERIC_ROLES:
+            try:
+                setattr(self, field, float(state))
+            except ValueError:
+                return
 
 
 def _adapter_with_states(states: dict[str, str]) -> tuple[HAAdapter, _StubWsClient]:
@@ -108,6 +140,40 @@ def _adapter_with_states(states: dict[str, str]) -> tuple[HAAdapter, _StubWsClie
     adapter._token = "stub"  # type: ignore[attr-defined]
     adapter._ws_url = "ws://localhost:8123/api/websocket"  # type: ignore[attr-defined]
     return adapter, client
+
+
+def _client_with(climate: dict[str, str], ventilation: dict[str, str]) -> Any:
+    """Клиент WebSocket с заданными глобальными сущностями.
+
+    Args:
+        climate: Сущности климата: роль → entity_id.
+        ventilation: Сущности вентиляции: роль → entity_id.
+
+    Returns:
+        Готовый клиент.
+    """
+    from adapters.ha_adapter import GLOBAL_ENTITY_FIELDS, SimpleHAWebSocketClient
+
+    client = SimpleHAWebSocketClient.__new__(SimpleHAWebSocketClient)
+    client.climate_entities = dict(climate)
+    client.ventilation_entities = dict(ventilation)
+    client.global_fields = dict(GLOBAL_ENTITY_FIELDS)
+    # Поля значений заводит `__init__` клиента; тест создаёт объект напрямую,
+    # поэтому их нужно выставить — иначе проверка падала бы на отсутствии
+    # атрибута, а не на поведении.
+    for name in GLOBAL_ENTITY_FIELDS.values():
+        setattr(client, name, None)
+    client.daylight = None
+    client.asleep = None
+    client._filtered_out = 0
+    client.entity_filter_provider = None
+    client.filtered_entity_ids: set[str] = set()
+    client._filter_size_last_seen = 0
+    client.sleep_modifier_entity = None
+    client._pending_sunset = False
+    client._pending_sunrise = False
+    client.on_sleep_started = None
+    return client
 
 
 class TestClimateGlobalsRead:
@@ -205,15 +271,9 @@ class TestNumericGlobalsAreLogged:
         Returns:
             Ничего.
         """
-        client = _StubWsClient()
+        client = _client_with({"setpoint": "input_number.temperatura"}, {})
         with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
-            HAAdapter._store_global(  # type: ignore[arg-type]
-                client,
-                {"setpoint": "climate_setpoint"},
-                "setpoint",
-                "21.5",
-                "input_number.temperatura",
-            )
+            client.store_global("setpoint", "21.5", "input_number.temperatura")
 
         assert client.climate_setpoint == 21.5
         assert any("input_number.temperatura" in record.message for record in caplog.records), (
@@ -229,15 +289,9 @@ class TestNumericGlobalsAreLogged:
         Returns:
             Ничего.
         """
-        client = _StubWsClient()
+        client = _client_with({"outside_temp": "sensor.temperatura_na_ulitse_srednee"}, {})
         with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
-            HAAdapter._store_global(  # type: ignore[arg-type]
-                client,
-                {"outside_temp": "outside_temperature"},
-                "outside_temp",
-                "11.84",
-                "sensor.temperatura_na_ulitse_srednee",
-            )
+            client.store_global("outside_temp", "11.84", "sensor.temperatura_na_ulitse_srednee")
 
         assert client.outside_temperature == 11.84
         assert any(
@@ -253,17 +307,14 @@ class TestNumericGlobalsAreLogged:
         Returns:
             Ничего.
         """
-        client = _StubWsClient()
+        client = _client_with({"setpoint": "input_number.temperatura"}, {})
         with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
-            HAAdapter._store_global(  # type: ignore[arg-type]
-                client,
-                {"setpoint": "climate_setpoint"},
-                "setpoint",
-                "unavailable",
-                "input_number.temperatura",
-            )
+            client.store_global("setpoint", "unavailable", "input_number.temperatura")
 
-        assert client.climate_setpoint is None
+        assert client.climate_setpoint is None, (
+            "нечитаемая уставка не должна превращаться в число: иначе обогрев "
+            "поедет по выдуманной цели"
+        )
         assert any("не прочитана как число" in record.message for record in caplog.records), (
             "нечитаемое число должно называться: иначе решает поломка, а не сбой данных"
         )
@@ -277,11 +328,9 @@ class TestNumericGlobalsAreLogged:
         Returns:
             Ничего.
         """
-        client = _StubWsClient()
+        client = _client_with({}, {})
         with caplog.at_level(logging.WARNING, logger="adapters.ha_adapter"):
-            HAAdapter._store_global(  # type: ignore[arg-type]
-                client, {}, "no_such_role", "on", "input_boolean.что_то"
-            )
+            client.store_global("no_such_role", "on", "input_boolean.что_то")
 
         assert any("не описана" in record.message for record in caplog.records)
 
@@ -431,3 +480,64 @@ class TestClimateEntitiesDeclared:
 
         with pytest.raises(ValidationError):
             AutomationRules.model_validate({"climate": {"setpoint_min": 30.0, "setpoint_max": 5.0}})
+
+
+class TestGlobalsAreSubscribed:
+    """Глобальные сущности попадают в подписку, а не читаются один раз (FR-001).
+
+    Боевой дефект 2026-10-10: сущности читались только при подключении, и
+    подписка их не включала. Владелец поднял уставку с 21 до 25 — в контексте
+    осталось 21, и комнаты, действительно холодные, получали решение «не холодно».
+    Спека требует применять уставку без перезапуска (FR-001).
+    """
+
+    def test_global_entities_are_accepted(self) -> None:
+        """Сущности глобальных значений не отбрасываются фильтром подписки.
+
+        Returns:
+            Ничего.
+        """
+        client = _client_with(
+            {"setpoint": "input_number.temperatura"}, {"enable": "input_boolean.ventiliatsiia"}
+        )
+
+        assert (
+            client._accepts({"entity_id": "input_number.temperatura", "new_state": "25.0"}) is True
+        ), (
+            "уставка обязана быть в подписке: иначе её изменение не дойдёт до "
+            "платформы, и обогрев будет держаться на старой цели до перезапуска"
+        )
+        assert (
+            client._accepts({"entity_id": "input_boolean.ventiliatsiia", "new_state": "on"}) is True
+        )
+
+    def test_other_entities_stay_filtered(self) -> None:
+        """Остальные сущности дома по-прежнему отфильтровываются.
+
+        Returns:
+            Ничего.
+        """
+        client = _client_with({"setpoint": "input_number.temperatura"}, {})
+        # Непустой фильтр: в коде пустой провайдер означает «фильтр выключен»,
+        # и тогда пропускается всё — это осознанное поведение при пустом манифесте.
+        client.entity_filter_provider = lambda: {"input_number.temperatura"}
+
+        assert (
+            client._accepts({"entity_id": "light.svet_nad_stolom", "new_state": "on"}) is False
+        ), "подписка на весь дом — Known Issue #82, он закрыт фильтрацией"
+
+    def test_state_change_updates_stored_value(self) -> None:
+        """Изменение сущности обновляет прочитанное значение.
+
+        Returns:
+            Ничего.
+        """
+        client = _client_with({"setpoint": "input_number.temperatura"}, {})
+
+        assert (
+            client._accepts({"entity_id": "input_number.temperatura", "new_state": "25.0"}) is True
+        )
+        assert client.climate_setpoint == 25.0, (
+            "уставка должна обновляться на лету: владелец меняет её сам, "
+            "и ждать перезапуска платформы — значит греть не по той цели"
+        )

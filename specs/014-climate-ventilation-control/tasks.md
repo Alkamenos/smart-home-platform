@@ -79,18 +79,18 @@ contracts/interface-contracts.md, quickstart.md
 
 ### Тесты
 
-- [ ] T015 [P] [US1] Тесты `may_heat`: холоднее цели включает (FR-002), мёртвая зона не включает (FR-006), `managed_by_hardware` не включает (FR-008), комната без датчика исключена (FR-009) — `tests/unit/core/test_climate_guards.py`
-- [ ] T016 [P] [US1] Тесты `may_stop_heating`: достижение цели выключает без гистерезиса (FR-003) — `tests/unit/core/test_climate_guards.py`
-- [ ] T017 [P] [US1] Тесты действий таймера: `number.set_value` с минутами (FR-004, FR-005), `switch.turn_off` на выключении (FR-003) — `tests/unit/core/test_climate_actions.py`
+- [x] T015 [P] [US1] Тесты `may_heat`: холоднее цели включает (FR-002), мёртвая зона не включает (FR-006), `managed_by_hardware` не включает (FR-008), комната без датчика исключена (FR-009) — `tests/unit/core/test_climate_guards.py`
+- [x] T016 [P] [US1] Тесты `may_stop_heating`: достижение цели выключает без гистерезиса (FR-003) — `tests/unit/core/test_climate_guards.py`
+- [x] T017 [P] [US1] Тесты действий таймера: `number.set_value` с минутами (FR-004, FR-005), `switch.turn_off` на выключении (FR-003) — `tests/unit/core/test_climate_actions.py`
 - [ ] T018 [US1] Сквозной тест обогрева: датчик → решение → команда таймеру (FR-001, FR-002); обратный путь `HEATING → IDLE` по достижении цели (FR-003) — `tests/integration/climate/test_heating_by_sensor.py`
 
 ### Реализация
 
-- [ ] T019 [US1] Объявить требуемые данные климатических условий в `GUARD_DATA_REQUIREMENTS` (`builtin.py:549-552`), FR-009, FR-037, FR-038, FR-039: `may_heat` и `may_stop_heating` требуют `temperature`; `climate_setpoint` **не** объявлять — любое число прошло бы как измерение и отказ об уставке стал бы недостижим — `src/core/guards/builtin.py`
-- [ ] T020 [US1] Заполнить `bypass_lockout` в климатических командах (FR-006, FR-007); сейчас `_heater_intent` его не заполняет, обход блокировки работает только для света (`research.md` D11) — `src/core/action_handlers.py`
-- [ ] T021 [US1] Объявить параметры `climate_control` в контракте (FR-005, FR-006, FR-008): `heater_timer`, `run_minutes` (1–43200, по умолчанию 15), `hysteresis` (0–5, 0.5), `managed_by_hardware`; без этого веб-интерфейс отвергнет параметр — `src/features/CONTRACT.yaml`
-- [ ] T022 [US1] Прописать комнаты с обогревом в боевой манифест: спальня, санузел, кабинет, гостевая спальня; гостиную с `managed_by_hardware: true` — `instances/leonids_house/manifest.yaml`
-- [ ] T023 [US1] Регенерация контракта шаблонов после новых условий и параметров — `tools/gen_template_contract.py`
+- [x] T019 [US1] Объявить требуемые данные климатических условий в `GUARD_DATA_REQUIREMENTS` (`builtin.py:549-552`), FR-009, FR-037, FR-038, FR-039: `may_heat` и `may_stop_heating` требуют `temperature`; `climate_setpoint` **не** объявлять — любое число прошло бы как измерение и отказ об уставке стал бы недостижим — `src/core/guards/builtin.py`
+- [x] T020 [US1] Заполнить `bypass_lockout` в климатических командах (FR-006, FR-007); сейчас `_heater_intent` его не заполняет, обход блокировки работает только для света (`research.md` D11) — `src/core/action_handlers.py`
+- [x] T021 [US1] Объявить параметры `climate_control` в контракте (FR-005, FR-006, FR-008): `heater_timer`, `run_minutes` (1–43200, по умолчанию 15), `hysteresis` (0–5, 0.5), `managed_by_hardware`; без этого веб-интерфейс отвергнет параметр — `src/features/CONTRACT.yaml`
+- [x] T022 [US1] Прописать комнаты с обогревом в боевой манифест: спальня, санузел, кабинет, гостевая спальня; гостиную с `managed_by_hardware: true` — `instances/leonids_house/manifest.yaml`
+- [x] T023 [US1] Регенерация контракта шаблонов после новых условий и параметров — `tools/gen_template_contract.py`
 - [ ] T024 [US1] Боевая проверка шага 2 из `specs/014-climate-ventilation-control/quickstart.md`: обогрев, отключение по достижении цели, работа по таймеру при отказе датчика, гостиная не трогается, ручная блокировка уважается
 
 **Checkpoint**: дом держит температуру; каждая комната решает по своему

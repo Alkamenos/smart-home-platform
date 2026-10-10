@@ -144,6 +144,13 @@ class SimpleHAWebSocketClient:
         self.asleep: bool | None = None
         # Сущность-модификатор; ставится адаптером перед подпиской.
         self.sleep_modifier_entity: str | None = None
+        # Имена глобальных сущностей климата и вентиляции: роль → entity_id.
+        # Задаются адаптером из правил дома. Клиент держит их, потому что он же
+        # фильтрует события подписки, а эти сущности в манифест не входят.
+        self.climate_entities: dict[str, str] = {}
+        self.ventilation_entities: dict[str, str] = {}
+        # Куда класть прочитанное значение: роль → поле этого же клиента.
+        self.global_fields: dict[str, str] = dict(GLOBAL_ENTITY_FIELDS)
         # Уведомление платформы о включении «мы спим»: модификатор гасит свет,
         # но событие устройства это не событие устройства — сущность не входит
         # в подписку и фильтр её всегда отбрасывает. Поэтому переключение
@@ -220,6 +227,61 @@ class SimpleHAWebSocketClient:
             self._filter_size_last_seen = len(current)
         return current
 
+    def global_role(self, entity: str) -> str | None:
+        """Роль глобальной сущности по её идентификатору.
+
+        Args:
+            entity: Идентификатор сущности.
+
+        Returns:
+            Роль либо ``None``, если сущность не глобальная.
+        """
+        for role, candidate in self.climate_entities.items():
+            if candidate == entity:
+                return role
+        for role, candidate in self.ventilation_entities.items():
+            if candidate == entity:
+                return role
+        return None
+
+    def store_global(self, role: str, state: str | None, entity: str) -> None:
+        """Положить значение глобальной сущности в поле клиента.
+
+        Args:
+            role: Роль сущности.
+            state: Прочитанное состояние либо ``None``.
+            entity: Идентификатор сущности, для журнала.
+
+        Returns:
+            Ничего.
+        """
+        field = self.global_fields.get(role)
+        if field is None:
+            logger.warning(
+                f"Роль глобальной сущности '{role}' не описана, {entity} прочитан в никуда"
+            )
+            return
+        if state is None:
+            # Неизвестное остаётся неизвестным: ноль градусов означал бы «зима»,
+            # а False — «модификатор выключен», и решение ушло бы в сторону.
+            return
+        if role in _BOOLEAN_ROLES:
+            if state not in ("on", "off"):
+                return
+            setattr(self, field, state == "on")
+        elif role in _NUMERIC_ROLES:
+            try:
+                setattr(self, field, float(state))
+            except ValueError:
+                logger.warning(f"Глобальная сущность {entity} не прочитана как число: {state!r}")
+                return
+        else:  # pragma: no cover - защита от новой роли без ветки
+            logger.warning(f"Роль '{role}' не описана среди читаемых значений")
+            return
+        # WARNING, а не INFO: INFO клиента в docker-журнале не виден (урок #70),
+        # а прочитанные значения — основа решений климата и вентиляции.
+        logger.warning(f"HAAdapter: {entity} = {getattr(self, field)}")
+
     def _accepts(self, payload: dict[str, Any]) -> bool:
         """Относится ли событие к сущностям, ради которых подписались.
 
@@ -246,6 +308,16 @@ class SimpleHAWebSocketClient:
         # «темно ли»: без него движение включает свет при дневном свете
         # (жалоба владельца 2026-10-09). Событие всё равно приходит — HA шлёт
         # все state_changed, — поэтому состояние снимается здесь, до отбрасывания.
+        # Глобальные значения климата и вентиляции разбираются здесь же, до
+        # фильтра, по той же причине, что и солнце: их нет в манифесте, а условия
+        # читают их из контекста каждого решения. Читать один раз при подключении
+        # мало: владелец меняет уставку сам, и без реакции на событие обогрев
+        # держался бы на старой цели до перезапуска (FR-001; боевой дефект
+        # 2026-10-10 — подняли уставку с 21 до 25, в контексте осталось 21).
+        role = self.global_role(entity)
+        if role is not None:
+            self.store_global(role, state, entity)
+            return True
         if entity == "sun.sun":
             # В событии new_state — словарь, а не строка: прежнее сравнение со
             # строкой было всегда ложно, и после заката платформа считала день —
@@ -1253,7 +1325,7 @@ class HAAdapter:
             return
         for role, entity in self.climate_entities.items():
             state = await self._read_entity_state(entity)
-            self._store_global(client, GLOBAL_ENTITY_FIELDS, role, state, entity)
+            client.store_global(role, state, entity)
 
     async def _refresh_ventilation_globals(self) -> None:
         """Прочитать глобальные значения вентиляции при подключении.
@@ -1271,54 +1343,7 @@ class HAAdapter:
             return
         for role, entity in self.ventilation_entities.items():
             state = await self._read_entity_state(entity)
-            self._store_global(client, GLOBAL_ENTITY_FIELDS, role, state, entity)
-
-    @staticmethod
-    def _store_global(
-        client: Any,
-        fields: dict[str, str],
-        role: str,
-        state: str | None,
-        entity: str,
-    ) -> None:
-        """Положить прочитанное значение в поле клиента.
-
-        Args:
-            client: Клиент WebSocket.
-            fields: Таблица «роль → поле».
-            role: Роль сущности.
-            state: Прочитанное состояние либо ``None``.
-            entity: Идентификатор сущности, для журнала.
-
-        Returns:
-            Ничего.
-        """
-        field = fields.get(role)
-        if field is None:
-            logger.warning(
-                f"Роль глобальной сущности '{role}' не описана, {entity} прочитан в никуда"
-            )
-            return
-        if state is None:
-            # Неизвестное остаётся неизвестным: ноль градусов означал бы «зима»,
-            # а False — «модификатор выключен», и решение ушло бы в сторону.
-            return
-        if role in _BOOLEAN_ROLES:
-            if state not in ("on", "off"):
-                return
-            setattr(client, field, state == "on")
-        elif role in _NUMERIC_ROLES:
-            try:
-                setattr(client, field, float(state))
-            except ValueError:
-                logger.warning(f"Глобальная сущность {entity} не прочитана как число: {state!r}")
-                return
-        else:  # pragma: no cover - защита от новой роли без ветки
-            logger.warning(f"Роль '{role}' не описана среди читаемых значений")
-            return
-        # WARNING, а не INFO: INFO адаптера в docker-журнале не виден (урок #70),
-        # а прочитанные значения — основа решений климата и вентиляции.
-        logger.warning(f"HAAdapter: {entity} = {getattr(client, field)}")
+            client.store_global(role, state, entity)
 
     def _global_context(self) -> dict[str, Any]:
         """Прочитанные глобальные значения одним словарём.
@@ -1366,6 +1391,15 @@ class HAAdapter:
         # Климат и вентиляция читают те же признаки, что и освещение, но иначе:
         # без уставки и сезона до первого события от этих сущностей условия
         # получают «данных нет» и решения не принимают вовсе.
+        #
+        # Имена сущностей передаются клиенту: он же фильтрует события подписки,
+        # а этих сущностей в манифесте нет. Читать их раз в подключении мало —
+        # владелец меняет уставку сам, и без реакции на событие обогрев держался
+        # бы на старой цели до перезапуска (FR-001).
+        client = self._ws_client
+        if client is not None:
+            client.climate_entities = dict(self.climate_entities)
+            client.ventilation_entities = dict(self.ventilation_entities)
         await self._refresh_climate_globals()
         await self._refresh_ventilation_globals()
 

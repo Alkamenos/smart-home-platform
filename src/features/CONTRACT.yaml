@@ -80,14 +80,14 @@ templates:
         note: "Целевая температура в градусах. Уходит в команду climate.set_temperature кондиционера (action_handlers.py:ac_cool_on); для обогрева цель берётся из automation_rules.climate, а не отсюда."
       hysteresis:
         type: float
-        range: "0-2"
+        range: "0-5"
         effective: true
         note: "Ширина мёртвой зоны обогревателя, °C. Читает условие may_heat (guards/builtin.py:_hysteresis_value); по умолчанию 0.5."
       run_minutes:
         type: float
-        range: "1-180"
+        range: "1-43200"
         effective: true
-        note: "На сколько минут включается обогреватель через его таймер. Читает действие heater_timer_on; по умолчанию 15 минут."
+        note: "На сколько минут включается обогреватель через его таймер. Читает действие heater_timer_on; по умолчанию 15 минут. Верхняя граница 43200 — это предел устройства `number.*_countdown`, проверено в доме 2026-10-10; ставить больше суток бессмысленно, но ограничивать сильнее нельзя: локарь-обогреватель на две смены нужен."
       heater_timer:
         type: str
         range: "entity_id"

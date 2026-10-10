@@ -384,3 +384,192 @@ class TestEveryDenialIsNamed:
             "отказ «ещё нужно греть» не должен выдавать себя за поломку данных: "
             "движок напишет guard_failed, и это правда"
         )
+
+
+class TestMayHeat:
+    """`may_heat` — условие, которое стоит в самом шаблоне климата.
+
+    До 2026-10-10 не было покрыто ни одним тестом: проверялись «узкие»
+    условия (`below_setpoint`, `at_or_above_setpoint`), которых в шаблоне нет.
+    А работают в бою именно эти два, и между ними — вся разница в поведении:
+    `may_heat` объединяет право владельца, чужой термостат и само решение
+    «холодно ли», проверяя их по цене ошибки.
+    """
+
+    def test_cold_room_allows_heating(self) -> None:
+        """Комната холоднее цели минус гистерезис — обогрев разрешён."""
+        guard = _guard("may_heat")
+
+        assert guard(None, _ctx(19.0, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS)) is True
+
+    def test_dead_zone_denies(self) -> None:
+        """В мёртвой зоне обогрев не нужен."""
+        guard = _guard("may_heat")
+
+        assert guard(None, _ctx(21.8, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS)) is False, (
+            "в мёртвой зоне обогрев не включается: иначе конвектор будет "
+            "щёлкать на границе цели при каждом показании датчика"
+        )
+
+    def test_unavailable_sensor_denies(self) -> None:
+        """Датчик молчит — решение не принимается."""
+        guard = _guard("may_heat")
+
+        assert guard(None, _ctx("unavailable", climate_setpoint=SETPOINT)) is False, (
+            "молчащий датчик не должен включать обогрев: это единственный способ "
+            "согреть комнату, которой никто не меряет"
+        )
+
+    def test_missing_setpoint_denies(self) -> None:
+        """Без уставки решения нет."""
+        guard = _guard("may_heat")
+
+        assert guard(None, _ctx(19.0, hysteresis=HYSTERESIS)) is False
+
+    def test_setpoint_out_of_range_denied_by_reason(self) -> None:
+        """Уставка вне диапазона получает свою причину, а не «данных нет»."""
+        guard = _guard("may_heat")
+
+        assert (
+            guard(None, _ctx(19.0, climate_setpoint=95.0, setpoint_min=5.0, setpoint_max=30.0))
+            is False
+        )
+        reason = guard.deny_reason(
+            None, _ctx(19.0, climate_setpoint=95.0, setpoint_min=5.0, setpoint_max=30.0)
+        )
+
+        assert reason == "setpoint_unavailable", (
+            f"уставка вне диапазона — это «уставка негодна», а не «данных нет»: "
+            f"получено {reason!r}, и по журналу непонятно, что чинить"
+        )
+
+    def test_owner_switch_off_wins_over_cold_room(self) -> None:
+        """Выключенный владельцем климат запрещает обогрев при любой температуре.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("may_heat")
+
+        assert guard(None, _ctx(5.0, climate_setpoint=SETPOINT, climate_enabled=False)) is False, (
+            "право владельца выше того, что комнате холодно: он выключил климат"
+        )
+        assert (
+            guard.deny_reason(None, _ctx(5.0, climate_setpoint=SETPOINT, climate_enabled=False))
+            == "climate_disabled"
+        )
+
+    def test_hardware_thermostat_wins_over_measurement(self) -> None:
+        """В комнате со штатным термостатом платформа не вмешивается."""
+        guard = _guard("may_heat")
+
+        assert (
+            guard(None, _ctx(5.0, climate_setpoint=SETPOINT, managed_by_hardware=True)) is False
+        ), "там решение принимает термостат: конвектор по уставке дома вступил бы с ним в борьбу"
+        assert (
+            guard.deny_reason(None, _ctx(5.0, climate_setpoint=SETPOINT, managed_by_hardware=True))
+            == "managed_by_hardware"
+        )
+
+    def test_owner_switch_wins_over_hardware_thermostat(self) -> None:
+        """Порядок проверок: выключалка владельца важнее термостата.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("may_heat")
+
+        reason = guard.deny_reason(
+            None,
+            _ctx(5.0, climate_setpoint=SETPOINT, climate_enabled=False, managed_by_hardware=True),
+        )
+
+        assert reason == "climate_disabled", (
+            f"первой по цене ошибки идёт выключалка владельца, получено {reason!r}"
+        )
+
+    def test_no_data_named_as_data_missing(self) -> None:
+        """Отсутствие данных получает причину «данных нет»."""
+        guard = _guard("may_heat")
+
+        assert guard.deny_reason(None, _ctx("unavailable", climate_setpoint=SETPOINT)) == (
+            "guard_data_missing"
+        )
+
+
+class TestMayStopHeating:
+    """`may_stop_heating` — обогреватель выключается при достижении цели."""
+
+    def test_reached_setpoint_allows_stop(self) -> None:
+        """Цель достигнута — выключать можно."""
+        guard = _guard("may_stop_heating")
+
+        assert guard(None, _ctx(SETPOINT, climate_setpoint=SETPOINT)) is True, (
+            "при достижении цели обогреватель выключается: держать его ещё "
+            "полградуса — значит перегревать комнату"
+        )
+
+    def test_still_cold_keeps_heating(self) -> None:
+        """Ещё холодно — выключать нельзя."""
+        guard = _guard("may_stop_heating")
+
+        assert guard(None, _ctx(20.0, climate_setpoint=SETPOINT)) is False
+
+    def test_above_setpoint_allows_stop(self) -> None:
+        """Выше цели — тем более выключать."""
+        guard = _guard("may_stop_heating")
+
+        assert guard(None, _ctx(23.0, climate_setpoint=SETPOINT)) is True
+
+    def test_unavailable_sensor_denies_stop(self) -> None:
+        """Датчик молчит — выключать нельзя, обогреватель доработает по таймеру."""
+        guard = _guard("may_stop_heating")
+
+        assert guard(None, _ctx("unavailable", climate_setpoint=SETPOINT)) is False, (
+            "без показания нельзя утверждать, что цель достигнута: выключение "
+            "по догадке оставит комнату холодной"
+        )
+
+
+class TestClimateGuardsDeclareRequiredData:
+    """Климатические условия объявляют, какие данные им необходимы (FR-039).
+
+    Без объявления отказ «данных нет» приходит из `deny_reason` самого
+    условия, а не из движка, и причина в журнале может оказаться чужой.
+    Объявление проверяется **до** вызова условия (`FSMEngine._guard_rejection_reason`),
+    поэтому отказ виден даже там, где условие само разбирается в данных.
+    """
+
+    def test_may_heat_requires_temperature(self) -> None:
+        """`may_heat` объявляет потребность в показании."""
+        guards = _guards()
+
+        assert guards["may_heat"].requires == ("temperature",), (
+            f"may_heat обязан объявлять требуемые данные: {getattr(guards['may_heat'], 'requires', ())}"
+        )
+
+    def test_may_stop_heating_requires_temperature(self) -> None:
+        """`may_stop_heating` объявляет потребность в показании.
+
+        Returns:
+            Ничего.
+        """
+        guards = _guards()
+
+        assert guards["may_stop_heating"].requires == ("temperature",)
+
+    def test_setpoint_is_not_declared_as_measurement(self) -> None:
+        """Уставку объявлять нельзя: любое число прошло бы как измерение.
+
+        Returns:
+            Ничего.
+        """
+        guards = _guards()
+
+        for name in ("may_heat", "may_stop_heating"):
+            declared = getattr(guards[name], "requires", ())
+            assert "climate_setpoint" not in declared, (
+                "уставка проверяется на допустимость внутри условия: если объявить "
+                "её требуемой, движок вернёт «данных нет» прежде, чем условие "
+                "успеет сказать «уставка вне диапазона»"
+            )

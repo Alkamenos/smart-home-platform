@@ -549,6 +549,12 @@ def make_is_manual_override_enabled(
 GUARD_DATA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "humidity_above_60": ("humidity",),
     "humidity_below_60": ("humidity",),
+    # Климат объявляет только показание. Уставку добавлять нельзя: любое число
+    # прошло бы как измерение, включая 95.0, и движок вернул бы «данных нет»
+    # прежде, чем условие успело сказать «уставка вне диапазона» — а разные
+    # причины в журнале означают разное: «датчик молчит» и «уставка негодна».
+    "may_heat": ("temperature",),
+    "may_stop_heating": ("temperature",),
 }
 
 

@@ -241,3 +241,60 @@ class TestAirConditionerCommands:
         assert action(None, _ctx(entity_id="climate.x")) is None, (
             "без comfort_max платформа отправила бы температуру в HA наугад"
         )
+
+
+class TestClimateRespectsLockout:
+    """Команды климата несут признак обхода блокировки (FR-006, FR-007).
+
+    С 2026-10-10 климатические действия не заполняли `bypass_lockout`, поэтому
+    признак уходил с дефолтом `False` и обход блокировки работал только для
+    `turn_off_light`. Само по себе это не ломало работу — но означало, что
+    суточное событие не погасило бы обогреватель, включённый человеком, и
+    правило «ручное вмешательство переживает автоматику» держалось бы случайно,
+    а не по замыслу (FR-007).
+    """
+
+    def test_bypass_is_taken_from_context(self) -> None:
+        """Признак берётся из контекста события."""
+        from core.action_handlers import ACTION_HANDLERS
+
+        intent = ACTION_HANDLERS["heater_off"](
+            None, {"entity_id": "switch.obogrevatel_spalnia", "bypass_lockout": True}
+        )
+
+        assert intent is not None
+        assert intent.bypass_lockout is True, (
+            "суточное событие обязано донести признак обхода: иначе обогреватель, "
+            "включённый человеком, остался бы гореть"
+        )
+
+    def test_ordinary_transition_does_not_bypass(self) -> None:
+        """Обычный переход блокировку не обходит.
+
+        Returns:
+            Ничего.
+        """
+        from core.action_handlers import ACTION_HANDLERS
+
+        intent = ACTION_HANDLERS["heater_off"](
+            None, {"entity_id": "switch.obogrevatel_spalnia", "bypass_lockout": False}
+        )
+
+        assert intent is not None
+        assert intent.bypass_lockout is False, (
+            "собственная команда платформы блокировку обходить не должна: иначе "
+            "она не уважала бы ручное вмешательство, ради которого блокировка и есть"
+        )
+
+    def test_missing_flag_defaults_to_false(self) -> None:
+        """Отсутствие признака — это «не обходить».
+
+        Returns:
+            Ничего.
+        """
+        from core.action_handlers import ACTION_HANDLERS
+
+        intent = ACTION_HANDLERS["heater_off"](None, {"entity_id": "switch.x"})
+
+        assert intent is not None
+        assert intent.bypass_lockout is False

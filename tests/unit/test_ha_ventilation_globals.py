@@ -24,7 +24,11 @@ from adapters.ha_adapter import HAAdapter
 
 
 class _StubWsClient:
-    """Клиент WebSocket с полями вентиляции."""
+    """Клиент WebSocket с полями вентиляции и методом `store_global`.
+
+    Метод нужен, потому что чтение идёт через клиента: он же фильтрует
+    события подписки. Заглушка без него проверяла бы не код, а саму себя.
+    """
 
     def __init__(self) -> None:
         self.ventilation_on: bool | None = None
@@ -32,6 +36,32 @@ class _StubWsClient:
         self.exhaust_on: bool | None = None
         self.ventilation_enabled: bool | None = None
         self.outside_temperature: float | None = None
+
+    def store_global(self, role: str, state: str | None, entity: str) -> None:
+        """Положить значение в поле — как это делает настоящий клиент.
+
+        Args:
+            role: Роль сущности.
+            state: Состояние.
+            entity: Идентификатор сущности.
+
+        Returns:
+            Ничего.
+        """
+        del entity
+        from adapters.ha_adapter import _BOOLEAN_ROLES, _NUMERIC_ROLES, GLOBAL_ENTITY_FIELDS
+
+        field = GLOBAL_ENTITY_FIELDS.get(role)
+        if field is None or state is None:
+            return
+        if role in _BOOLEAN_ROLES:
+            if state in ("on", "off"):
+                setattr(self, field, state == "on")
+        elif role in _NUMERIC_ROLES:
+            try:
+                setattr(self, field, float(state))
+            except ValueError:
+                return
 
 
 def _adapter_with_states(states: dict[str, str]) -> tuple[HAAdapter, _StubWsClient]:
