@@ -274,6 +274,7 @@ class Container:
                 heater_timers = self._heater_timer_entities()
                 if heater_timers:
                     self._adapter.heater_timers = list(heater_timers)
+                    self._adapter.heater_timer_of = self._heater_timer_pairs()
                 # Модификатор «мы спим» — сущность Home Assistant, которой
                 # владелец управляет сам (автоматизацией на своё расписание).
                 # Платформа читает состояние и по нему решает, можно ли
@@ -388,6 +389,26 @@ class Container:
                         seen.add(timer)
                         timers.append(timer)
         return timers
+
+    def _heater_timer_pairs(self) -> dict[str, str]:
+        """Соответствие «обогреватель → его таймер».
+
+        Адаптеру нужно, чтобы приложить к событию обогревателя единицу измерения
+        его таймера: без этого действие угадывает минуты для секундного таймера,
+        обогреватель гаснет через 15 секунд, а платформа показывает исправную
+        работу (боевой дефект 2026-10-11).
+
+        Returns:
+            Словарь ``{entity_id обогревателя: entity_id таймера}``.
+        """
+        pairs: dict[str, str] = {}
+        for room in self.manifest.rooms:
+            for device in room.devices:
+                for behavior in device.behaviors:
+                    timer = (behavior.params or {}).get("heater_timer")
+                    if isinstance(timer, str) and timer:
+                        pairs[device.id] = timer
+        return pairs
 
     @property
     def middleware(self) -> ManualLockoutMiddleware:

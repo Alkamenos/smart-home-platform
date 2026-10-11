@@ -248,6 +248,7 @@ class TestClimateGlobalsRead:
         adapter._event_router = type(  # type: ignore[attr-defined]
             "R", (), {"route_state_change": staticmethod(route)}
         )()
+        adapter.heater_timer_of = {}
         adapter._engine = type("E", (), {"event_bus": None})()  # type: ignore[assignment]
 
         await HAAdapter.on_state_change(  # type: ignore[arg-type]

@@ -20,6 +20,13 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 
+#: Сколько ждать, прежде чем признать прибор не принявшим команду. Home
+#: Assistant применяет сервисы асинхронно, и состояние сразу после вызова ещё
+#: прежнее; без ожидания проверка требования отклоняла бы следующий шаг.
+STATE_CONFIRM_ATTEMPTS = 10
+STATE_CONFIRM_DELAY_S = 0.5
+
+
 class CommandIntent(BaseModel):
     """
     Represents a command intent with priority and source information.
@@ -219,13 +226,20 @@ class CommandDispatcher:
                 # Assistant записывает без ошибки, а греть никто не будет.
                 if processed_intent.requires_state is not None:
                     probe = processed_intent.state_entity or device_id
-                    actual = await self._ha_adapter.get_state(probe)
+                    # Home Assistant применяет команду асинхронно: сразу после
+                    # `switch.turn_on` прибор ещё секунду остаётся `off`, и
+                    # проверка требования отклонила бы команду включения таймера
+                    # у только что включённого обогревателя — прибор грел бы без
+                    # ограничения времени (боевой дефект 2026-10-11).
+                    actual = await self._wait_for_state(probe, processed_intent.requires_state)
                     if actual != processed_intent.requires_state:
                         logger.warning(
                             f"Skipping {processed_intent.source} → {device_id}: "
                             f"{probe} требуется в состоянии "
                             f"{processed_intent.requires_state!r}, а прибор в "
-                            f"состоянии {actual!r}. Команда не применена"
+                            f"состоянии {actual!r} даже через "
+                            f"{STATE_CONFIRM_ATTEMPTS * STATE_CONFIRM_DELAY_S:.1f} с. "
+                            "Команда не применена"
                         )
                         return False
 
@@ -250,6 +264,37 @@ class CommandDispatcher:
         except Exception as e:
             logger.error(f"Error submitting CommandIntent: {e}")
             return False
+
+    async def _wait_for_state(self, entity_id: str, expected: str) -> str | None:
+        """Дождаться, пока прибор примет заданное состояние.
+
+        Home Assistant применяет команду асинхронно, поэтому состояние сразу
+        после ``switch.turn_on`` ещё прежнее. Без ожидания проверка требования
+        отклонила бы следующий шаг команды, и прибор остался бы включённым без
+        таймера — то есть грел бы неограниченно долго (боевой дефект
+        2026-10-11).
+
+        Args:
+            entity_id: Прибор, состояние которого проверяется.
+            expected: Ожидаемое состояние.
+
+        Returns:
+            Наблюдённое состояние: последнее прочитанное либо ``None``, если
+            прочитать не удалось ни разу.
+        """
+        state: str | None = None
+        for attempt in range(STATE_CONFIRM_ATTEMPTS):
+            state = await self._ha_adapter.get_state(entity_id)
+            if state == expected:
+                if attempt:
+                    logger.info(
+                        f"{entity_id} reached '{expected}' after "
+                        f"{attempt * STATE_CONFIRM_DELAY_S:.1f} s"
+                    )
+                return state
+            if attempt < STATE_CONFIRM_ATTEMPTS - 1:
+                await asyncio.sleep(STATE_CONFIRM_DELAY_S)
+        return state
 
     def release(self, device_id: str, source: str) -> bool:
         """

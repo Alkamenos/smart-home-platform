@@ -922,6 +922,9 @@ class HAAdapter:
         # до первого решения, иначе первое же включение уйдёт с угаданной
         # величиной (боевой дефект 2026-10-11).
         self.heater_timers: list[str] = []
+        # Обогреватель -> его таймер: нужно, чтобы приложить к событию
+        # единицу измерения именно его таймера.
+        self.heater_timer_of: dict[str, str] = {}
         self._ws_client: HomeAssistantWS | None = None
         self._session: aiohttp.ClientSession | None = None
         # Манифест для фильтра подписки. Не передаётся в __init__, чтобы не
@@ -1123,7 +1126,7 @@ class HAAdapter:
         )
 
         event_context: dict[str, Any] = {
-            **self._event_context(),
+            **self._event_context(entity_id),
             **context,
             "trace_id": trace_id,
         }
@@ -1530,8 +1533,13 @@ class HAAdapter:
         fields = sorted(set(GLOBAL_ENTITY_FIELDS.values()))
         return {name: getattr(client, name, None) for name in fields}
 
-    def _event_context(self) -> dict[str, Any]:
-        """Контекст события: солнце, сон и глобальные значения.
+    def _event_context(self, entity_id: str | None = None) -> dict[str, Any]:
+        """Контекст события: солнце, сон, глобальные значения и единицы таймеров.
+
+        Args:
+            entity_id: Сущность, состояние которой изменилось. Нужна, чтобы
+                приложить единицу измерения её таймера: у обогревателя своя
+                единица, у света — никакой.
 
         Returns:
             Словарь контекста без привязки к конкретному событию.
@@ -1541,7 +1549,31 @@ class HAAdapter:
             "daylight": getattr(client, "daylight", None),
             "sleep_modifier_on": getattr(client, "asleep", None),
             **self._global_context(),
+            **self._timer_unit_for(entity_id),
         }
+
+    def _timer_unit_for(self, entity_id: str | None) -> dict[str, Any]:
+        """Единица измерения таймера обогревателя, если событие — его.
+
+        Без этого действие получало ``timer_unit = None`` и угадывало минуты для
+        секундного таймера: обогреватель включался и гас через 15 секунд, а
+        платформа показывала исправную работу (боевой дефект 2026-10-11).
+        Единицы читаются один раз при подключении, поэтому и в контекст они
+        попадают без обращения к сети.
+
+        Args:
+            entity_id: Сущность события.
+
+        Returns:
+            ``{"timer_unit": единица}`` либо пустой словарь.
+        """
+        if not entity_id:
+            return {}
+        timer = self.heater_timer_of.get(entity_id)
+        if not timer:
+            return {}
+        unit = self._entity_units.get(timer)
+        return {"timer_unit": unit} if unit else {}
 
     async def _refresh_daylight(self) -> None:
         """Обновить признак «светло ли сейчас» по данным Home Assistant.
