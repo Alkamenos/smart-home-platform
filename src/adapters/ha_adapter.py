@@ -1122,11 +1122,25 @@ class HAAdapter:
             f"HAAdapter: state_change received for {entity_id}: '{old_state}' -> '{new_state}'"
         )
 
+        event_context: dict[str, Any] = {
+            **self._event_context(),
+            **context,
+            "trace_id": trace_id,
+        }
+
         payload = {
             "entity_id": entity_id,
             "new_state": new_state,
             "old_state": old_state,
-            "context": {**context, "trace_id": trace_id},
+            # Глобальные значения обязаны ехать с каждым событием, а не только
+            # читаться при подключении: условия обогрева и охлаждения читают
+            # уставку и сезон именно отсюда. Без этого `_event_context()` был
+            # написан, но не вызывался — уставка доезжала до Home Assistant и
+            # терялась по дороге к решению: `may_heat` получал «данных нет» и
+            # отказывал при любой температуре, то есть обогрев не включался ни
+            # разу (боевой дефект 2026-10-11: уставка 30 °C не включила ни
+            # одного обогревателя).
+            "context": event_context,
         }
 
         # Доставка событий подписчикам идёт через шину платформы — ту же, что
@@ -1159,7 +1173,12 @@ class HAAdapter:
                     entity_id=entity_id,
                     new_state=new_state,
                     old_state=old_state,
-                    context=context,
+                    # Именно контекст из payload, а не исходный: глобальные
+                    # значения (уставка, сезон, потолок комфорта) добавлены
+                    # выше, и без них условие обогрева получало «данных нет»
+                    # при любой температуре — обогрев не включался ни разу
+                    # (боевой дефект 2026-10-11).
+                    context=event_context,
                 )
             except Exception as e:
                 log.error(f"HAAdapter: EventRouter.route_state_change failed for {entity_id}: {e}")

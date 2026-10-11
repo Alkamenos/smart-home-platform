@@ -194,6 +194,78 @@ class TestClimateGlobalsRead:
         )
 
     @pytest.mark.asyncio
+    async def test_setpoint_reaches_the_event_context(self) -> None:
+        """Прочитанная уставка доезжает до контекста решения — второй конец провода.
+
+        Боевой дефект 2026-10-11: уставка читалась и хранилась, а в контекст
+        события не попадала — `may_heat` получал «данных нет» и отказывал при
+        любой температуре. Владелец поднял уставку до 30 °C, и **ни один
+        обогреватель в доме не включился**: условие не видело цели ни разу.
+
+        Прежняя проверка смотрела только на чтение из Home Assistant, поэтому
+        разрыв между «прочитано» и «доставлено» остался незамеченным: обе
+        половины выглядели исправными по отдельности.
+
+        Returns:
+            Ничего.
+        """
+        adapter, client = _adapter_with_states({"input_number.temperatura": "30.0"})
+        adapter.climate_entities = {"setpoint": "input_number.temperatura"}
+        adapter._ws_client = client  # type: ignore[attr-defined]
+
+        await HAAdapter._refresh_climate_globals(adapter)  # type: ignore[arg-type]
+
+        context = HAAdapter._event_context(adapter)  # type: ignore[arg-type]
+
+        assert context.get("climate_setpoint") == 30.0, (
+            "уставка прочитана, но не дошла до контекста решения: условие "
+            "may_heat читает именно оттуда, поэтому обогрев не включается ни "
+            "при какой температуре, а платформа показывает исправную работу"
+        )
+
+    @pytest.mark.asyncio
+    async def test_event_carries_globals_into_the_decision(self) -> None:
+        """Контекст события, уходящий в решение, содержит уставку.
+
+        Третий конец того же провода: `_event_context()` сам по себе возвращает
+        глобалы, но вызывать его было неоткуда — условие получало «данных нет»
+        при любой температуре. Проверка смотрит на то, что реально уходит в
+        `route_state_change`, а не на сам метод.
+
+        Returns:
+            Ничего.
+        """
+        adapter, client = _adapter_with_states({"input_number.temperatura": "30.0"})
+        adapter.climate_entities = {"setpoint": "input_number.temperatura"}
+        adapter._ws_client = client  # type: ignore[attr-defined]
+        await HAAdapter._refresh_climate_globals(adapter)  # type: ignore[arg-type]
+
+        captured: dict[str, Any] = {}
+
+        async def route(entity_id: str, new_state: str, old_state: str, context: Any) -> None:
+            captured.update(context or {})
+
+        adapter._event_router = type(  # type: ignore[attr-defined]
+            "R", (), {"route_state_change": staticmethod(route)}
+        )()
+        adapter._engine = type("E", (), {"event_bus": None})()  # type: ignore[assignment]
+
+        await HAAdapter.on_state_change(  # type: ignore[arg-type]
+            adapter,
+            "sensor.datchik_temperatury_spalnia_temperature",
+            "20.0",
+            "21.0",
+        )
+
+        assert captured.get("climate_setpoint") == 30.0, (
+            "событие датчика ушло в решение без уставки: условие may_heat читает "
+            "climate_setpoint именно отсюда, поэтому обогрев не включается ни "
+            "в одной комнате, хотя платформа показывает исправную работу "
+            "(боевой дефект 2026-10-11, уставка 30 °C не включила ни одного "
+            "обогревателя)"
+        )
+
+    @pytest.mark.asyncio
     async def test_season_is_read_into_client(self) -> None:
         """Сезон читается: без него кондиционер не знает, что зима."""
         adapter, client = _adapter_with_states({"input_boolean.zima": "on"})
