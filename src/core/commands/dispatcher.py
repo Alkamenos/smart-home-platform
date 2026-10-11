@@ -51,6 +51,15 @@ class CommandIntent(BaseModel):
     last_updated: float = Field(default_factory=time.time)
     ttl_seconds: float = Field(default=3600.0, ge=0)
     bypass_lockout: bool = False
+    requires_state: str | None = None
+    """Состояние прибора, без которого команду отправлять нельзя.
+
+    Проверено в доме 2026-10-11: обогреватель принимает таймер **только если уже
+    включён**. Таймер, поставленный на выключенный прибор, Home Assistant
+    записывает без ошибки, а греть никто не будет — то есть отказ выглядит как
+    успех. Поэтому шаг с таймером ждёт ``requires_state`` и проверяет реальное
+    состояние прибора перед отправкой.
+    """
 
     def refresh(self) -> None:
         """Extend the intent's life by resetting ``last_updated`` to now."""
@@ -89,6 +98,15 @@ class HAAdapterProtocol(Protocol):
         trace_id: str | None = None,
     ) -> bool:
         """Call a Home Assistant service."""
+        ...
+
+    async def get_state(self, entity_id: str) -> str | None:
+        """Текущее состояние прибора либо ``None``, если его не удалось прочитать.
+
+        Нужно шагам команды с порядком: таймер обогревателя отправляется только
+        после того, как прибор включился, и без проверки отказ выглядел бы как
+        успех (живая проверка 2026-10-11).
+        """
         ...
 
 
@@ -185,6 +203,20 @@ class CommandDispatcher:
                         f"preempts {existing_intent.source} ({existing_intent.priority}) "
                         f"on device {device_id}"
                     )
+
+                # Состояние прибора проверяется до захвата намерения: иначе
+                # отказ по требованию состояния выглядел бы так же, как успех.
+                # Таймер, поставленный на выключенный обогреватель, Home
+                # Assistant записывает без ошибки, а греть никто не будет.
+                if processed_intent.requires_state is not None:
+                    actual = await self._ha_adapter.get_state(device_id)
+                    if actual != processed_intent.requires_state:
+                        logger.warning(
+                            f"Skipping {processed_intent.source} → {device_id}: "
+                            f"требуется состояние {processed_intent.requires_state!r}, "
+                            f"прибор в состоянии {actual!r}. Команда не применена"
+                        )
+                        return False
 
                 # Accept the new intent (first capture or re-capture)
                 self._active_intents[device_id] = processed_intent

@@ -906,13 +906,34 @@ class FSMEngine:
             # Если action возвращает CommandIntent и есть dispatcher - отправляем его
             from core.commands.dispatcher import CommandIntent
 
+            # Список шагов — команда с порядком: обогреватель принимает таймер
+            # только после включения (живая проверка 2026-10-11), а выключается
+            # только после обнуления таймера. Одно намерение такой порядок
+            # выразить не может, поэтому шаги отправляются подряд и по порядку.
+            intents: list[CommandIntent] | None = None
             if isinstance(result, CommandIntent):
-                if self._dispatcher is not None:
-                    log.debug(f"Submitting CommandIntent to dispatcher: {result}")
-                    await self._dispatcher.submit(result)
-                else:
-                    log.warning(f"No dispatcher available, skipping CommandIntent: {result}")
-                # Возвращаем пустой патч контекста, т.к. команда отправлена (или пропущена)
+                intents = [result]
+            elif isinstance(result, list) and all(isinstance(i, CommandIntent) for i in result):
+                intents = list(result)
+
+            if intents is not None:
+                if self._dispatcher is None:
+                    log.warning(
+                        f"No dispatcher available, skipping {len(intents)} CommandIntent(s): {result}"
+                    )
+                    return {}
+                for index, intent in enumerate(intents):
+                    log.debug(f"Submitting CommandIntent {index + 1}/{len(intents)}: {intent}")
+                    sent = await self._dispatcher.submit(intent)
+                    if not sent:
+                        # Дальше идти нельзя: шаг с таймером без включённого
+                        # прибора Home Assistant запишет без ошибки, а греть
+                        # никто не будет — отказ будет выглядеть как успех.
+                        log.warning(
+                            f"Command step {index + 1}/{len(intents)} not sent "
+                            f"({intent.source} → {intent.device_id}); remaining steps skipped"
+                        )
+                        return {}
                 return {}
 
             # Если action возвращает dict, считаем это патчем для обновления контекста

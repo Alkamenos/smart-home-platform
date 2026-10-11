@@ -491,7 +491,7 @@ def timer_assumption_flag(unit: str, assumed: bool) -> str | None:
     return unit if assumed else None
 
 
-def heater_timer_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+def heater_timer_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
     """Включить обогреватель на заданное время через его собственный таймер.
 
     Требование владельца (FR-004): обогреватель включается «на 15 минут», а не
@@ -505,15 +505,16 @@ def heater_timer_on(state: Any, context: dict[str, Any]) -> CommandIntent | None
         context: Контекст с ``entity_id``, ``heater_timer`` и ``run_minutes``.
 
     Returns:
-        Команда таймеру обогревателя либо команда включения, если таймер в
-        манифесте не задан; ``None`` без обогревателя.
+        Шаги команды по порядку: прибор включается, затем таймер. Если таймер в
+        манифесте не задан — единственный шаг включения; без обогревателя —
+        пустой список.
     """
     del state
     timer = context.get("heater_timer")
     entity_id = extract_device_id(context)
     if not entity_id:
         logger.warning("heater_timer_on: нет entity_id обогревателя в контексте")
-        return None
+        return []
 
     minutes = context.get("run_minutes", DEFAULT_HEATER_RUN_MINUTES)
     if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes <= 0:
@@ -525,7 +526,7 @@ def heater_timer_on(state: Any, context: dict[str, Any]) -> CommandIntent | None
             "манифесте, выключит датчик. Если датчик откажет, обогреватель "
             "останется работать — это защита, которой у нас больше нет"
         )
-        return _heater_intent(context, "switch", "turn_on", "heater_on_no_timer")
+        return _single_step(_heater_intent(context, "switch", "turn_on", "heater_on_no_timer"))
 
     value, unit = _timer_duration(context)
     data: dict[str, Any] = {"value": value, "timer_unit": unit}
@@ -541,7 +542,12 @@ def heater_timer_on(state: Any, context: dict[str, Any]) -> CommandIntent | None
             "получаса — задайте timer_unit в манифесте"
         )
 
-    return _heater_intent(
+    # Порядок обязателен и выяснен в доме (2026-10-11): таймер принимается
+    # только на уже включённом приборе. Таймер, записанный на выключенный
+    # обогреватель, Home Assistant сохраняет без ошибки, а греть никто не
+    # будет — отказ выглядит как успех, и обогрев молчит.
+    on_step = _heater_intent(context, "switch", "turn_on", "heater_timer_on")
+    timer_step = _heater_intent(
         context,
         "number",
         "set_value",
@@ -551,6 +557,41 @@ def heater_timer_on(state: Any, context: dict[str, Any]) -> CommandIntent | None
         # `switch.*` Home Assistant отвергает, и команда пропала бы молча.
         target_entity_id=timer,
     )
+    return _with_requirement([on_step, timer_step], timer_step, "on")
+
+
+def _single_step(intent: CommandIntent | None) -> list[CommandIntent]:
+    """Обернуть одно намерение в список шагов.
+
+    Args:
+        intent: Намерение либо ``None``.
+
+    Returns:
+        Список из одного намерения либо пустой список.
+    """
+    return [intent] if intent is not None else []
+
+
+def _with_requirement(
+    steps: list[CommandIntent | None],
+    guarded: CommandIntent | None,
+    required_state: str,
+) -> list[CommandIntent]:
+    """Пометить шаг условием по состоянию прибора, выбросив пустые шаги.
+
+    Args:
+        steps: Шаги команды по порядку.
+        guarded: Шаг, который отправляется только при нужном состоянии прибора.
+        required_state: Ожидаемое состояние прибора (``on``/``off``).
+
+    Returns:
+        Готовые к отправке шаги.
+    """
+    result = [step for step in steps if step is not None]
+    for step in result:
+        if step is guarded:
+            step.requires_state = required_state
+    return result
 
 
 def heater_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
@@ -571,18 +612,36 @@ def heater_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     return _heater_intent(context, "switch", "turn_on", "heater_on")
 
 
-def heater_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+def heater_off(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
     """Выключить обогреватель: цель достигнута или время работы вышло.
+
+    Порядок тот же, что и при включении, только наоборот: сначала таймер в ноль,
+    затем выключение. Таймер, оставленный на выключенном приборе, включит его
+    позже сам — обогреватель загорается через несколько минут после того, как
+    платформа решила, что комната достаточно тёплая.
 
     Args:
         state: Состояние автомата (не используется).
-        context: Контекст с ``entity_id`` обогревателя.
+        context: Контекст с ``entity_id`` обогревателя и, возможно, таймером.
 
     Returns:
-        Команда выключения либо ``None`` без обогревателя.
+        Шаги выключения по порядку.
     """
     del state
-    return _heater_intent(context, "switch", "turn_off", "heater_off")
+    timer = context.get("heater_timer")
+    off_step = _heater_intent(context, "switch", "turn_off", "heater_off")
+    if not timer:
+        return _single_step(off_step)
+
+    zero_step = _heater_intent(
+        context,
+        "number",
+        "set_value",
+        "heater_off",
+        data={"value": 0, "timer_unit": "s"},
+        target_entity_id=timer,
+    )
+    return _with_requirement([zero_step, off_step], off_step, "off")
 
 
 def ac_cool_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:

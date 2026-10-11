@@ -59,35 +59,49 @@ class TestHeaterStartsThroughItsOwnTimer:
     """Основной путь: обогреватель получает команду «работай N минут»."""
 
     def test_timer_command_is_number_set_value(self) -> None:
-        """Намерение уходит в домен `number` со значением в минутах.
+        """Намерение уходит в домен `number` со значением в единице таймера.
+
+        **Значение и адресат исправлены 2026-10-11.** Тест утверждал две вещи,
+        которые оказались боевым дефектом: команда несла `run_minutes` в
+        `number.set_value`, хотя таймер обогревателя измеряется в секундах, и
+        адресатом был `switch.*` — Home Assistant не находит переключатель в
+        домене `number` и отвергает команду. Обогрев молчал сутки: автомат
+        переключался `IDLE → HEATING → IDLE`, сторож писал `ok`, метрики
+        показывали работу. Подробности — `test_heater_timer_unit.py`.
 
         Returns:
             Ничего.
         """
         action = _action("heater_timer_on")
 
-        intent = action(
+        steps = action(
             None,
             _ctx(
                 entity_id="switch.obogrevatel_spalnia",
                 heater_timer="number.obogrevatel_spalnia_countdown",
                 run_minutes=RUN_MINUTES,
+                timer_unit="min",
             ),
         )
 
-        assert intent is not None, (
+        assert steps, (
             "действие молча не создало команду: платформа решила греть и ничего не сказала"
         )
-        assert intent.domain == "number", (
-            f"команда ушла в домен {intent.domain!r}: таймер обогревателя — это "
+        timer_step = steps[-1]
+        assert timer_step.domain == "number", (
+            f"команда ушла в домен {timer_step.domain!r}: таймер обогревателя — это "
             "`number`, и light/climate вернули бы ошибку Home Assistant"
         )
-        assert intent.service == "set_value"
-        assert intent.data["value"] == RUN_MINUTES, (
-            f"в команду ушло {intent.data.get('value')!r} вместо {RUN_MINUTES}: "
-            "таймер должен получить именно длительность работы"
+        assert timer_step.service == "set_value"
+        assert timer_step.data["value"] == RUN_MINUTES, (
+            f"в таймер, измеряемый в минутах, ушло {timer_step.data.get('value')!r} "
+            f"вместо {RUN_MINUTES}"
         )
-        assert intent.device_id == "switch.obogrevatel_spalnia"
+        assert timer_step.device_id == "number.obogrevatel_spalnia_countdown", (
+            f"команда домена `number` адресована {timer_step.device_id!r}: Home "
+            "Assistant не найдёт переключатель в домене `number` и отвергнет "
+            "команду, а платформа сочтёт её отправленной"
+        )
 
     def test_run_minutes_falls_back_to_default(self) -> None:
         """Без заданной длительности — 15 минут: значение по умолчанию.
@@ -97,16 +111,16 @@ class TestHeaterStartsThroughItsOwnTimer:
         """
         action = _action("heater_timer_on")
 
-        intent = action(
+        steps = action(
             None,
             _ctx(
                 entity_id="switch.obogrevatel_kabinet",
                 heater_timer="number.obogrevatel_kabinet_countdown",
+                timer_unit="min",
             ),
         )
 
-        assert intent is not None
-        assert intent.data["value"] == 15, (
+        assert steps[-1].data["value"] == 15, (
             "без run_minutes команда не должна уходить с пустым значением: "
             "таймер обогревателя без времени работы включает греть навсегда"
         )
@@ -123,16 +137,16 @@ class TestHeaterFallsBackWhenTimerIsAbsent:
         """
         action = _action("heater_timer_on")
 
-        intent = action(
+        steps = action(
             None,
             _ctx(entity_id="switch.obogrevatel_kabinet", run_minutes=RUN_MINUTES),
         )
 
-        assert intent is not None
-        assert intent.domain == "switch", (
-            f"без таймера обогреватель включается как switch, а не {intent.domain!r}"
+        assert steps, "без таймера действие не создало ни одной команды"
+        assert steps[0].domain == "switch", (
+            f"без таймера обогреватель включается как switch, а не {steps[0].domain!r}"
         )
-        assert intent.service == "turn_on"
+        assert steps[0].service == "turn_on"
 
     def test_source_records_that_timer_was_missing(self) -> None:
         """Источник команды различает два пути — по нему видно, какой сработал.
@@ -148,9 +162,8 @@ class TestHeaterFallsBackWhenTimerIsAbsent:
         )
         without_timer = action(None, _ctx(entity_id="switch.x", run_minutes=RUN_MINUTES))
 
-        assert with_timer is not None
-        assert without_timer is not None
-        assert with_timer.source != without_timer.source, (
+        assert with_timer and without_timer, "действие не создало команд"
+        assert with_timer[0].source != without_timer[0].source, (
             "оба пути помечены одинаково: в журнале нельзя отличить работу через "
             "таймер от работы без него — а это разный уровень защиты от перегрева"
         )
@@ -167,14 +180,14 @@ class TestHeaterTurnsOff:
         """
         action = _action("heater_off")
 
-        intent = action(None, _ctx(entity_id="switch.obogrevatel_spalnia"))
+        steps = action(None, _ctx(entity_id="switch.obogrevatel_spalnia"))
 
-        assert intent is not None
-        assert intent.domain == "switch"
-        assert intent.service == "turn_off"
-        assert intent.device_id == "switch.obogrevatel_spalnia"
+        assert steps, "выключение не создало ни одной команды"
+        assert steps[0].domain == "switch"
+        assert steps[0].service == "turn_off"
+        assert steps[0].device_id == "switch.obogrevatel_spalnia"
 
-    def test_missing_entity_returns_none_and_warns(self) -> None:
+    def test_missing_entity_returns_no_commands(self) -> None:
         """Без устройства команда не создаётся — и это видно в журнале.
 
         Returns:
@@ -182,9 +195,9 @@ class TestHeaterTurnsOff:
         """
         action = _action("heater_off")
 
-        assert action(None, _ctx()) is None, (
-            "без entity_id действие обязано вернуть None: молчаливое «решение "
-            "выключить» без устройства выглядит как выполненный обогрев"
+        assert action(None, _ctx()) == [], (
+            "без entity_id действие обязано вернуть пустой список: молчаливое "
+            "«решение выключить» без устройства выглядит как выполненный обогрев"
         )
 
 
@@ -258,12 +271,12 @@ class TestClimateRespectsLockout:
         """Признак берётся из контекста события."""
         from core.action_handlers import ACTION_HANDLERS
 
-        intent = ACTION_HANDLERS["heater_off"](
+        steps = ACTION_HANDLERS["heater_off"](
             None, {"entity_id": "switch.obogrevatel_spalnia", "bypass_lockout": True}
         )
 
-        assert intent is not None
-        assert intent.bypass_lockout is True, (
+        assert steps, "выключение не создало ни одной команды"
+        assert steps[0].bypass_lockout is True, (
             "суточное событие обязано донести признак обхода: иначе обогреватель, "
             "включённый человеком, остался бы гореть"
         )
@@ -276,12 +289,12 @@ class TestClimateRespectsLockout:
         """
         from core.action_handlers import ACTION_HANDLERS
 
-        intent = ACTION_HANDLERS["heater_off"](
+        steps = ACTION_HANDLERS["heater_off"](
             None, {"entity_id": "switch.obogrevatel_spalnia", "bypass_lockout": False}
         )
 
-        assert intent is not None
-        assert intent.bypass_lockout is False, (
+        assert steps, "выключение не создало ни одной команды"
+        assert steps[0].bypass_lockout is False, (
             "собственная команда платформы блокировку обходить не должна: иначе "
             "она не уважала бы ручное вмешательство, ради которого блокировка и есть"
         )
@@ -294,7 +307,7 @@ class TestClimateRespectsLockout:
         """
         from core.action_handlers import ACTION_HANDLERS
 
-        intent = ACTION_HANDLERS["heater_off"](None, {"entity_id": "switch.x"})
+        steps = ACTION_HANDLERS["heater_off"](None, {"entity_id": "switch.x"})
 
-        assert intent is not None
-        assert intent.bypass_lockout is False
+        assert steps, "выключение не создало ни одной команды"
+        assert steps[0].bypass_lockout is False

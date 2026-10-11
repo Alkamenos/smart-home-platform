@@ -91,10 +91,10 @@ class TestTimerUnitConversion:
                 timer_unit="s",
             ),
         )
+        timer_step = intent[-1]
 
-        assert intent is not None
-        assert intent.data["value"] == RUN_SECONDS, (
-            f"в таймер, измеряемый в секундах, ушло {intent.data.get('value')!r} "
+        assert timer_step.data["value"] == RUN_SECONDS, (
+            f"в таймер, измеряемый в секундах, ушло {timer_step.data.get('value')!r} "
             f"вместо {RUN_SECONDS}: Home Assistant примет это как 15 секунд, "
             "обогреватель включится и сразу выключится, а платформа будет "
             "считать, что отработала по таймеру"
@@ -108,7 +108,7 @@ class TestTimerUnitConversion:
         """
         action = _action("heater_timer_on")
 
-        intent = action(
+        steps = action(
             None,
             _ctx(
                 entity_id="switch.obogrevatel_spalnia",
@@ -117,10 +117,10 @@ class TestTimerUnitConversion:
                 timer_unit="min",
             ),
         )
+        timer_step = steps[-1]
 
-        assert intent is not None
-        assert intent.data["value"] == RUN_MINUTES, (
-            f"в таймер, измеряемый в минутах, ушло {intent.data.get('value')!r} "
+        assert timer_step.data["value"] == RUN_MINUTES, (
+            f"в таймер, измеряемый в минутах, ушло {timer_step.data.get('value')!r} "
             f"вместо {RUN_MINUTES}: домножение на 60 здесь сделало бы работу "
             "часовой вместо получасовой"
         )
@@ -136,7 +136,7 @@ class TestTimerUnitConversion:
         """
         action = _action("heater_timer_on")
 
-        intent = action(
+        steps = action(
             None,
             _ctx(
                 entity_id="switch.obogrevatel_x",
@@ -145,10 +145,10 @@ class TestTimerUnitConversion:
                 timer_unit="что-то неопознанное",
             ),
         )
+        timer_step = steps[-1]
 
-        assert intent is not None
-        assert intent.data["value"] == RUN_MINUTES
-        assert intent.data.get("assumed_unit") == "min", (
+        assert timer_step.data["value"] == RUN_MINUTES
+        assert timer_step.data.get("assumed_unit") == "min", (
             "единица не распознана, но в команде не сказано, что она угадана: "
             "следующая сессия не поймёт, откуда взялось это число"
         )
@@ -165,7 +165,7 @@ class TestTimerUnitConversion:
         """
         action = _action("heater_timer_on")
 
-        intent = action(
+        steps = action(
             None,
             _ctx(
                 entity_id="switch.obogrevatel_spalnia",
@@ -174,10 +174,10 @@ class TestTimerUnitConversion:
                 timer_unit="s",
             ),
         )
+        timer_step = steps[-1]
 
-        assert intent is not None
-        assert intent.device_id == "number.obogrevatel_spalnia_countdown", (
-            f"команда домена `number` ушла на {intent.device_id!r}: Home "
+        assert timer_step.device_id == "number.obogrevatel_spalnia_countdown", (
+            f"команда домена `number` ушла на {timer_step.device_id!r}: Home "
             "Assistant не найдёт такой сущности в домене `number` и откажет — "
             "при этом платформа сочтёт команду отправленной"
         )
@@ -230,7 +230,7 @@ class TestTimerUnitIsDiscoveredFromHomeAssistant:
         """
         from core.action_handlers import ACTION_HANDLERS
 
-        intent = ACTION_HANDLERS["heater_timer_on"](
+        steps = ACTION_HANDLERS["heater_timer_on"](
             None,
             _ctx(
                 entity_id="switch.obogrevatel_x",
@@ -239,8 +239,7 @@ class TestTimerUnitIsDiscoveredFromHomeAssistant:
                 timer_unit="s",
             ),
         )
-        assert intent is not None
-        assert intent.data["value"] == RUN_SECONDS, (
+        assert steps[-1].data["value"] == RUN_SECONDS, (
             "объявленная в манифесте единица не дошла до команды: параметр "
             "поведения читается, но в намерение не попадает"
         )

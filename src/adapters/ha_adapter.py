@@ -969,6 +969,46 @@ class HAAdapter:
         """Get a logger with trace_id context."""
         return logging.LoggerAdapter(logger, {"trace_id": trace_id})
 
+    async def get_state(self, entity_id: str) -> str | None:
+        """Текущее состояние прибора из Home Assistant.
+
+        Нужно шагам команды с порядком: обогреватель принимает таймер только
+        уже включённым, а таймер на выключенном приборе Home Assistant пишет
+        без ошибки — то есть отказ неотличим от успеха.
+
+        Args:
+            entity_id: Сущность Home Assistant.
+
+        Returns:
+            Состояние прибора либо ``None``, если прочитать не удалось. ``None``
+            трактуется как «не выполнено»: пропуск шага безопаснее отправки
+            команды вслепую.
+        """
+        if self._session is None or not self._token:
+            return None
+
+        http_url = cast(str, self._ws_url)
+        base = http_url.replace("wss://", "https://").replace("ws://", "http://")
+        base = base.split("/api/websocket")[0].rstrip("/")
+        try:
+            async with self._session.get(
+                f"{base}/api/states/{entity_id}",
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status != 200:
+                    logger.warning(
+                        f"HAAdapter: состояние {entity_id} не прочитано (HTTP {response.status})"
+                    )
+                    return None
+                payload = await response.json()
+        except (TimeoutError, aiohttp.ClientError, ValueError) as error:
+            logger.warning(f"HAAdapter: состояние {entity_id} не прочитано: {error}")
+            return None
+
+        state = payload.get("state")
+        return state if isinstance(state, str) else None
+
     def remember_entity_unit(self, entity_id: str, unit: Any) -> None:
         """Запомнить единицу измерения сущности, прочитанную у устройства.
 
@@ -1047,7 +1087,9 @@ class HAAdapter:
                 )
 
         if learned:
-            logger.info(f"HAAdapter: единицы измерения прочитаны для {learned} сущностей")
+            # WARNING по той же причине, что и у вызова: info от адаптера не
+            # виден, а молчание здесь выглядело бы как «единицы не нужны».
+            logger.warning(f"HAAdapter: единицы измерения прочитаны для {learned} сущностей")
         return learned
 
     async def on_state_change(
@@ -1151,7 +1193,12 @@ class HAAdapter:
             # которого на самом деле нет, и не должен выглядеть как отказ.
             return True
 
-        log.info(f"HAAdapter: calling service {domain}.{service} for {entity_id}")
+        # WARNING, а не INFO: логи адаптера наследуют корневой обработчик,
+        # где info не виден (урок #70). На info выход в Home Assistant был
+        # недоказуем — а именно здесь в бою 2026-10-11 и терялись команды
+        # обогревателей: намерение принималось, а эта строка молчала, и цепочка
+        # «решение → команда → прибор» выглядела исправной до конца.
+        log.warning(f"HAAdapter: calling service {domain}.{service} for {entity_id}")
 
         try:
             if self._mode == "pyscript":
@@ -1509,12 +1556,6 @@ class HAAdapter:
             client.ventilation_entities = dict(self.ventilation_entities)
         await self._refresh_climate_globals()
         await self._refresh_ventilation_globals()
-        # Единицы измерения таймеров обогревателей читаются здесь, а не в
-        # действии: решение принимается на каждом показании датчика, и запрос в
-        # сеть на каждое из них означал бы либо лишнюю нагрузку, либо отказ
-        # обогрева при обрыве связи с Home Assistant.
-        if self.heater_timers:
-            await self.refresh_entity_units(self.heater_timers)
 
         http_url = cast(str, self._ws_url)
         rest_base = http_url.replace("wss://", "https://").replace("ws://", "http://")
@@ -1660,6 +1701,42 @@ class HAAdapter:
                         "ALL state_changed events"
                     )
                 logger.info("🔔 HAAdapter: listening for HA state changes...")
+
+                # Единицы измерения таймеров обогревателей читаются один раз при
+                # подключении, а не в действии: решение принимается на каждом
+                # показании датчика, и запрос в сеть из действия означал бы либо
+                # лишнюю нагрузку, либо отказ обогрева при обрыве связи.
+                #
+                # Без этого обогрев выглядит исправным и не работает: таймер
+                # измеряется в секундах, а платформа отправляет минуты — 15
+                # секунд вместо получаса, при этом автомат честно отрабатывает
+                # свой таймер, сторож пишет `ok`, метрики показывают работу
+                # (боевой дефект 2026-10-11).
+                if self.heater_timers:
+                    # WARNING, а не INFO: логи адаптера наследуют корневой
+                    # обработчик, где info не виден (урок #70 — на info эта
+                    # проверка молчала бы и не доказала бы ничего). Плюс сам
+                    # факт чтения единиц достоин внимания оператора: по нему
+                    # видно, что обогрев считает длительность в тех же
+                    # единицах, что и таймер прибора.
+                    logger.warning(
+                        f"HAAdapter: единицы измерения таймеров читаются для "
+                        f"{len(self.heater_timers)} сущностей"
+                    )
+                    learned = await self.refresh_entity_units(self.heater_timers)
+                    logger.warning(
+                        f"HAAdapter: прочитаны единицы {learned} из "
+                        f"{len(self.heater_timers)} таймеров обогревателей"
+                    )
+                else:
+                    # Молчание опаснее ошибки: без единиц платформа угадывает
+                    # минуты и отправляет их в секундный таймер.
+                    logger.warning(
+                        "HAAdapter: список таймеров обогревателей пуст — единицы "
+                        "измерения не прочитаны, длительность работы уйдёт в "
+                        "минутах. Проверь, что в манифесте у обогревателей "
+                        "задан параметр heater_timer"
+                    )
 
                 # Освещённость нужна сразу при подключении: событие солнца придёт
                 # только на восходе или закате.
