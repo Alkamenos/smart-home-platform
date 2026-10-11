@@ -860,6 +860,117 @@ def fan_turn_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     return _fan_intent(context, "turn_off", "fan_turn_off")
 
 
+def fan_set_percentage(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Задать скорость вентилятора.
+
+    Скорость — отдельная ось рекуператора и не зависит от режима (FR-020,
+    FR-021). В данных команды лежит **ровно** ``percentage``: лишний ключ в
+    ``fan.set_percentage`` Home Assistant отвергает с 400 Bad Request, и вместе с
+    ним теряется вся команда.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``percentage`` (0–100).
+
+    Returns:
+        Команда скорости либо ``None`` без устройства или значения.
+    """
+    del state
+    percentage = context.get("percentage")
+    if percentage is None or isinstance(percentage, bool):
+        logger.warning("fan_set_percentage: нет процента скорости в контексте")
+        return None
+    try:
+        value = int(percentage)
+    except (TypeError, ValueError):
+        logger.warning(f"fan_set_percentage: процент не число: {percentage!r}")
+        return None
+    if not 0 <= value <= 100:
+        logger.warning(f"fan_set_percentage: процент {value} вне диапазона 0–100")
+        return None
+
+    return _fan_intent({**context, "percentage": value}, "set_percentage", "fan_set_percentage")
+
+
+def fan_set_preset(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Задать режим вентилятора.
+
+    Режим выбирается из списка самого устройства (``research.md`` D7):
+    «Приток», «Рекуперация (зима)» и другие. Платформа физику не считает — она
+    выбирает то, что умеет прибор.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``preset_mode``.
+
+    Returns:
+        Команда режима либо ``None`` без устройства или названия режима.
+    """
+    del state
+    preset_mode = context.get("preset_mode") or context.get("chosen_mode")
+    if not isinstance(preset_mode, str) or not preset_mode.strip():
+        logger.warning("fan_set_preset: нет названия режима в контексте")
+        return None
+
+    return _fan_intent(
+        {**context, "preset_mode": preset_mode},
+        "set_preset_mode",
+        "fan_set_preset",
+    )
+
+
+def fan_apply_mode_and_speed(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
+    """Задать режим и скорость — двумя независимыми командами.
+
+    У рекуператора это две независимые оси (FR-021), и смена скорости не должна
+    сбрасывать режим. Одной командой обе не задать: у сервисов Home Assistant
+    нет общего вызова, а значит порядок — «режим, затем скорость».
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id``, ``preset_mode`` и ``percentage``.
+
+    Returns:
+        Два шага: режим, затем скорость.
+    """
+    del state
+    mode_step = fan_set_preset(None, context)
+    speed_step = fan_set_percentage(None, context)
+    return [step for step in (mode_step, speed_step) if step is not None]
+
+
+def exhaust_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить вытяжку.
+
+    Вытяжка санузла — прибор без скорости: только вкл/выкл (``research.md``,
+    таблица устройств). Команда уходит без данных: ``turn_on`` сервису ничего
+    не нужно, а лишний ключ отвергается с 400 Bad Request.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id``.
+
+    Returns:
+        Команда либо ``None`` без устройства.
+    """
+    del state
+    return _fan_intent(context, "turn_on", "exhaust_on")
+
+
+def exhaust_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Выключить вытяжку.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id``.
+
+    Returns:
+        Команда либо ``None`` без устройства.
+    """
+    del state
+    return _fan_intent(context, "turn_off", "exhaust_off")
+
+
 # Dictionary of all available action handlers for easy registration
 ACTION_HANDLERS: dict[str, Any] = {
     "turn_on_light": turn_on_light,
@@ -887,6 +998,11 @@ ACTION_HANDLERS: dict[str, Any] = {
     "ac_forced_off": ac_forced_off,
     "fan_turn_on": fan_turn_on,
     "fan_turn_off": fan_turn_off,
+    "fan_set_percentage": fan_set_percentage,
+    "fan_set_preset": fan_set_preset,
+    "fan_apply_mode_and_speed": fan_apply_mode_and_speed,
+    "exhaust_on": exhaust_on,
+    "exhaust_off": exhaust_off,
 }
 
 

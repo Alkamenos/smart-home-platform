@@ -29,6 +29,11 @@ registered_actions:  # реестр после register_all_actions
   - climate_cool
   - climate_heat
   - climate_off
+  - exhaust_off
+  - exhaust_on
+  - fan_apply_mode_and_speed
+  - fan_set_percentage
+  - fan_set_preset
   - fan_turn_off
   - fan_turn_on
   - heater_emergency_off

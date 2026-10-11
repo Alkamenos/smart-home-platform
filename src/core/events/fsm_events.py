@@ -89,6 +89,14 @@ REASON_AC_FORBIDDEN_IN_WINTER: Final[str] = "ac_forbidden_in_winter"
 #: прошло».
 REASON_NOT_ABOVE_COMFORT: Final[str] = "not_above_comfort"
 REASON_MANAGED_BY_HARDWARE: Final[str] = "managed_by_hardware"
+#: Температура улицы не читается. Режим и скорость вентиляции выбирать не по чему,
+#: и угадывать нельзя: зимой это лишний приток свежего воздуха, летом — духота.
+REASON_OUTSIDE_TEMP_MISSING: Final[str] = "outside_temp_missing"
+#: Датчик не даёт пригодного показания. Отказ датчика улицы останавливает только
+#: пересчёт скорости — обогрев и остальная вентиляция продолжают работать.
+REASON_SENSOR_STALE: Final[str] = "sensor_stale"
+#: Владелец выключил вентиляцию. Выключалка сильнее любого правила (FR-027).
+REASON_TURNED_OFF_BY_OWNER: Final[str] = "turned_off_by_owner"
 #: Отказ ночника: модификатор «мы спим» известен и выключен — штатное решение
 #: (ночник работает только, пока владелец спит). Раньше оно оставалось
 #: ``guard_failed`` — «условие отказало», — и утренний анализ не мог отличить
@@ -122,6 +130,9 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
         REASON_AC_FORBIDDEN_IN_WINTER,
         REASON_NOT_ABOVE_COMFORT,
         REASON_MANAGED_BY_HARDWARE,
+        REASON_OUTSIDE_TEMP_MISSING,
+        REASON_SENSOR_STALE,
+        REASON_TURNED_OFF_BY_OWNER,
     }
 )
 
@@ -144,6 +155,9 @@ REASON_TEXT: Final[dict[str, str]] = {
     REASON_AC_FORBIDDEN_IN_WINTER: "кондиционер зимой не разрешен",
     REASON_NOT_ABOVE_COMFORT: "в комнате не жарко, выше потолка не поднялась",
     REASON_MANAGED_BY_HARDWARE: "управляется отдельным контроллером",
+    REASON_OUTSIDE_TEMP_MISSING: "температура улицы не прочитана",
+    REASON_SENSOR_STALE: "датчик не даёт пригодного показания",
+    REASON_TURNED_OFF_BY_OWNER: "вентиляция выключена владельцем",
     # Коды действий (T007)
     "action_on": "включено по расписанию",
     "action_off": "выключено по расписанию",

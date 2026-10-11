@@ -554,6 +554,9 @@ GUARD_DATA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     # прежде, чем условие успело сказать «уставка вне диапазона» — а разные
     # причины в журнале означают разное: «датчик молчит» и «уставка негодна».
     "may_heat": ("temperature",),
+    "mode_for_weather": ("outside_temperature",),
+    "speed_within_limits": ("outside_temperature", "source_room_temperature"),
+    "sensor_is_alive": ("outside_temperature",),
     "may_stop_heating": ("temperature",),
     "has_usable_reading": ("temperature",),
     "may_cool": ("temperature",),
@@ -621,6 +624,10 @@ def build_guards(
         "stops_on_sleep": make_stops_on_sleep(),
         "stops_on_sunrise": make_stops_on_sunrise(),
         "may_heat": make_may_heat(),
+        "mode_for_weather": make_mode_for_weather(),
+        "speed_within_limits": make_speed_within_limits(),
+        "owner_wants_airing": make_owner_wants_airing(),
+        "sensor_is_alive": make_sensor_is_alive(),
         "may_cool": make_may_cool(),
         "may_dry": make_may_dry(),
         "may_stay_idle": make_may_stay_idle(),
@@ -1245,6 +1252,280 @@ def _comfort_max_value(context: dict[str, Any]) -> float | None:
         return float(raw)
     except (TypeError, ValueError):
         return None
+
+
+#: Порог температуры улицы, ниже которого дом считается зимним. Значение по
+#: умолчанию — 5 °C; это решение дома, а не свойство движка, поэтому оно
+#: приходит параметром поведения.
+DEFAULT_WINTER_THRESHOLD = 5.0
+
+#: Границы скорости рекуператора. Устройство принимает 0–100, и выход за них
+#: означает либо отказ Home Assistant, либо молчаливое ограничение прибором.
+MIN_SPEED = 0
+MAX_SPEED = 100
+
+
+def _number(context: dict[str, Any], key: str) -> float | None:
+    """Число из контекста; неприводимое или отсутствующее — ``None``.
+
+    Args:
+        context: Контекст перехода.
+        key: Имя значения.
+
+    Returns:
+        Число либо ``None``.
+    """
+    raw = context.get(key)
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clamp_speed(value: float) -> int:
+    """Ограничить скорость диапазоном устройства.
+
+    Args:
+        value: Рассчитанная скорость.
+
+    Returns:
+        Целое в пределах 0–100.
+    """
+    return int(max(MIN_SPEED, min(MAX_SPEED, round(value))))
+
+
+def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «выбрать режим по погоде на улице».
+
+    Физику теплообмена платформа не считает: у рекуператора есть готовые режимы,
+    и вычислять приближение — значит заменить работу устройства худшим
+    результатом (``research.md`` D7). Условие выбирает режим из списка,
+    заданного параметрами поведения, и кладёт его в контекст под именем
+    ``chosen_mode``.
+
+    Без показания улицы режим **не выбирается**: при морозе угадывание означало
+    бы лишний приток свежего воздуха, летом — душный дом.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def mode_for_weather(state: Any, context: dict[str, Any]) -> bool:
+        """Выбрать режим по температуре улицы.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если режим выбран.
+        """
+        del state
+        outside = _number(context, "outside_temperature")
+        if outside is None:
+            return False
+
+        threshold = _number(context, "winter_mode_threshold")
+        if threshold is None:
+            threshold = DEFAULT_WINTER_THRESHOLD
+
+        context["chosen_mode"] = (
+            context.get("mode_winter") if outside <= threshold else context.get("mode_summer")
+        )
+        return bool(context["chosen_mode"])
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа.
+
+        Args:
+            state: Состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``outside_temp_missing`` либо ``None``.
+        """
+        del state
+        if _number(context, "outside_temperature") is None:
+            return "outside_temp_missing"
+        return None
+
+    mode_for_weather.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return mode_for_weather
+
+
+def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «посчитать скорость и ограничить её».
+
+    Формула из ``data-model.md`` §5:
+    ``speed_normal + |улица − комната| × speed_delta_gain``, с нулём в мёртвой
+    зоне ``|Δ| ≤ delta_deadband`` (FR-030 — без неё рекуператор дёргался бы на
+    каждое показание), ограничением 0–100 и ночным потолком, который **только
+    понижает** (FR-022).
+
+    Выключачка владельца ``ventilation_on = off`` сильнее любого правила и даёт
+    скорость 0 (FR-027): иначе её нельзя было бы выключить раз и навсегда.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def speed_within_limits(state: Any, context: dict[str, Any]) -> bool:
+        """Посчитать скорость и положить её в контекст как ``percentage``.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если скорость посчитана (в том числе когда она нулевая).
+        """
+        del state
+
+        if context.get("ventilation_on") is False:
+            context["percentage"] = MIN_SPEED
+            return True
+
+        outside = _number(context, "outside_temperature")
+        room = _number(context, "source_room_temperature")
+        if outside is None or room is None:
+            return False
+
+        normal = _number(context, "speed_normal")
+        gain = _number(context, "speed_delta_gain")
+        deadband = _number(context, "delta_deadband")
+        normal = 30.0 if normal is None else normal
+        gain = 0.0 if gain is None else gain
+        deadband = 0.0 if deadband is None else deadband
+
+        delta = abs(outside - room)
+        speed = normal if delta <= deadband else normal + delta * gain
+
+        if context.get("is_night") is True:
+            night_max = _number(context, "speed_night_max")
+            if night_max is not None:
+                # Потолок только понижает: тихую скорость поднимать нельзя.
+                speed = min(speed, night_max)
+
+        context["percentage"] = _clamp_speed(speed)
+        return True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа.
+
+        Args:
+            state: Состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо ``None``.
+        """
+        del state
+        if _number(context, "outside_temperature") is None:
+            return "outside_temp_missing"
+        if _number(context, "source_room_temperature") is None:
+            return "sensor_stale"
+        return None
+
+    speed_within_limits.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return speed_within_limits
+
+
+def make_owner_wants_airing() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «владелец попросил проветрить».
+
+    Проветривание включается только человеком (``input_boolean.provetrivanie``)
+    и само отключается по таймеру шаблона (FR-024). По влажности платформа его
+    не включает: на улице бывает влажнее, чем дома, и решение владельца не
+    принято (``research.md`` D14).
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def owner_wants_airing(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить проветривание, если его просил человек.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если проветривание запрошено.
+        """
+        del state
+        return bool(context.get("airing_on"))
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа.
+
+        Args:
+            state: Состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``None``: проветривание не просили — это не поломка.
+        """
+        del state
+        return None
+
+    owner_wants_airing.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return owner_wants_airing
+
+
+def make_sensor_is_alive() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «показания датчиков годны».
+
+    Отказ датчика улицы останавливает только пересчёт скорости: обогрев и
+    остальная вентиляция работают (FR-046).
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def sensor_is_alive(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить, если температура улицы читается числом.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если показание пригодно.
+        """
+        del state
+        return _number(context, "outside_temperature") is not None
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа.
+
+        Args:
+            state: Состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``sensor_stale`` либо ``None``.
+        """
+        del state
+        if _number(context, "outside_temperature") is None:
+            return "sensor_stale"
+        return None
+
+    sensor_is_alive.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return sensor_is_alive
 
 
 def make_may_heat() -> Callable[[Any, dict[str, Any]], bool]:

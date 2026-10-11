@@ -28,6 +28,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.action_handlers import ACTION_HANDLERS
+from core.guards.builtin import build_guards
 
 
 #: Параметры по умолчанию из `data-model.md` §5 — как их видит действие.
@@ -43,6 +44,23 @@ DEFAULTS = {
     "speed_night_max": 20,
     "delta_deadband": 0.3,
 }
+
+
+def _guard(name: str) -> Any:
+    """Взять условие по имени из реестра условий.
+
+    Args:
+        name: Имя условия.
+
+    Returns:
+        Функция (state, context) -> bool с ``deny_reason``.
+
+    Raises:
+        AssertionError: условия нет в реестре — шаблон его перехода не найдёт.
+    """
+    guards = build_guards(control_tracker=None)
+    assert name in guards, f"условие `{name}` не зарегистрировано: в реестре {sorted(guards)}"
+    return guards[name]
 
 
 def _action(name: str) -> Any:
@@ -86,7 +104,7 @@ class TestModeForWeather:
         Returns:
             Ничего.
         """
-        guard = _action("mode_for_weather")
+        guard = _guard("mode_for_weather")
         context = {**DEFAULTS, "outside_temperature": -5.0, "winter_mode_threshold": 5.0}
 
         assert guard(None, context) is True
@@ -101,7 +119,7 @@ class TestModeForWeather:
         Returns:
             Ничего.
         """
-        guard = _action("mode_for_weather")
+        guard = _guard("mode_for_weather")
         context = {**DEFAULTS, "outside_temperature": 18.0, "winter_mode_threshold": 5.0}
 
         assert guard(None, context) is True
@@ -113,7 +131,7 @@ class TestModeForWeather:
         Returns:
             Ничего.
         """
-        guard = _action("mode_for_weather")
+        guard = _guard("mode_for_weather")
         context = {**DEFAULTS, "outside_temperature": None, "winter_mode_threshold": 5.0}
 
         assert guard(None, context) is False, (
@@ -134,7 +152,7 @@ class TestSpeedWithinLimits:
         Returns:
             Ничего.
         """
-        guard = _action("speed_within_limits")
+        guard = _guard("speed_within_limits")
         context = {
             **DEFAULTS,
             "outside_temperature": 0.0,
@@ -155,7 +173,7 @@ class TestSpeedWithinLimits:
         Returns:
             Ничего.
         """
-        guard = _action("speed_within_limits")
+        guard = _guard("speed_within_limits")
         context = {
             **DEFAULTS,
             "outside_temperature": 19.9,
@@ -176,7 +194,7 @@ class TestSpeedWithinLimits:
         Returns:
             Ничего.
         """
-        guard = _action("speed_within_limits")
+        guard = _guard("speed_within_limits")
 
         # Мёртвая зона, обычная скорость 30 > ночного потолка 20 → 20
         night = {
@@ -213,7 +231,7 @@ class TestOwnerSwitchIsStrongerThanAnyRule:
         Returns:
             Ничь.
         """
-        guard = _action("speed_within_limits")
+        guard = _guard("speed_within_limits")
         context = {
             **DEFAULTS,
             "outside_temperature": -20.0,
