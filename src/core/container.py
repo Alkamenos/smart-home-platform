@@ -391,23 +391,29 @@ class Container:
         return timers
 
     def _heater_timer_pairs(self) -> dict[str, str]:
-        """Соответствие «обогреватель → его таймер».
+        """Соответствие «сущность события → таймер обогревателя».
 
-        Адаптеру нужно, чтобы приложить к событию обогревателя единицу измерения
-        его таймера: без этого действие угадывает минуты для секундного таймера,
-        обогреватель гаснет через 15 секунд, а платформа показывает исправную
-        работу (боевой дефект 2026-10-11).
+        Ключ — и сам обогреватель, и **датчик температуры его комнаты**: решение
+        обогрева принимается по событию датчика, поэтому единица измерения
+        таймера нужна именно когда приходит ``temperature_changed``. Без ключа
+        по датчику действие получало ``timer_unit = None``, угадывало минуты и
+        отправляло 15 вместо 900 секунд (боевой дефект 2026-10-11).
 
         Returns:
-            Словарь ``{entity_id обогревателя: entity_id таймера}``.
+            Словарь ``{entity_id: entity_id таймера}``.
         """
         pairs: dict[str, str] = {}
         for room in self.manifest.rooms:
+            sensors = room.sensors or {}
+            temperature = sensors.get("temperature") if hasattr(sensors, "get") else None
             for device in room.devices:
                 for behavior in device.behaviors:
                     timer = (behavior.params or {}).get("heater_timer")
-                    if isinstance(timer, str) and timer:
-                        pairs[device.id] = timer
+                    if not isinstance(timer, str) or not timer:
+                        continue
+                    pairs[device.id] = timer
+                    if temperature:
+                        pairs[temperature] = timer
         return pairs
 
     @property
