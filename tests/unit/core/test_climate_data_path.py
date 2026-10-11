@@ -71,7 +71,7 @@ class TestTimerUnitReachesTheAction:
         adapter.remember_entity_unit(TIMER, "s")
         adapter.heater_timer_of = {HEATER: TIMER}
 
-        context = HAAdapter._event_context(adapter)
+        context = HAAdapter._event_context(adapter, HEATER)
 
         assert context.get("timer_unit") == "s", (
             "единица таймера прочитана у прибора, но не дошла до контекста "
@@ -86,11 +86,10 @@ class TestTimerUnitReachesTheAction:
         Returns:
             Ничего.
         """
-        context: dict[str, Any] = HAAdapter._event_context(_adapter())
         adapter = _adapter()
         adapter.remember_entity_unit(TIMER, "s")
         adapter.heater_timer_of = {HEATER: TIMER}
-        context = {**HAAdapter._event_context(adapter), "entity_id": HEATER}
+        context = {**HAAdapter._event_context(adapter, HEATER), "entity_id": HEATER}
 
         steps = ACTION_HANDLERS["heater_timer_on"](
             None,
@@ -140,15 +139,18 @@ class TestStateEntityIsTheHeaterNotTheTimer:
             "обогреватель только что включился (в бою 2026-10-11 так и вышело)"
         )
 
-    def test_off_step_checks_the_heater(self) -> None:
-        """Выключение ждёт выключения обогревателя.
+    def test_off_step_needs_no_state_gate(self) -> None:
+        """Выключение не проверяет состояние: чтобы гасить, прибор включён.
 
         Returns:
             Ничего.
         """
         steps = ACTION_HANDLERS["heater_off"](None, {"entity_id": HEATER, "heater_timer": TIMER})
 
-        assert steps[-1].state_entity == HEATER, (
-            "шаг выключения проверяет не тот прибор: таймер уже обнулён первым "
-            "шагом и всегда в состоянии 0"
-        )
+        for step in steps:
+            assert step.requires_state is None, (
+                f"шаг {step.service} требует состояния {step.requires_state!r}: "
+                "чтобы выключить прибор, он должен быть включён. Такое "
+                "требование делает команду неотправляемой — включённый прибор "
+                "остался бы греться (в бою 2026-10-11 так и вышло)"
+            )

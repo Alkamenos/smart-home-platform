@@ -31,6 +31,7 @@ registered_actions:  # реестр после register_all_actions
   - climate_off
   - fan_turn_off
   - fan_turn_on
+  - heater_emergency_off
   - heater_off
   - heater_on
   - heater_timer_on
@@ -70,12 +71,12 @@ templates:
   climate_control:
     reachable: true
     in_manifest: []
-    actions: [heater_timer_on, heater_off, ac_cool_on, ac_dry_on, ac_off]
+    actions: [heater_timer_on, heater_off, heater_emergency_off, ac_cool_on, ac_dry_on, ac_off]
     guards: [may_heat, may_stop_heating, may_cool, may_dry, may_stay_idle]
     triggers:
       temperature_changed: sensor
-      humidity_changed: sensor
       timeout: engine
+      humidity_changed: sensor
     unproduced_triggers: []
     gaps:
       - Условие «греть» составное (may_heat), потому что движок допускает на переход ровно одно имя guard'а: перечислить проверки по отдельности шаблон не может, и менять это — значит менять структуру FSMDefinition (конституция I — только по явному согласованию).

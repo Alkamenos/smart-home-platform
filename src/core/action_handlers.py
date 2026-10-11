@@ -634,22 +634,68 @@ def heater_off(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
         Шаги выключения по порядку.
     """
     del state
+    return _heater_off_steps(context, "heater_off", emergency=False)
+
+
+def heater_emergency_off(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
+    """Выключить обогреватель принудительно — минуя блокировку.
+
+    Вызывается по истечении страховочного таймера: автомат отработал положенное
+    время, а нового решения не принял никто, потому что датчик молчит или отказал.
+
+    Блокировка обходится намеренно. Блокировка отвечает на вопрос «не мешай ли
+    человеку», и человек, включивший обогреватель руками, вправе получить его
+    выключенным по таймеру автоматики. Обратное неверно: в бою 2026-10-11
+    блокировка оставила масляный радиатор включённым на пять часов после
+    истечения таймера, потому что датчик комнаты перестал присылать показания.
+    Защита от неудобства не должна превращаться в открытый обогрев.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` обогревателя и, возможно, таймером.
+
+    Returns:
+        Шаги выключения по порядку.
+    """
+    del state
+    return _heater_off_steps(context, "heater_emergency_off", emergency=True)
+
+
+def _heater_off_steps(
+    context: dict[str, Any],
+    source: str,
+    emergency: bool,
+) -> list[CommandIntent]:
+    """Шаги выключения обогревателя: таймер в ноль, затем прибор.
+
+    Требования состояния здесь намеренно нет. Чтобы выключить прибор, он должен
+    быть **включён**, а требование ``off`` делало бы команду неотправляемой
+    никогда: прибор, который и так выключен, прошёл бы проверку, а включённый
+    остался бы греться.
+
+    Args:
+        context: Контекст с ``entity_id`` обогревателя и, возможно, таймером.
+        source: Источник для аудита и блокировок.
+        emergency: Обойти ли блокировку ручного вмешательства.
+
+    Returns:
+        Шаги выключения по порядку.
+    """
     timer = context.get("heater_timer")
-    off_step = _heater_intent(context, "switch", "turn_off", "heater_off")
+    emergency_ctx = {**context, "bypass_lockout": True} if emergency else context
+    off_step = _heater_intent(emergency_ctx, "switch", "turn_off", source)
     if not timer or off_step is None:
         return _single_step(off_step)
 
     zero_step = _heater_intent(
-        context,
+        emergency_ctx,
         "number",
         "set_value",
-        "heater_off",
+        source,
         data={"value": 0, "timer_unit": "s"},
         target_entity_id=timer,
     )
-    return _with_requirement(
-        [zero_step, off_step], off_step, "off", state_entity=off_step.device_id
-    )
+    return [step for step in (zero_step, off_step) if step is not None]
 
 
 def ac_cool_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
@@ -824,6 +870,7 @@ ACTION_HANDLERS: dict[str, Any] = {
     "heater_timer_on": heater_timer_on,
     "heater_on": heater_on,
     "heater_off": heater_off,
+    "heater_emergency_off": heater_emergency_off,
     "ac_cool_on": ac_cool_on,
     "ac_set_mode": ac_set_mode,
     "ac_dry_on": ac_dry_on,
