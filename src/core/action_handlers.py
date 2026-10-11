@@ -557,7 +557,7 @@ def heater_timer_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
         # `switch.*` Home Assistant отвергает, и команда пропала бы молча.
         target_entity_id=timer,
     )
-    return _with_requirement([on_step, timer_step], timer_step, "on")
+    return _with_requirement([on_step, timer_step], timer_step, "on", state_entity=entity_id)
 
 
 def _single_step(intent: CommandIntent | None) -> list[CommandIntent]:
@@ -576,6 +576,7 @@ def _with_requirement(
     steps: list[CommandIntent | None],
     guarded: CommandIntent | None,
     required_state: str,
+    state_entity: str | None = None,
 ) -> list[CommandIntent]:
     """Пометить шаг условием по состоянию прибора, выбросив пустые шаги.
 
@@ -583,6 +584,9 @@ def _with_requirement(
         steps: Шаги команды по порядку.
         guarded: Шаг, который отправляется только при нужном состоянии прибора.
         required_state: Ожидаемое состояние прибора (``on``/``off``).
+        state_entity: Прибор, состояние которого проверяется. По умолчанию —
+            адресат шага, но для таймера это должен быть сам обогреватель:
+            состояние таймера — это «сколько секунд осталось», а не вкл/выкл.
 
     Returns:
         Готовые к отправке шаги.
@@ -591,6 +595,8 @@ def _with_requirement(
     for step in result:
         if step is guarded:
             step.requires_state = required_state
+            if state_entity:
+                step.state_entity = state_entity
     return result
 
 
@@ -630,7 +636,7 @@ def heater_off(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
     del state
     timer = context.get("heater_timer")
     off_step = _heater_intent(context, "switch", "turn_off", "heater_off")
-    if not timer:
+    if not timer or off_step is None:
         return _single_step(off_step)
 
     zero_step = _heater_intent(
@@ -641,7 +647,9 @@ def heater_off(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
         data={"value": 0, "timer_unit": "s"},
         target_entity_id=timer,
     )
-    return _with_requirement([zero_step, off_step], off_step, "off")
+    return _with_requirement(
+        [zero_step, off_step], off_step, "off", state_entity=off_step.device_id
+    )
 
 
 def ac_cool_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:

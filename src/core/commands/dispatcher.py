@@ -60,6 +60,15 @@ class CommandIntent(BaseModel):
     успех. Поэтому шаг с таймером ждёт ``requires_state`` и проверяет реальное
     состояние прибора перед отправкой.
     """
+    state_entity: str | None = None
+    """Прибор, состояние которого проверяется перед отправкой.
+
+    По умолчанию — сам адресат команды, но для шага с таймером это должен быть
+    обогреватель: ``number.*_countdown`` показывает, сколько осталось, то есть
+    у выключенного прибора его состояние ``0``, а не ``off``. Проверка по
+    таймеру отклонила бы команду включения, хотя прибор как раз только что
+    включился (в бою 2026-10-11 так и вышло).
+    """
 
     def refresh(self) -> None:
         """Extend the intent's life by resetting ``last_updated`` to now."""
@@ -209,12 +218,14 @@ class CommandDispatcher:
                 # Таймер, поставленный на выключенный обогреватель, Home
                 # Assistant записывает без ошибки, а греть никто не будет.
                 if processed_intent.requires_state is not None:
-                    actual = await self._ha_adapter.get_state(device_id)
+                    probe = processed_intent.state_entity or device_id
+                    actual = await self._ha_adapter.get_state(probe)
                     if actual != processed_intent.requires_state:
                         logger.warning(
                             f"Skipping {processed_intent.source} → {device_id}: "
-                            f"требуется состояние {processed_intent.requires_state!r}, "
-                            f"прибор в состоянии {actual!r}. Команда не применена"
+                            f"{probe} требуется в состоянии "
+                            f"{processed_intent.requires_state!r}, а прибор в "
+                            f"состоянии {actual!r}. Команда не применена"
                         )
                         return False
 
