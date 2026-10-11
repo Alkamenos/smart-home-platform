@@ -529,12 +529,17 @@ def heater_timer_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
         return _single_step(_heater_intent(context, "switch", "turn_on", "heater_on_no_timer"))
 
     value, unit = _timer_duration(context)
-    data: dict[str, Any] = {"value": value, "timer_unit": unit}
+    # В данных команды — только `value`. Служебные поля (`timer_unit`,
+    # `assumed_unit`) Home Assistant отвергает с 400 Bad Request: у сервиса
+    # `number.set_value` нет таких параметров. Проверено в доме 2026-10-11 —
+    # вместе с лишним ключом не применялся весь таймер, то есть обогрев
+    # включался и гас без всякой защиты. Такая отметка нужна журналу, а не
+    # устройству, поэтому она живёт в намерении и в предупреждении ниже.
+    data: dict[str, Any] = {"value": value}
     assumed_unit = timer_assumption_flag(
         unit, normalize_timer_unit(context.get("timer_unit")) is None
     )
     if assumed_unit:
-        data["assumed_unit"] = assumed_unit
         logger.warning(
             f"{entity_id}: единица измерения таймера {context.get('timer_unit')!r} "
             f"не распознана, приняты {assumed_unit}. Если устройство измеряет "
@@ -557,6 +562,10 @@ def heater_timer_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
         # `switch.*` Home Assistant отвергает, и команда пропала бы молча.
         target_entity_id=timer,
     )
+    # Единица измерения — сведения для разбора, а не параметр сервиса: в `data`
+    # она даёт 400 Bad Request и вместе с собой уносит весь таймер.
+    if timer_step is not None:
+        timer_step.timer_unit = unit
     return _with_requirement([on_step, timer_step], timer_step, "on", state_entity=entity_id)
 
 

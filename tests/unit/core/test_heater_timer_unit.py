@@ -148,8 +148,8 @@ class TestTimerUnitConversion:
         timer_step = steps[-1]
 
         assert timer_step.data["value"] == RUN_MINUTES
-        assert timer_step.data.get("assumed_unit") == "min", (
-            "единица не распознана, но в команде не сказано, что она угадана: "
+        assert timer_step.timer_unit == "min", (
+            "единица не распознана и угадана, но команда об этом не говорит: "
             "следующая сессия не поймёт, откуда взялось это число"
         )
 
