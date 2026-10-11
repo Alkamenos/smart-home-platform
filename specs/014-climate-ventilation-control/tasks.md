@@ -91,7 +91,7 @@ contracts/interface-contracts.md, quickstart.md
 - [x] T021 [US1] Объявить параметры `climate_control` в контракте (FR-005, FR-006, FR-008): `heater_timer`, `run_minutes` (1–43200, по умолчанию 15), `hysteresis` (0–5, 0.5), `managed_by_hardware`; без этого веб-интерфейс отвергнет параметр — `src/features/CONTRACT.yaml`
 - [x] T022 [US1] Прописать комнаты с обогревом в боевой манифест: спальня, санузел, кабинет, гостевая спальня; гостиную с `managed_by_hardware: true` — `instances/leonids_house/manifest.yaml`
 - [x] T023 [US1] Регенерация контракта шаблонов после новых условий и параметров — `tools/gen_template_contract.py`
-- [ ] T024 [US1] Боевая проверка шага 2 из `specs/014-climate-ventilation-control/quickstart.md`: обогрев, отключение по достижении цели, работа по таймеру при отказе датчика, гостиная не трогается, ручная блокировка уважается
+- [ ] T024 [US1] Боевая проверка шага 2 из `specs/014-climate-ventilation-control/quickstart.md`: обогрев, отключение по достижении цели, работа по таймеру при отказе датчика, гостиная не трогается, ручная блокировка уважается · ⬜ 2026-10-11: в `quickstart.md` нет ни одного пройденного шага (признака «Результат» нет ни у одного из семи) — проверка не начата. Закрыть без владельца нельзя: шаг требует движения в комнате
 
 **Checkpoint**: дом держит температуру; каждая комната решает по своему
 датчику; гостиная не задействована.
@@ -125,7 +125,7 @@ contracts/interface-contracts.md, quickstart.md
 - [x] T031 [US5] Ограничить частоту записей об отказе по одной сущности (FR-047); сейчас причина пишется молча после первого упоминания, и для климата нужно то же, но с явным счётчиком — `src/core/fsm/engine.py`
 - [x] T032 [US5] Отслеживание заряда батарей датчиков и предупреждение при падении ниже порога (FR-033, FR-048) — `src/core/services/sensor_health.py`
 - [x] T033 [US5] Зарегистрировать сервис в контейнере; в синхронной сборке запуск пропускается, как у `deco_light_watcher` (`container.py:679-687`) — `src/core/container.py`
-- [ ] T034 [US5] Боевая проверка шага 3 из `specs/014-climate-ventilation-control/quickstart.md`: отказ датчика, изоляция комнат, возврат без перезапуска, таймер как страховка, заряд батареи
+- [ ] T034 [US5] Боевая проверка шага 3 из `specs/014-climate-ventilation-control/quickstart.md`: отказ датчика, изоляция комнат, возврат без перезапуска, таймер как страховка, заряд батареи · ⬜ 2026-10-11: не начата, признаков прохождения в `quickstart.md` нет. Закрыть без владельца нельзя: требует вывода датчика из строя в HA
 
 **Checkpoint**: отказ датчика не приводит ни к сюрпризу, ни к зависшему
 обогреву.
@@ -143,20 +143,29 @@ contracts/interface-contracts.md, quickstart.md
 
 ### Тесты
 
-- [ ] T035 [P] [US2] Тесты `may_cool`: зимой запрещено (FR-014, FR-011), гейт выключен — запрещено (FR-013), гейт включён и не зима — разрешено; потолок комфорта обязателен (FR-012) — `tests/unit/core/test_climate_guards.py`
-- [ ] T036 [P] [US2] Тесты: `climate_setpoint` вне диапазона `setpoint_min`/`setpoint_max` даёт отказ, а не запасное значение (FR-034, FR-044) — `tests/unit/core/test_climate_guards.py`
-- [ ] T037 [P] [US2] Тесты действий кондиционера: `climate.set_temperature` с потолком (FR-013), `set_hvac_mode` (FR-016) — `tests/unit/core/test_climate_actions.py`
-- [ ] T038 [P] [US2] Тесты: кондиционер, включённый вне платформы зимой, выключается с предупреждением (FR-015) — `tests/integration/climate/test_ac_winter_guard.py`
-- [ ] T039 [P] [US2] Тесты: осушение и охлаждение — одно решение, не два (FR-017): охлаждение приоритетнее осушения — `tests/integration/climate/test_ac_modes.py`
+> **⚠️ 2026-10-11: тесты US2 написаны, но разошлись с файлами из задач.** Все пять
+> проверок (T035–T039) существуют и проходят, но лежат в трёх других файлах:
+> `test_ac_guards.py`, `test_ac_actions.py`, `test_ac_lifecycle.py`. Файлы, названные
+> в задачах, созданы не были, а существующие `test_climate_guards.py` (34 теста) и
+> `test_climate_actions.py` (12) покрывают обогрев US1, а не кондиционер — grep по
+> `may_cool` в них пуст. Проверки зелёные (3065 passed), охват предмета есть, но
+> **имя файла в спеке перестало быть источником правды**. Решение владельца —
+> переименовать файлы под спеку или переписать задачи под факт (задача B34).
+
+- [x] T035 [P] [US2] Тесты `may_cool`: зимой запрещено (FR-014, FR-011), гейт выключен — запрещено (FR-013), гейт включён и не зима — разрешено; потолок комфорта обязателен (FR-012) — `tests/unit/core/test_climate_guards.py` · ✅ 2026-10-11, но **в другом файле:** `tests/unit/core/test_ac_guards.py`. В спековом `test_climate_guards.py` (34 теста) проверок US2 нет — grep по `may_cool`/`not_above_comfort` пуст, файл покрывает обогрев US1. См. B34 про разведение тестов по файлам
+- [x] T036 [P] [US2] Тесты: `climate_setpoint` вне диапазона `setpoint_min`/`setpoint_max` даёт отказ, а не запасное значение (FR-034, FR-044) — `tests/unit/core/test_climate_guards.py` · ✅ 2026-10-11, файл тот же другой: `tests/unit/core/test_ac_guards.py`. См. B34
+- [x] T037 [P] [US2] Тесты действий кондиционера: `climate.set_temperature` с потолком (FR-013), `set_hvac_mode` (FR-016) — `tests/unit/core/test_climate_actions.py` · ✅ 2026-10-11, файл тот же другой: `tests/unit/core/test_ac_actions.py` (131 тест). В спековом `test_climate_actions.py` (12 тестов) проверок кондиционера нет. См. B34
+- [x] T038 [P] [US2] Тесты: кондиционер, включённый вне платформы зимой, выключается с предупреждением (FR-015) — `tests/integration/climate/test_ac_winter_guard.py` · ✅ 2026-10-11, **файла из задачи не создано.** Проверка нашлась в другом: `tests/integration/climate/test_ac_lifecycle.py`. См. B34
+- [x] T039 [P] [US2] Тесты: осушение и охлаждение — одно решение, не два (FR-017): охлаждение приоритетнее осушения — `tests/integration/climate/test_ac_modes.py` · ✅ 2026-10-11, **файла из задачи не создано.** Проверка нашлась в `tests/integration/climate/test_ac_lifecycle.py`. См. B34
 
 ### Реализация
 
-- [ ] T040 [US2] Условие `may_cool`: разрешает вне зимы (FR-011, FR-014), при включённом гейте (FR-013) и выше потолка (FR-012); каждое непройденное условие называет свою причину; каждое непройденное условие называет свою причину — `src/core/guards/builtin.py`
-- [ ] T041 [US2] Причины отказов `ac_not_allowed`, `ac_forbidden_in_winter`, `not_above_comfort` в словаре причин — `src/core/events/fsm_events.py`
-- [ ] T042 [US2] Действия `ac_cool_to` (`climate.set_temperature`) и `ac_set_mode` (`climate.set_hvac_mode`) в реестре — `src/core/action_handlers.py`
-- [ ] T043 [US2] Состояние `COOLING` и переходы в шаблоне; состояние `DRYING` для осушения — одно состояние автомата, а не два: `hvac_mode` у кондиционера общий, два автомата дрались бы за один режим — `src/features/climate_control.yaml`
-- [ ] T044 [US2] Прописать кондиционер гостиной в боевой манифест с учётом того, что в той же комнате термостат (FR-018) — `instances/leonids_house/manifest.yaml`
-- [ ] T045 [US2] Регенерация контракта шаблонов — `tools/gen_template_contract.py`
+- [x] T040 [US2] Условие `may_cool`: разрешает вне зимы (FR-011, FR-014), при включённом гейте (FR-013) и выше потолка (FR-012); каждое непройденное условие называет свою причину; каждое непройденное условие называет свою причину — `src/core/guards/builtin.py` · ✅ 2026-10-11: `make_may_cool` (`builtin.py:1159`), каждая причина через `deny_reason`; порядок проверок зафиксирован — гейт владельца важнее сезона, сезон важнее замера, непрочитанное значение запрещает
+- [x] T041 [US2] Причины отказов `ac_not_allowed`, `ac_forbidden_in_winter`, `not_above_comfort` в словаре причин — `src/core/events/fsm_events.py` · ✅ 2026-10-11: все три в `REASON_TEXT` и в `GUARD_DENIAL_REASONS`; `not_above_comfort` добавлен этой серией
+- [ ] T042 [US2] Действия `ac_cool_to` (`climate.set_temperature`) и `ac_set_mode` (`climate.set_hvac_mode`) в реестре — `src/core/action_handlers.py` · ⚠️ 2026-10-11: **сделано иначе, чем в задаче.** В реестре `ac_set_mode` есть, но вместо `ac_cool_to` сделано одно действие `ac_cool_on`, которое уходит **двумя** командами: `set_temperature` с потолком комфорта и `set_hvac_mode`. Причина в коде: у кондиционера общий `hvac_mode`, и «режим отдельно, температура отдельно» означало бы два намерения, между которыми автомат может зависнуть. Плюс `ac_dry_on` по той же причине. **Обоснование нигде не зафиксировано** — ни в `tasks.md`, ни в `research.md`, ни в `plan.md`. Решение владельца: принять объединение и дописать обоснование в спеку, или вернуться к двум действиям
+- [x] T043 [US2] Состояние `COOLING` и переходы в шаблоне; состояние `DRYING` для осушения — одно состояние автомата, а не два: `hvac_mode` у кондиционера общий, два автомата дрались бы за один режим — `src/features/climate_control.yaml` · ✅ 2026-10-11: состояния `COOLING` и `DRYING` в одном автомате, переходы с `may_cool`/`may_dry`; добавлен переход `IDLE → IDLE` с `may_stay_idle`, иначе каждое обычное показание датчика становилось отказом «нет такого перехода»
+- [ ] T044 [US2] Прописать кондиционер гостиной в боевой манифест с учётом того, что в той же комнате термостат (FR-018) — `instances/leonids_house/manifest.yaml` · ⬜ 2026-10-11: не сделано. В манифесте `climate.kitchen` и `climate.living_room` (термостат), боевой кондиционер `climate.esphome_web_*` не прописан
+- [x] T045 [US2] Регенерация контракта шаблонов — `tools/gen_template_contract.py` · ✅ 2026-10-11: `may_cool`, `may_dry`, `may_stay_idle` в `CONTRACT.yaml`, состояния и guard'ы шаблона синхронизированы
 - [ ] T046 [US2] Боевая проверка запретов из шага 4 `specs/014-climate-ventilation-control/quickstart.md`; **саму охлаждение проверять летом**, записать дату проверки в `.ai/01_PROJECT_STATE.md`
 
 **Checkpoint**: зимой кондиционер не включается ничем; летом охлаждает.
