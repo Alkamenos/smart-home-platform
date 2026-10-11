@@ -231,13 +231,20 @@ def release_device(state: Any, context: dict) -> None:
         )
 
 
-def _climate_intent(context: dict[str, Any], service: str, source: str) -> CommandIntent | None:
+def _climate_intent(
+    context: dict[str, Any],
+    service: str,
+    source: str,
+    *,
+    hvac_mode: str | None = None,
+) -> CommandIntent | None:
     """Собрать команду климатического устройства.
 
     Args:
         context: Контекст перехода.
         service: Услуга Home Assistant.
         source: Источник для аудита и блокировок.
+        hvac_mode: Режим кондиционера, если его нужно задать явно.
 
     Returns:
         CommandIntent либо ``None``, если устройство не указано.
@@ -258,6 +265,13 @@ def _climate_intent(context: dict[str, Any], service: str, source: str) -> Comma
     if target_temperature is not None:
         data["temperature"] = target_temperature
 
+    # Режим кондиционера: `cool` для охлаждения, `dry` для осушения. Общая
+    # ось с `set_temperature`: у кондиционера один режим на комнату, и два
+    # автомата, дергающие его попеременно, выглядели бы как поломка.
+    mode = hvac_mode if hvac_mode is not None else context.get("hvac_mode")
+    if mode is not None and not isinstance(mode, bool):
+        data["hvac_mode"] = mode
+
     logger.info(f"Создаю команду {service} для {entity_id}")
 
     return CommandIntent(
@@ -267,7 +281,69 @@ def _climate_intent(context: dict[str, Any], service: str, source: str) -> Comma
         data=data,
         priority=context.get("priority", 50),
         source=source,
+        # Кондиционер, включённый зимой с пульта, выключается даже если
+        # платформа считает устройство занятым: включение зимой портит технику
+        # (FR-015), и блокировка тут была бы препятствием, а не защитой.
+        bypass_lockout=bool(context.get("bypass_lockout", False)),
     )
+
+
+def ac_dry_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить осушение кондиционером.
+
+    Осушение — отдельный режим `dry` того же кондиционера, а не второй
+    устройство: режим у него один, и переключение с охлаждения на осушение
+    меняет ``hvac_mode`` (FR-017).
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``humidity_threshold``.
+
+    Returns:
+        Команда ``climate.set_hvac_mode`` либо ``None``.
+    """
+    del state
+    return _climate_intent(context, "set_hvac_mode", "ac_dry_on", hvac_mode="dry")
+
+
+def ac_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Выключить кондиционер.
+
+    Нужен для возврата из режимов охлаждения и осушения в обогрев: пока
+    кондиционер работает, обогреватель платформа включает не будет — два
+    источника тепла в одной комнате.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id``.
+
+    Returns:
+        Команда ``climate.turn_off`` либо ``None``.
+    """
+    del state
+    return _climate_intent(context, "turn_off", "ac_off")
+
+
+def ac_set_mode(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Переключить режим кондиционера.
+
+    Режим меняется только при фактическом изменении потребности: у кондиционера
+    сигналит при каждой смене режима (FR-016, требование владельца), поэтому
+    «просто отправить на каждое показание датчика» — недопустимо.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``hvac_mode``.
+
+    Returns:
+        Команда ``climate.set_hvac_mode`` либо ``None``.
+    """
+    del state
+    mode = context.get("hvac_mode")
+    if mode is None or isinstance(mode, bool):
+        logger.warning("ac_set_mode: режим не задан — переключать нечем")
+        return None
+    return _climate_intent(context, "set_hvac_mode", "ac_set_mode")
 
 
 #: Сколько минут обогреватель работает по одному решению, если в манифесте дли��ость
@@ -572,6 +648,9 @@ ACTION_HANDLERS: dict[str, Any] = {
     "heater_on": heater_on,
     "heater_off": heater_off,
     "ac_cool_on": ac_cool_on,
+    "ac_set_mode": ac_set_mode,
+    "ac_dry_on": ac_dry_on,
+    "ac_off": ac_off,
     "ac_forced_off": ac_forced_off,
     "fan_turn_on": fan_turn_on,
     "fan_turn_off": fan_turn_off,

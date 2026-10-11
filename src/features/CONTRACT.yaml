@@ -22,7 +22,10 @@ engine_events:
 
 registered_actions:  # реестр после register_all_actions
   - ac_cool_on
+  - ac_dry_on
   - ac_forced_off
+  - ac_off
+  - ac_set_mode
   - climate_cool
   - climate_heat
   - climate_off
@@ -47,7 +50,10 @@ registered_guards:  # реестр после register_all_guards
   - is_day_time
   - is_manual_override_enabled
   - managed_by_hardware_ok
+  - may_cool
+  - may_dry
   - may_heat
+  - may_stay_idle
   - may_stop_heating
   - may_turn_on
   - modifier_is_on
@@ -64,10 +70,11 @@ templates:
   climate_control:
     reachable: true
     in_manifest: []
-    actions: [heater_timer_on, heater_off]
-    guards: [may_heat, has_usable_reading, may_stop_heating]
+    actions: [heater_timer_on, heater_off, ac_cool_on, ac_dry_on, ac_off]
+    guards: [may_heat, may_stop_heating, may_cool, may_dry, may_stay_idle]
     triggers:
       temperature_changed: sensor
+      humidity_changed: sensor
       timeout: engine
     unproduced_triggers: []
     gaps:
