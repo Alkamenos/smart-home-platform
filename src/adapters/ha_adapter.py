@@ -25,7 +25,7 @@ import logging
 import time
 import uuid
 from collections import deque
-from collections.abc import Awaitable, Callable, Coroutine, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import aiohttp
@@ -911,6 +911,17 @@ class HAAdapter:
         # владельца токена) и включала блокировку против самой себя на 60 минут
         # — вскрыто первым живым запуском 2026-10-08.
         self._own_context_ids: deque[str] = deque(maxlen=OWN_CONTEXT_KEEP)
+        # Единицы измерения сущностей, прочитанные у Home Assistant. Боевой
+        # дефект 2026-10-11: таймер обогревателя измеряется в секундах, а
+        # платформа отправляла минуты — обогрев не работал сутки, и ни один
+        # признак (сторож, метрики, состояния автоматов) этого не показывал.
+        # Единица нужна на пути действия, то есть на каждом решении, поэтому она
+        # читается один раз и хранится здесь, а не запрашивается из действия.
+        self._entity_units: dict[str, str] = {}
+        # Таймеры обогревателей из манифеста: их единицы измерения нужно знать
+        # до первого решения, иначе первое же включение уйдёт с угаданной
+        # величиной (боевой дефект 2026-10-11).
+        self.heater_timers: list[str] = []
         self._ws_client: HomeAssistantWS | None = None
         self._session: aiohttp.ClientSession | None = None
         # Манифест для фильтра подписки. Не передаётся в __init__, чтобы не
@@ -957,6 +968,87 @@ class HAAdapter:
     def _get_logger(self, trace_id: str) -> logging.LoggerAdapter[logging.Logger]:
         """Get a logger with trace_id context."""
         return logging.LoggerAdapter(logger, {"trace_id": trace_id})
+
+    def remember_entity_unit(self, entity_id: str, unit: Any) -> None:
+        """Запомнить единицу измерения сущности, прочитанную у устройства.
+
+        Args:
+            entity_id: Сущность Home Assistant.
+            unit: Единица измерения из атрибутов состояния (``unit_of_measurement``).
+
+        Returns:
+            Ничего.
+        """
+        if isinstance(unit, str) and unit.strip():
+            self._entity_units[entity_id] = unit.strip()
+
+    def get_entity_unit(self, entity_id: str) -> str | None:
+        """Единица измерения сущности, если она была прочитана.
+
+        Args:
+            entity_id: Сущность Home Assistant.
+
+        Returns:
+            Единица измерения либо ``None``, если сущность не наблюдалась или
+            устройство единицу не назвало.
+        """
+        return self._entity_units.get(entity_id)
+
+    async def refresh_entity_units(self, entity_ids: Iterable[str]) -> int:
+        """Прочитать единицы измерения таймеров и запомнить их.
+
+        Единица нужна, чтобы команда обогревателю попала в ту величину, которой
+        измеряет устройство. Раньше платформа отправляла минуты в таймер,
+        измеряемый в секундах: Home Assistant принимала значение, обогреватель
+        включался и гас через 15 секунд, а автомат честно отрабатывал свой
+        таймер — обогрев не работал сутки без единого признака.
+
+        Args:
+            entity_ids: Сущности, единицу которых нужно знать (таймеры).
+
+        Returns:
+            Сколько сущностей удалось прочитать.
+        """
+        if self._session is None or not self._token:
+            return 0
+
+        http_url = cast(str, self._ws_url)
+        base = http_url.replace("wss://", "https://").replace("ws://", "http://")
+        base = base.split("/api/websocket")[0].rstrip("/")
+        learned = 0
+        for entity_id in entity_ids:
+            try:
+                async with self._session.get(
+                    f"{base}/api/states/{entity_id}",
+                    headers={"Authorization": f"Bearer {self._token}"},
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as response:
+                    if response.status != 200:
+                        logger.warning(
+                            f"HAAdapter: единица измерения {entity_id} не прочитана "
+                            f"(HTTP {response.status}) — таймер получит длительность "
+                            "в минутах, а если он в секундах, обогреватель выключится "
+                            "почти сразу"
+                        )
+                        continue
+                    payload = await response.json()
+            except (TimeoutError, aiohttp.ClientError, ValueError) as error:
+                logger.warning(f"HAAdapter: единица измерения {entity_id} не прочитана: {error}")
+                continue
+
+            attributes = payload.get("attributes") or {}
+            unit = attributes.get("unit_of_measurement")
+            if isinstance(unit, str) and unit.strip():
+                self.remember_entity_unit(entity_id, unit)
+                learned += 1
+            else:
+                logger.warning(
+                    f"HAAdapter: {entity_id} не называет единицу измерения — приняты минуты"
+                )
+
+        if learned:
+            logger.info(f"HAAdapter: единицы измерения прочитаны для {learned} сущностей")
+        return learned
 
     async def on_state_change(
         self,
@@ -1417,6 +1509,12 @@ class HAAdapter:
             client.ventilation_entities = dict(self.ventilation_entities)
         await self._refresh_climate_globals()
         await self._refresh_ventilation_globals()
+        # Единицы измерения таймеров обогревателей читаются здесь, а не в
+        # действии: решение принимается на каждом показании датчика, и запрос в
+        # сеть на каждое из них означал бы либо лишнюю нагрузку, либо отказ
+        # обогрева при обрыве связи с Home Assistant.
+        if self.heater_timers:
+            await self.refresh_entity_units(self.heater_timers)
 
         http_url = cast(str, self._ws_url)
         rest_base = http_url.replace("wss://", "https://").replace("ws://", "http://")

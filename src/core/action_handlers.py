@@ -361,6 +361,7 @@ def _heater_intent(
     service: str,
     source: str,
     data: dict[str, Any] | None = None,
+    target_entity_id: str | None = None,
 ) -> CommandIntent | None:
     """Собрать команду обогревателю в его собственном домене.
 
@@ -375,6 +376,10 @@ def _heater_intent(
         source: Источник для аудита и блокировок; по нему видно, каким путём
             пошла команда — через таймер или без него.
         data: Дополнительные поля команды.
+        target_entity_id: Сущность, которой адресована команда. По умолчанию —
+            сам обогреватель, но для ``number.set_value`` это должен быть таймер:
+            Home Assistant не найдёт ``switch.*`` в домене ``number`` и откажет,
+            а платформа сочтёт команду отправленной.
 
     Returns:
         Команда либо ``None``, если обогреватель не указан.
@@ -384,7 +389,7 @@ def _heater_intent(
         logger.warning(f"{source}: нет entity_id обогревателя в контексте")
         return None
     return CommandIntent(
-        device_id=entity_id,
+        device_id=target_entity_id or entity_id,
         domain=domain,
         service=service,
         data=data or {},
@@ -396,6 +401,94 @@ def _heater_intent(
         # «ручное вмешательство переживает автоматику» держалось бы случайно.
         bypass_lockout=bool(context.get("bypass_lockout", False)),
     )
+
+
+#: Сколько секунд в одной минуте. Таймер обогревателя измеряется в секундах, а
+#: решения платформы принимаются в минутах, поэтому перевод стоит в одной точке.
+SECONDS_PER_MINUTE = 60
+
+#: Единицы измерения, которые таймер обогревателя может иметь. Значение
+#: сравнивается приведённым к нижнему регистру и без пробелов: Home Assistant
+#: пишет ``s``, ``sec``, ``min`` по-разному в зависимости от интеграции, и
+#: несовпадение регистра не должно молча возвращаться к минутам.
+_TIMER_UNIT_ALIASES: dict[str, str] = {
+    "s": "s",
+    "sec": "s",
+    "secs": "s",
+    "second": "s",
+    "seconds": "s",
+    "мин": "min",
+    "min": "min",
+    "mins": "min",
+    "minute": "min",
+    "minutes": "min",
+}
+
+#: Единица по умолчанию, когда устройство её не назвало. Минуты, а не секунды:
+#: исторически платформа отправляла минуты, и если бы дефолт был другим, дома
+#: с молчаливо неизвестной единицей получили бы час работы вместо получаса.
+DEFAULT_TIMER_UNIT = "min"
+
+
+def normalize_timer_unit(unit: Any) -> str | None:
+    """Привести единицу измерения таймера к канону: ``s`` или ``min``.
+
+    Args:
+        unit: Единица как её назвало устройство, из манифеста или Home Assistant.
+
+    Returns:
+        ``"s"``, ``"min"`` либо ``None``, если единица не распознана.
+    """
+    if not isinstance(unit, str):
+        return None
+    return _TIMER_UNIT_ALIASES.get(unit.strip().lower())
+
+
+def _timer_duration(context: dict[str, Any]) -> tuple[float, str]:
+    """Перевести длительность работы в единицу измерения таймера.
+
+    Боевой дефект 2026-10-11: платформа отправляла ``run_minutes`` (15) прямо в
+    ``number.set_value``, а таймер обогревателя измеряется в секундах. Home
+    Assistant принимала значение, обогреватель включался и гас через 15 секунд —
+    а автомат честно отрабатывал свой таймер и выходил по ``timeout``. Итог:
+    обогрев не работал сутки, и ни один признак это не показывал.
+
+    Args:
+        context: Контекст перехода с ``run_minutes`` и, возможно, ``timer_unit``.
+
+    Returns:
+        Пара ``(значение, единица)``. При нераспознанной единице возвращаются
+        минуты и пометка ``assumed_unit`` в данных — угадывание обязано быть
+        видимым, иначе тот же баг вернётся на другом устройстве.
+    """
+    minutes = context.get("run_minutes", DEFAULT_HEATER_RUN_MINUTES)
+    if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes <= 0:
+        minutes = DEFAULT_HEATER_RUN_MINUTES
+
+    unit = normalize_timer_unit(context.get("timer_unit"))
+    assumed = unit is None
+    if unit is None:
+        unit = DEFAULT_TIMER_UNIT
+
+    value = float(minutes) * SECONDS_PER_MINUTE if unit == "s" else float(minutes)
+    # Таймер целочисленный (step 1), а `number.set_value` на дробном значении
+    # отвергается: значение округляется к тому, что устройство умеет.
+    if float(value).is_integer():
+        value = int(value)
+    return value, unit if not assumed else DEFAULT_TIMER_UNIT
+
+
+def timer_assumption_flag(unit: str, assumed: bool) -> str | None:
+    """Пометка угаданной единицы для данных команды.
+
+    Args:
+        unit: Единица, по которой посчитано значение.
+        assumed: Единица была угадана, а не прочитана.
+
+    Returns:
+        ``"min"``, если единица угадана, иначе ``None``.
+    """
+    return unit if assumed else None
 
 
 def heater_timer_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
@@ -434,12 +527,29 @@ def heater_timer_on(state: Any, context: dict[str, Any]) -> CommandIntent | None
         )
         return _heater_intent(context, "switch", "turn_on", "heater_on_no_timer")
 
+    value, unit = _timer_duration(context)
+    data: dict[str, Any] = {"value": value, "timer_unit": unit}
+    assumed_unit = timer_assumption_flag(
+        unit, normalize_timer_unit(context.get("timer_unit")) is None
+    )
+    if assumed_unit:
+        data["assumed_unit"] = assumed_unit
+        logger.warning(
+            f"{entity_id}: единица измерения таймера {context.get('timer_unit')!r} "
+            f"не распознана, приняты {assumed_unit}. Если устройство измеряет "
+            "таймер в секундах, обогреватель выключится через минуты вместо "
+            "получаса — задайте timer_unit в манифесте"
+        )
+
     return _heater_intent(
         context,
         "number",
         "set_value",
         "heater_timer_on",
-        data={"value": minutes},
+        data=data,
+        # Адресат — таймер, а не переключатель: `number.set_value` для
+        # `switch.*` Home Assistant отвергает, и команда пропала бы молча.
+        target_entity_id=timer,
     )
 
 

@@ -268,6 +268,12 @@ class Container:
                 # присылает все сущности дома (в бою 1502 против 6 описанных),
                 # и платформа отбивает каждое событие лишней сущности.
                 self._adapter._manifest = self.manifest
+                # Таймеры обогревателей нужны адаптеру, чтобы прочитать у них
+                # единицу измерения (боевой дефект 2026-10-11: таймер измеряется
+                # в секундах, а команда уходила минутами, и обогрев молчал сутки).
+                heater_timers = self._heater_timer_entities()
+                if heater_timers:
+                    self._adapter.heater_timers = list(heater_timers)
                 # Модификатор «мы спим» — сущность Home Assistant, которой
                 # владелец управляет сам (автоматизацией на своё расписание).
                 # Платформа читает состояние и по нему решает, можно ли
@@ -361,6 +367,27 @@ class Container:
             # Add middleware if available
             self._dispatcher.add_middleware(self.middleware)
         return self._dispatcher
+
+    def _heater_timer_entities(self) -> list[str]:
+        """Собрать таймеры обогревателей, объявленные в манифесте.
+
+        Нужны адаптеру, чтобы прочитать у них единицу измерения до первого
+        решения: команда в секундах вместо минут (или наоборот) выглядит
+        снаружи как исправная работа — обогреватель включается и гаснет.
+
+        Returns:
+            Идентификаторы таймеров без повторов, в порядке манифеста.
+        """
+        timers: list[str] = []
+        seen: set[str] = set()
+        for room in self.manifest.rooms:
+            for device in room.devices:
+                for behavior in device.behaviors:
+                    timer = (behavior.params or {}).get("heater_timer")
+                    if isinstance(timer, str) and timer and timer not in seen:
+                        seen.add(timer)
+                        timers.append(timer)
+        return timers
 
     @property
     def middleware(self) -> ManualLockoutMiddleware:
