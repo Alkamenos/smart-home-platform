@@ -193,7 +193,11 @@ class TestHeatingPathEndToEnd:
         assert timers[0].data["value"] == 15, (
             f"в таймер ушло {timers[0].data.get('value')!r} вместо 15 минут"
         )
-        assert timers[0].device_id == HEATER
+        assert timers[0].device_id == HEATER_TIMER, (
+            f"команда `number.set_value` адресована {timers[0].device_id!r}: Home "
+            "Assistant ищет сущность в домене `number`, а переключатель там не "
+            "значится — команда отвергается молча (боевой дефект 2026-10-11)"
+        )
 
     @pytest.mark.asyncio
     async def test_warm_room_sends_nothing(self) -> None:
