@@ -199,23 +199,34 @@ git push origin main
 | Агент | Модель | Права | Когда запускать |
 |-------|--------|-------|-----------------|
 | `researcher` | `nemotron-3.5-lightning-free` | read-only | Перед реализацией: найти затронутые файлы, логику, тесты |
-| `reviewer` | `space-bunny-free#high` | read-only | После реализации: независимое ревью diff, вердикт APPROVE / REQUEST_CHANGES |
 | `test-writer` | `mimo-v2.6-flash-free` | только `tests/` | Параллельно с реализацией: написать/дополнить pytest-тесты |
+| `implementer` | `space-bunny-free#high` | только `src/`, без shell | После test-writer: сделать красные тесты зелёными |
+| `reviewer` | `space-bunny-free#high` | read-only | После реализации: независимое ревью diff, вердикт APPROVE / REQUEST_CHANGES |
 
 Правила:
 - **Ревью — вторым мнением, не истиной.** Истина — `run_checks.sh`. Ревьюер запрещён
   от правок и шеллу, его вердикт дополняет, но не заменяет гейт.
-- `test-writer` физически не может менять `src/` (permissions).
+- `test-writer` физически не может менять `src/` (permissions); `implementer` —
+  физически не может менять тесты и запускать shell: red/green доказывает
+  супервизор.
 - Запускай `reviewer` и `test-writer` **параллельно, в фоне** — они независимы.
 
 ### Команды
 
 ```
-/task <описание задачи>   — полный pipeline: researcher → реализация →
-                            (test-writer ∥ reviewer) → run_checks.sh
+/task <описание задачи>   — атомарный pipeline: супервизор ведёт цикл
+                            researcher → test-writer (red) → implementer
+                            (green) → reviewer → gate, коммитит серию
+                            test → feat → docs в ветке task/<спека>-<история>
 /review [аргументы]       — только ревью текущего diff (подставит diff сам)
 /tests <что покрыть>      — только написать тесты
 ```
+
+**Атомарность**: одна история из `specs/<NNN>/tasks.md` = серия коммитов
+`test:` (красные, доказаны) → `feat:` (зелёные) → `docs:`. Серия живёт в ветке
+`task/<спека>-<история>`; в `main` попадает только зелёной. Ограничения:
+лимит 500 строк на диф (pre-commit), формат коммита и ссылка на TNNN
+(commit-msg), WIP = 1 (одна активная серия).
 
 ### Когда НЕ использовать оркестрацию
 

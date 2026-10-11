@@ -20,9 +20,16 @@
    ```
 
 3. **Что проверяет pre-commit хук:**
-   - ✅ Запускает `.ai/scripts/run_checks.sh` (тесты, mypy, ruff, interrogate)
-   - ✅ Проверяет актуальность ROADMAP через `sync_roadmap.py`
+   - ✅ Ruff lint + format — **fail-closed**: отсутствие ruff блокирует коммит (обход `ATOMIC_SKIP=1`)
+   - ✅ Атомарность: диф по `src/`+`tests/` ≤ 500 строк (конституция v3.0.0)
+   - ✅ `.gitignore` через `check_gitignore.sh`
+   - ✅ Проверка актуальности ROADMAP через `sync_roadmap.py`
    - ✅ Блокирует коммит при любой ошибке
+
+3b. **Что проверяет commit-msg хук:**
+   - ✅ Формат `<type>(<scope>): <description>`; типы: feat fix refactor test docs chore spec plan tasks revert
+   - ✅ Коммиты `test`/`feat`/`docs` обязаны упоминать TASK_ID (TNNN, «спека NNN», «фаза N») — трассируемость атомарной серии
+   - Обход: `ATOMIC_SKIP=1 git commit ...`
 
 4. **Если pre-commit не сработал:**
    - Проверь настройку: `git config core.hooksPath` (должно быть `.githooks`)
@@ -37,6 +44,7 @@
 
 6. **Что проверяет pre-push хук:**
    - ✅ **Финальный запуск quality checks** — даже если тесты прошли при коммите, код мог измениться
+   - ✅ **Секрет-скан (gitleaks)** — коммиты, уходящие в remote, и staged; инструмент обязателен (`brew install gitleaks`), обход `ATOMIC_SKIP=1`
    - ✅ **Проверка актуальности ROADMAP** — гарантирует, что ROADMAP синхронизирован перед отправкой
    - ✅ **Проверка staging area** — предупреждает о незакоммиченных изменениях
    - ✅ **Блокирует push** при любой ошибке
@@ -73,7 +81,9 @@ Pre-commit хук теперь автоматически:
 ```
 [ ] git config core.hooksPath = .githooks ✅
 [ ] .githooks/pre-commit исполняемый ✅
+[ ] .githooks/commit-msg исполняемый ✅
 [ ] .githooks/pre-push исполняемый ✅
+[ ] gitleaks установлен (pre-push fail-closed) ✅
 [ ] .ai/scripts/run_checks.sh исполняемый ✅
 [ ] .ai/scripts/sync_roadmap.py исполняемый ✅
 ```

@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+#
+#  Copyright 2026 Leonid Artemev
+#  SPDX-License-Identifier: Apache-2.0
+#
+# .githooks/commit-msg
+# Проверка формата сообщения коммита (конституция v3.0.0 → Формат сообщения).
+#
+# Требования:
+#   1. Первая строка: <type>(<scope>): <description>
+#      type ∈ feat|fix|refactor|test|docs|chore|spec|plan|tasks|revert
+#      (spec/plan/tasks — артефакты Spec Kit; revert — откаты)
+#   2. Серия задачи: коммиты test/feat/docs должны упоминать TASK_ID
+#      вида T000+ или SPECS-<номер> (спека NNN) — иначе трассируемость
+#      атомарной серии теряется.
+#
+# Обход: ATOMIC_SKIP=1 git commit ...  (не злоупотреблять)
+
+set -euo pipefail
+
+MSG_FILE="$1"
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+if [[ -n "${ATOMIC_SKIP:-}" ]]; then
+    echo -e "${YELLOW}[commit-msg]${NC} ATOMIC_SKIP set — формат не проверяется"
+    exit 0
+fi
+
+first_line="$(head -n1 "$MSG_FILE")"
+
+# 1. Формат первой строки
+if ! echo "$first_line" | grep -Eq '^(feat|fix|refactor|test|docs|chore|spec|plan|tasks|revert)(\([^)]+\))?: .+'; then
+    echo -e "${RED}[commit-msg]${NC} Формат не соответствует <type>(<scope>): <description>" >&2
+    echo "  Типы: feat fix refactor test docs chore spec plan tasks revert" >&2
+    echo "  Было: $first_line" >&2
+    exit 1
+fi
+
+# 2. Серийность: test/feat/docs-коммиты задачи должны ссылаться на TASK_ID
+if echo "$first_line" | grep -Eq '^(test|feat|docs)(\(|:)'; then
+    if ! echo "$first_line" | grep -Eqi '(T[0-9]{3,}|SPECS-[0-9]+|спек[аи] [0-9]+|фаз[а-я]+ [0-9]+|задач[аи] [A-Za-z0-9_-]+)'; then
+        echo -e "${RED}[commit-msg]${NC} Коммит стадии не упоминает TASK_ID:" >&2
+        echo "  $first_line" >&2
+        echo "  Ожидаемый суффикс, например: '... (T015)' или '... (спека 014)'" >&2
+        echo "  Для некоммит-работы используй type chore/docs и опиши предметно." >&2
+        exit 1
+    fi
+fi
+
+exit 0

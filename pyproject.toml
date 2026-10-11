@@ -175,6 +175,10 @@ disallow_untyped_decorators = false
 target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
+# Каталоги с чужим кодом: скиллы, скачанные извне (OpenCode/ContextQMD).
+# `ruff check .` в pre-commit сканирует весь репозиторий, и код скиллов
+# (написан не по нашим правилам) ронял каждый коммит на ровном месте.
+exclude = [".agents", ".opencode"]
 
 [tool.ruff.lint]
 select = [

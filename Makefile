@@ -121,8 +121,10 @@ test-integration-verbose:
 	pytest tests/integration/ -v -s --tb=long
 
 # Code Quality
+# Единый источник с CI (ci.yml → make lint) и run_checks.sh: состав каталогов
+# обязан совпадать, иначе «локально прошло, CI упал».
 lint:
-	ruff check src/ tests/
+	ruff check src/ tests/ examples/
 
 lint-fix:
 	ruff check src/ tests/ --fix

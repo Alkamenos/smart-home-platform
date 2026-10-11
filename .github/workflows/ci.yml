@@ -16,8 +16,24 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -e ".[dev,webui]"
-      - run: ruff check src/ tests/ examples/
-      - run: mypy src/
+      # Команды НЕ дублируются: make lint / make type-check — тот же источник,
+      # что и локальные хуки (.githooks/pre-commit, run_checks.sh). Раньше здесь
+      # стояли сырые `ruff check src/ tests/ examples/` и `mypy src/`, которые
+      # могли разойтись с Makefile — как уже случалось с mypy-venv и 3.11/3.12.
+      - run: make lint
+      - run: make type-check
+
+  secret-scan:
+    # Секрет-скан всей истории: токены/ключи не доезжают до main.
+    # Локальный аналог — .githooks/pre-push (gitleaks git --staged + история).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # 3.11 -> 3.12: 3.11 нерабочий, на нём падает СБОР КОЛЛЕКЦИИ pytest
   # (src/webui/app.py:130, PEP 695 `def _run_coroutine[T](...)`).

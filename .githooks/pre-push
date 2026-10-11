@@ -40,5 +40,27 @@ fi
 
 info "✅ Все проверки качества пройдены"
 
+# ──────────────────────────────────────────────
+# Секрет-скан (gitleaks): токены/ключи не доезжают до remote
+# ──────────────────────────────────────────────
+
+info "🔐 Секрет-скан (gitleaks)..."
+if [[ -n "${ATOMIC_SKIP:-}" ]]; then
+    warn "ATOMIC_SKIP set — пропуск секрет-скана"
+elif command -v gitleaks &>/dev/null; then
+    # Сканируются коммиты, которые уходят в remote (старые уже проверены CI),
+    # и staged-состояние на случай немигрированных секретов в индексе.
+    if ! gitleaks git --redact --log-opts="origin/main..HEAD" 2>/dev/null \
+        && ! gitleaks detect --source . --redact --no-banner 2>/dev/null; then
+        fail "❌ gitleaks нашёл возможный секрет! См. вывод выше.
+Обход только если найден ложный срабатыватель: ATOMIC_SKIP=1 git push ..."
+    fi
+    info "✅ Секрет-скан пройден"
+else
+    fail "❌ gitleaks не найден — секрет-скан не выполнен.
+Установи: brew install gitleaks  (macOS) или https://github.com/gitleaks/gitleaks
+CI (job secret-scan) сканирует историю независимо, но локальный скан раньше и дешевле."
+fi
+
 info "✅ Pre-push проверки пройдены ✓"
 exit 0

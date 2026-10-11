@@ -160,8 +160,10 @@ fi
 echo ""
 
 # 3. Linting & formatting with Ruff
+# Состав каталогов совпадает с Makefile (lint) и CI (ci.yml → make lint):
+# единый источник проверок — «локально прошло ⇒ CI пройдёт».
 echo "3️⃣  Linting (ruff check)..."
-if ruff check src/ tests/ 2>&1; then
+if ruff check src/ tests/ examples/ 2>&1; then
     echo -e "${GREEN}✅ Linting passed${NC}"
 else
     echo -e "${YELLOW}⚠️  Linting issues found${NC}"

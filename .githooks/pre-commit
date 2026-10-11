@@ -30,23 +30,26 @@ fail()  { echo -e "${RED}[pre-commit]${NC} $*"; exit 1; }
 info "🤖 Запуск статических проверок перед коммитом..."
 
 # 1. Ruff lint
+# Fail-closed: отсутствие инструмента — это НЕ пропуск проверки. Молчаливый
+# skip создавал видимость зелёного света (тот же класс бага, что был исправлен
+# в check_gitignore.sh). Обход: ATOMIC_SKIP=1.
 info "📏 Running ruff lint..."
-if command -v ruff &>/dev/null; then
-    if ! ruff check .; then
-        fail "❌ Ruff lint failed"
-    fi
-else
-    warn "ruff not found, skipping lint..."
+if [[ -n "${ATOMIC_SKIP:-}" ]]; then
+    warn "ATOMIC_SKIP set — пропуск ruff lint"
+elif ! command -v ruff &>/dev/null; then
+    fail "❌ ruff не найден — проверка не выполнена. Установи: pip install -e \".[dev]\" (обход: ATOMIC_SKIP=1)"
+elif ! ruff check .; then
+    fail "❌ Ruff lint failed"
 fi
 
 # 2. Ruff format
 info "🎨 Running ruff format..."
-if command -v ruff &>/dev/null; then
-    if ! ruff format . --check; then
-        fail "❌ Ruff format failed"
-    fi
-else
-    warn "ruff not found, skipping format..."
+if [[ -n "${ATOMIC_SKIP:-}" ]]; then
+    warn "ATOMIC_SKIP set — пропуск ruff format"
+elif ! command -v ruff &>/dev/null; then
+    fail "❌ ruff не найден — проверка не выполнена. Установи: pip install -e \".[dev]\" (обход: ATOMIC_SKIP=1)"
+elif ! ruff format . --check; then
+    fail "❌ Ruff format failed"
 fi
 
 ## 3. MyPy type checking
@@ -78,6 +81,21 @@ if [[ -x "$ROOT/.ai/scripts/check_docs_updated.py" ]]; then
     if ! python "$ROOT/.ai/scripts/check_docs_updated.py"; then
         fail "❌ Documentation check failed"
     fi
+fi
+
+# 6. Атомарность: размер дифа по коду ≤ 500 строк (конституция v3.0.0)
+# Один коммит = одна логическая задача. Проверяются только src/ и tests/:
+# документации и ROADMAP этот лимит не ограничивают.
+info "⚛️  Checking atomicity (diff ≤ 500 lines)..."
+if [[ -n "${ATOMIC_SKIP:-}" ]]; then
+    warn "ATOMIC_SKIP set — пропуск проверки размера дифа"
+else
+    diff_size=$(git diff --cached --numstat -- src tests \
+        | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ { n += $1 + $2 } END { print n + 0 }')
+    if (( diff_size > 500 )); then
+        fail "❌ Диф по коду: $diff_size строк (>500). Разбей на атомарные коммиты (одна задача = серия test → feat → docs). Обход в крайнем случае: ATOMIC_SKIP=1 git commit ..."
+    fi
+    info "⚛️  Diff по коду: $diff_size/500 строк"
 fi
 
 info "✅ Все статические проверки пройдены"
