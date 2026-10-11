@@ -84,6 +84,10 @@ REASON_SETPOINT_UNAVAILABLE: Final[str] = "setpoint_unavailable"
 REASON_CLIMATE_DISABLED: Final[str] = "climate_disabled"
 REASON_AC_NOT_ALLOWED: Final[str] = "ac_not_allowed"
 REASON_AC_FORBIDDEN_IN_WINTER: Final[str] = "ac_forbidden_in_winter"
+#: Охлаждение не требуется: комната не выше потолка комфорта. Отказ штатный, а
+#: не поломка, и в журнале он должен читаться как решение, а не «условие не
+#: прошло».
+REASON_NOT_ABOVE_COMFORT: Final[str] = "not_above_comfort"
 REASON_MANAGED_BY_HARDWARE: Final[str] = "managed_by_hardware"
 #: Отказ ночника: модификатор «мы спим» известен и выключен — штатное решение
 #: (ночник работает только, пока владелец спит). Раньше оно оставалось
@@ -116,6 +120,7 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
         REASON_CLIMATE_DISABLED,
         REASON_AC_NOT_ALLOWED,
         REASON_AC_FORBIDDEN_IN_WINTER,
+        REASON_NOT_ABOVE_COMFORT,
         REASON_MANAGED_BY_HARDWARE,
     }
 )
@@ -137,6 +142,7 @@ REASON_TEXT: Final[dict[str, str]] = {
     REASON_CLIMATE_DISABLED: "климат отключен",
     REASON_AC_NOT_ALLOWED: "кондиционер запрещен",
     REASON_AC_FORBIDDEN_IN_WINTER: "кондиционер зимой не разрешен",
+    REASON_NOT_ABOVE_COMFORT: "в комнате не жарко, выше потолка не поднялась",
     REASON_MANAGED_BY_HARDWARE: "управляется отдельным контроллером",
     # Коды действий (T007)
     "action_on": "включено по расписанию",

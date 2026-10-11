@@ -556,6 +556,8 @@ GUARD_DATA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "may_heat": ("temperature",),
     "may_stop_heating": ("temperature",),
     "has_usable_reading": ("temperature",),
+    "may_cool": ("temperature",),
+    "may_dry": ("humidity",),
 }
 
 
@@ -619,6 +621,9 @@ def build_guards(
         "stops_on_sleep": make_stops_on_sleep(),
         "stops_on_sunrise": make_stops_on_sunrise(),
         "may_heat": make_may_heat(),
+        "may_cool": make_may_cool(),
+        "may_dry": make_may_dry(),
+        "may_stay_idle": make_may_stay_idle(),
         "may_stop_heating": make_may_stop_heating(),
         "has_usable_reading": make_has_usable_reading(),
     }
@@ -1038,6 +1043,210 @@ def make_stops_on_sunrise() -> Callable[[Any, dict[str, Any]], bool]:
     return stops_on_sunrise
 
 
+def make_may_stay_idle() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «комната остаётся в покое — и это объяснимо».
+
+    Отвечает на вопрос, который иначе теряется: если в комнате жарко, но
+    охладить запрещено (зима или нет гейта владельца), решение «ничего не
+    делать» всё равно правильное — однако из-за него отказ по охлаждению не
+    попадал ни в один счётчик, и по журналу выглядело так, будто автоматика
+    молчит, а сама не заметила жары.
+
+    Условие пропускает «покой» только когда охлаждение действительно не
+    требуется; иначе автомат остаётся в покое **как отказ** с названной
+    причиной, и владелец видит, что мешает.
+    """
+
+    def may_stay_idle(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить остаться в покое, если это штатное решение.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если покой объясним.
+        """
+        del state
+        if _temperature_value(context) is None:
+            return False
+        return _cooling_denial(context) == "not_above_comfort"
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину: охлаждение требуется, но запрещено.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо ``None``.
+        """
+        del state
+        if _temperature_value(context) is None:
+            return "guard_data_missing"
+        if _cooling_denial(context) == "not_above_comfort":
+            return None
+        return _cooling_denial(context) or "guard_data_missing"
+
+    may_stay_idle.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return may_stay_idle
+
+
+def make_may_dry() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «осушение разрешено».
+
+    Осушение и охлаждение — одно решение на комнату: у кондиционера общий
+    режим, и оба автомата, дергающие его попеременно, выглядели бы как поломка
+    (FR-017). Поэтому осушение разрешено, когда охлаждение не требуется: если
+    комната выше потолка комфорта, работает компрессор, а не вентилятор.
+    """
+
+    def may_dry(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить, если осушать есть смысл и можно.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если осушение разрешено.
+        """
+        del state
+        return _drying_denial(context) is None
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо ``None``.
+        """
+        del state
+        return _drying_denial(context)
+
+    may_dry.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return may_dry
+
+
+def _drying_denial(context: dict[str, Any]) -> str | None:
+    """Первая по порядку причина, по которой осушать нельзя.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Имя причины либо ``None``, если осушение разрешено.
+    """
+    if context.get("ac_allowed") is not True:
+        return "ac_not_allowed"
+    if context.get("is_winter") is not False:
+        return "ac_forbidden_in_winter"
+    if context.get("managed_by_hardware") is True:
+        return "managed_by_hardware"
+    if _humidity_value(context) is None:
+        return "guard_data_missing"
+    # Охлаждение приоритетнее: комната выше потолка — работает компрессор, а не
+    # вентилятор, иначе оба режима включатся в одной комнате сразу.
+    if _cooling_denial(context) is None:
+        return "not_above_comfort"
+    return None
+
+
+def make_may_cool() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «кондиционер можно включать».
+
+    Проверки идут по цене ошибки, и порядок здесь не декоративен: гейт
+    владельца важнее сезона, а сезон важнее замера. В самую холодную погоду
+    кондиционер включился бы там, где владелец его запретил, если бы порядок был
+    обратным.
+
+    Неизвестное значение запрещает, а не разрешает. Для сезона это значит, что
+    непрочитанный ``zima`` не равен «не зима»: единственная цена ошибки — порча
+    техники зимой, противоположная цена — лишний день электричества летом.
+    """
+
+    def may_cool(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если охлаждать есть смысл и можно.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если кондиционер можно включать.
+        """
+        del state
+        return _cooling_denial(context) is None
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа — первую по порядку проверок.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо ``None``, когда охлаждать можно.
+        """
+        del state
+        return _cooling_denial(context)
+
+    may_cool.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return may_cool
+
+
+def _cooling_denial(context: dict[str, Any]) -> str | None:
+    """Первая по порядку причина, по которой охлаждать нельзя.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Имя причины либо ``None``, если охлаждение разрешено.
+    """
+    if context.get("ac_allowed") is not True:
+        return "ac_not_allowed"
+    if context.get("is_winter") is not False:
+        return "ac_forbidden_in_winter"
+    # Комната со штатным термостатом: он уже решает про температуру, и
+    # кондиционер рядом с ним — два источника в одной комнате (FR-018).
+    if context.get("managed_by_hardware") is True:
+        return "managed_by_hardware"
+
+    comfort_max = _comfort_max_value(context)
+    if comfort_max is None:
+        return "guard_data_missing"
+    temperature = _temperature_value(context)
+    if temperature is None:
+        return "guard_data_missing"
+
+    if temperature <= comfort_max:
+        return "not_above_comfort"
+    return None
+
+
+def _comfort_max_value(context: dict[str, Any]) -> float | None:
+    """Потолок комфорта как число.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Потолок в градусах либо ``None``, если прочитать нечего.
+    """
+    raw = context.get("comfort_max")
+    if isinstance(raw, bool) or raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def make_may_heat() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «в этой комнате обогреватель нужен и им можно греть».
 
@@ -1171,6 +1380,9 @@ REGISTERED_GUARDS = (
     "may_heat",
     "may_stop_heating",
     "has_usable_reading",
+    "may_cool",
+    "may_dry",
+    "may_stay_idle",
 )
 
 
