@@ -183,24 +183,24 @@ contracts/interface-contracts.md, quickstart.md
 
 ### Тесты
 
-- [ ] T047 [P] [US3] Тесты `mode_for_weather`: улица холоднее — режим зимы, теплее — режим лета (FR-019), улица недоступна — отказ `outside_temp_missing` (FR-029) — `tests/unit/core/test_ventilation_guards.py`
-- [ ] T048 [P] [US3] Тесты `speed_within_limits`: скорость 0–100 (FR-020), мёртвая зона колебаний (FR-030), ночной потолок только понижает (FR-022, FR-023) — `tests/unit/core/test_ventilation_guards.py`
-- [ ] T049 [P] [US3] Тесты выключалки владельца: `ventilation_on` = off → скорость 0, никакое правило её не поднимает (FR-027) — `tests/unit/core/test_ventilation_guards.py`
-- [ ] T050 [P] [US3] Тесты действий: `fan.set_percentage`, `fan.set_preset_mode`, `fan.turn_on`/`turn_off` для вытяжки без скорости (FR-028) — `tests/unit/core/test_ventilation_actions.py`
+- [x] T047 [P] [US3] Тесты `mode_for_weather`: улица холоднее — режим зимы, теплее — режим лета (FR-019), улица недоступна — отказ `outside_temp_missing` (FR-029) — `tests/unit/core/test_ventilation_guards.py`
+- [x] T048 [P] [US3] Тесты `speed_within_limits`: скорость 0–100 (FR-020), мёртвая зона колебаний (FR-030), ночной потолок только понижает (FR-022, FR-023) — `tests/unit/core/test_ventilation_guards.py`
+- [x] T049 [P] [US3] Тесты выключалки владельца: `ventilation_on` = off → скорость 0, никакое правило её не поднимает (FR-027) — `tests/unit/core/test_ventilation_guards.py`
+- [x] T050 [P] [US3] Тесты действий: `fan.set_percentage`, `fan.set_preset_mode`, `fan.turn_on`/`turn_off` для вытяжки без скорости (FR-028) — `tests/unit/core/test_ventilation_actions.py`
 - [ ] T051 [P] [US3] Тест: режим и скорость независимы — смена скорости не сбрасывает режим и наоборот (FR-021) — `tests/integration/ventilation/test_mode_and_speed_independent.py`
 - [ ] T052 [P] [US3] Тест: проветривание отключается само по таймеру (FR-024, FR-025, FR-026) — `tests/integration/ventilation/test_airing_timeout.py`
 - [ ] T053 [P] [US3] Тест: отказ датчика улицы останавливает только пересчёт скорости; обогрев и остальная вентиляция работают (FR-046) — `tests/integration/ventilation/test_outside_sensor_failure.py`
 
 ### Реализация
 
-- [ ] T054 [US3] Условия `mode_for_weather` и `speed_within_limits`: режим выбирается из списка устройства (FR-019), скорость 0–100 (FR-020) как `speed_normal + |ΔT| × speed_delta_gain` с нулём в мёртвой зоне `delta_deadband` (FR-030) — `src/core/guards/builtin.py`
-- [ ] T055 [US3] Условие `owner_wants_airing` и `sensor_is_alive` — `src/core/guards/builtin.py`
-- [ ] T056 [US3] Причины отказов `ventilation_disabled`, `turned_off_by_owner`, `outside_temp_missing`, `sensor_stale` — `src/core/events/fsm_events.py`
-- [ ] T057 [US3] Действия `fan_set_percentage` (`set_percentage`), `fan_set_preset` (`set_preset_mode`), `fan_apply_mode_and_speed` (два намерения подряд; атомарности в системе нет, порядок — по доставке), `exhaust_on`/`exhaust_off` — `src/core/action_handlers.py`
+- [x] T054 [US3] Условия `mode_for_weather` и `speed_within_limits`: режим выбирается из списка устройства (FR-019), скорость 0–100 (FR-020) как `speed_normal + |ΔT| × speed_delta_gain` с нулём в мёртвой зоне `delta_deadband` (FR-030) — `src/core/guards/builtin.py`
+- [x] T055 [US3] Условие `owner_wants_airing` и `sensor_is_alive` — `src/core/guards/builtin.py`
+- [x] T056 [US3] Причины отказов `ventilation_disabled`, `turned_off_by_owner`, `outside_temp_missing`, `sensor_stale` — `src/core/events/fsm_events.py`
+- [x] T057 [US3] Действия `fan_set_percentage` (`set_percentage`), `fan_set_preset` (`set_preset_mode`), `fan_apply_mode_and_speed` (два намерения подряд; атомарности в системе нет, порядок — по доставке), `exhaust_on`/`exhaust_off` — `src/core/action_handlers.py`
 - [ ] T058 [US3] Новый шаблон `ventilation_modes` с состояниями `IDLE`, `SUPPLY`, `AIRING`, `EXHAUST` (FR-024, FR-025, FR-026); `AIRING` выходит по `timeout` через `airing_seconds`; `EXHAUST` отдельно, потому что вытяжка меняет направление, а не скорость — `src/features/ventilation_modes.yaml`
 - [ ] T059 [US3] Объявить параметры `ventilation_modes` в контракте с диапазонами из `data-model.md` §5; режимы — параметры, а не константы: список принадлежит устройству, и замена рекуператора не должна требовать правки кода — `src/features/CONTRACT.yaml`
 - [ ] T060 [US3] Прописать оба рекуператора и вытяжку в боевой манифест — `instances/leonids_house/manifest.yaml`
-- [ ] T061 [US3] Регенерация контракта шаблонов — `tools/gen_template_contract.py`
+- [x] T061 [US3] Регенерация контракта шаблонов — `tools/gen_template_contract.py`
 - [ ] T062 [US3] Боевая проверка шага 5 `quickstart.md`: выключалка, режим, независимость скорости, ночной предел, проветривание с самоотключением, вытяжка, сценарий «жарко у печи», колебания не дёргают вентилятор
 
 **Checkpoint**: дом дышит по погоде; проветривание само гаснет; выключалка
