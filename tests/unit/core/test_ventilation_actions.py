@@ -9,9 +9,11 @@
 - скорость = ``speed_normal + |улица − комната| × speed_delta_gain``, с нулём
   в мёртвой зоне ``delta_deadband``, ограничением 0–100 и ночным потолком,
   который **только понижает**;
-- выключалка владельца сильнее любого правила: ``ventilation_on = off`` даёт
-  скорость 0, и ни одно условие её не поднимает (FR-027);
-- проветривание включается человеком и само отключается по таймеру (FR-024).
+- выключалка владельца сильнее любого правила: ``ventilation_on = off``
+  отказывает с причиной ``turned_off_by_owner``, а переход ``SUPPLY → IDLE``
+  гасит прибор (FR-027, T090), а не «крутит на нуле»;
+- проветривание и вытяжка — модификаторы с автосбросом в ``false`` по таймеру
+  60 минут (T085); вытяжка включается по температуре/влажности санузла (T086).
 
 Три урока из боя 2026-10-11 зашиты в проверки: ключ должен **доезжать** до
 действия (а не только читаться), в данных команды лежит **ровно то, что
@@ -36,9 +38,7 @@ DEFAULTS = {
     "mode_supply": "Приток",
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
-    "mode_night": "Ночной",
     "mode_airing": "Приток MAX",
-    "mode_exhaust": "Вытяжка",
     "speed_normal": 30,
     "speed_delta_gain": 5.0,
     "speed_night_max": 20,
@@ -223,13 +223,13 @@ class TestSpeedWithinLimits:
 
 
 class TestOwnerSwitchIsStrongerThanAnyRule:
-    """Выключалка владельца сильнее любого правила (FR-027)."""
+    """Выключалка владельца сильнее любого правила (FR-027, T090)."""
 
-    def test_switch_off_gives_zero_speed(self) -> None:
-        """``ventilation_on = off`` — скорость ноль.
+    def test_switch_off_denies_with_reason(self) -> None:
+        """``ventilation_on = off`` — условие отказывает с причиной.
 
         Returns:
-            Ничь.
+            Ничего.
         """
         guard = _guard("speed_within_limits")
         context = {
@@ -240,12 +240,55 @@ class TestOwnerSwitchIsStrongerThanAnyRule:
             "ventilation_on": False,
         }
 
-        assert guard(None, context) is True
-        assert context["percentage"] == 0, (
-            f"при ventilation_on = off скорость {context.get('percentage')!r}: "
-            "выключалка владельца сильнее любого правила, иначе её нельзя "
-            "было бы выключить раз и навсегда"
+        assert guard(None, context) is False, (
+            "при ventilation_on = off скорость посчитана: выключалка владельца "
+            "сильнее любого правила, и прибор должен быть погашен, а не крутиться"
         )
+        assert getattr(guard, "deny_reason", lambda *_: None)(None, context) == (
+            "turned_off_by_owner"
+        )
+
+    def test_switch_off_stops_recuperator(self) -> None:
+        """Переход остановки гасит рекуператор полностью (T090).
+
+        Returns:
+            Ничего.
+        """
+        stop = _guard("ventilation_should_stop")
+        context = {**DEFAULTS, "ventilation_on": False}
+        assert stop(None, context) is True, (
+            "при выключенной вентиляции перехода в IDLE нет: прибор останется "
+            "крутиться, хотя владелец выключил вентиляцию"
+        )
+
+        intent = _action("fan_turn_off")(None, {"entity_id": "fan.base_smart"})
+        assert intent is not None
+        assert (intent.domain, intent.service) == ("fan", "turn_off")
+
+    def test_feature_off_also_stops(self) -> None:
+        """Фиче-флаг дома выключает вентиляцию целиком (FR-031, T090).
+
+        Returns:
+            Ничего.
+        """
+        stop = _guard("ventilation_should_stop")
+        assert stop(None, {**DEFAULTS, "ventilation_enabled": False}) is True
+
+    def test_heating_active_stops_ventilation(self) -> None:
+        """Работающий обогрев гасит вентиляцию (T089).
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("speed_within_limits")
+        context = {
+            **DEFAULTS,
+            "outside_temperature": -5.0,
+            "temperature": 20.0,
+            "heating_active": True,
+        }
+        assert guard(None, context) is False
+        assert getattr(guard, "deny_reason", lambda *_: None)(None, context) == "heating_active"
 
 
 class TestVentilationActions:
@@ -331,3 +374,174 @@ class TestVentilationActions:
             f"вытяжка получила данные {steps[0].data!r}: у этого прибора нет "
             "скорости, Home Assistant такую команду отвергнет"
         )
+
+
+class TestAiringOn:
+    """Проветривание ставит режим из своего параметра (T085)."""
+
+    def test_airing_on_sends_mode_airing(self) -> None:
+        """Действие берёт режим из ``mode_airing``, а не из накопленного.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_airing_on")(
+            None, {"entity_id": "fan.base_smart", "mode_airing": "Приток MAX"}
+        )
+        assert intent is not None
+        assert (intent.domain, intent.service) == ("fan", "set_preset_mode")
+        assert intent.data == {"preset_mode": "Приток MAX"}
+
+    def test_airing_on_without_mode_is_silent(self) -> None:
+        """Параметра режима нет — команды нет, но и выдумки нет.
+
+        Returns:
+            Ничего.
+        """
+        assert _action("fan_airing_on")(None, {"entity_id": "fan.base_smart"}) is None
+
+
+class TestModifierReset:
+    """Автосброс модификаторов владельца (T085)."""
+
+    def test_airing_after_timeout_restores_mode_and_clears_modifier(self) -> None:
+        """По таймеру: режим, скорость, затем снятие модификатора.
+
+        Returns:
+            Ничего.
+        """
+        steps = _steps(
+            _action("airing_after_timeout")(
+                None,
+                {
+                    "entity_id": "fan.base_smart",
+                    "chosen_mode": "Рекуперация (зима)",
+                    "percentage": 43,
+                    "airing_entity": "input_boolean.provetrivanie",
+                },
+            )
+        )
+        assert [step.service for step in steps] == [
+            "set_preset_mode",
+            "set_percentage",
+            "turn_off",
+        ]
+        assert steps[-1].domain == "input_boolean"
+        assert steps[-1].device_id == "input_boolean.provetrivanie"
+
+    def test_exhaust_after_timeout_turns_off_and_clears_modifier(self) -> None:
+        """По таймеру вытяжка гаснет, затем снимается модификатор.
+
+        Returns:
+            Ничего.
+        """
+        steps = _steps(
+            _action("exhaust_after_timeout")(
+                None,
+                {
+                    "entity_id": "fan.vytyazhka",
+                    "exhaust_entity": "input_boolean.provetrivanie_vytyazhka",
+                },
+            )
+        )
+        assert [(step.domain, step.service) for step in steps] == [
+            ("fan", "turn_off"),
+            ("input_boolean", "turn_off"),
+        ]
+
+    def test_airing_off_turns_off_and_clears_modifier(self) -> None:
+        """Запасной путь проветривания: гасит прибор и снимает модификатор.
+
+        Returns:
+            Ничего.
+        """
+        steps = _steps(
+            _action("airing_off")(
+                None,
+                {
+                    "entity_id": "fan.base_smart",
+                    "airing_entity": "input_boolean.provetrivanie",
+                },
+            )
+        )
+        assert [(step.domain, step.service) for step in steps] == [
+            ("fan", "turn_off"),
+            ("input_boolean", "turn_off"),
+        ]
+
+
+class TestExhaustByBathroom:
+    """Вытяжка санузла по температуре и/или влажности (T086)."""
+
+    def test_should_run_exhaust_on_hot_bathroom(self) -> None:
+        """Санузел выше порога температуры — вытяжку включаем.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("should_run_exhaust")
+        context = {"ventilation_role": "exhaust", "temperature": 26.0}
+        assert guard(None, context) is True
+
+    def test_should_run_exhaust_on_wet_bathroom(self) -> None:
+        """Санузел влажнее порога — вытяжку включаем.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("should_run_exhaust")
+        context = {"ventilation_role": "exhaust", "humidity": 70.0}
+        assert guard(None, context) is True
+
+    def test_should_run_exhaust_on_owner_modifier(self) -> None:
+        """Модификатор владельца включает вытяжку без показаний санузла.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("should_run_exhaust")
+        context = {"ventilation_role": "exhaust", "exhaust_on": True}
+        assert guard(None, context) is True
+
+    def test_should_run_exhaust_denies_comfortable_bathroom(self) -> None:
+        """Санузел сух и не перегрет — причина названа, вытяжка не нужна.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("should_run_exhaust")
+        context = {"ventilation_role": "exhaust", "temperature": 23.0, "humidity": 50.0}
+        assert guard(None, context) is False
+        assert getattr(guard, "deny_reason", lambda *_: None)(None, context) == (
+            "bathroom_comfortable"
+        )
+
+    def test_should_run_exhaust_ignores_recuperator_role(self) -> None:
+        """Рекуператор (supply) вытяжкой не управляет.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("should_run_exhaust")
+        context = {"ventilation_role": "supply", "temperature": 30.0, "exhaust_on": True}
+        assert guard(None, context) is False
+
+    def test_exhaust_should_stop_when_done(self) -> None:
+        """Модификатор снят и санузел в норме — вытяжку пора гасить.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("exhaust_should_stop")
+        context = {"ventilation_role": "exhaust", "temperature": 23.0, "humidity": 50.0}
+        assert guard(None, context) is True
+
+    def test_exhaust_should_keep_running_while_modifier_on(self) -> None:
+        """Пока модификатор включён, вытяжка не гаснет.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("exhaust_should_stop")
+        context = {"ventilation_role": "exhaust", "exhaust_on": True}
+        assert guard(None, context) is False
