@@ -23,23 +23,6 @@ make test        # pytest + coverage
 
 То же через pre-commit: `pre-commit run --all-files`.
 
-## Документация (MCP)
-
-Два локальных сервера документации, оба без VPN:
-
-| Сервер | Что ищет | Инструменты |
-|--------|----------|-------------|
-| `docs` (docs-mcp-server) | Документация библиотек: pytest, home-assistant, pydantic проиндексированы | `docs.search_docs`, `docs.scrape_docs`, `docs.fetch_url` |
-| `contextqmd` | Контекст проекта: `.ai/` (41 док, русский семантический поиск) | `contextqmd.search_docs`, `contextqmd.get_doc` |
-
-Правила:
-
-- **Перед поиском в интернете** — сначала `docs.search_docs`: индекс локальный и дешёвый для контекста.
-- Библиотеки нет в индексе → `docs.list_libraries()`, потом один раз `docs.scrape_docs({library, url})`.
-- Ответы по документации — со ссылками на источник (URL или `path:line`), без выдуманного API.
-- Команда `/docs <запрос>` выполняет этот порядок автоматически.
-- После правок `.ai/` векторный индекс ContextQMD устаревает → переиндексируй: `contextqmd.add_local_docs` + `contextqmd.embed_docs`.
-
 ## Правила
 
 - Ответы и артефакты спецификаций — на русском языке.
