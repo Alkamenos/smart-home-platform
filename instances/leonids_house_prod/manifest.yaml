@@ -69,6 +69,23 @@ rooms:
     - template: night_light
       priority: 20
       params: {}
+  # Шторы гостиной (спека 015). Правая — над входной дверью: роль door, не
+  # закрывается, пока в доме кто-нибудь есть (пожарная безопасность).
+  - id: cover.shtora_v_gostinnoi_pravaia
+    type: cover
+    name: Штора над дверью (гостиная)
+    behaviors:
+    - template: cover_modes
+      priority: 10
+      params:
+        cover_role: door
+  - id: cover.shtora_v_gostinnoi_levaia
+    type: cover
+    name: Штора гостиной (левая)
+    behaviors:
+    - template: cover_modes
+      priority: 10
+      params: {}
   # В этой же комнате есть light.svet_nad_stolom_1, light.svet_nad_stolom_2 и
   # подсветка зеркала (podsvetka_zerkala, gostinaia_podsvetka_zerkala). Добавлены
   # по одной на комнату: каждая лампа — отдельный автомат, а три автомата на один
@@ -215,6 +232,15 @@ rooms:
         speed_cold_reference: 5.0
         speed_cold_gain: 2.0
         airing_seconds: 3600
+  # Штора спальни (спека 015). Закрывается и когда дома только собаки.
+  - id: cover.shtora_v_spalne
+    type: cover
+    name: Штора спальни
+    behaviors:
+    - template: cover_modes
+      priority: 10
+      params:
+        closes_when_dogs_only: true
 
 - id: kabinet
   name: Кабинет
@@ -257,6 +283,15 @@ rooms:
         speed_cold_reference: 5.0
         speed_cold_gain: 2.0
         airing_seconds: 3600
+  # Штора кабинета (спека 015). Закрывается и когда дома только собаки.
+  - id: cover.shtora_v_kabinete
+    type: cover
+    name: Штора кабинета
+    behaviors:
+    - template: cover_modes
+      priority: 10
+      params:
+        closes_when_dogs_only: true
 
 # Решение владельца 2026-10-09 при расширении манифеста: только внутри дома и
 # по одному основному светильнику на комнату. Обе комнаты без датчика движения
@@ -399,3 +434,13 @@ automation_rules:
     airing_entity: input_boolean.provetrivanie
     exhaust_entity: input_boolean.provetrivanie_vytyazhka
     outside_temp_entity: sensor.temperatura_na_ulitse_srednee
+  cover:
+    # Флаги штор (спека 015) живут в Home Assistant, платформа только читает.
+    # `feature_covers`, `my_doma`, `sobaki_doma` и `zakryvat_shtory_nochiu` в
+    # доме уже есть; аварийного флага ещё нет — владельцу создать
+    # `input_boolean.covers_emergency_open` (тогда шторы откроются по нему).
+    feature_entity: input_boolean.feature_covers
+    my_doma_entity: input_boolean.my_doma
+    sobaki_doma_entity: input_boolean.sobaki_doma
+    night_close_entity: input_boolean.zakryvat_shtory_nochiu
+    emergency_entity: input_boolean.covers_emergency_open
