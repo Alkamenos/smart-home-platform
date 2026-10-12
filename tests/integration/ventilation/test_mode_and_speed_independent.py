@@ -255,7 +255,10 @@ class TestSupplyModeFollowsWinterModifier:
         )
 
         assert engine.get_state(FSM_ID).current_state == "AIRING"  # type: ignore[union-attr]
-        assert dispatcher.intents[0].data["preset_mode"] == "Приток MAX", (
+        presets = [
+            i.data.get("preset_mode") for i in dispatcher.intents if i.service == "set_preset_mode"
+        ]
+        assert presets == ["Приток MAX"], (
             "комната выше потолка комфорта — должен включаться «Приток MAX»: "
             "свежий воздух охлаждает быстрее рекуперации (FR-051)"
         )
@@ -289,11 +292,45 @@ class TestSupplyModeFollowsWinterModifier:
             context=_context(outside_temperature=0.0, comfort_max=25.0),
         )
 
-        assert dispatcher.services() == ["set_preset_mode", "turn_on"], (
+        assert dispatcher.services() == ["turn_on", "set_preset_mode"], (
             f"на новом показании ушло {dispatcher.services()} вместо подтверждения "
             "режима: прибор при жаре должен оставаться в «Притоке MAX» (и включён)"
         )
-        assert dispatcher.intents[0].data["preset_mode"] == "Приток MAX"
+        assert dispatcher.intents[-1].data["preset_mode"] == "Приток MAX"
+
+    @pytest.mark.asyncio
+    async def test_cool_room_returns_from_max_supply(self) -> None:
+        """Комната остыла — привычный режим возвращается, не дожидаясь таймера.
+
+        Returns:
+            Ничего.
+        """
+        engine, router, dispatcher = _build()
+
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="28.0",
+            old_state="27.0",
+            context=_context(outside_temperature=0.0, comfort_max=25.0),
+        )
+        assert engine.get_state(FSM_ID).current_state == "AIRING"  # type: ignore[union-attr]
+        dispatcher.intents.clear()
+
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="22.0",
+            old_state="28.0",
+            context=_context(outside_temperature=0.0, comfort_max=25.0),
+        )
+
+        assert engine.get_state(FSM_ID).current_state == "SUPPLY"  # type: ignore[union-attr]
+        presets = [
+            i.data.get("preset_mode") for i in dispatcher.intents if i.service == "set_preset_mode"
+        ]
+        assert presets == ["Рекуперация (зима)"], (
+            f"остывшая комната вернула {presets} вместо обычного режима: "
+            "«Приток MAX» нельзя держать до часового таймера"
+        )
 
     @pytest.mark.asyncio
     async def test_winter_delta_alone_does_not_pick_supply(self) -> None:

@@ -986,18 +986,20 @@ def fan_airing_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
     if not isinstance(mode, str) or not mode.strip():
         logger.warning("fan_airing_on: нет режима проветривания (mode_airing) в контексте")
         return []
-    preset = _fan_intent(
-        {**context, "preset_mode": mode}, "set_preset_mode", "fan_airing_on", keys=("preset_mode",)
-    )
     # Прибор может быть выключен (владелец выключал вентиляцию, рекуператор
     # остался off): одного режима мало — прибор надо ещё и включить. Включение
     # уходит с процентом 100: без него интеграция меняет атрибуты, но прибор не
-    # запускает (боевой разбор 2026-10-13: жарко, а рекуператор off). MAX-режим
-    # форсирует 100 сам, поэтому процент совпадает с режимом.
+    # запускает. И идёт оно ПЕРВЫМ, а режим — последним: включение с процентом
+    # сбрасывает режим прибора на базовый, поэтому «последнее слово» должно быть
+    # за режимом (боевой разбор 2026-10-13: прибор возвращался в «Рекуперацию»
+    # через пару минут после нашей пары команд).
     power = _fan_intent(
         {**context, "percentage": 100}, "turn_on", "fan_airing_on", keys=("percentage",)
     )
-    return [step for step in (preset, power) if step is not None]
+    preset = _fan_intent(
+        {**context, "preset_mode": mode}, "set_preset_mode", "fan_airing_on", keys=("preset_mode",)
+    )
+    return [step for step in (power, preset) if step is not None]
 
 
 def fan_apply_mode_and_speed(state: Any, context: dict[str, Any]) -> list[CommandIntent]:

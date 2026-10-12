@@ -631,6 +631,7 @@ def build_guards(
         "may_heat": make_may_heat(),
         "mode_for_weather": make_mode_for_weather(),
         "should_run_max_supply": make_should_run_max_supply(),
+        "airing_should_end": make_airing_should_end(),
         "speed_within_limits": make_speed_within_limits(),
         "covers_should_close": make_covers_should_close(),
         "covers_should_open": make_covers_should_open(),
@@ -1534,6 +1535,34 @@ def _bathroom_is_uncomfortable(context: dict[str, Any]) -> bool | None:
     return hot or wet
 
 
+def _choose_normal_mode(context: dict[str, Any]) -> Any:
+    """Выбрать обычный (не охлаждающий) режим рекуператора.
+
+    Обычный режим — сезонная рекуперация: при известном сезоне имя берётся из
+    параметров (``mode_winter``/``mode_summer``), при неизвестном — по порогу
+    температуры улицы. Охлаждающий «Приток MAX» здесь не выбирается: им
+    заведует отдельное состояние ``AIRING``.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Имя режима либо ``None``, если выбирать не по чему.
+    """
+    is_winter = context.get("is_winter")
+    if is_winter is True:
+        return context.get("mode_winter")
+    if is_winter is False:
+        return context.get("mode_summer")
+    outside = _number(context, "outside_temperature")
+    if outside is None:
+        return None
+    threshold = _number(context, "winter_mode_threshold")
+    if threshold is None:
+        threshold = DEFAULT_WINTER_THRESHOLD
+    return context.get("mode_winter") if outside <= threshold else context.get("mode_summer")
+
+
 def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «выбрать обычный режим вентиляции».
 
@@ -1580,21 +1609,9 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
         if not allowed or _ventilation_role(context) != "supply":
             return False
 
-        is_winter = context.get("is_winter")
-        if is_winter is True:
-            chosen: Any = context.get("mode_winter")
-        elif is_winter is False:
-            chosen = context.get("mode_summer")
-        else:
-            outside = _number(context, "outside_temperature")
-            if outside is None:
-                return False
-            threshold = _number(context, "winter_mode_threshold")
-            if threshold is None:
-                threshold = DEFAULT_WINTER_THRESHOLD
-            chosen = (
-                context.get("mode_winter") if outside <= threshold else context.get("mode_summer")
-            )
+        chosen: Any = _choose_normal_mode(context)
+        if chosen is None:
+            return False
 
         context["chosen_mode"] = chosen
         # Скорость считается здесь же: переход IDLE → SUPPLY шлёт одним
@@ -1821,6 +1838,64 @@ def make_covers_should_open() -> Callable[[Any, dict[str, Any]], bool]:
 
     covers_should_open.deny_reason = deny_reason  # type: ignore[attr-defined]
     return covers_should_open
+
+
+def make_airing_should_end() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «жара прошла — вернуть обычный режим».
+
+    Автомат выходит из «Притока MAX» и по часовому таймеру, но ждать его, если
+    жара спала раньше, нельзя: рекуператор продолжит дуть максимумом и
+    переохладит дом (улица 11 °C). Условие молчит, пока идёт проветривание
+    владельца (``airing_on``): его держит свой таймер, и отменять его раньше
+    времени нельзя.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def airing_should_end(state: Any, context: dict[str, Any]) -> bool:
+        """Проверить, пора ли вернуть обычный режим.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если жара прошла и это не проветривание владельца.
+        """
+        del state
+        allowed, _ = _ventilation_allowed(context)
+        if not allowed or _ventilation_role(context) != "supply":
+            return False
+        if context.get("airing_on") is True:
+            return False
+        if _room_is_above_comfort(context, _room_temperature(context)):
+            return False
+        chosen = _choose_normal_mode(context)
+        if not chosen:
+            return False
+        # Действие вернёт режим и скорость — кладём их в контекст здесь же, как
+        # это делает выбор режима по погоде.
+        context["chosen_mode"] = chosen
+        context["percentage"] = _clamp_speed(_speed_from_context(context))
+        return True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа.
+
+        Args:
+            state: Состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины отказа владельца либо ``None`` (жара ещё не прошла).
+        """
+        del state
+        allowed, reason = _ventilation_allowed(context)
+        return reason if not allowed else None
+
+    airing_should_end.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return airing_should_end
 
 
 def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
@@ -2259,6 +2334,7 @@ REGISTERED_GUARDS = (
     "may_stay_idle",
     "mode_for_weather",
     "should_run_max_supply",
+    "airing_should_end",
     "speed_within_limits",
     "covers_should_close",
     "covers_should_open",

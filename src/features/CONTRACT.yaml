@@ -57,6 +57,7 @@ registered_actions:  # реестр после register_all_actions
   - turn_on_night_light
 
 registered_guards:  # реестр после register_all_guards
+  - airing_should_end
   - at_or_above_setpoint
   - below_setpoint
   - climate_is_enabled
@@ -321,7 +322,7 @@ templates:
     reachable: true
     in_manifest: []
     actions: [fan_airing_on, exhaust_on, fan_apply_mode_and_speed, fan_set_percentage, fan_turn_off, airing_after_timeout, airing_off, exhaust_after_timeout, exhaust_off]
-    guards: [owner_wants_airing, should_run_max_supply, should_run_exhaust, mode_for_weather, speed_within_limits, ventilation_should_stop, exhaust_should_stop]
+    guards: [owner_wants_airing, should_run_max_supply, should_run_exhaust, mode_for_weather, speed_within_limits, ventilation_should_stop, airing_should_end, exhaust_should_stop]
     triggers:
       temperature_changed: sensor
       humidity_changed: sensor

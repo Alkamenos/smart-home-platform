@@ -271,6 +271,21 @@ transitions:
     guard: "should_run_max_supply"
     action: "fan_airing_on"
 
+  # Жара прошла, а прибор всё ещё на максимальном притоке — вернуть обычный
+  # режим, не дожидаясь часового таймера (иначе дом переохладится). Стоит после
+  # подтверждения режима и до остановки: пока жарко — подтверждаем, остыло —
+  # возвращаем.
+  - from_state: "AIRING"
+    to_state: "SUPPLY"
+    trigger: "temperature_changed"
+    guard: "airing_should_end"
+    action: "fan_apply_mode_and_speed"
+  - from_state: "AIRING"
+    to_state: "SUPPLY"
+    trigger: "settings_changed"
+    guard: "airing_should_end"
+    action: "fan_apply_mode_and_speed"
+
   # Во время проветривания владелец выключил вентиляцию или комната остыла ниже
   # уставки — погасить, не дожидаясь таймера.
   - from_state: "AIRING"

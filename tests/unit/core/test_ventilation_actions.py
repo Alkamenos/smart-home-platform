@@ -304,6 +304,72 @@ class TestShouldRunMaxSupply:
         assert guard(None, context) is False
 
 
+class TestAiringShouldEnd:
+    """Жара прошла — вернуть обычный режим, не дожидаясь таймера (FR-051)."""
+
+    def test_cool_room_ends_airing(self) -> None:
+        """Комната остыла — пора вернуть обычный режим.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("airing_should_end")
+        context = {
+            **DEFAULTS,
+            "temperature": 20.0,
+            "comfort_max": 25.0,
+            "is_winter": True,
+            "airing_on": False,
+        }
+        assert guard(None, context) is True
+        assert context["chosen_mode"] == DEFAULTS["mode_winter"]
+
+    def test_hot_room_keeps_airing(self) -> None:
+        """Ещё жарко — «Приток MAX» продолжается.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("airing_should_end")
+        context = {**DEFAULTS, "temperature": 26.0, "comfort_max": 25.0, "is_winter": True}
+        assert guard(None, context) is False
+
+    def test_owner_airing_is_not_cancelled(self) -> None:
+        """Проветривание владельца держит свой таймер — раньше времени не отменяем.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("airing_should_end")
+        context = {
+            **DEFAULTS,
+            "temperature": 20.0,
+            "comfort_max": 25.0,
+            "is_winter": True,
+            "airing_on": True,
+        }
+        assert guard(None, context) is False
+
+    def test_owner_switch_off_denies_with_reason(self) -> None:
+        """Вентиляция выключена владельцем — причина названа.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("airing_should_end")
+        context = {
+            **DEFAULTS,
+            "temperature": 20.0,
+            "comfort_max": 25.0,
+            "is_winter": True,
+            "ventilation_on": False,
+        }
+        assert guard(None, context) is False
+        assert getattr(guard, "deny_reason", lambda *_: None)(None, context) == (
+            "turned_off_by_owner"
+        )
+
+
 class TestSpeedWithinLimits:
     """Скорость зависит от температуры улицы и времени суток (FR-052, FR-053)."""
 
@@ -663,11 +729,11 @@ class TestAiringOn:
             )
         )
         assert [(step.domain, step.service) for step in steps] == [
-            ("fan", "set_preset_mode"),
             ("fan", "turn_on"),
+            ("fan", "set_preset_mode"),
         ]
-        assert steps[0].data == {"preset_mode": "Приток MAX"}
-        assert steps[1].data == {"percentage": 100}
+        assert steps[0].data == {"percentage": 100}
+        assert steps[1].data == {"preset_mode": "Приток MAX"}
 
     def test_airing_on_without_mode_is_silent(self) -> None:
         """Параметра режима нет — команды нет, но и выдумки нет.
