@@ -127,8 +127,22 @@ def _timeout_from_params(yaml_transition: YAMLTransition, params: dict | None) -
     default = yaml_transition.timeout_sec
     if yaml_transition.trigger != "timeout" or not params:
         return default
-    override = params.get("motion_timeout_sec")
-    if isinstance(override, bool) or not isinstance(override, (int, float)) or override <= 0:
+    # Параметр, которым поведение переопределяет таймер, принадлежит шаблону:
+    # у света это ``motion_timeout_sec``, у вентиляции — ``airing_seconds``
+    # (спека 014, FR-025). Захардкоженный список имён рос бы по одному на
+    # шаблон, поэтому переопределение ищется по двум известным ключам, а
+    # ``timeout_sec`` в шаблоне остаётся значением по умолчанию.
+    override = None
+    for key in ("motion_timeout_sec", "airing_seconds"):
+        candidate = params.get(key)
+        if (
+            isinstance(candidate, (int, float))
+            and not isinstance(candidate, bool)
+            and candidate > 0
+        ):
+            override = candidate
+            break
+    if override is None:
         return default
     return float(override)
 

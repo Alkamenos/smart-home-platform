@@ -1,0 +1,128 @@
+# Вентиляция дома: рекуператоры по погоде, проветривание по человеку — АБСТРАКТНЫЙ ШАБЛОН
+#
+# Управляет рекуператором (Vakio Base Smart) по двум независимым осям:
+# режим выбирается из списка устройства по погоде, скорость задаётся отдельно
+# (research.md D7, D15; живые замеры 2026-10-12).
+#
+# ОЖИДАЕМЫЕ ПАРАМЕТРЫ в params (из манифеста), диапазоны — data-model.md §5:
+#   - mode_winter: str = «Рекуперация (зима)» — улица холоднее порога
+#   - mode_summer: str = «Рекуперация (лето)» — улица теплее порога
+#   - mode_airing: str = «Приток MAX» — проветривание (скорость не задаётся:
+#     MAX-режимы форсируют 100 сами, D15)
+#   - mode_exhaust: str = «Вытяжка»
+#   - winter_mode_threshold: float = 5.0 — порог зимнего режима, °C
+#   - speed_normal: int = 43 — обычная скорость, ТОЛЬКО из списка прибора
+#     [14, 29, 43, 57, 71, 86, 100] (D15: семь скоростей, процент квантуется)
+#   - speed_delta_gain: float = 0.0 — добавка скорости на градус разницы
+#   - speed_night_max: int = 29 — ночной потолок, только понижает (FR-022)
+#   - delta_deadband: float = 0.3 — мёртвая зона разницы, °C (FR-030)
+#   - airing_seconds: float = 3600 — длительность проветривания, с (FR-025);
+#     переопределяет timeout_sec ниже (factory: _timeout_from_params)
+#
+# ПРИМЕР ИСПОЛЬЗОВАНИЯ в manifest.yaml:
+#   rooms:
+#     - id: kabinet
+#       devices:
+#         - id: fan.base_smart
+#           type: fan
+#           behaviors:
+#             - template: ventilation_modes
+#               priority: 10
+#               params:
+#                 mode_winter: "Рекуперация (зима)"
+#                 mode_summer: "Рекуперация (лето)"
+#                 speed_normal: 43
+#                 speed_night_max: 29
+#                 airing_seconds: 1800
+#
+# СОСТОЯНИЯ:
+#   - IDLE: вентилятор стоит — выключен владельцем (ventilation_on = off) или
+#     данных нет вовсе
+#   - SUPPLY: обычная вентиляция — режим по погоде, скорость по разнице
+#   - AIRING: проветривание по требованию человека, само гаснет по таймеру
+#   - EXHAUST: вытяжка санузла — отдельное устройство без скорости (FR-026)
+#
+# ТРИГГЕР — `temperature_changed`: событие, которое реально публикует
+# EventRouter (SENSOR_EVENT_MAP) от датчика температуры. Проветривание и
+# вытяжка приходят как глобалы (airing_on, exhaust_on) и читаются условиями
+# из контекста, поэтому реагируют на то же событие датчика: переключение
+# input_boolean владелец видит в течение получаса, а не «никогда» — урок
+# humidity_ventilation (Known Issue #67): триггер, которого никто не
+# производит, даёт молчащую автоматику.
+#
+# ПОЧЕМУ ПЕРЕХОДОВ ЧЕТЫРЕ, А НЕ ШЕСТЬ: у перехода ровно одно имя условия
+# (конституция I). Пересчёт скорости в SUPPLY — переход в то же состояние:
+# без него каждое новое показание датчика упиралось бы в отказ
+# «нет такого перехода», а скорость замерзала бы на первой заданной.
+
+initial_state: "IDLE"
+
+states:
+  - "IDLE"
+  - "SUPPLY"
+  - "AIRING"
+  - "EXHAUST"
+
+transitions:
+  # Проветривание: попросил человек (input_boolean.provetrivanie = on).
+  # Ставится ПЕРВЫМ по списку: у движка переход в то же состояние ниже
+  # перехватил бы показание раньше, и проветривание не включалось бы вовсе.
+  # Скорость не задаётся: «Приток MAX» форсирует 100 сам (D15), и отдельная
+  # команда была бы перезаписана прибором.
+  - from_state: "IDLE"
+    to_state: "AIRING"
+    trigger: "temperature_changed"
+    guard: "owner_wants_airing"
+    action: "fan_set_preset"
+
+  # Обычная вентиляция: режим по погоде и скорость по разнице температур.
+  # mode_for_weather кладёт chosen_mode в контекст, speed_within_limits —
+  # percentage; обе команды уходят порядком «режим, затем скорость»
+  # (fan_apply_mode_and_speed), потому что прибор принимает скорость только
+  # уже включённым (D15).
+  - from_state: "IDLE"
+    to_state: "SUPPLY"
+    trigger: "temperature_changed"
+    guard: "mode_for_weather"
+    action: "fan_apply_mode_and_speed"
+
+  # Пересчёт скорости на новом показании — переход в то же состояние.
+  # Режим здесь НЕ трогается: он меняется только при смене погоды, а не на
+  # каждое показание (D7 — щелчок режима на каждом опросе выглядел бы как
+  # поломка). Ночной потолок и мёртвая зона — внутри speed_within_limits.
+  - from_state: "SUPPLY"
+    to_state: "SUPPLY"
+    trigger: "temperature_changed"
+    guard: "speed_within_limits"
+    action: "fan_set_percentage"
+
+  # Проветривание закончилось по таймеру: вернуться к обычному режиму, а не
+  # выключить вентиляцию. Обычную работу вернёт это же действие — режим по
+  # погоде и скорость по разнице (FR-025: «само отключается» — само по себе
+  # проветривание, не вентиляция целиком).
+  - from_state: "AIRING"
+    to_state: "SUPPLY"
+    trigger: "timeout"
+    action: "fan_apply_mode_and_speed"
+    # Значение по умолчанию; манифест переопределяет через airing_seconds
+    # (factory: _timeout_from_params).
+    timeout_sec: 3600.0
+
+  # Вытяжка санузла — по требованию человека, отдельным состоянием: у неё
+  # другое устройство (fan.* санузла) и нет скорости (FR-026).
+  # Активируется на ДРУГОМ автомате (вытяжка прописывается в манифесте этим же
+  # шаблоном), поэтому переходы вытяжки живут здесь же.
+  - from_state: "IDLE"
+    to_state: "EXHAUST"
+    trigger: "temperature_changed"
+    guard: "owner_wants_exhaust"
+    action: "exhaust_on"
+
+  # Вытяжку выключил человек (input_boolean.provetrivanie_vytyazhka = off).
+  # Отдельное условие, а не отрицание owner_wants_airing: одно условие —
+  # одно решение (конституция I).
+  - from_state: "EXHAUST"
+    to_state: "IDLE"
+    trigger: "temperature_changed"
+    guard: "owner_stopped_exhaust"
+    action: "exhaust_off"

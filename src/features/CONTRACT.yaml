@@ -62,7 +62,12 @@ registered_guards:  # реестр после register_all_guards
   - may_stay_idle
   - may_stop_heating
   - may_turn_on
+  - mode_for_weather
   - modifier_is_on
+  - owner_stopped_exhaust
+  - owner_wants_airing
+  - owner_wants_exhaust
+  - speed_within_limits
   - stops_on_sleep
   - stops_on_sunrise
 
@@ -264,3 +269,13 @@ templates:
     unproduced_triggers: [turn_on, increase_speed, decrease_speed, turn_off, manual_change]
     gaps:
       - Ни одного из пяти действий в реестре нет — шаблон неисполним целиком. Вне объёма варианта (a).
+  ventilation_modes:
+    reachable: true
+    in_manifest: []
+    actions: [fan_set_preset, fan_apply_mode_and_speed, fan_set_percentage, exhaust_on, exhaust_off]
+    guards: [owner_wants_airing, mode_for_weather, speed_within_limits, owner_wants_exhaust, owner_stopped_exhaust]
+    triggers:
+      temperature_changed: sensor
+      timeout: engine
+    unproduced_triggers: []
+    gaps:

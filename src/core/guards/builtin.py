@@ -627,6 +627,8 @@ def build_guards(
         "mode_for_weather": make_mode_for_weather(),
         "speed_within_limits": make_speed_within_limits(),
         "owner_wants_airing": make_owner_wants_airing(),
+        "owner_wants_exhaust": make_owner_wants_exhaust(),
+        "owner_stopped_exhaust": make_owner_stopped_exhaust(),
         "sensor_is_alive": make_sensor_is_alive(),
         "may_cool": make_may_cool(),
         "may_dry": make_may_dry(),
@@ -1528,6 +1530,67 @@ def make_sensor_is_alive() -> Callable[[Any, dict[str, Any]], bool]:
     return sensor_is_alive
 
 
+def make_owner_wants_exhaust() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «владелец попросил вытяжку».
+
+    Вытяжка санузла включается и выключается только человеком
+    (``input_boolean.provetrivanie_vytyazhka``, FR-026): по влажности или
+    расписанию платформа её не трогает.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool``.
+    """
+
+    def owner_wants_exhaust(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить вытяжку, если её просил человек.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если вытяжка запрошена.
+        """
+        del state
+        return bool(context.get("exhaust_on"))
+
+    return owner_wants_exhaust
+
+
+def make_owner_stopped_exhaust() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «владелец выключил вытяжку».
+
+    Отдельное условие, а не отрицание `owner_wants_exhaust`: одно условие —
+    одно решение (конституция I). Явное выключение — это событие, а отсутствие
+    глобала в контексте — «данных нет», и выключать по нему нельзя: иначе
+    первый же запуск без прочитанной сущности гасил бы работающую вытяжку.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool``.
+    """
+
+    def owner_stopped_exhaust(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить выключение, если человек явно погасил вытяжку.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если вытяжка явно выключена.
+        """
+        del state
+        return context.get("exhaust_on") is False
+
+    return owner_stopped_exhaust
+
+
 def make_may_heat() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «в этой комнате обогреватель нужен и им можно греть».
 
@@ -1664,6 +1727,11 @@ REGISTERED_GUARDS = (
     "may_cool",
     "may_dry",
     "may_stay_idle",
+    "mode_for_weather",
+    "speed_within_limits",
+    "owner_wants_airing",
+    "owner_wants_exhaust",
+    "owner_stopped_exhaust",
 )
 
 
