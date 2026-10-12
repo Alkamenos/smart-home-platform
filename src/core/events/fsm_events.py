@@ -97,6 +97,19 @@ REASON_OUTSIDE_TEMP_MISSING: Final[str] = "outside_temp_missing"
 REASON_SENSOR_STALE: Final[str] = "sensor_stale"
 #: Владелец выключил вентиляцию. Выключалка сильнее любого правила (FR-027).
 REASON_TURNED_OFF_BY_OWNER: Final[str] = "turned_off_by_owner"
+#: Фиче-флаг вентиляции выключен: автоматика вентиляции не работает целиком,
+#: и «выключено владельцем раз и навсегда» — не то же самое, что «выключалку
+#: перевели в off только что» (FR-031, T090). Две разные причины нужны, потому
+#: что по одной утренний анализ не отличит «функцию не включали» от «выключили».
+REASON_VENTILATION_DISABLED: Final[str] = "ventilation_disabled"
+#: В комнате работает обогрев. Проветривать при работающем обогреве
+#: неэффективно: приточный воздух уносит тепло, которое платформа только что
+#: потратила (уточнение владельца, research.md D18, T089).
+REASON_HEATING_ACTIVE: Final[str] = "heating_active"
+#: Санузел сухой и не перегрет: вытяжка не нужна. Штатное решение, а не поломка
+#: (T086): по одной записи должно быть видно, что вытяжку выключили по погоде в
+#: санузле, а не потому, что условий не хватило данных.
+REASON_BATHROOM_COMFORTABLE: Final[str] = "bathroom_comfortable"
 #: Отказ ночника: модификатор «мы спим» известен и выключен — штатное решение
 #: (ночник работает только, пока владелец спит). Раньше оно оставалось
 #: ``guard_failed`` — «условие отказало», — и утренний анализ не мог отличить
@@ -133,6 +146,9 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
         REASON_OUTSIDE_TEMP_MISSING,
         REASON_SENSOR_STALE,
         REASON_TURNED_OFF_BY_OWNER,
+        REASON_VENTILATION_DISABLED,
+        REASON_HEATING_ACTIVE,
+        REASON_BATHROOM_COMFORTABLE,
     }
 )
 
@@ -158,6 +174,9 @@ REASON_TEXT: Final[dict[str, str]] = {
     REASON_OUTSIDE_TEMP_MISSING: "температура улицы не прочитана",
     REASON_SENSOR_STALE: "датчик не даёт пригодного показания",
     REASON_TURNED_OFF_BY_OWNER: "вентиляция выключена владельцем",
+    REASON_VENTILATION_DISABLED: "вентиляция отключена флажком дома",
+    REASON_HEATING_ACTIVE: "в комнате работает обогрев",
+    REASON_BATHROOM_COMFORTABLE: "в санузле сухо и не жарко",
     # Коды действий (T007)
     "action_on": "включено по расписанию",
     "action_off": "выключено по расписанию",

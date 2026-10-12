@@ -555,7 +555,11 @@ GUARD_DATA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     # причины в журнале означают разное: «датчик молчит» и «уставка негодна».
     "may_heat": ("temperature",),
     "mode_for_weather": ("outside_temperature",),
-    "speed_within_limits": ("outside_temperature", "source_room_temperature"),
+    # Температура комнаты приходит под именем роли `temperature`, а не под
+    # `source_room_temperature`: прежний ключ никто не писал, и объявленное
+    # требование останавливало условие на «данных нет» при живом датчике.
+    # Отсутствие температуры называет само условие причиной `sensor_stale`.
+    "speed_within_limits": ("outside_temperature",),
     "sensor_is_alive": ("outside_temperature",),
     "may_stop_heating": ("temperature",),
     "has_usable_reading": ("temperature",),
@@ -627,8 +631,9 @@ def build_guards(
         "mode_for_weather": make_mode_for_weather(),
         "speed_within_limits": make_speed_within_limits(),
         "owner_wants_airing": make_owner_wants_airing(),
-        "owner_wants_exhaust": make_owner_wants_exhaust(),
-        "owner_stopped_exhaust": make_owner_stopped_exhaust(),
+        "should_run_exhaust": make_should_run_exhaust(),
+        "exhaust_should_stop": make_exhaust_should_stop(),
+        "ventilation_should_stop": make_ventilation_should_stop(),
         "sensor_is_alive": make_sensor_is_alive(),
         "may_cool": make_may_cool(),
         "may_dry": make_may_dry(),
@@ -1266,6 +1271,24 @@ DEFAULT_WINTER_THRESHOLD = 5.0
 MIN_SPEED = 0
 MAX_SPEED = 100
 
+#: Разница «комната − улица», °C, с которой рекуперация переключается на приток.
+#:
+#: Приток — это быстрое охлаждение свежим воздухом (research.md D18): пока
+#: разница мала, рекуператор возвращает тепло, а когда помещение заметно теплее
+#: улицы, выгоднее подать холодный воздух прямо. Захардкоженный порог рос бы
+#: вместе с домом, поэтому он приходит параметром поведения; это — запасное
+#: значение.
+DEFAULT_SUPPLY_DELTA = 5.0
+
+#: Порог температуры санузла, °C, с которого вытяжка считается нужной (T086).
+#: Владелец выбрал 25 °C: зимой санузел держится на 23–24 °C, а выше — уже
+#: заметный перегрев от печи или душа.
+DEFAULT_EXHAUST_TEMPERATURE = 25.0
+
+#: Порог влажности санузла, %, с которого вытяжка считается нужной (T086).
+#: 65 % — тот же порог, что у прежнего шаблона humidity_ventilation.
+DEFAULT_EXHAUST_HUMIDITY = 65.0
+
 
 def _number(context: dict[str, Any], key: str) -> float | None:
     """Число из контекста; неприводимое или отсутствующее — ``None``.
@@ -1298,8 +1321,162 @@ def _clamp_speed(value: float) -> int:
     return int(max(MIN_SPEED, min(MAX_SPEED, round(value))))
 
 
+def _room_temperature(context: dict[str, Any]) -> float | None:
+    """Температура комнаты автомата вентиляции.
+
+    Роутер кладёт показание датчика комнаты под именем его роли —
+    ``temperature`` (``event_router.py::route_state_change``). Ключ
+    ``source_room_temperature`` — прежнее имя, оставшееся запасным: условия
+    читали его, но писать его было некому, и скорость вентиляции отказывала
+    «датчик не даёт показания» при живом датчике. Запасной ключ сохраняет
+    совместимость с уже сохранённым состоянием автоматов.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Температура в градусах либо ``None``, если показания нет.
+    """
+    value = _number(context, "temperature")
+    if value is None:
+        value = _number(context, "source_room_temperature")
+    return value
+
+
+def _speed_from_context(context: dict[str, Any]) -> float:
+    """Скорость рекуператора по разнице температур и модификатору сна.
+
+    Формула (FR-020): ``speed_normal + |улица − комната| × speed_delta_gain``,
+    с обычной скоростью в мёртвой зоне ``|Δ| ≤ delta_deadband`` (FR-030) и
+    ночным потолком, который **только понижает** (FR-022, T088). Показания
+    комнаты нет — берётся обычная скорость: это не «данные есть», а безопасное
+    значение по умолчанию, и оно совпадает с мёртвой зоной.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Скорость в процентах, ещё не ограниченная 0–100.
+    """
+    outside = _number(context, "outside_temperature")
+    room = _room_temperature(context)
+    normal = _number(context, "speed_normal")
+    gain = _number(context, "speed_delta_gain")
+    deadband = _number(context, "delta_deadband")
+    normal = 30.0 if normal is None else normal
+    gain = 0.0 if gain is None else gain
+    deadband = 0.0 if deadband is None else deadband
+
+    if outside is None or room is None:
+        speed = normal
+    else:
+        delta = abs(outside - room)
+        speed = normal if delta <= deadband else normal + delta * gain
+
+    if _is_night(context):
+        night_max = _number(context, "speed_night_max")
+        if night_max is not None:
+            # Потолок только понижает: тихую скорость поднимать нельзя. Ночью
+            # при нормальной температуре это и даёт минимальную скорость
+            # (T088) — проветривать в тишине, но не замерзать.
+            speed = min(speed, night_max)
+    return speed
+
+
+def _is_night(context: dict[str, Any]) -> bool:
+    """Признак ночи для вентиляции.
+
+    Ночью рекуператор должен работать тихо (FR-022, T088). Платформа часов не
+    считает: ночь задаёт модификатор владельца «мы спим»
+    (``input_boolean.sleep_mode``), который роутер кладёт в контекст как
+    ``sleep_modifier_on``. Ключ ``is_night`` остаётся запасным для сохранённого
+    состояния автоматов.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        True, если сейчас ночь.
+    """
+    if context.get("is_night") is True:
+        return True
+    return context.get("sleep_modifier_on") is True
+
+
+def _ventilation_role(context: dict[str, Any]) -> str:
+    """Роль устройства в шаблоне вентиляции.
+
+    Один шаблон обслуживает и рекуператор (режим + скорость), и вытяжку
+    санузла (только вкл/выкл). Роль приходит параметром поведения
+    (``ventilation_role``), иначе первая же смена температуры заставила бы
+    вытяжку «выбирать режим», которого у неё нет.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        ``supply`` для рекуператора, ``exhaust`` для вытяжки.
+    """
+    role = context.get("ventilation_role")
+    return role if isinstance(role, str) and role else "supply"
+
+
+def _ventilation_allowed(context: dict[str, Any]) -> tuple[bool, str | None]:
+    """Право автоматики вентиляции работать сейчас.
+
+    Порядок проверок — по силе права: фиче-флаг дома выключает вентиляцию
+    целиком (T090), выключатель владельца сильнее любого правила (FR-027),
+    работающий обогрев делает проветривание бессмысленным (T089, D18).
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Пару «разрешено ли» и имя причины отказа, если нет.
+    """
+    if context.get("ventilation_enabled") is False:
+        return False, "ventilation_disabled"
+    if context.get("ventilation_on") is False:
+        return False, "turned_off_by_owner"
+    if context.get("heating_active") is True:
+        return False, "heating_active"
+    return True, None
+
+
+def _bathroom_is_uncomfortable(context: dict[str, Any]) -> bool | None:
+    """Нужна ли вытяжка санузла по его температуре и/или влажности.
+
+    Показаний может не быть вовсе (датчик влажности в доме пока не поставлен):
+    тогда возвращается ``None``, и решение принимает модификатор владельца.
+    ``True`` — санузел жаркий или влажный, ``False`` — сухо и не жарко.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        ``True``/``False`` при пригодных показаниях, иначе ``None``.
+    """
+    temperature = _number(context, "temperature")
+    humidity = _number(context, "humidity")
+    if temperature is None and humidity is None:
+        return None
+
+    temperature_threshold = _number(context, "exhaust_temp_threshold")
+    humidity_threshold = _number(context, "exhaust_humidity_threshold")
+    temperature_threshold = (
+        DEFAULT_EXHAUST_TEMPERATURE if temperature_threshold is None else temperature_threshold
+    )
+    humidity_threshold = (
+        DEFAULT_EXHAUST_HUMIDITY if humidity_threshold is None else humidity_threshold
+    )
+
+    hot = temperature is not None and temperature >= temperature_threshold
+    wet = humidity is not None and humidity >= humidity_threshold
+    return hot or wet
+
+
 def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
-    """Построить условие «выбрать режим по погоде на улице».
+    """Построить условие «выбрать режим вентиляции».
 
     Физику теплообмена платформа не считает: у рекуператора есть готовые режимы,
     и вычислять приближение — значит заменить работу устройства худшим
@@ -1307,8 +1484,16 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
     заданного параметрами поведения, и кладёт его в контекст под именем
     ``chosen_mode``.
 
-    Без показания улицы режим **не выбирается**: при морозе угадывание означало
-    бы лишний приток свежего воздуха, летом — душный дом.
+    Режим зависит от модификатора владельца «зима» (research.md D18): зимой —
+    рекуперация (зима), летом — рекуперация (лето). Для быстрого охлаждения,
+    когда комната заметно теплее улицы, выбирается приток. Без показания улицы
+    режим **не выбирается**: при морозе угадывание означало бы лишний приток
+    свежего воздуха, летом — душный дом.
+
+    Условие отказывает и тогда, когда вентиляции работать нельзя: фиче-флаг
+    выключен, выключатель владельца в off или в комнате работает обогрев
+    (FR-027, FR-031, T089, T090). Иначе перехода в SUPPLY из IDLE не было бы
+    вовсе, и причина отказа осталась бы неназванной.
 
     Args:
         Ничего.
@@ -1318,7 +1503,14 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
     """
 
     def mode_for_weather(state: Any, context: dict[str, Any]) -> bool:
-        """Выбрать режим по температуре улицы.
+        """Выбрать режим по модификатору «зима», дельте температур и погоде.
+
+        Приток выбирается для быстрого охлаждения: когда комната заметно
+        теплее улицы (разница не меньше ``supply_delta_threshold``), свежий
+        воздух охлаждает быстрее рекуперации (research.md D18). Иначе режим
+        задаёт модификатор владельца «зима»: зимой — рекуперация (зима), летом —
+        рекуперация (лето). Пока модификатор неизвестен, режим выбирается по
+        прежнему порогу температуры улицы.
 
         Args:
             state: Состояние автомата (не используется).
@@ -1328,18 +1520,41 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
             True, если режим выбран.
         """
         del state
+        allowed, _ = _ventilation_allowed(context)
+        if not allowed or _ventilation_role(context) != "supply":
+            return False
+
         outside = _number(context, "outside_temperature")
         if outside is None:
             return False
 
-        threshold = _number(context, "winter_mode_threshold")
-        if threshold is None:
-            threshold = DEFAULT_WINTER_THRESHOLD
+        room = _room_temperature(context)
+        supply_delta = _number(context, "supply_delta_threshold")
+        supply_delta = DEFAULT_SUPPLY_DELTA if supply_delta is None else supply_delta
 
-        context["chosen_mode"] = (
-            context.get("mode_winter") if outside <= threshold else context.get("mode_summer")
-        )
-        return bool(context["chosen_mode"])
+        is_winter = context.get("is_winter")
+        chosen: Any = None
+        if room is not None and (room - outside) >= supply_delta:
+            chosen = context.get("mode_supply")
+        elif is_winter is True:
+            chosen = context.get("mode_winter")
+        elif is_winter is False:
+            chosen = context.get("mode_summer")
+        else:
+            threshold = _number(context, "winter_mode_threshold")
+            if threshold is None:
+                threshold = DEFAULT_WINTER_THRESHOLD
+            chosen = (
+                context.get("mode_winter") if outside <= threshold else context.get("mode_summer")
+            )
+
+        context["chosen_mode"] = chosen
+        # Скорость считается здесь же: переход IDLE → SUPPLY шлёт одним
+        # действием и режим, и скорость, а накопленный контекст может не
+        # содержать процента с прошлого раза — тогда команда скорости уходила бы
+        # без значения и Home Assistant её отвергал.
+        context["percentage"] = _clamp_speed(_speed_from_context(context))
+        return bool(chosen)
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
         """Назвать причину отказа.
@@ -1349,9 +1564,14 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
             context: Контекст перехода.
 
         Returns:
-            ``outside_temp_missing`` либо ``None``.
+            Имя причины либо ``None``.
         """
         del state
+        allowed, reason = _ventilation_allowed(context)
+        if not allowed:
+            return reason
+        if _ventilation_role(context) != "supply":
+            return None
         if _number(context, "outside_temperature") is None:
             return "outside_temp_missing"
         return None
@@ -1369,8 +1589,10 @@ def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
     каждое показание), ограничением 0–100 и ночным потолком, который **только
     понижает** (FR-022).
 
-    Выключачка владельца ``ventilation_on = off`` сильнее любого правила и даёт
-    скорость 0 (FR-027): иначе её нельзя было бы выключить раз и навсегда.
+    Выключачка владельца ``ventilation_on = off`` сильнее любого правила
+    (FR-027): условие отказывает с причиной ``turned_off_by_owner``, а переход
+    ``SUPPLY → IDLE`` гасит прибор — «полностью выключает», а не «крутит на
+    нуле» (T090). То же у выключенного фиче-флага и у работающего обогрева.
 
     Args:
         Ничего.
@@ -1387,36 +1609,20 @@ def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
             context: Контекст перехода.
 
         Returns:
-            True, если скорость посчитана (в том числе когда она нулевая).
+            True, если скорость посчитана.
         """
         del state
 
-        if context.get("ventilation_on") is False:
-            context["percentage"] = MIN_SPEED
-            return True
+        allowed, _ = _ventilation_allowed(context)
+        if not allowed or _ventilation_role(context) != "supply":
+            return False
 
         outside = _number(context, "outside_temperature")
-        room = _number(context, "source_room_temperature")
+        room = _room_temperature(context)
         if outside is None or room is None:
             return False
 
-        normal = _number(context, "speed_normal")
-        gain = _number(context, "speed_delta_gain")
-        deadband = _number(context, "delta_deadband")
-        normal = 30.0 if normal is None else normal
-        gain = 0.0 if gain is None else gain
-        deadband = 0.0 if deadband is None else deadband
-
-        delta = abs(outside - room)
-        speed = normal if delta <= deadband else normal + delta * gain
-
-        if context.get("is_night") is True:
-            night_max = _number(context, "speed_night_max")
-            if night_max is not None:
-                # Потолок только понижает: тихую скорость поднимать нельзя.
-                speed = min(speed, night_max)
-
-        context["percentage"] = _clamp_speed(speed)
+        context["percentage"] = _clamp_speed(_speed_from_context(context))
         return True
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
@@ -1430,9 +1636,14 @@ def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
             Имя причины либо ``None``.
         """
         del state
+        allowed, reason = _ventilation_allowed(context)
+        if not allowed:
+            return reason
+        if _ventilation_role(context) != "supply":
+            return None
         if _number(context, "outside_temperature") is None:
             return "outside_temp_missing"
-        if _number(context, "source_room_temperature") is None:
+        if _room_temperature(context) is None:
             return "sensor_stale"
         return None
 
@@ -1444,9 +1655,12 @@ def make_owner_wants_airing() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «владелец попросил проветрить».
 
     Проветривание включается только человеком (``input_boolean.provetrivanie``)
-    и само отключается по таймеру шаблона (FR-024). По влажности платформа его
-    не включает: на улице бывает влажнее, чем дома, и решение владельца не
+    и само отключается по таймеру шаблона (FR-024, T085). По влажности платформа
+    его не включает: на улице бывает влажнее, чем дома, и решение владельца не
     принято (``research.md`` D14).
+
+    Проветривание — это о рекуператоре (роль ``supply``). Вытяжке санузла приток
+    не задаётся вовсе.
 
     Args:
         Ничего.
@@ -1466,6 +1680,9 @@ def make_owner_wants_airing() -> Callable[[Any, dict[str, Any]], bool]:
             True, если проветривание запрошено.
         """
         del state
+        allowed, _ = _ventilation_allowed(context)
+        if not allowed or _ventilation_role(context) != "supply":
+            return False
         return bool(context.get("airing_on"))
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
@@ -1476,10 +1693,12 @@ def make_owner_wants_airing() -> Callable[[Any, dict[str, Any]], bool]:
             context: Контекст перехода.
 
         Returns:
-            ``None``: проветривание не просили — это не поломка.
+            Причину запрета вентиляции либо ``None`` (проветривание просто не
+            просили — это не поломка).
         """
         del state
-        return None
+        allowed, reason = _ventilation_allowed(context)
+        return reason if not allowed else None
 
     owner_wants_airing.deny_reason = deny_reason  # type: ignore[attr-defined]
     return owner_wants_airing
@@ -1530,12 +1749,75 @@ def make_sensor_is_alive() -> Callable[[Any, dict[str, Any]], bool]:
     return sensor_is_alive
 
 
-def make_owner_wants_exhaust() -> Callable[[Any, dict[str, Any]], bool]:
-    """Построить условие «владелец попросил вытяжку».
+def make_should_run_exhaust() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «вытяжку санузла пора включить».
 
-    Вытяжка санузла включается и выключается только человеком
-    (``input_boolean.provetrivanie_vytyazhka``, FR-026): по влажности или
-    расписанию платформа её не трогает.
+    Вытяжка включается двумя путями и работает, пока есть хоть один повод:
+
+    - модификатор владельца ``input_boolean.provetrivanie_vytyazhka`` — ручное
+      «проветрить санузел», с автосбросом по таймеру 60 минут (FR-026, T085);
+    - высокая температура и/или влажность самого санузла (FR-026, T086,
+      уточнение владельца ``research.md`` D18).
+
+    Условие — только о вытяжке (роль ``exhaust``): рекуператору его переходы не
+    адресованы, и режим притока туда не уйдёт.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def should_run_exhaust(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить вытяжку, если её просил человек или санузел не в норме.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если вытяжка нужна.
+        """
+        del state
+        allowed, _ = _ventilation_allowed(context)
+        if not allowed or _ventilation_role(context) != "exhaust":
+            return False
+        if context.get("exhaust_on") is True:
+            return True
+        return _bathroom_is_uncomfortable(context) is True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа.
+
+        Args:
+            state: Состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо ``None`` (вытяжка просто не нужна).
+        """
+        del state
+        allowed, reason = _ventilation_allowed(context)
+        if not allowed:
+            return reason
+        if _ventilation_role(context) != "exhaust":
+            return None
+        if _bathroom_is_uncomfortable(context) is False:
+            return "bathroom_comfortable"
+        return None
+
+    should_run_exhaust.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return should_run_exhaust
+
+
+def make_exhaust_should_stop() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «вытяжку санузла пора выключить».
+
+    Отдельное условие, а не отрицание `should_run_exhaust`: одно условие — одно
+    решение (конституция I). Вытяжка гаснет, когда модификатор владельца снят И
+    санузел вернулся в норму ИЛИ вентиляции работать нельзя (фиче-флаг,
+    выключатель, обогрев).
 
     Args:
         Ничего.
@@ -1544,29 +1826,36 @@ def make_owner_wants_exhaust() -> Callable[[Any, dict[str, Any]], bool]:
         Функция ``(state, context) -> bool``.
     """
 
-    def owner_wants_exhaust(state: Any, context: dict[str, Any]) -> bool:
-        """Разрешить вытяжку, если её просил человек.
+    def exhaust_should_stop(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить выключение вытяжки.
 
         Args:
             state: Состояние автомата (не используется).
             context: Контекст перехода.
 
         Returns:
-            True, если вытяжка запрошена.
+            True, если вытяжку пора погасить.
         """
         del state
-        return bool(context.get("exhaust_on"))
+        if _ventilation_role(context) != "exhaust":
+            return False
+        allowed, _ = _ventilation_allowed(context)
+        if not allowed:
+            return True
+        if context.get("exhaust_on") is True:
+            return False
+        return _bathroom_is_uncomfortable(context) is not True
 
-    return owner_wants_exhaust
+    return exhaust_should_stop
 
 
-def make_owner_stopped_exhaust() -> Callable[[Any, dict[str, Any]], bool]:
-    """Построить условие «владелец выключил вытяжку».
+def make_ventilation_should_stop() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «вентиляции работать нельзя — погасить».
 
-    Отдельное условие, а не отрицание `owner_wants_exhaust`: одно условие —
-    одно решение (конституция I). Явное выключение — это событие, а отсутствие
-    глобала в контексте — «данных нет», и выключать по нему нельзя: иначе
-    первый же запуск без прочитанной сущности гасил бы работающую вытяжку.
+    Переход в ``IDLE`` из ``SUPPLY``/``AIRING``: фиче-флаг выключен, выключатель
+    владельца в off или в комнате работает обогрев (FR-027, FR-031, T089, T090).
+    Проветривание по модификатору здесь тоже гасится: владелец выключил
+    вентиляцию целиком — приток не исключение.
 
     Args:
         Ничего.
@@ -1575,20 +1864,23 @@ def make_owner_stopped_exhaust() -> Callable[[Any, dict[str, Any]], bool]:
         Функция ``(state, context) -> bool``.
     """
 
-    def owner_stopped_exhaust(state: Any, context: dict[str, Any]) -> bool:
-        """Разрешить выключение, если человек явно погасил вытяжку.
+    def ventilation_should_stop(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить выключение вентиляции.
 
         Args:
             state: Состояние автомата (не используется).
             context: Контекст перехода.
 
         Returns:
-            True, если вытяжка явно выключена.
+            True, если работать нельзя.
         """
         del state
-        return context.get("exhaust_on") is False
+        if _ventilation_role(context) != "supply":
+            return False
+        allowed, _ = _ventilation_allowed(context)
+        return not allowed
 
-    return owner_stopped_exhaust
+    return ventilation_should_stop
 
 
 def make_may_heat() -> Callable[[Any, dict[str, Any]], bool]:
@@ -1730,8 +2022,10 @@ REGISTERED_GUARDS = (
     "mode_for_weather",
     "speed_within_limits",
     "owner_wants_airing",
-    "owner_wants_exhaust",
-    "owner_stopped_exhaust",
+    "should_run_exhaust",
+    "exhaust_should_stop",
+    "ventilation_should_stop",
+    "sensor_is_alive",
 )
 
 

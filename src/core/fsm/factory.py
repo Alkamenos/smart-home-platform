@@ -104,6 +104,16 @@ class LoadReport:
 _PACKAGE_FEATURES_DIR = Path(__file__).resolve().parents[2] / "features"
 
 
+#: Переопределение таймаута по имени действия перехода: у разных состояний
+#: одного шаблона разные сроки, и параметр должен выбираться по переходу, а не
+#: «первый подошедший». Ключ — имя действия, значение — имена параметров, по
+#: порядку. Для действий, которых здесь нет, остаются общие ключи
+#: (``motion_timeout_sec`` для света, ``airing_seconds`` для проветривания).
+_TIMEOUT_OVERRIDE_KEYS: dict[str, tuple[str, ...]] = {
+    "exhaust_after_timeout": ("exhaust_seconds",),
+}
+
+
 def _timeout_from_params(yaml_transition: YAMLTransition, params: dict | None) -> float | None:
     """Определяет таймаут перехода с учётом параметра поведения.
 
@@ -129,11 +139,15 @@ def _timeout_from_params(yaml_transition: YAMLTransition, params: dict | None) -
         return default
     # Параметр, которым поведение переопределяет таймер, принадлежит шаблону:
     # у света это ``motion_timeout_sec``, у вентиляции — ``airing_seconds``
-    # (спека 014, FR-025). Захардкоженный список имён рос бы по одному на
-    # шаблон, поэтому переопределение ищется по двум известным ключам, а
-    # ``timeout_sec`` в шаблоне остаётся значением по умолчанию.
+    # (спека 014, FR-025), у вытяжки — ``exhaust_seconds`` (T085). Вытяжка
+    # объявлена отдельным именем действия: без этого ``airing_seconds``
+    # переопределял бы и таймер вытяжки, и полчаса проветривания задавали бы
+    # срок снятия модификатора вытяжки.
+    override_keys = _TIMEOUT_OVERRIDE_KEYS.get(
+        yaml_transition.action or "", ("motion_timeout_sec", "airing_seconds")
+    )
     override = None
-    for key in ("motion_timeout_sec", "airing_seconds"):
+    for key in override_keys:
         candidate = params.get(key)
         if (
             isinstance(candidate, (int, float))
@@ -180,7 +194,7 @@ _DOMAIN_RULE_NAMES: dict[str, tuple[str, ...]] = {
         "always_on_motion_rooms",
     ),
     "climate": ("setpoint_min", "setpoint_max"),
-    "ventilation": ("manual_lockout_min",),
+    "ventilation": ("manual_lockout_min", "airing_entity", "exhaust_entity"),
 }
 
 
