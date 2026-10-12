@@ -26,11 +26,15 @@ registered_actions:  # реестр после register_all_actions
   - ac_forced_off
   - ac_off
   - ac_set_mode
+  - airing_after_timeout
+  - airing_off
   - climate_cool
   - climate_heat
   - climate_off
+  - exhaust_after_timeout
   - exhaust_off
   - exhaust_on
+  - fan_airing_on
   - fan_apply_mode_and_speed
   - fan_set_percentage
   - fan_set_preset
@@ -50,6 +54,7 @@ registered_guards:  # реестр после register_all_guards
   - at_or_above_setpoint
   - below_setpoint
   - climate_is_enabled
+  - exhaust_should_stop
   - has_usable_reading
   - humidity_above_60
   - humidity_below_60
@@ -64,12 +69,13 @@ registered_guards:  # реестр после register_all_guards
   - may_turn_on
   - mode_for_weather
   - modifier_is_on
-  - owner_stopped_exhaust
   - owner_wants_airing
-  - owner_wants_exhaust
+  - sensor_is_alive
+  - should_run_exhaust
   - speed_within_limits
   - stops_on_sleep
   - stops_on_sunrise
+  - ventilation_should_stop
 
 uncovered_platform_events:
   # События, которые платформа публикует, но ни один шаблон не слушает.
@@ -272,10 +278,89 @@ templates:
   ventilation_modes:
     reachable: true
     in_manifest: []
-    actions: [fan_set_preset, fan_apply_mode_and_speed, fan_set_percentage, exhaust_on, exhaust_off]
-    guards: [owner_wants_airing, mode_for_weather, speed_within_limits, owner_wants_exhaust, owner_stopped_exhaust]
+    actions: [fan_airing_on, exhaust_on, fan_apply_mode_and_speed, fan_set_percentage, fan_turn_off, airing_after_timeout, airing_off, exhaust_after_timeout, exhaust_off]
+    guards: [owner_wants_airing, should_run_exhaust, mode_for_weather, speed_within_limits, ventilation_should_stop, exhaust_should_stop]
     triggers:
       temperature_changed: sensor
+      humidity_changed: sensor
       timeout: engine
     unproduced_triggers: []
     gaps:
+      - Один шаблон обслуживает и рекуператор, и вытяжку: роль устройства задаётся параметром ventilation_role. Разделить их отдельными шаблонами значило бы дублировать условие остановки и таймеры; движок допускает на переход ровно одно имя guard'а (конституция I).
+      - Ночью ограничивается скорость (speed_night_max), а не режим: отдельного ночного режима нет, и параметры mode_night/mode_exhaust из data-model.md §5 удалены как не имеющие силы (вытяжка — отдельный прибор без режимов).
+    params:
+      ventilation_role:
+        type: str
+        range: "supply|exhaust"
+        effective: true
+        note: "Роль устройства: supply — рекуператор (режим и скорость), exhaust — вытяжка санузла (только вкл/выкл). Читают все условия вентиляции; без неё вытяжка выбирала бы режим, которого у неё нет. По умолчанию supply."
+      mode_supply:
+        type: str
+        range: "из списка устройства"
+        effective: true
+        note: "Режим притока — быстрое охлаждение свежим воздухом. Читает mode_for_weather, когда комната теплее улицы не меньше supply_delta_threshold (research.md D18)."
+      mode_summer:
+        type: str
+        range: "из списка устройства"
+        effective: true
+        note: "Режим рекуперации, когда модификатор «зима» снят."
+      mode_winter:
+        type: str
+        range: "из списка устройства"
+        effective: true
+        note: "Режим рекуперации, когда модификатор «зима» включён (is_winter)."
+      mode_airing:
+        type: str
+        range: "из списка устройства"
+        effective: true
+        note: "Режим проветривания (Приток MAX). MAX-режимы форсируют скорость 100 сами, поэтому отдельной команды скорости нет (research.md D15)."
+      winter_mode_threshold:
+        type: float
+        range: "0-30"
+        effective: true
+        note: "Запасной порог зимы, °C: применяется, пока модификатор «зима» ещё не прочитан. По умолчанию 5.0."
+      supply_delta_threshold:
+        type: float
+        range: "0-30"
+        effective: true
+        note: "Разница «комната − улица», °C, с которой рекуперация переключается на приток. По умолчанию 5.0 (research.md D18)."
+      speed_normal:
+        type: int
+        range: "0-100"
+        effective: true
+        note: "Обычная скорость. Прибор квантует к списку [14, 29, 43, 57, 71, 86, 100] (research.md D15). По умолчанию 30."
+      speed_delta_gain:
+        type: float
+        range: "0-20"
+        effective: true
+        note: "Добавка скорости на градус разницы температур. По умолчанию 5.0."
+      speed_night_max:
+        type: int
+        range: "0-100"
+        effective: true
+        note: "Ночной потолок скорости, только понижает (FR-022, T088). По умолчанию 20."
+      delta_deadband:
+        type: float
+        range: "0-2"
+        effective: true
+        note: "Мёртвая зона разницы температур, °C: колебания меньше не двигают скорость (FR-030). По умолчанию 0.3."
+      airing_seconds:
+        type: float
+        range: "60-86400"
+        effective: true
+        note: "Длительность проветривания, с; переопределяет timeout_sec перехода AIRING (FR-025). По умолчанию 3600."
+      exhaust_seconds:
+        type: float
+        range: "60-86400"
+        effective: true
+        note: "Длительность вытяжки по модификатору, с; переопределяет timeout_sec перехода EXHAUST (T085). По умолчанию 3600."
+      exhaust_temp_threshold:
+        type: float
+        range: "0-50"
+        effective: true
+        note: "Порог температуры санузла, °C, при котором включается вытяжка (T086). По умолчанию 25.0."
+      exhaust_humidity_threshold:
+        type: float
+        range: "0-100"
+        effective: true
+        note: "Порог влажности санузла, %, при котором включается вытяжка (T086). По умолчанию 65.0."

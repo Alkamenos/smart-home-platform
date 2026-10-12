@@ -136,29 +136,63 @@ REST 2026-10-10.
 
 ## 5. Параметры поведения `ventilation_modes`
 
+Параметры уточнены по решению владельца (`research.md` D18) и приведены в
+соответствие с кодом при переработке шаблона (T059, T085–T090). Один шаблон
+обслуживает и рекуператор, и вытяжку: род устройства задаёт `ventilation_role`.
+
 | Параметр | Тип | Диапазон | По умолчанию | FR |
 |----------|-----|----------|--------------|-----|
+| `ventilation_role` | `str` | `supply` \| `exhaust` | `supply` | FR-028 |
 | `mode_supply` | `str` | из списка устройства | `Приток` | FR-019 |
 | `mode_summer` | `str` | из списка устройства | `Рекуперация (лето)` | FR-019 |
 | `mode_winter` | `str` | из списка устройства | `Рекуперация (зима)` | FR-019 |
-| `mode_night` | `str` | из списка устройства | `Ночной` | FR-019 |
 | `mode_airing` | `str` | из списка устройства | `Приток MAX` | FR-024 |
-| `mode_exhaust` | `str` | из списка устройства | `Вытяжка` | FR-026 |
+| `winter_mode_threshold` | `float` | 0–30 | 5.0 | FR-019 |
+| `supply_delta_threshold` | `float` | 0–30 | 5.0 | FR-019 |
 | `speed_normal` | `int` | 0–100 | 30 | FR-020 |
 | `speed_delta_gain` | `float` | 0–20 | 5.0 | FR-020 |
 | `speed_night_max` | `int` | 0–100 | 20 | FR-022 |
 | `delta_deadband` | `float` | 0–2 | 0.3 | FR-030 |
 | `airing_seconds` | `float` | 60–86400 | 3600 | FR-025 |
-| `source_room` | `str` | id комнаты | самая тёплая | FR-001 вентиляции |
+| `exhaust_seconds` | `float` | 60–86400 | 3600 | FR-025 |
+| `exhaust_temp_threshold` | `float` | 0–50 | 25.0 | FR-026 |
+| `exhaust_humidity_threshold` | `float` | 0–100 | 65.0 | FR-026 |
+
+`mode_night` и `mode_exhaust` из первой редакции удалены: ночью ограничивается
+скорость (`speed_night_max`), а не режим, а вытяжка — отдельный прибор без
+режимов; параметры без силы форма поведения показывать не должна.
 
 **Почему режимы — параметры, а не константы кода** (`research.md` D7): список
 режимов принадлежит устройству. Зашитый в код режим означал бы, что замена
 рекуператора на другой с сохранением набора режимов потребует правки кода.
 
+**Выбор режима** (`research.md` D18): при разнице «комната − улица» не меньше
+`supply_delta_threshold` выбирается `mode_supply` (быстрое охлаждение); иначе
+режим задаёт модификатор владельца «зима» — `mode_winter` зимой, `mode_summer`
+летом. Пока модификатор не прочитан, режим выбирается по
+`winter_mode_threshold` относительно температуры улицы.
+
 **Скорость по разнице температур** (FR-020): считается как
 `speed_normal + |улица − комната| × speed_delta_gain`, с нулём в мёртвой зоне
 `|Δ| ≤ delta_deadband` (FR-030), ограничением 0–100 и ночным потолком
-(FR-022, только понижение).
+(FR-022, только понижение). Комнатная температура приходит в контекст под
+именем роли датчика (`temperature`), а не отдельного параметра `source_room`:
+прежний ключ `source_room_temperature` никто не писал, и скорость отказывала
+«датчик не даёт показания» при живом датчике.
+
+**Вытяжка** (FR-026, T086): включается модификатором владельца ИЛИ по
+температуре и/или влажности санузла; гасится, когда снят модификатор и санузел
+вернулся в норму.
+
+**Автосброс модификаторов** (T085): проветривание и вытяжка держатся не больше
+`airing_seconds` / `exhaust_seconds`, затем платформа возвращает обычный режим и
+записывает `input_boolean` модификатора в `off` (действия
+`airing_after_timeout` / `exhaust_after_timeout`).
+
+**Право владельца и обогрев** (FR-027, FR-031, T089, T090): `ventilation_on` =
+off, `ventilation_enabled` = off или работающий обогрев в комнате
+(`heating_active`) полностью гасят вентиляцию — прибор выключается, а не
+крутится на нуле.
 
 ---
 
@@ -197,14 +231,35 @@ REST 2026-10-10.
 
 | Состояние | Значение |
 |-----------|----------|
-| `IDLE` | Рекуператоры выключены |
-| `SUPPLY` | Обычный режим по погоде |
-| `AIRING` | Проветривание, самоотключение по таймеру |
-| `EXHAUST` | Режим вытяжки |
+| `IDLE` | Прибор стоит: выключен владельцем, идёт обогрев или данных нет |
+| `SUPPLY` | Обычный режим: режим по модификатору «зима» и дельте, скорость по разнице |
+| `AIRING` | Проветривание по модификатору, самоотключение по таймеру |
+| `EXHAUST` | Вытяжка санузла: по модификатору либо по температуре/влажности |
 
 `EXHAUST` — отдельное состояние, а не флаг: вытяжка меняет не скорость
 притока, а направление. Совмещение в одном автомате с притоком дало бы
 автомат, который держит два разных намерения одновременно.
+
+Переходы (все на событии датчика `temperature_changed`, для санузла ещё и
+`humidity_changed`; `timeout` — из движка):
+
+| Из | В | Условие | Действие |
+|----|----|---------|----------|
+| IDLE | AIRING | `owner_wants_airing` | `fan_set_preset` |
+| IDLE | EXHAUST | `should_run_exhaust` | `exhaust_on` |
+| IDLE | SUPPLY | `mode_for_weather` | `fan_apply_mode_and_speed` |
+| SUPPLY | AIRING | `owner_wants_airing` | `fan_set_preset` |
+| SUPPLY | SUPPLY | `speed_within_limits` | `fan_set_percentage` |
+| SUPPLY | IDLE | `ventilation_should_stop` | `fan_turn_off` |
+| AIRING | SUPPLY | `timeout` | `airing_after_timeout` |
+| AIRING | IDLE | `ventilation_should_stop` | `fan_turn_off` |
+| EXHAUST | IDLE | `timeout` | `exhaust_after_timeout` |
+| EXHAUST | IDLE | `exhaust_should_stop` | `exhaust_off` |
+
+Роль устройства (`ventilation_role`) отделяет рекуператор от вытяжки: условия
+`owner_wants_airing`/`mode_for_weather`/`speed_within_limits`/
+`ventilation_should_stop` работают только для `supply`, а `should_run_exhaust`/
+`exhaust_should_stop` — только для `exhaust`.
 
 ---
 
@@ -221,15 +276,15 @@ REST 2026-10-10.
 | `setpoint_unavailable` | уставка отсутствует или вне диапазона | ✅ |
 | `guard_data_missing` | нет показания или уставки | ✅ |
 | `not_cold_enough` | комната не холоднее цели | ✅ |
-| `ac_forbidden_in_winter` | `zima` = on | ✅ константа есть, guard нет |
-| `ac_not_allowed` | гейт кондиционера выключен | **новая** |
-| `above_comfort_ceiling` | охлаждение не требуется | **новая** |
-| `ventilation_disabled` | `feature_ventilation` = off | **новая** |
-| `turned_off_by_owner` | `ventiliatsiia` = off | **новая** |
-| `outside_temp_missing` | улица недоступна | **новая** |
-| `sensor_stale` | датчик не отвечает дольше срока | **новая** |
-
-Последние шесть добавляются вместе с условиями, которые их называют.
+| `ac_forbidden_in_winter` | `zima` = on | ✅ |
+| `ac_not_allowed` | гейт кондиционера выключен | ✅ |
+| `not_above_comfort` | охлаждение не требуется | ✅ |
+| `ventilation_disabled` | `feature_ventilation` = off | ✅ |
+| `turned_off_by_owner` | `ventiliatsiia` = off | ✅ |
+| `outside_temp_missing` | улица недоступна | ✅ |
+| `sensor_stale` | датчик не отвечает дольше срока | ✅ |
+| `heating_active` | в комнате работает обогрев | ✅ (T089) |
+| `bathroom_comfortable` | санузел сух и не жарко — вытяжка не нужна | ✅ (T086) |
 
 ---
 

@@ -187,9 +187,9 @@ contracts/interface-contracts.md, quickstart.md
 - [x] T048 [P] [US3] Тесты `speed_within_limits`: скорость 0–100 (FR-020), мёртвая зона колебаний (FR-030), ночной потолок только понижает (FR-022, FR-023) — `tests/unit/core/test_ventilation_guards.py`
 - [x] T049 [P] [US3] Тесты выключалки владельца: `ventilation_on` = off → скорость 0, никакое правило её не поднимает (FR-027) — `tests/unit/core/test_ventilation_guards.py`
 - [x] T050 [P] [US3] Тесты действий: `fan.set_percentage`, `fan.set_preset_mode`, `fan.turn_on`/`turn_off` для вытяжки без скорости (FR-028) — `tests/unit/core/test_ventilation_actions.py`
-- [ ] T051 [P] [US3] Тест: режим и скорость независимы — смена скорости не сбрасывает режим и наоборот (FR-021) — `tests/integration/ventilation/test_mode_and_speed_independent.py`
-- [ ] T052 [P] [US3] Тест: проветривание отключается само по таймеру (FR-024, FR-025, FR-026) — `tests/integration/ventilation/test_airing_timeout.py`
-- [ ] T053 [P] [US3] Тест: отказ датчика улицы останавливает только пересчёт скорости; обогрев и остальная вентиляция работают (FR-046) — `tests/integration/ventilation/test_outside_sensor_failure.py`
+- [x] T051 [P] [US3] Тест: режим и скорость независимы — смена скорости не сбрасывает режим и наоборот (FR-021) — `tests/integration/ventilation/test_mode_and_speed_independent.py` · ✅ 2026-10-12 (переработка вентиляции)
+- [x] T052 [P] [US3] Тест: проветривание отключается само по таймеру (FR-024, FR-025, FR-026) — `tests/integration/ventilation/test_airing_timeout.py` · ✅ 2026-10-12
+- [x] T053 [P] [US3] Тест: отказ датчика улицы останавливает только пересчёт скорости; обогрев и остальная вентиляция работают (FR-046) — `tests/integration/ventilation/test_outside_sensor_failure.py` · ✅ 2026-10-12
 
 ### Реализация
 
@@ -198,7 +198,7 @@ contracts/interface-contracts.md, quickstart.md
 - [x] T056 [US3] Причины отказов `ventilation_disabled`, `turned_off_by_owner`, `outside_temp_missing`, `sensor_stale` — `src/core/events/fsm_events.py`
 - [x] T057 [US3] Действия `fan_set_percentage` (`set_percentage`), `fan_set_preset` (`set_preset_mode`), `fan_apply_mode_and_speed` (два намерения подряд; атомарности в системе нет, порядок — по доставке), `exhaust_on`/`exhaust_off` — `src/core/action_handlers.py`
 - [x] T058 [US3] Новый шаблон `ventilation_modes` с состояниями `IDLE`, `SUPPLY`, `AIRING`, `EXHAUST` (FR-024, FR-025, FR-026); `AIRING` выходит по `timeout` через `airing_seconds`; `EXHAUST` отдельно, потому что вытяжка меняет направление, а не скорость — `src/features/ventilation_modes.yaml`
-- [ ] T059 [US3] Объявить параметры `ventilation_modes` в контракте с диапазонами из `data-model.md` §5; режимы — параметры, а не константы: список принадлежит устройству, и замена рекуператора не должна требовать правки кода — `src/features/CONTRACT.yaml`
+- [x] T059 [US3] Объявить параметры `ventilation_modes` в контракте с диапазонами из `data-model.md` §5; режимы — параметры, а не константы: список принадлежит устройству, и замена рекуператора не должна требовать правки кода — `src/features/CONTRACT.yaml` · ✅ 2026-10-12: 15 параметров с диапазонами и пометкой действенности; `mode_night`/`mode_exhaust` удалены как не имеющие силы
 - [ ] T060 [US3] Прописать оба рекуператора и вытяжку в боевой манифест — `instances/leonids_house/manifest.yaml`
 - [x] T061 [US3] Регенерация контракта шаблонов — `tools/gen_template_contract.py`
 - [ ] T062 [US3] Боевая проверка шага 5 `quickstart.md`: выключалка, режим, независимость скорости, ночной предел, проветривание с самоотключением, вытяжка, сценарий «жарко у печи», колебания не дёргают вентилятор
@@ -386,17 +386,30 @@ Task: "Тест: таймер перехода климата взводится
 **Почему**: уточнения владельца (research.md D18) меняют US3 — шаблон
 `ventilation_modes.yaml` написан по раннему пониманию и подлежит переработке.
 
-- [ ] T085 Модификаторы «проветривание»/«вытяжка»: максимум на 60 минут, затем
-  обычный режим и автосброс модификатора в `false` — нужно действие записи
-  `input_boolean` (новый обработчик) — `src/core/action_handlers.py`
-- [ ] T086 Вытяжка санузла по температуре И влажности санузла (не по человеку и не
-  только по влажности) — условия + шаблон
-- [ ] T087 Рекуперация по модификатору «зима» и дельте температур; приток — для
-  быстрого охлаждения; выбор приток/рекуперация по величине дельты — шаблон
-- [ ] T088 Ночью — минимальная скорость при нормальной температуре — условие
-- [ ] T089 Отключение вентиляции при работающем обогреве (признак «обогрев
-  работает» в контексте) — условия + шаблон
-- [ ] T090 `вентиляция=false` полностью отключает рекуператоры — проверка
-- [ ] T091 Пороги температуры/влажности санузла — решение владельца, затем
-  параметры в манифест
-- [ ] T092 Боевая проверка вентиляции по новым правилам (шаг 5 quickstart)
+**Решения по открытым вопросам** (research.md D19): пороги санузла 25 °C / 65 %;
+признак «обогрев работает» кладёт `EventRouter`; модификаторы снимаются новыми
+действиями записи `input_boolean`.
+
+- [x] T085 Модификаторы «проветривание»/«вытяжка»: максимум на 60 минут, затем
+  обычный режим и автосброс модификатора в `false` — действия
+  `airing_after_timeout` / `exhaust_after_timeout` пишут `input_boolean.turn_off`
+  (`src/core/action_handlers.py`); таймаут вытяжки — параметр `exhaust_seconds`
+  (`src/core/fsm/factory.py`)
+- [x] T086 Вытяжка санузла по температуре И влажности санузла — условие
+  `should_run_exhaust` + `_bathroom_is_uncomfortable` (`src/core/guards/builtin.py`),
+  переходы по `temperature_changed`/`humidity_changed` в шаблоне
+- [x] T087 Рекуперация по модификатору «зима» и дельте; приток для охлаждения,
+  выбор приток/рекуперация по величине дельты — `mode_for_weather`
+  (`supply_delta_threshold`)
+- [x] T088 Ночью — минимальная скорость при нормальной температуре — ночной
+  потолок `speed_night_max` в `speed_within_limits`, ночь из `sleep_modifier_on`
+- [x] T089 Отключение вентиляции при работающем обогреве — признак
+  `heating_active` кладёт `EventRouter` (`src/core/events/event_router.py`),
+  условие `ventilation_should_stop`; причина `heating_active`
+- [x] T090 `вентиляция=false` полностью отключает рекуператоры — фиче-флаг
+  `ventilation_enabled` и выключатель `ventilation_on` в `ventilation_should_stop`,
+  прибор гасится `fan_turn_off`
+- [x] T091 Пороги температуры/влажности санузла — решение владельца: 25 °C и
+  65 %, параметрами `exhaust_temp_threshold` / `exhaust_humidity_threshold`
+- [ ] T092 Боевая проверка вентиляции по новым правилам (шаг 5 quickstart) —
+  требует T060 (устройства в манифесте): в бою вентиляцию ведёт Home Assistant
