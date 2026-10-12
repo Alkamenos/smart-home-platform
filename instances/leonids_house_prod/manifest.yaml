@@ -1,0 +1,401 @@
+instance:
+  id: leonids_house
+  name: Leonid's House
+  owner: Leo
+  created_at: '2024-01-15'
+version: 1
+
+# Боевой манифест дома, собран 2026-10-09 по фактическим сущностям Home Assistant.
+#
+# Из прежнего состава убрано: пять комнат демо-примера (kitchen, living_room,
+# bedroom, bathroom, test_svet) — их датчиков в доме нет вообще.
+#
+# Оба рекуператора и вытяжка санузла управляются платформой (спека 014, T060):
+# шаблон ventilation_modes, роль supply/exhaust.
+#
+# Эталонная копия этого файла лежит в git как
+# `instances/leonids_house_prod/manifest.yaml` — источник посева для чистой
+# установки (CONFIG_SEED_PATH). Сам каталог deploy/docker/config/ в .gitignore
+# по правилам безопасности, поэтому эталон живёт отдельно. После правок здесь
+# надо переносить их в эталон, иначе чистая установка развернётся без них:
+# `cp deploy/docker/config/manifest.yaml instances/leonids_house_prod/manifest.yaml`.
+#
+# Комната указывается вручную: область сущности в Home Assistant через REST не
+# отдаётся (GET /api/areas → 404), поэтому выбрать комнату автоматически нельзя,
+# а молчаливый выбор «первой комнаты» и посадил двадцать чужих светильников в
+# кухню (Known Issue #88).
+rooms:
+# ─── Комнаты с датчиком: свет управляется движением ───
+- id: gostinaia
+  name: Гостиная
+  sensors:
+    motion: binary_sensor.datchik_dvizheniia_gostinnaia_occupancy
+    temperature: sensor.datchik_temperatury_gostinnaia_temperature
+  devices:
+  # Конвектор гостиной — самостоятельное устройство под общие правила обогрева
+  # (решение владельца 2026-10-10). Раньше здесь стояло `managed_by_hardware`
+  # со ссылкой на решение спеки 011: «термостат гостиной платформа не трогает».
+  # Решение описывало тёплый пол, а не конвектор: термостат
+  # `climate.termostat_gostinaia` управляет полом, конвектор — отдельное
+  # устройство, и второй источник на него не претендует.
+  #
+  # Что это меняет: две цели в одной комнате. Термостат держит 24 °C, уставка
+  # дома 21 — конвектор при такой уставке не включается, и это правильно.
+  # При уставке ниже 24 оба начнут греть, поэтому уставку для гостиной стоит
+  # держать не ниже термостата.
+  - id: switch.obogrevatel_gostinnaia
+    type: climate
+    name: Обогреватель гостиной
+    behaviors:
+    - template: climate_control
+      priority: 10
+      params:
+        heater_timer: number.obogrevatel_gostinnaia_countdown
+        run_minutes: 15
+        hysteresis: 0.5
+  - id: light.svet_nad_stolom
+    type: light
+    name: Свет над столом
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+    # Ночник (требование владельца 2026-10-09): пока включён модификатор
+    # «мы спим», свет по движению включается на 3% яркости чистым красным
+    # (255, 0, 0) и гаснет через 5 минут без движения. Параметры по умолчанию
+    # — в шаблоне, здесь передавать нечего. Приоритет выше основного
+    # поведения (20 > 10): ночник и обычный свет — два автомата на одном
+    # устройстве, и решает модификатор: включён — ночник, выключен — обычный.
+    - template: night_light
+      priority: 20
+      params: {}
+  # В этой же комнате есть light.svet_nad_stolom_1, light.svet_nad_stolom_2 и
+  # подсветка зеркала (podsvetka_zerkala, gostinaia_podsvetka_zerkala). Добавлены
+  # по одной на комнату: каждая лампа — отдельный автомат, а три автомата на один
+  # датчик дают три перехода вместо одного. Если нужно — добавляются так же.
+
+- id: sanuzel
+  name: Санузел
+  sensors:
+    motion: binary_sensor.vykliuchatel_sanuzel_presence
+    temperature: sensor.datchik_temperatury_sanuzel_temperature
+    humidity: sensor.datchik_temperatury_sanuzel_humidity
+  devices:
+  - id: switch.obogrevatel_sanuzel
+    type: climate
+    name: Обогреватель санузла
+    behaviors:
+    - template: climate_control
+      priority: 10
+      params:
+        heater_timer: number.obogrevatel_sanuzel_countdown
+        run_minutes: 15
+        hysteresis: 0.5
+  - id: light.vykliuchatel_sanuzel_switch1
+    type: light
+    name: Свет в санузле
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+  # Вытяжка санузла (спека 014, T060). Роль exhaust: прибор без скорости,
+  # платформа только вкл/выкл. Включается по температуре и/или влажности санузла
+  # (25 °C / 65 %, уточнение владельца research.md D18), выключается, когда
+  # санузел вернулся в норму. Модификатор provetrivanie_vytyazhka включает
+  # вытяжку на максимум с автосбросом через exhaust_seconds.
+  - id: fan.vykliuchatel_sanuzel_switch2
+    type: fan
+    name: Вытяжка санузла
+    behaviors:
+    - template: ventilation_modes
+      priority: 10
+      params:
+        ventilation_role: exhaust
+        exhaust_temp_threshold: 25.0
+        exhaust_humidity_threshold: 65.0
+        exhaust_seconds: 3600
+
+- id: konteiner
+  name: Контейнер
+  sensors:
+    motion: binary_sensor.datchik_dvizheniia_konteiner_occupancy
+  devices:
+  - id: light.svet_v_konteinere
+    type: light
+    name: Свет в контейнере
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+
+# ─── Вечерний (декоративный) свет: включается по закату ───
+# Требования владельца 2026-10-09, боевой дефект того же вечера:
+#   - **Гирлян��а на террасе**: включается по закату (датчик освещённости сломан,
+#     ждёт замены) и выключается, когда владелец включил «мы спим»;
+#   - **Ночное освещение**: включается по закату и горит до рассвета.
+#
+# Раньше гирлянда была описана шаблоном `lighting` — как свет от движения. Она
+# включалась при проходе по террасе и гасла через 10 минут удержания
+# (`motion_timeout_sec`), что для декоративного света неверно.
+#
+# Датчиков движения у этих светильников намеренно нет: `deco_light` их не слушает.
+# `off_by` разводит правила выключения — гирлянда гаснет по отбою, ночное
+# освещение живёт до рассвета и модификатором «мы спим» не гасится.
+- id: terassa
+  name: Терраса
+  sensors: {}
+  devices:
+  - id: light.girlianda_terassa
+    type: light
+    name: Гирлянда на террасе
+    behaviors:
+    - template: deco_light
+      priority: 10
+      params:
+        off_by: "sleep"
+
+- id: nochnoe_osveshchenie
+  name: Ночное освещение
+  sensors: {}
+  devices:
+  - id: light.group_nochnoe_osveshcheni
+    type: light
+    name: Ночное освещение
+    behaviors:
+    - template: deco_light
+      priority: 10
+      params:
+        off_by: "sunrise"
+
+# ─── Комнаты без датчика движения ───
+# Автоматика по движению тут невозможна: датчика в комнате нет. Свет заведен,
+# чтобы он появился в описании дома и заработал, когда появится датчик или
+# расписание (следующий этап политики освещения).
+- id: spalnia
+  name: Спальня
+  sensors:
+    temperature: sensor.datchik_temperatury_spalnia_temperature
+  devices:
+  - id: switch.obogrevatel_spalnia
+    type: climate
+    name: Обогреватель спальни
+    behaviors:
+    - template: climate_control
+      priority: 10
+      params:
+        heater_timer: number.obogrevatel_spalnia_countdown
+        run_minutes: 15
+        hysteresis: 0.5
+
+  - id: light.svet_v_spalne_right
+    type: light
+    name: Свет в спальне
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+
+  # Рекуператор спальни (спека 014, T060). Роль supply: две независимые оси —
+  # режим по модификатору «зима», скорость по температуре улицы и времени суток.
+  # Скорости квантуются прибором к [14, 29, 43, 57, 71, 86, 100] (research.md
+  # D15), поэтому speed_normal/speed_min заданы этими величинами.
+  - id: fan.base_smart
+    type: fan
+    name: Рекуператор спальни
+    behaviors:
+    - template: ventilation_modes
+      priority: 10
+      params:
+        ventilation_role: supply
+        mode_summer: "Рекуперация (лето)"
+        mode_winter: "Рекуперация (зима)"
+        mode_airing: "Приток MAX"
+        speed_normal: 42
+        speed_min: 14
+        speed_cold_reference: 5.0
+        speed_cold_gain: 2.0
+        airing_seconds: 3600
+
+- id: kabinet
+  name: Кабинет
+  sensors:
+    temperature: sensor.datchik_temperatury_kabinet_temperature
+  devices:
+  - id: switch.obogrevatel_kabinet
+    type: climate
+    name: Обогреватель кабинета
+    behaviors:
+    - template: climate_control
+      priority: 10
+      params:
+        heater_timer: number.obogrevatel_kabinet_countdown
+        run_minutes: 15
+        hysteresis: 0.5
+  - id: light.group_lights_workroom_celllights
+    type: light
+    name: Свет в кабинете
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+
+  # Рекуператор кабинета (спека 014, T060); привязка кабинет → fan.base_smart_2
+  # подтверждена `.ai/BACKLOG.md` (карта комнат и устройств).
+  - id: fan.base_smart_2
+    type: fan
+    name: Рекуператор кабинета
+    behaviors:
+    - template: ventilation_modes
+      priority: 10
+      params:
+        ventilation_role: supply
+        mode_summer: "Рекуперация (лето)"
+        mode_winter: "Рекуперация (зима)"
+        mode_airing: "Приток MAX"
+        speed_normal: 42
+        speed_min: 14
+        speed_cold_reference: 5.0
+        speed_cold_gain: 2.0
+        airing_seconds: 3600
+
+# Решение владельца 2026-10-09 при расширении манифеста: только внутри дома и
+# по одному основному светильнику на комнату. Обе комнаты без датчика движения
+# (проверено по всем binary_sensor дома), поэтому здесь свет умеет только одно —
+# гаснуть само в 23:00 по суточному циклу. Включается вручную или из Home
+# Assistant; автоматика по движению заработает, если датчик появится.
+#
+# Кухня: свет над обеденным столом, а не над рабочей поверхностью — решение
+# владельца. Рабочий свет (light.svet_nad_rabochei_poverkhnostiu) и
+# switch.kitchen_lights не заведены: первый — вторая лампа той же комнаты
+# (критерий «одна на комнату»), второй вообще switch, а команда платформы шлёт
+# light.* (домен задан в действии, а не выведен из entity_id).
+- id: kuhnya
+  name: Кухня
+  sensors: {}
+  devices:
+  - id: light.table_lights
+    type: light
+    name: Свет над обеденным столом
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+
+- id: gostevaia_spalnia
+  name: Гостевая спальня
+  sensors:
+    temperature: sensor.datchik_temperatury_gostevaia_spalnia_temperature
+  devices:
+  - id: switch.maslianyi_radiator
+    type: climate
+    name: Масляный радиатор гостевой спальни
+    behaviors:
+    - template: climate_control
+      priority: 10
+      params:
+        heater_timer: number.maslianyi_radiator_countdown
+        run_minutes: 20
+        hysteresis: 0.5
+  - id: light.torsher
+    type: light
+    name: Торшер
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+
+# ─── Уличное освещение: только по расписанию ───
+- id: sad
+  name: Сад
+  sensors: {}
+  devices:
+  - id: light.vse_fonari
+    type: light
+    name: Основное освещение сада
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+
+# Комната «Улица» удалена 2026-10-09: её единственным устройством был
+# `light.group_nochnoe_osveshcheni`, который теперь описан как вечерний свет со
+# своим правилом (включение по закату, горение до рассвета). Оставлять его в
+# двух комнатах нельзя: одно устройство даёт два автомата на один светильник и
+# две команды на каждое событие — второе включение отменяло бы первое, а в
+# журнале это выглядело бы как «свет включается и сразу выключается».
+
+automation_rules:
+  global_manual_lockout_min: 60
+  # Часовой пояс дома. Контейнер работает в UTC, дом — в Asia/Yekaterinburg: без
+  # этого окно «день» считалось по часам контейнера и разрешало включать свет
+  # с 02:00 до 04:00 по местному (Known Issue #86).
+  time_zone: Asia/Yekaterinburg
+  lighting:
+    # Ночная защита (решения владельца 2026-10-08). В окне тишины движение не
+    # включает свет нигде, кроме перечисленных комнат.
+    #
+    # С 2026-10-09 окно — только фолбэк: если ниже задан sleep_modifier и
+    # сущность есть в Home Assistant, ночью решает модификатор (False — свет
+    # по движению включается, если темно; True — не включается нигде).
+    # Решение владельца: «свет по движению всегда, кроме периода мы спим».
+    quiet_from: "23:00"
+    quiet_to: "06:30"
+    night_motion_rooms: [sanuzel, konteiner]
+    # Комнаты без окон: солнце их не освещает, поэтому «светло — не включаем»
+    # здесь не работает. Требование владельца 2026-10-10: санузел включается
+    # по движению днём, контейнер — вообще всегда.
+    #
+    # До этого правила датчик в санузле срабатывал, а свет не включался: в журнале
+    # это был отказ по причине `daylight`. Модификатор «мы спим» остаётся выше
+    # списка — спящим яркий свет не нужен ни в одной комнате.
+    always_on_motion_rooms: [sanuzel, konteiner]
+    # Модификатор «мы спим»: сущность Home Assistant, расписание которой
+    # задаёт владелец сам (автоматизацией в HA, платформа часы не считает).
+    # Включение сущности гасит свет (событие sleep_started), включённая
+    # не даёт включать яркий свет, а свет над столом работает ночником.
+    sleep_modifier: input_boolean.sleep_mode
+    # Суточный цикл платформы (проверено живьём 2026-10-09): night_off_at
+    # гасит свет в час X даже при активном локауте, morning_at утром
+    # сбрасывает состояния автоматов.
+    night_off_at: "23:00"
+    morning_at: "07:00"
+    # Батарейки вне манифеста. Уличный датчик террасы не участвует ни в одном
+    # решении автоматики, но его батарейку всё равно надо менять: 2026-10-10 он
+    # стоял на 1 %, и без этого списка платформа узнала бы о нём только по
+    # молчанию — то есть потеряв датчик (спека 014, FR-048).
+    battery_watch_entities:
+    - sensor.datchik_temperatury_terassa_battery
+  climate:
+    # Цель обогрева живёт в Home Assistant: владелец меняет её сам, и второе
+    # место, где ту же логику можно сломать, только вредит (решение 2026-10-09).
+    # Платформа читает — без этого условие `may_heat` получало «данных нет»,
+    # и обогрев не включался ни в одной комнате (спека 014, `research.md` D1).
+    setpoint_entity: input_number.temperatura
+    # Основной термостат дома (решение владельца 2026-10-12): его цель —
+    # уставка. Платформа зеркалит в обе стороны: двигаешь термостат — меняется
+    # уставка, двигаешь уставку — пишется цель термостата.
+    thermostat_entity: climate.termostat_gostinaia
+    comfort_max_entity: input_number.maksimalno_komfortnaia_temperatura
+    # `zima` — единственный признак сезона в доме; зимой кондиционер включать
+    # нельзя, и платформа обязана знать season, а не угадывать по часам.
+    season_entity: input_boolean.zima
+    feature_entity: input_boolean.feature_climate
+    # Гейт кондиционера: без разрешения владельца охлаждение не включается,
+    # даже если в комнате выше потолка комфорта.
+    ac_gate_entity: input_boolean.ispolzovat_konditsioner
+    setpoint_min: 5.0
+    setpoint_max: 30.0
+  ventilation:
+    # Устройства вентиляции убраны из состава дома (управляет Home Assistant).
+    # Правила оставлены на будущее: когда вентиляция вернётся платформе, срок
+    # блокировки уже выбран.
+    manual_lockout_min: 15
+    humidity_based: true
+    # Глобальные сущности вентиляции (спека 014). Пока устройств в манифесте нет,
+    # но сущности уже читаются: право владельца выключить вентиляцию должно быть
+    # у платформы сразу, а не после добавления первого рекуператора.
+    feature_entity: input_boolean.feature_ventilation
+    enable_entity: input_boolean.ventiliatsiia
+    airing_entity: input_boolean.provetrivanie
+    exhaust_entity: input_boolean.provetrivanie_vytyazhka
+    outside_temp_entity: sensor.temperatura_na_ulitse_srednee
