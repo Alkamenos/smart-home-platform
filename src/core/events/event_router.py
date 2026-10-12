@@ -194,6 +194,19 @@ class EventRouter:
         """Get FSM mappings for a sensor (alias for get_mapping)."""
         return self.get_mapping(sensor_id)
 
+    def mapped_sensors(self) -> list[str]:
+        """Датчики, показания которых роутер доносит до автоматов.
+
+        Нужен сверке при подключении: Home Assistant присылает событие только
+        при изменении, поэтому после перезапуска платформы молчащий датчик не
+        попадает в контекст автоматов, и решения принимаются по устаревшему
+        значению (B40).
+
+        Returns:
+            Отсортированный список идентификаторов сущностей.
+        """
+        return sorted(self._sensor_to_fsms)
+
     def _room_heating_active(self, fsm_entity_id: str) -> bool | None:
         """Работает ли обогрев в комнате автомата.
 
