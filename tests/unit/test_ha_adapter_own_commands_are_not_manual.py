@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -53,6 +54,18 @@ class _ClientWithContext:
         if kwargs.get("return_response") is False:
             return {"success": True}
         return {"context": {"id": self.context_id, "parent_id": None, "user_id": None}}
+
+
+class _ClientWithoutContext:
+    """Клиент, не возвращающий контекст команды (боевой рекуператор Vakio)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def call_service(self, **kwargs: Any) -> dict[str, Any]:
+        """Вернуть ответ без контекста, как интеграция, которая его не шлёт."""
+        self.calls.append(dict(kwargs))
+        return {"changed_states": []}
 
 
 def _adapter() -> tuple[HAAdapter, MagicMock, ControlTracker]:
@@ -112,10 +125,16 @@ class TestOwnCommandIsNotManual:
 
     @pytest.mark.asyncio
     async def test_state_change_from_other_source_still_manual(self) -> None:
-        """Чужое изменение с тем же `user_id` ручным действием остаётся."""
+        """Чужое изменение после окна — ручное действие остаётся.
+
+        Returns:
+            Ничего.
+        """
         adapter, record_manual, _ = _adapter()
 
         await adapter.call_service("light", "turn_on", DEVICE, {})
+        # Окно «мы командовали» истекает: изменение больше не наше.
+        adapter._recent_commands[DEVICE] = time.monotonic() - 100  # noqa: SLF001
         await adapter._handle_ws_state_change(_event("01M4HUMANCONTEXT0000001", "user-42"))
 
         record_manual.assert_called_once_with(DEVICE)
@@ -165,3 +184,43 @@ class TestOwnCommandIsNotManual:
         await adapter._handle_ws_state_change(_event(OWN_CONTEXT, "user-42"))
 
         assert published, "событие своей команды не дошло до шины"
+
+
+class TestOwnCommandWithoutContextIsNotManual:
+    """Интеграция не несёт контекст команды — устройство всё равно «наше» (B49).
+
+    Боевой рекуператор Vakio обновляет состояние так, что `context.id` команды
+    до адаптера не доходит. Без окна «мы только что командовали» платформа
+    принимала собственную команду за ручное действие (60-мин блокировка против
+    себя), и прибор оставался на прежнем режиме — в бою 2026-10-13 в комнате
+    было жарко, а рекуператор стоял на ночном минимуме 14 %.
+    """
+
+    @pytest.mark.asyncio
+    async def test_recent_command_is_not_manual_without_own_context(self) -> None:
+        """Чужой контекст в событии, но мы только что командовали — не ручное.
+
+        Returns:
+            Ничего.
+        """
+        adapter, record_manual, _ = _adapter()
+        adapter._ws_client = _ClientWithoutContext()  # type: ignore[assignment]
+
+        await adapter.call_service("fan", "set_preset_mode", DEVICE, {})
+        await adapter._handle_ws_state_change(_event("01FOREIGNCONTEXT0000000001", "user-42"))
+
+        record_manual.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_manual_change_after_window_is_recorded(self) -> None:
+        """Прошло больше окна — чужое изменение снова считается ручным.
+
+        Returns:
+            Ничего.
+        """
+        adapter, record_manual, _ = _adapter()
+        adapter._recent_commands[DEVICE] = time.monotonic() - 100  # noqa: SLF001
+
+        await adapter._handle_ws_state_change(_event("01FOREIGNCONTEXT0000000002", "user-42"))
+
+        record_manual.assert_called_once_with(DEVICE)

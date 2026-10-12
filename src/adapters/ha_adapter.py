@@ -55,6 +55,17 @@ SUBSCRIPTION_TIMEOUT_SEC = 10.0
 #: поэтому 256 — с запасом и без роста памяти.
 OWN_CONTEXT_KEEP = 256
 
+#: Сколько секунд после своей команды изменение устройства считать своим.
+#:
+#: `context.id` работает не для всех интеграций: боевой рекуператор Vakio
+#: обновляет состояние так, что контекст команды до адаптера не доходит, и
+#: платформа записывала собственную команду ручным действием — после каждого
+#: своего решения включалась 60-минутная блокировка против себя, и рекуператор
+#: оставался на прежнем режиме (в бою 2026-10-13: жарко в комнате, а прибор на
+#: ночном минимуме 14 %). Временное окно закрывает эту дыру: если мы только что
+#: командовали этому устройству, его изменение — наше.
+COMMAND_ECHO_WINDOW_SEC = 20.0
+
 
 @runtime_checkable
 class ActionGateProtocol(Protocol):
@@ -1021,6 +1032,10 @@ class HAAdapter:
         # владельца токена) и включала блокировку против самой себя на 60 минут
         # — вскрыто первым живым запуском 2026-10-08.
         self._own_context_ids: deque[str] = deque(maxlen=OWN_CONTEXT_KEEP)
+        # Устройства, которым платформа только что отправляла команду: время
+        # (monotonic) последней команды. Нужны там, где `context.id` от
+        # интеграции не доходит (см. COMMAND_ECHO_WINDOW_SEC).
+        self._recent_commands: dict[str, float] = {}
         # Единицы измерения сущностей, прочитанные у Home Assistant. Боевой
         # дефект 2026-10-11: таймер обогревателя измеряется в секундах, а
         # платформа отправляла минуты — обогрев не работал сутки, и ни один
@@ -1348,7 +1363,9 @@ class HAAdapter:
         # `user_id`, что и действия из приложения, и без этой проверки
         # засчитывалась бы ручным действием: первая же автоматическая команда
         # включала блокировку против самой себя (живой запуск 2026-10-08).
-        own_action = self._is_own_context(context.get("ha_context_id"))
+        own_action = self._is_own_context(context.get("ha_context_id")) or self._is_recent_command(
+            entity_id
+        )
         if user_id and self._manual_lockout_middleware and not own_action:
             self._manual_lockout_middleware.record_manual_control(entity_id)
         elif own_action:
@@ -1579,20 +1596,26 @@ class HAAdapter:
             log.error(f"HAAdapter: pyscript service call error: {e}")
             return False
 
-    def _remember_own_context(self, result: Any) -> None:
+    def _remember_own_context(self, result: Any) -> bool:
         """Запомнить контекст только что отправленной команды.
 
         Args:
             result: Ответ Home Assistant на вызов сервиса.
+
+        Returns:
+            True, если контекст был и запомнен; False, если интеграция его не
+            вернула (тогда изменение узнаётся по окну «мы командовали»).
         """
         if not isinstance(result, dict):
-            return
+            return False
         context = result.get("context")
         if not isinstance(context, dict):
-            return
+            return False
         context_id = context.get("id")
         if isinstance(context_id, str) and context_id:
             self._own_context_ids.append(context_id)
+            return True
+        return False
 
     def _is_own_context(self, context_id: Any) -> bool:
         """Событие вызвано нашей командой или пришло извне.
@@ -1604,6 +1627,47 @@ class HAAdapter:
             True, если событие порождено командой платформы.
         """
         return isinstance(context_id, str) and context_id in self._own_context_ids
+
+    def _remember_command(self, entity_id: str) -> None:
+        """Запомнить, что платформа только что командовала этому устройству.
+
+        Нужно интеграциям, которые не несут `context.id` своей команды в
+        изменении состояния: иначе платформа примет собственную команду за
+        ручное действие и заблокирует себя (боевой разбор 2026-10-13).
+
+        Args:
+            entity_id: Сущность, которой отправлена команда.
+
+        Returns:
+            Ничего.
+        """
+        if not entity_id:
+            return
+        recent = getattr(self, "_recent_commands", None)
+        if recent is None:
+            recent = {}
+            self._recent_commands = recent
+        recent[entity_id] = time.monotonic()
+
+    def _is_recent_command(self, entity_id: str) -> bool:
+        """Командовали ли мы этому устройству только что.
+
+        Args:
+            entity_id: Сущность из события.
+
+        Returns:
+            True, если команда уходила не дольше COMMAND_ECHO_WINDOW_SEC назад.
+        """
+        recent = getattr(self, "_recent_commands", None)
+        if not recent:
+            return False
+        at = recent.get(entity_id)
+        if at is None:
+            return False
+        if time.monotonic() - at > COMMAND_ECHO_WINDOW_SEC:
+            recent.pop(entity_id, None)
+            return False
+        return True
 
     async def _call_service_websocket(
         self,
@@ -1619,6 +1683,12 @@ class HAAdapter:
 
         service_data = {**data, "entity_id": entity_id}
 
+        # Окно «мы командовали» ставим ДО отправки: изменение состояния приходит
+        # в цикл чтения, пока мы ещё ждём ответа сервиса, — и, отметив команду
+        # после, мы опоздали бы (событие уже легло ручным действием, и платформа
+        # заблокировала себя на 60 минут; боевой разбор 2026-10-13 с рекуператором
+        # Vakio, который к тому же не несёт наш контекст в изменении).
+        self._remember_command(entity_id)
         try:
             # Ответ запрашивается именно ради `context.id`: без него собственную
             # команду не отличить от действия человека, и блокировка включается
