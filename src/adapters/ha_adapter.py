@@ -149,6 +149,9 @@ class SimpleHAWebSocketClient:
         # фильтрует события подписки, а эти сущности в манифест не входят.
         self.climate_entities: dict[str, str] = {}
         self.ventilation_entities: dict[str, str] = {}
+        # Флаги штор (спека 015): «кто-то дома», «дома собаки», разрешение
+        # закрывать ночью и аварийный флаг. Шторы зависят только от них.
+        self.cover_entities: dict[str, str] = {}
         # Куда класть прочитанное значение: роль → поле этого же клиента.
         self.global_fields: dict[str, str] = dict(GLOBAL_ENTITY_FIELDS)
         # Уведомление платформы о включении «мы спим»: модификатор гасит свет,
@@ -240,6 +243,9 @@ class SimpleHAWebSocketClient:
             if candidate == entity:
                 return role
         for role, candidate in self.ventilation_entities.items():
+            if candidate == entity:
+                return role
+        for role, candidate in getattr(self, "cover_entities", {}).items():
             if candidate == entity:
                 return role
         return None
@@ -900,11 +906,30 @@ GLOBAL_ENTITY_FIELDS: dict[str, str] = {
     "exhaust": "exhaust_on",
     "ventilation_feature": "ventilation_enabled",
     "outside_temp": "outside_temperature",
+    # Шторы (спека 015).
+    "covers_feature": "covers_enabled",
+    "my_doma": "my_doma",
+    "sobaki_doma": "sobaki_doma",
+    "night_close": "covers_close_night",
+    "emergency": "cover_emergency",
 }
 
 #: Сущности, значение которых — булево: ``on``/``off`` из Home Assistant.
 _BOOLEAN_ROLES = frozenset(
-    {"season", "feature", "ac_gate", "enable", "airing", "exhaust", "ventilation_feature"}
+    {
+        "season",
+        "feature",
+        "ac_gate",
+        "enable",
+        "airing",
+        "exhaust",
+        "ventilation_feature",
+        "covers_feature",
+        "my_doma",
+        "sobaki_doma",
+        "night_close",
+        "emergency",
+    }
 )
 
 #: Сущности, значение которых — число: ``number.*`` и ``sensor.*`` температуры.
@@ -919,6 +944,15 @@ _NUMERIC_ROLES = frozenset({"setpoint", "comfort_max", "outside_temp"})
 #: выключил вентиляцию, — события датчика не было больше часа.
 _VENTILATION_RETRIGGER_ROLES: frozenset[str] = frozenset(
     {"enable", "ventilation_feature", "season", "airing", "exhaust"}
+)
+
+#: Роли глобальных сущностей, смена которых обязана немедленно пересмотреть
+#: автоматы штор (спека 015). Шторы не слушают датчик вообще: их решение зависит
+#: только от флагов дома, поэтому без немедленного пересмотра штора не сдвинулась
+#: бы до смены флага, которого может не быть часами. Модификатор «мы спим» сюда не
+#: входит отдельно: его смена отлавливается по имени сущности (``sleep_modifier_entity``).
+_COVER_RETRIGGER_ROLES: frozenset[str] = frozenset(
+    {"covers_feature", "my_doma", "sobaki_doma", "night_close", "emergency"}
 )
 
 
@@ -968,6 +1002,7 @@ class HAAdapter:
         # до первого события платформа не знает ни уставки, ни сезона.
         self.climate_entities: dict[str, str] = {}
         self.ventilation_entities: dict[str, str] = {}
+        self.cover_entities: dict[str, str] = {}
         # Уведомление о включении «мы спим»: контейнер ставит сюда свою
         # функцию, адаптер отдаёт её клиенту в момент чтения модификатора —
         # как только сущность стала известна, клиент начинает ловить её
@@ -1411,29 +1446,60 @@ class HAAdapter:
         # роутер — он один знает комнату и климат-автоматы.
         if (
             client is not None
-            and self._is_ventilation_gate(entity_id)
+            and self._is_settings_gate(entity_id)
             and self._event_router is not None
         ):
             try:
                 await self._event_router.route_settings_change(event_context)
             except Exception as e:
-                log.error(f"HAAdapter: пересмотр вентиляции не удался: {e}")
+                log.error(f"HAAdapter: пересмотр по смене настроек не удался: {e}")
 
-    def _is_ventilation_gate(self, entity_id: str) -> bool:
-        """Относится ли изменившаяся сущность к переключателям вентиляции.
+    def _is_settings_gate(self, entity_id: str) -> bool:
+        """Относится ли изменившаяся сущность к переключателям, которые
+        пересматривают автоматы немедленно.
+
+        Таких домена два: вентиляция (выключатель владельца, фиче-флаг, сезон,
+        проветривание, вытяжка) и шторы (фиче-флаг, «кто-то дома», «дома собаки»,
+        разрешение закрывать ночью, аварийный флаг). Плюс модификатор «мы спим» —
+        он общий для света, вентиляции и штор, и его смена обязана дойти до
+        автоматов, не дожидаясь датчика.
 
         Args:
             entity_id: Идентификатор изменившейся сущности.
 
         Returns:
             True, если смена этой сущности должна немедленно пересмотреть
-            автоматы вентиляции.
+            автоматы, которые слушают ``settings_changed``.
         """
         client = self._ws_client
+        if client is None:
+            return False
+        sleep_entity = getattr(self, "sleep_modifier_entity", None)
+        if sleep_entity and entity_id == sleep_entity:
+            return True
         role_of = getattr(client, "global_role", None)
         if role_of is None:
             return False
-        return role_of(entity_id) in _VENTILATION_RETRIGGER_ROLES
+        role = role_of(entity_id)
+        return role in _VENTILATION_RETRIGGER_ROLES or role in _COVER_RETRIGGER_ROLES
+
+    async def _route_settings_change_if_possible(self) -> None:
+        """Разослать ``settings_changed`` один раз при подключении.
+
+        Нужно шторам: они не слушают датчики вовсе, поэтому без этого события
+        решение не принималось бы до первого переключения флага дома, которого
+        может не быть часами. Автоматы вентиляции событие уже понимают.
+
+        Returns:
+            Ничего. Неудача не прерывает подключение — как и остальные чтения.
+        """
+        router = self._event_router
+        if router is None:
+            return
+        try:
+            await router.route_settings_change(self._event_context())
+        except Exception as exc:  # noqa: BLE001 — сверка не должна ронять подключение
+            logger.warning(f"HAAdapter: первый пересмотр настроек не удался: {exc}")
 
     async def call_service(
         self,
@@ -1784,6 +1850,24 @@ class HAAdapter:
             state = await self._read_entity_state(entity)
             client.store_global(role, state, entity)
 
+    async def _refresh_cover_globals(self) -> None:
+        """Прочитать флаги штор при подключении (спека 015).
+
+        Шторы зависят только от флагов дома — «кто-то дома», «дома собаки»,
+        разрешение закрывать ночью, аварийный флаг. Они живут в Home Assistant и
+        не являются датчиками, поэтому без чтения при подключении штора до
+        первого переключения флага не знала бы, закрываться ли ей.
+
+        Returns:
+            Ничего.
+        """
+        client = self._ws_client
+        if client is None:
+            return
+        for role, entity in self.cover_entities.items():
+            state = await self._read_entity_state(entity)
+            client.store_global(role, state, entity)
+
     def _global_context(self) -> dict[str, Any]:
         """Прочитанные глобальные значения одним словарём.
 
@@ -1903,9 +1987,16 @@ class HAAdapter:
         if client is not None:
             client.climate_entities = dict(self.climate_entities)
             client.ventilation_entities = dict(self.ventilation_entities)
+            client.cover_entities = dict(self.cover_entities)
         await self._refresh_climate_globals()
         await self._refresh_ventilation_globals()
+        await self._refresh_cover_globals()
         await self._reconcile_sensor_states()
+        # Первый пересмотр штор: они не слушают датчики вовсе, а флаги дома могут
+        # не меняться часами. Без этого события штора не приняла бы решение до
+        # первого переключения флага. Пересмотр общий (settings_changed), поэтому
+        # его получают и автоматы вентиляции — им он тоже не во вред.
+        await self._route_settings_change_if_possible()
 
         http_url = cast(str, self._ws_url)
         rest_base = http_url.replace("wss://", "https://").replace("ws://", "http://")

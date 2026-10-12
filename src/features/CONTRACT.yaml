@@ -35,6 +35,8 @@ registered_actions:  # реестр после register_all_actions
   - climate_cool
   - climate_heat
   - climate_off
+  - cover_close
+  - cover_open
   - exhaust_after_timeout
   - exhaust_off
   - exhaust_on
@@ -58,6 +60,8 @@ registered_guards:  # реестр после register_all_guards
   - at_or_above_setpoint
   - below_setpoint
   - climate_is_enabled
+  - covers_should_close
+  - covers_should_open
   - exhaust_should_stop
   - has_usable_reading
   - humidity_above_60
@@ -128,6 +132,29 @@ templates:
         range: "true/false"
         effective: true
         note: "В комнате стоит штатный термостат; платформа обогревателем здесь не управляет (guards/builtin.py:make_may_heat)."
+  cover_modes:
+    reachable: true
+    in_manifest: []
+    actions: [cover_open, cover_close]
+    guards: [covers_should_open, covers_should_close]
+    triggers:
+      settings_changed: platform
+    unproduced_triggers: []
+    gaps:
+      - Позицию прибора платформа не отслеживает: она просит открыть или закрыть, а состояние шторы в Home Assistant не читает. Поэтому в CLOSED автомат уверен по собственной команде, а не по прибору; ручное движение человеком автоматику не отменяет (ручного пути в платформе пока нет — тот же пробел, что и у света).
+      - Решение принимается только по флагам дома и модификатору «мы спим»: часов платформа не считает, поэтому «ночь» задаёт владелец сущностью sleep_modifier, а не расписание в коде.
+      - Единственный триггер — settings_changed. Смену флагов дома доносит HAAdapter (route_settings_change), а первый пересмотр делается при подключении: без него штора не приняла бы решение до первого переключения флага, которого может не быть часами.
+    params:
+      cover_role:
+        type: str
+        range: "regular|door"
+        effective: true
+        note: "Роль шторы: regular — обычная; door — над входной дверью, не закрывается, пока кто-то дома (пожарная безопасность). Читает условие covers_should_close."
+      closes_when_dogs_only:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "Закрывать эту штору, когда людей нет, а собаки дома (только спальня и кабинет). Читает условие covers_should_close."
   deco_light:
     reachable: true
     in_manifest: []

@@ -279,6 +279,10 @@ KNOWN_BEHAVIOR_PARAM_KEYS: frozenset[str] = frozenset(
         "speed_min",
         "speed_cold_reference",
         "speed_cold_gain",
+        # Шторы (спека 015): роль шторы (дверь/обычная) и признак «закрывать,
+        # когда дома только собаки».
+        "cover_role",
+        "closes_when_dogs_only",
     }
     # Доменные правила дома фабрика превращает в параметры поведения (T012
     # спеки 014), значит и они попадают в контекст состояния.
@@ -318,6 +322,7 @@ DIAGNOSTIC_TEMPLATES: Final[tuple[str, ...]] = (
     "climate_control",
     "ventilation_modes",
     "humidity_ventilation",
+    "cover_modes",
 )
 
 #: Ключи контекста, которые попадают в диагностическую запись решения. Значения
@@ -343,11 +348,20 @@ DIAGNOSTIC_CONTEXT_KEYS: Final[tuple[str, ...]] = (
     "climate_enabled",
     "chosen_mode",
     "percentage",
+    # Шторы (спека 015): решение зависит только от этих флагов, и утренний
+    # разбор должен их видеть, чтобы объяснить, почему штора открыта или закрыта.
+    "covers_enabled",
+    "my_doma",
+    "sobaki_doma",
+    "covers_close_night",
+    "cover_emergency",
+    "cover_role",
+    "closes_when_dogs_only",
 )
 
 
 def _is_diagnostic_entity(entity_id: str) -> bool:
-    """Относится ли автомат к климату или вентиляции.
+    """Относится ли автомат к климату, вентиляции или шторам.
 
     Имя автомата строится как ``{устройство}_{шаблон}_{приоритет}`` (ADR-003),
     поэтому шаблон виден в самом идентификаторе.

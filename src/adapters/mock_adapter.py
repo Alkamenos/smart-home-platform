@@ -51,6 +51,7 @@ class MockAdapter:
         # через общий тип адаптера, а подменой может быть и mock (тесты).
         self.climate_entities: dict[str, str] = {}
         self.ventilation_entities: dict[str, str] = {}
+        self.cover_entities: dict[str, str] = {}
         self.climate_setpoint: float | None = None
         self.comfort_max: float | None = None
         self.is_winter: bool | None = None

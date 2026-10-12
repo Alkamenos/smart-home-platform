@@ -354,9 +354,26 @@ class Container:
                 role = "ventilation_feature"
             adapter.ventilation_entities[role] = entity
 
+        # Флаги штор (спека 015). Роли совпадают с ключами GLOBAL_ENTITY_FIELDS.
+        for field_name in (
+            "feature_entity",
+            "my_doma_entity",
+            "sobaki_doma_entity",
+            "night_close_entity",
+            "emergency_entity",
+        ):
+            entity = getattr(rules.cover, field_name, None)
+            if not entity:
+                continue
+            # Роль `feature` занята климатом — у штор она своя.
+            role = field_name.removesuffix("_entity")
+            if role == "feature":
+                role = "covers_feature"
+            adapter.cover_entities[role] = entity
+
         logger.info(
             f"Глобальные сущности: климат {adapter.climate_entities}, "
-            f"вентиляция {adapter.ventilation_entities}"
+            f"вентиляция {adapter.ventilation_entities}, шторы {adapter.cover_entities}"
         )
 
     @property

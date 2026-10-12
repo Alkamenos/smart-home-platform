@@ -162,6 +162,37 @@ class AutomationDomainRules(BaseModel):
     outside_temp_entity: str | None = None
     """Уличная температура: по разнице с комнатой выбирается режим."""
 
+    # ─── Шторы (спека 015) ───
+    # Флаги дома живут в Home Assistant (владелец правит их сам), платформа
+    # только читает. Ими решается, закрывать ли шторы: спим ли, кто-то ли дома,
+    # дома ли собаки, разрешено ли закрывать ночью.
+    my_doma_entity: str | None = None
+    """Признак «кто-то дома» (``input_boolean.my_doma``).
+
+    Пока он включён, штора над дверью не закрывается из соображений пожарной
+    безопасности — закрытая дверь мешает выходу. Выключенный признак отменяет
+    логику «мы спим»: шторы решаются по отсутствию людей, а не по сну.
+    """
+    sobaki_doma_entity: str | None = None
+    """Признак «дома собаки» (``input_boolean.sobaki_doma``).
+
+    Вместе с ``my_doma = false`` он отделяет «уехали с собаками» от «уехали без
+    собак»: во втором случае закрываются все шторы (включая дверь), в первом —
+    только спальня и кабинет.
+    """
+    night_close_entity: str | None = None
+    """Разрешение закрывать шторы ночью (``input_boolean.zakryvat_shtory_nochiu``).
+
+    Включено — спящий дом закрывает шторы; выключено — не закрывает, хотя
+    «мы спим». Это ручка владельца: летом шторы ночью закрывать не нужно.
+    """
+    emergency_entity: str | None = None
+    """Аварийный флаг (``input_boolean.covers_emergency_open``).
+
+    Включён — все шторы открываются, игнорируя остальные правила. Нужен на
+    случай, когда закрытые шторы мешают (пожар, эвакуация).
+    """
+
     @field_validator(
         "setpoint_entity",
         "comfort_max_entity",
@@ -172,6 +203,10 @@ class AutomationDomainRules(BaseModel):
         "airing_entity",
         "exhaust_entity",
         "outside_temp_entity",
+        "my_doma_entity",
+        "sobaki_doma_entity",
+        "night_close_entity",
+        "emergency_entity",
     )
     @classmethod
     def _reject_blank_entity(cls, value: str | None) -> str | None:
@@ -241,6 +276,8 @@ class AutomationRules(BaseModel):
     lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     climate: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
+    cover: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
+    """Шторы дома (спека 015): общие флаги и правила закрытия."""
 
 
 class Dashboard(BaseModel):
