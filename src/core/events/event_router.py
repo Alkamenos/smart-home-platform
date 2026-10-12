@@ -96,15 +96,30 @@ class EventRouter:
         # через `setdefault`, и вторая комната получала маршрут без значения —
         # условие читало ключ, которого в контексте не было.
         self._sensor_roles: dict[tuple[str, str], str] = {}
+        # Комната автомата и климат-автоматы комнаты: по ним в контекст события
+        # кладётся признак «обогрев работает» (T089). Вентиляцию при работающем
+        # обогреве включать бессмысленно — приток уносит тепло, которое
+        # платформа только что потратила (research.md D18).
+        self._fsm_to_room: dict[str, str] = {}
+        self._room_climate_fsms: dict[str, list[str]] = {}
         self._build_mapping()
 
     def _build_mapping(self) -> None:
         """Build sensor-to-FSM mapping from room structure."""
+        self._fsm_to_room.clear()
+        self._room_climate_fsms.clear()
         for room in self._manifest.rooms:
             # Collect all FSM entity IDs for devices in this room
             room_fsm_ids: list[str] = []
+            climate_fsm_ids: list[str] = []
             for device in room.devices:
-                room_fsm_ids.extend(self._engine.get_entities_by_device(device.id))
+                device_fsms = self._engine.get_entities_by_device(device.id)
+                room_fsm_ids.extend(device_fsms)
+                for fsm_id in device_fsms:
+                    self._fsm_to_room[fsm_id] = room.id
+                if getattr(device, "type", None) == "climate":
+                    climate_fsm_ids.extend(device_fsms)
+            self._room_climate_fsms[room.id] = climate_fsm_ids
 
             if not room_fsm_ids:
                 continue
@@ -165,6 +180,8 @@ class EventRouter:
 
         self._sensor_to_fsms.clear()
         self._sensor_roles.clear()
+        self._fsm_to_room.clear()
+        self._room_climate_fsms.clear()
         self._build_mapping()
 
     def get_mapping(self, sensor_id: str) -> list[tuple[str, str]]:
@@ -174,6 +191,36 @@ class EventRouter:
     def get_mapping_for_sensor(self, sensor_id: str) -> list[tuple[str, str]]:
         """Get FSM mappings for a sensor (alias for get_mapping)."""
         return self.get_mapping(sensor_id)
+
+    def _room_heating_active(self, fsm_entity_id: str) -> bool | None:
+        """Работает ли обогрев в комнате автомата.
+
+        Признак берётся из состояний климат-автоматов комнаты
+        (``HEATING``). ``None`` — в комнате нет климат-автомата или движок не
+        отдаёт состояния: тогда условие вентиляции не считает, что обогрев
+        работает, и не гасит вентиляцию по незнанию.
+
+        Args:
+            fsm_entity_id: Автомат, которому адресовано событие.
+
+        Returns:
+            True — где-то в комнате работает обогрев; False — не работает;
+            None — узнать не удалось.
+        """
+        room_id = self._fsm_to_room.get(fsm_entity_id)
+        if room_id is None:
+            return None
+        climate_fsms = self._room_climate_fsms.get(room_id) or []
+        if not climate_fsms:
+            return None
+        get_state = getattr(self._engine, "get_state", None)
+        if get_state is None:
+            return None
+        for climate_fsm in climate_fsms:
+            state = get_state(climate_fsm)
+            if state is not None and getattr(state, "current_state", None) == "HEATING":
+                return True
+        return False
 
     async def route_state_change(
         self,
@@ -204,6 +251,16 @@ class EventRouter:
                 "new_state": new_state,
                 "old_state": old_state,
             }
+
+            # Признак «обогрев работает» в комнате автомата. Вентиляция при
+            # работающем обогреве выключается (T089, research.md D18): приток
+            # свежего воздуха уносит тепло, которое платформа только что
+            # потратила. Признак считается по состояниям климат-автоматов той же
+            # комнаты, а не по новой сущности в Home Assistant: два источника
+            # истины разошлись бы, и обогрев остался бы неизвестным.
+            heating = self._room_heating_active(fsm_entity_id)
+            if heating is not None:
+                external_ctx["heating_active"] = heating
 
             # Измеримое значение датчика едет в контексте под именем его роли —
             # тем самым, которое читает условие перехода. Раньше сюда попадали

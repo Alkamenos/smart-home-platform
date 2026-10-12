@@ -919,6 +919,31 @@ def fan_set_preset(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     )
 
 
+def fan_airing_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить проветривание: режим максимального притока (``mode_airing``).
+
+    Отдельное действие, а не общий ``fan_set_preset``: имя режима проветривания
+    лежит в собственном параметре ``mode_airing``, и подставлять его в условие
+    было бы нельзя — условие не меняет контекст, а действие его не сохраняет
+    между переходами. Иначе переиспользованное имя режима пережило бы
+    проветривание и следующий переход поставил бы «Приток MAX» вместо обычного
+    режима (боевой урок: состояние накопительное, research.md D17).
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``mode_airing``.
+
+    Returns:
+        Команда режима либо ``None`` без устройства или названия режима.
+    """
+    del state
+    mode = context.get("mode_airing")
+    if not isinstance(mode, str) or not mode.strip():
+        logger.warning("fan_airing_on: нет режима проветривания (mode_airing) в контексте")
+        return None
+    return _fan_intent({**context, "preset_mode": mode}, "set_preset_mode", "fan_airing_on")
+
+
 def fan_apply_mode_and_speed(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
     """Задать режим и скорость — двумя независимыми командами.
 
@@ -971,6 +996,119 @@ def exhaust_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     return _fan_intent(context, "turn_off", "exhaust_off")
 
 
+def _modifier_off_intent(
+    context: dict[str, Any], entity_key: str, source: str
+) -> CommandIntent | None:
+    """Собрать команду снятия модификатора владельца (``input_boolean.turn_off``).
+
+    Модификаторы «проветривание» и «вытяжка» выключаются только в Home
+    Assistant: у платформы нет своего хранилища желаний владельца. Сущность
+    берётся из доменных правил дома (``automation_rules.ventilation``), которые
+    фабрика кладёт в параметры поведения: ``airing_entity`` для проветривания,
+    ``exhaust_entity`` для вытяжки.
+
+    ``input_boolean.turn_off`` идемпотентен: если модификатор уже снят, прибор
+    не изменится.
+
+    Args:
+        context: Контекст перехода.
+        entity_key: Имя ключа контекста с сущностью модификатора.
+        source: Источник для аудита.
+
+    Returns:
+        Команда записи либо ``None``, если сущность не задана.
+    """
+    entity_id = context.get(entity_key)
+    if not isinstance(entity_id, str) or not entity_id:
+        logger.warning(f"{source}: нет сущности модификатора ({entity_key}) в контексте")
+        return None
+
+    logger.info(f"Создаю команду input_boolean.turn_off для {entity_id} ({source})")
+    return CommandIntent(
+        device_id=entity_id,
+        domain="input_boolean",
+        service="turn_off",
+        data={},
+        priority=context.get("priority", 50),
+        source=source,
+    )
+
+
+def airing_after_timeout(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
+    """Проветривание кончилось: вернуть обычный режим и снять модификатор.
+
+    У перехода ровно одно действие (конституция I), поэтому «вернуть обычный
+    режим» и «снять модификатор» — список шагов одного действия. Снятие
+    модификатора идёт **последним**: обычный режим должен встать до того, как
+    Home Assistant пришлёт событие ``airing_on = false`` и состояние
+    пересчитается (FR-024, FR-025, T085).
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``preset_mode``/``percentage`` и ``airing_entity``.
+
+    Returns:
+        Шаги: обычный режим и скорость, затем снятие модификатора.
+    """
+    del state
+    steps: list[CommandIntent] = list(fan_apply_mode_and_speed(None, context))
+    reset = _modifier_off_intent(context, "airing_entity", "airing_reset")
+    if reset is not None:
+        steps.append(reset)
+    return steps
+
+
+def exhaust_after_timeout(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
+    """Вытяжка по модификатору кончилась: погасить прибор и снять модификатор.
+
+    Если вытяжку включил сам санузел (температура или влажность), следующее
+    событие датчика включит её снова — модификатор здесь ни при чём. Снятие
+    модификатора убирает ручную причину, а не единственную (T085, T086).
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` вытяжки и ``exhaust_entity``.
+
+    Returns:
+        Шаги: выключение вытяжки, затем снятие модификатора.
+    """
+    del state
+    steps: list[CommandIntent] = []
+    off = exhaust_off(None, context)
+    if off is not None:
+        steps.append(off)
+    reset = _modifier_off_intent(context, "exhaust_entity", "exhaust_reset")
+    if reset is not None:
+        steps.append(reset)
+    return steps
+
+
+def airing_off(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
+    """Прервать проветривание: погасить вентиляцию и снять модификатор.
+
+    Запасной путь таймера: обычный режим вернуть нельзя (нет улицы, работает
+    обогрев, выключил владелец), поэтому прибор гасится, а модификатор
+    снимается — иначе проветривание продлилось бы само на следующем показании
+    датчика.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``airing_entity``.
+
+    Returns:
+        Шаги: выключение вентиляции, затем снятие модификатора.
+    """
+    del state
+    steps: list[CommandIntent] = []
+    off = fan_turn_off(None, context)
+    if off is not None:
+        steps.append(off)
+    reset = _modifier_off_intent(context, "airing_entity", "airing_reset")
+    if reset is not None:
+        steps.append(reset)
+    return steps
+
+
 # Dictionary of all available action handlers for easy registration
 ACTION_HANDLERS: dict[str, Any] = {
     "turn_on_light": turn_on_light,
@@ -1000,9 +1138,13 @@ ACTION_HANDLERS: dict[str, Any] = {
     "fan_turn_off": fan_turn_off,
     "fan_set_percentage": fan_set_percentage,
     "fan_set_preset": fan_set_preset,
+    "fan_airing_on": fan_airing_on,
     "fan_apply_mode_and_speed": fan_apply_mode_and_speed,
     "exhaust_on": exhaust_on,
     "exhaust_off": exhaust_off,
+    "airing_after_timeout": airing_after_timeout,
+    "airing_off": airing_off,
+    "exhaust_after_timeout": exhaust_after_timeout,
 }
 
 
