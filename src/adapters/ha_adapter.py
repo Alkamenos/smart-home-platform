@@ -814,9 +814,18 @@ class SimpleHAWebSocketClient:
 
             try:
                 response = await asyncio.wait_for(result_future, timeout=15)
-                return response.get("result")
             except TimeoutError:
                 return None
+            # Home Assistant отвечает `success: false` на отказ сервиса (например,
+            # лишний ключ в данных команды). Без этой проверки отказ выглядел как
+            # успех: адаптер печатал «выполнен», и цепочка «решение → команда →
+            # прибор» считалась исправной, хотя команду отбило (боевой разбор
+            # 2026-10-12: `fan.set_preset_mode` с лишним полем).
+            if isinstance(response, dict) and response.get("success") is False:
+                raise RuntimeError(
+                    f"HA service {domain}.{service} failed: {response.get('error')!r}"
+                )
+            return response.get("result")
         else:
             await self.ws.send(json.dumps(payload))
             return None
@@ -1829,6 +1838,41 @@ class HAAdapter:
         unit = self._entity_units.get(timer)
         return {"timer_unit": unit} if unit else {}
 
+    async def _reconcile_sensor_states(self) -> None:
+        """Прочитать показания датчиков при подключении и разослать автоматам.
+
+        Home Assistant присылает событие только при изменении, а текущих значений
+        в момент подписки не отдаёт. Поэтому после перезапуска автомат живёт со
+        значением, восстановленным из сохранённого состояния, и пока датчик
+        молчит, решение принимается по устаревшему показанию: в бою 2026-10-12
+        (B40) рекуператор спальни физически работал, а автомат считал ``IDLE``,
+        потому что датчик не менялся больше часа.
+
+        Сверка читает текущее состояние каждого датчика и проводит его тем же
+        путём, что и настоящее событие (``route_state_change``), поэтому решения
+        (и команды) принимаются по правде. Best-effort: недоступный датчик не
+        должен мешать подключению.
+
+        Returns:
+            Ничего.
+        """
+        router = self._event_router
+        if router is None:
+            return
+        for sensor_id in router.mapped_sensors():
+            try:
+                state = await self._read_entity_state(sensor_id)
+                if state is None:
+                    continue
+                await router.route_state_change(
+                    entity_id=sensor_id,
+                    new_state=state,
+                    old_state=state,
+                    context=self._event_context(sensor_id),
+                )
+            except Exception as exc:  # noqa: BLE001 — сверка не должна ронять подключение
+                logger.warning(f"HAAdapter: сверка датчика {sensor_id} не удалась: {exc}")
+
     async def _refresh_daylight(self) -> None:
         """Обновить признак «светло ли сейчас» по данным Home Assistant.
 
@@ -1861,6 +1905,7 @@ class HAAdapter:
             client.ventilation_entities = dict(self.ventilation_entities)
         await self._refresh_climate_globals()
         await self._refresh_ventilation_globals()
+        await self._reconcile_sensor_states()
 
         http_url = cast(str, self._ws_url)
         rest_base = http_url.replace("wss://", "https://").replace("ws://", "http://")
