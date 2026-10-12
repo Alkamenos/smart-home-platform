@@ -326,6 +326,9 @@ gantt
 - Source: `specs/001-device-integration/tasks.md` → «Бэклог» (EN T040, T046, T054, T060, T067)
 - File: `cli.py`
 - Fix: Add end-to-end CLI tests
+- Source: `specs/015-cover-control/` (спека 015, US1–US3)
+- Платформа отправляет только «открыть»/«закрыть» (`cover.open_cover` /
+- Пока не закрыто: чтение позиции (`current_position`/`moving`) и учёт ручного
 
 ### Low Priority
 - File: `tools/dashboard_generator.py`
