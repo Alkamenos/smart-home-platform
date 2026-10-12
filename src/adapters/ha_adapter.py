@@ -901,6 +901,17 @@ _BOOLEAN_ROLES = frozenset(
 #: Сущности, значение которых — число: ``number.*`` и ``sensor.*`` температуры.
 _NUMERIC_ROLES = frozenset({"setpoint", "comfort_max", "outside_temp"})
 
+#: Роли глобальных сущностей, смена которых обязана немедленно пересмотреть
+#: автоматы вентиляции. Эти значения живут в Home Assistant и приходят не от
+#: датчика: выключатель владельца, фиче-флаг дома, сезон и модификаторы
+#: проветривания/вытяжки. Автомат вентиляции ждёт показания температуры, поэтому
+#: без этого переключатель владельца не действовал, пока датчик молчал: в бою
+#: 2026-10-12 рекуператор продолжал дуть сырым притоком на 91 %, хотя владелец
+#: выключил вентиляцию, — события датчика не было больше часа.
+_VENTILATION_RETRIGGER_ROLES: frozenset[str] = frozenset(
+    {"enable", "ventilation_feature", "season", "airing", "exhaust"}
+)
+
 
 class HAAdapter:
     """
@@ -1380,6 +1391,40 @@ class HAAdapter:
                 )
             except Exception as e:
                 log.error(f"HAAdapter: EventRouter.route_state_change failed for {entity_id}: {e}")
+
+        # Переключатели вентиляции (владелец, фиче-флаг, сезон, проветривание и
+        # вытяжка) живут в Home Assistant и приходят не от датчика. Автомат
+        # вентиляции ждёт показания температуры, поэтому без немедленного
+        # пересмотра выключение вентиляции не действовало, пока датчик молчал
+        # (боевой разбор 2026-10-12: рекуператор дул на 91 % при выключенном
+        # выключателе владельца). Значение уже разобрано и лежит в контексте,
+        # поэтому пересмотр видит его сразу. Признак «обогрев работает» считает
+        # роутер — он один знает комнату и климат-автоматы.
+        if (
+            client is not None
+            and self._is_ventilation_gate(entity_id)
+            and self._event_router is not None
+        ):
+            try:
+                await self._event_router.route_settings_change(event_context)
+            except Exception as e:
+                log.error(f"HAAdapter: пересмотр вентиляции не удался: {e}")
+
+    def _is_ventilation_gate(self, entity_id: str) -> bool:
+        """Относится ли изменившаяся сущность к переключателям вентиляции.
+
+        Args:
+            entity_id: Идентификатор изменившейся сущности.
+
+        Returns:
+            True, если смена этой сущности должна немедленно пересмотреть
+            автоматы вентиляции.
+        """
+        client = self._ws_client
+        role_of = getattr(client, "global_role", None)
+        if role_of is None:
+            return False
+        return role_of(entity_id) in _VENTILATION_RETRIGGER_ROLES
 
     async def call_service(
         self,

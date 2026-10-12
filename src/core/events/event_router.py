@@ -281,3 +281,52 @@ class EventRouter:
                 event=event_name,
                 external_ctx=external_ctx,
             )
+
+    #: Триггер пересмотра вентиляции при смене глобального переключателя.
+    #: Отдельное имя, а не `temperature_changed`: показание датчика и решение
+    #: владельца — разные поводы (у перехода может быть больше одного триггера,
+    #: конституция I). Смена сезона обязана пересобрать и режим, а на каждое
+    #: показание датчика режим намеренно не пересобирается (research.md D7).
+    SETTINGS_CHANGED: str = "settings_changed"
+
+    async def route_settings_change(self, context: dict[str, Any] | None = None) -> None:
+        """Пересмотреть автоматы вентиляции при смене глобального переключателя.
+
+        Переключатели вентиляции — выключатель владельца, фиче-флаг дома, сезон и
+        модификаторы проветривания/вытяжки — меняются в Home Assistant, а не от
+        датчика. Автомат вентиляции ждёт показания температуры, поэтому без этого
+        пересмотра выключение владельца не действовало, пока датчик молчал
+        (боевой разбор 2026-10-12: рекуператор дул сырым притоком на 91 % больше
+        часа при выключенном выключателе).
+
+        Признак «обогрев работает» считается здесь же, как в
+        `route_state_change`: без него пересмотр мог бы включить вентиляцию при
+        работающем обогреве, вопреки T089/FR-031.
+
+        Args:
+            context: Контекст события с уже прочитанными глобальными значениями.
+
+        Returns:
+            Ничего.
+        """
+        if context is None:
+            context = {}
+        get_all_states = getattr(self._engine, "get_all_states", None)
+        if get_all_states is None:
+            return
+        for fsm_entity_id in list(get_all_states().keys()):
+            if "_ventilation_modes_" not in fsm_entity_id:
+                continue
+            external_ctx = {**context}
+            heating = self._room_heating_active(fsm_entity_id)
+            if heating is not None:
+                external_ctx["heating_active"] = heating
+            logger.info(
+                f"Routing: settings_changed → fsm={fsm_entity_id}, heating_active={heating}"
+            )
+            await self._engine.trigger(
+                entity_id=fsm_entity_id,
+                event=self.SETTINGS_CHANGED,
+                external_ctx=external_ctx,
+                respect_debounce=False,
+            )

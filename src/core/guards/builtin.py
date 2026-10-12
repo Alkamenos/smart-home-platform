@@ -1343,6 +1343,32 @@ def _room_temperature(context: dict[str, Any]) -> float | None:
     return value
 
 
+def _room_needs_cooling(context: dict[str, Any], room: float | None) -> bool:
+    """Комнате нужен холодный приток: она не ниже потолка комфорта.
+
+    Порог — глобальная ``comfort_max`` (``input_number.maksimalno_komfortnaia_temperatura``),
+    единый для дома: то же значение решает, пора ли охлаждать кондиционером
+    (``may_cool``). Отдельного порога вентиляции нет намеренно — две ручки для
+    «жарко» разошлись бы, и владелец настраивал бы одну из двух.
+
+    Потолка нет — приток не выбирается: «жарко» неизвестно, а на морозе
+    угадывание означало бы лишний приток свежего воздуха.
+
+    Args:
+        context: Контекст перехода.
+        room: Температура комнаты в градусах либо ``None``, если показания нет.
+
+    Returns:
+        True, если комната не ниже потолка комфорта.
+    """
+    if room is None:
+        return False
+    ceiling = _comfort_max_value(context)
+    if ceiling is None:
+        return False
+    return room >= ceiling
+
+
 def _speed_from_context(context: dict[str, Any]) -> float:
     """Скорость рекуператора по разнице температур и модификатору сна.
 
@@ -1485,10 +1511,11 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
     ``chosen_mode``.
 
     Режим зависит от модификатора владельца «зима» (research.md D18): зимой —
-    рекуперация (зима), летом — рекуперация (лето). Для быстрого охлаждения,
-    когда комната заметно теплее улицы, выбирается приток. Без показания улицы
-    режим **не выбирается**: при морозе угадывание означало бы лишний приток
-    свежего воздуха, летом — душный дом.
+    рекуперация, летом — рекуперация (лето). Приток выбирается только для
+    охлаждения: летом — когда комната заметно теплее улицы, зимой — только
+    когда в комнате жарко выше потолка комфорта (уточнение владельца
+    2026-10-12). Без показания улицы режим **не выбирается**: при морозе
+    угадывание означало бы лишний приток свежего воздуха, летом — душный дом.
 
     Условие отказывает и тогда, когда вентиляции работать нельзя: фиче-флаг
     выключен, выключатель владельца в off или в комнате работает обогрев
@@ -1505,12 +1532,21 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
     def mode_for_weather(state: Any, context: dict[str, Any]) -> bool:
         """Выбрать режим по модификатору «зима», дельте температур и погоде.
 
-        Приток выбирается для быстрого охлаждения: когда комната заметно
-        теплее улицы (разница не меньше ``supply_delta_threshold``), свежий
-        воздух охлаждает быстрее рекуперации (research.md D18). Иначе режим
-        задаёт модификатор владельца «зима»: зимой — рекуперация (зима), летом —
-        рекуперация (лето). Пока модификатор неизвестен, режим выбирается по
-        прежнему порогу температуры улицы.
+        Зимой режим — рекуперация: она возвращает тепло, а сырой приток на
+        морозе дом охлаждает. Приток в зимнем режиме выбирается **только** когда
+        в комнате жарко — выше потолка комфорта ``comfort_max`` — и подача
+        свежего воздуха действительно охлаждает (уточнение владельца 2026-10-12:
+        «приток — для охлаждения»). Раньше дельта «комната − улица» перебивала
+        зиму: при разнице от ``supply_delta_threshold`` включался сырой приток на
+        высокой скорости, и в холодный сезон это остужало дом (боевой разбор
+        2026-10-12).
+
+        Летом приток выбирается при заметной дельте (комната теплее улицы не
+        меньше ``supply_delta_threshold``): свежий воздух охлаждает быстрее
+        рекуперации. При неизвестном сезоне — то же правило охлаждения, иначе
+        прежний порог температуры улицы. Потолка комфорта нет — приток не
+        выбирается: без него «жарко» неизвестно, а на морозе угадывание дало бы
+        лишний приток.
 
         Args:
             state: Состояние автомата (не используется).
@@ -1534,19 +1570,31 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
 
         is_winter = context.get("is_winter")
         chosen: Any = None
-        if room is not None and (room - outside) >= supply_delta:
-            chosen = context.get("mode_supply")
-        elif is_winter is True:
-            chosen = context.get("mode_winter")
+        if is_winter is True:
+            # Зимой — рекуперация, приток только при жаре в комнате (T094).
+            chosen = (
+                context.get("mode_supply")
+                if _room_needs_cooling(context, room)
+                else context.get("mode_winter")
+            )
         elif is_winter is False:
-            chosen = context.get("mode_summer")
+            chosen = (
+                context.get("mode_supply")
+                if room is not None and (room - outside) >= supply_delta
+                else context.get("mode_summer")
+            )
         else:
             threshold = _number(context, "winter_mode_threshold")
             if threshold is None:
                 threshold = DEFAULT_WINTER_THRESHOLD
-            chosen = (
-                context.get("mode_winter") if outside <= threshold else context.get("mode_summer")
-            )
+            if _room_needs_cooling(context, room):
+                chosen = context.get("mode_supply")
+            else:
+                chosen = (
+                    context.get("mode_winter")
+                    if outside <= threshold
+                    else context.get("mode_summer")
+                )
 
         context["chosen_mode"] = chosen
         # Скорость считается здесь же: переход IDLE → SUPPLY шлёт одним

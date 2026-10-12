@@ -14,6 +14,19 @@ from core.registry import Registry
 
 
 NO = "НЕТ ПРОИСХОДИТЕЛЯ"
+PLATFORM = "platform"
+
+#: События, которые порождает сама платформа, а не датчик и не движок. Смену
+#: глобального переключателя вентиляции (выключатель владельца, фиче-флаг, сезон,
+#: проветривание, вытяжка) шлёт HAAdapter через EventRouter.route_settings_change:
+#: автомат вентиляции ждёт показания датчика, и решение владельца без этого
+#: события не доходило бы до него.
+PLATFORM_EVENTS: dict[str, str] = {
+    "settings_changed": (
+        "смена глобального переключателя вентиляции; шлёт HAAdapter через "
+        "EventRouter.route_settings_change"
+    ),
+}
 
 CONTRACT_PATH = pathlib.Path("src/features/CONTRACT.yaml")
 
@@ -168,6 +181,12 @@ lines += [
     "  # События, которые порождает сам движок, а не внешний источник.",
     "  timeout: таймер взводится по исходящим переходам состояния с триггером timeout.",
     "",
+    "platform_events:",
+    "  # События, которые порождает платформа, а не датчик и не движок.",
+]
+lines += [f"  {name}: {note}" for name, note in PLATFORM_EVENTS.items()]
+lines += [
+    "",
     "registered_actions:  # реестр после register_all_actions",
 ]
 lines += [f"  - {a}" for a in registered]
@@ -213,6 +232,8 @@ for path in sorted(pathlib.Path("src/features").glob("*.yaml")):
             src = "sensor"
         elif trig == "timeout":
             src = "engine"
+        elif trig in PLATFORM_EVENTS:
+            src = PLATFORM
         else:
             src = NO
             unproduced.append(trig)

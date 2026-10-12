@@ -20,6 +20,10 @@ engine_events:
   # События, которые порождает сам движок, а не внешний источник.
   timeout: таймер взводится по исходящим переходам состояния с триггером timeout.
 
+platform_events:
+  # События, которые порождает платформа, а не датчик и не движок.
+  settings_changed: смена глобального переключателя вентиляции; шлёт HAAdapter через EventRouter.route_settings_change
+
 registered_actions:  # реестр после register_all_actions
   - ac_cool_on
   - ac_dry_on
@@ -283,6 +287,7 @@ templates:
     triggers:
       temperature_changed: sensor
       humidity_changed: sensor
+      settings_changed: platform
       timeout: engine
     unproduced_triggers: []
     gaps:

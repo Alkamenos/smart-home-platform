@@ -14,8 +14,9 @@
 #   - проветривание и вытяжка — модификаторы с автосбросом в `false` по таймеру
 #     60 минут (T085): сначала возвращается обычный режим, затем снимается флаг;
 #   - вытяжка включается по высокой температуре И/ИЛИ влажности санузла (T086);
-#   - рекуперация — по модификатору «зима» и дельте температур; приток — для
-#     быстрого охлаждения, выбор приток/рекуперация по величине дельты (T087);
+#   - рекуперация — по модификатору «зима» и дельте температур; приток — только
+#     для охлаждения: летом по величине дельты, зимой — лишь когда комната выше
+#     потолка комфорта `comfort_max` (T087, T094);
 #   - ночью — минимальная скорость (T088);
 #   - при работающем обогреве вентиляция выключается (признак `heating_active`
 #     кладёт роутер по состояниям климат-автоматов комнаты, T089);
@@ -127,6 +128,28 @@ transitions:
     guard: "mode_for_weather"
     action: "fan_apply_mode_and_speed"
 
+  # Смена глобального переключателя (выключатель владельца, фиче-флаг дома,
+  # сезон, модификаторы проветривания/вытяжки) — тот же разбор, что и на
+  # показании датчика, но повод другой: решение владельца не должно ждать
+  # датчика, который может молчать часами (боевой разбор 2026-10-12). Порядок
+  # внутри группы — как у `temperature_changed`: проветривание, вытяжка,
+  # обычный режим.
+  - from_state: "IDLE"
+    to_state: "AIRING"
+    trigger: "settings_changed"
+    guard: "owner_wants_airing"
+    action: "fan_airing_on"
+  - from_state: "IDLE"
+    to_state: "EXHAUST"
+    trigger: "settings_changed"
+    guard: "should_run_exhaust"
+    action: "exhaust_on"
+  - from_state: "IDLE"
+    to_state: "SUPPLY"
+    trigger: "settings_changed"
+    guard: "mode_for_weather"
+    action: "fan_apply_mode_and_speed"
+
   # Проветривание из обычного режима: владелец включил модификатор.
   - from_state: "SUPPLY"
     to_state: "AIRING"
@@ -150,6 +173,26 @@ transitions:
   - from_state: "SUPPLY"
     to_state: "IDLE"
     trigger: "temperature_changed"
+    guard: "ventilation_should_stop"
+    action: "fan_turn_off"
+
+  # Пересмотр по решению владельца: погасить, начать проветривание или
+  # пересобрать режим и скорость. Режим пересобирается здесь, а не на каждом
+  # показании датчика: смена сезона обязана сменить приток на рекуперацию (и
+  # обратно), а на каждое показание это выглядело бы щелчком режима (D7).
+  - from_state: "SUPPLY"
+    to_state: "AIRING"
+    trigger: "settings_changed"
+    guard: "owner_wants_airing"
+    action: "fan_airing_on"
+  - from_state: "SUPPLY"
+    to_state: "SUPPLY"
+    trigger: "settings_changed"
+    guard: "mode_for_weather"
+    action: "fan_apply_mode_and_speed"
+  - from_state: "SUPPLY"
+    to_state: "IDLE"
+    trigger: "settings_changed"
     guard: "ventilation_should_stop"
     action: "fan_turn_off"
 
@@ -183,6 +226,11 @@ transitions:
     trigger: "temperature_changed"
     guard: "ventilation_should_stop"
     action: "airing_off"
+  - from_state: "AIRING"
+    to_state: "IDLE"
+    trigger: "settings_changed"
+    guard: "ventilation_should_stop"
+    action: "airing_off"
 
   # Вытяжка кончилась по таймеру (модификатор): погасить прибор и снять
   # модификатор (T085). Если вытяжку держит сам санузел, следующее событие
@@ -205,5 +253,10 @@ transitions:
   - from_state: "EXHAUST"
     to_state: "IDLE"
     trigger: "humidity_changed"
+    guard: "exhaust_should_stop"
+    action: "exhaust_off"
+  - from_state: "EXHAUST"
+    to_state: "IDLE"
+    trigger: "settings_changed"
     guard: "exhaust_should_stop"
     action: "exhaust_off"
