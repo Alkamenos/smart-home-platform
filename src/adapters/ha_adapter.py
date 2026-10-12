@@ -1415,16 +1415,24 @@ class HAAdapter:
         # недоказуем — а именно здесь в бою 2026-10-11 и терялись команды
         # обогревателей: намерение принималось, а эта строка молчала, и цепочка
         # «решение → команда → прибор» выглядела исправной до конца.
-        log.warning(f"HAAdapter: calling service {domain}.{service} for {entity_id}")
+        log.warning(f"HAAdapter: calling service {domain}.{service} for {entity_id}, data={data}")
 
         try:
             if self._mode == "pyscript":
-                return await self._call_service_pyscript(domain, service, entity_id, data, log)
+                ok = await self._call_service_pyscript(domain, service, entity_id, data, log)
             else:
-                return await self._call_service_websocket(domain, service, entity_id, data, log)
+                ok = await self._call_service_websocket(domain, service, entity_id, data, log)
         except Exception as e:
             log.error(f"HAAdapter: service call failed {domain}.{service} for {entity_id}: {e}")
             return False
+        # Судьба команды пишется и при успехе: без этого «приняли намерение» и
+        # «прибор выполнил» неразличимы, и утренний разбор не скажет, где оборвалась
+        # цепочка «решение → команда → прибор».
+        log.warning(
+            f"HAAdapter: service {domain}.{service} for {entity_id}: "
+            f"{'выполнен' if ok else 'НЕ выполнен'}"
+        )
+        return ok
 
     async def _call_service_pyscript(
         self,
@@ -2133,7 +2141,13 @@ class HAAdapter:
             old_state = old_state_obj.get("state", "unknown") if old_state_obj else "unknown"
             new_state = new_state_obj.get("state", "unknown") if new_state_obj else "unknown"
 
-            logger.info(f"📡 HA STATE CHANGE: {entity_id}: '{old_state}' -> '{new_state}'")
+            # WARNING, а не INFO: логи адаптера наследуют корневой обработчик,
+            # где INFO не виден (урок #70). Событие уже прошло фильтр (`_deliver`
+            # зовёт обработчик только для сущностей манифеста), поэтому это
+            # ровно тот поток, по которому утром восстанавливается хронология:
+            # какая сущность изменилась, с какого значения и на какое. Без этого
+            # «датчик молчал» и «событие потерялось» неразличимы.
+            logger.warning(f"📡 HA STATE CHANGE: {entity_id}: '{old_state}' -> '{new_state}'")
             log.info(
                 f"HAAdapter: WebSocket state_change for {entity_id}: '{old_state}' -> '{new_state}'"
             )

@@ -42,6 +42,7 @@ from core.events.fsm_events import (
     PROBLEM_FSM_STUCK,
     PROBLEM_HA_DISCONNECTED,
 )
+from core.fsm.engine import _diagnostic_context, _is_diagnostic_entity
 from core.logger import get_logger
 
 
@@ -433,7 +434,31 @@ class WatchdogService:
         self._record_metrics(snapshot)
         self._publish_problems(snapshot)
         logger.info(f"[WATCHDOG] {snapshot.to_json()}")
+        self._log_diagnostics()
         return snapshot
+
+    def _log_diagnostics(self) -> None:
+        """Записать снимок входов климата и вентиляции.
+
+        Раз в интервал в журнал уходит не только состояние автомата, но и
+        контекст последнего решения: утренний разбор должен видеть ряд значений
+        (улица, уставка, флаги, режим, скорость), даже если датчики молчали и
+        событий не было. Без этого «ничего не происходило» неотличимо от
+        «происходило, но вход был пуст».
+        """
+        explain = getattr(self.fsm_engine, "explain", None)
+        for entity_id, state in self.fsm_engine.get_all_states().items():
+            if not _is_diagnostic_entity(entity_id):
+                continue
+            reason = None
+            if explain is not None:
+                decision = explain(entity_id)
+                reason = getattr(decision, "reason_code", None) if decision else None
+            logger.info(
+                f"[ДИАГНОСТИКА] {entity_id}: состояние {state.current_state}, "
+                f"последнее решение {reason}, вход: "
+                f"{_diagnostic_context(getattr(state, 'context', {}) or {})}"
+            )
 
     def _collect_entries(self) -> tuple[FsmSnapshotEntry, ...]:
         """Собрать записи снимка по всем автоматам.

@@ -272,7 +272,7 @@ def _climate_intent(
     if mode is not None and not isinstance(mode, bool):
         data["hvac_mode"] = mode
 
-    logger.info(f"Создаю команду {service} для {entity_id}")
+    logger.info(f"Создаю команду {service} для {entity_id}, данные: {data}")
 
     return CommandIntent(
         device_id=entity_id,
@@ -388,6 +388,10 @@ def _heater_intent(
     if not entity_id:
         logger.warning(f"{source}: нет entity_id обогревателя в контексте")
         return None
+    logger.info(
+        f"Создаю команду {domain}.{service} для {target_entity_id or entity_id}, "
+        f"данные: {data or {}}"
+    )
     return CommandIntent(
         device_id=target_entity_id or entity_id,
         domain=domain,
@@ -822,7 +826,7 @@ def _fan_intent(context: dict[str, Any], service: str, source: str) -> CommandIn
         if context.get(key) is not None:
             data[key] = context[key]
 
-    logger.info(f"Создаю команду {service} для {entity_id}")
+    logger.info(f"Создаю команду {service} для {entity_id}, данные: {data}")
 
     return CommandIntent(
         device_id=entity_id,

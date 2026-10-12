@@ -18,7 +18,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from loguru import logger
 
@@ -263,6 +263,14 @@ KNOWN_BEHAVIOR_PARAM_KEYS: frozenset[str] = frozenset(
         "airing_seconds",
         "source_room",
         "winter_mode_threshold",
+        # Параметры переработки вентиляции по уточнениям владельца (спека 014,
+        # T085–T088): роль устройства и пороги санузла тоже живут в контексте,
+        # и убранные из манифеста должны вычищаться, как и остальные.
+        "ventilation_role",
+        "supply_delta_threshold",
+        "exhaust_seconds",
+        "exhaust_temp_threshold",
+        "exhaust_humidity_threshold",
     }
     # Доменные правила дома фабрика превращает в параметры поведения (T012
     # спеки 014), значит и они попадают в контекст состояния.
@@ -291,6 +299,68 @@ def sanitise_stale_params(context: dict[str, Any], params: dict[str, Any]) -> di
             logger.debug(f"Убран устаревший параметр {key} из контекста перехода")
             del cleaned[key]
     return cleaned
+
+
+#: Шаблоны, решения которых разбираются утром по журналу. Для них каждое
+#: решение (и разрешение, и отказ) пишется видимо и без ограничения частоты:
+#: по одной записи должно быть видно, что пришло, что решили и почему.
+#: Остальные автоматы (свет) остаются при прежнем поведении: их события — фон,
+#: и подробный разбор каждого затопил бы полезное (`.ai/04_RULES.md`).
+DIAGNOSTIC_TEMPLATES: Final[tuple[str, ...]] = (
+    "climate_control",
+    "ventilation_modes",
+    "humidity_ventilation",
+)
+
+#: Ключи контекста, которые попадают в диагностическую запись решения. Значения
+#: приходят из события датчика и глобальных сущностей, поэтому именно они дают
+#: утренний ответ на вопрос «почему не сработало».
+DIAGNOSTIC_CONTEXT_KEYS: Final[tuple[str, ...]] = (
+    "temperature",
+    "humidity",
+    "outside_temperature",
+    "is_winter",
+    "heating_active",
+    "ventilation_role",
+    "ventilation_on",
+    "ventilation_enabled",
+    "airing_on",
+    "exhaust_on",
+    "sleep_modifier_on",
+    "climate_setpoint",
+    "comfort_max",
+    "ac_allowed",
+    "climate_enabled",
+    "chosen_mode",
+    "percentage",
+)
+
+
+def _is_diagnostic_entity(entity_id: str) -> bool:
+    """Относится ли автомат к климату или вентиляции.
+
+    Имя автомата строится как ``{устройство}_{шаблон}_{приоритет}`` (ADR-003),
+    поэтому шаблон виден в самом идентификаторе.
+
+    Args:
+        entity_id: Идентификатор автомата.
+
+    Returns:
+        True, если решения автомата пишутся подробно.
+    """
+    return any(template in entity_id for template in DIAGNOSTIC_TEMPLATES)
+
+
+def _diagnostic_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Отобрать значимые для разбора ключи контекста.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Словарь только тех ключей, что есть в контексте.
+    """
+    return {key: context[key] for key in DIAGNOSTIC_CONTEXT_KEYS if key in context}
 
 
 class FSMEngine:
@@ -375,9 +445,20 @@ class FSMEngine:
             trigger=event,
         )
 
+        if _is_diagnostic_entity(entity_id):
+            # Климат и вентиляция: отказ виден на каждом событии, а не один раз
+            # на сущность. Причина и событие названы прямо — утренний разбор
+            # должен прочитать «почему не сработало» без обращения к коду.
+            logger.warning(
+                f"FSMEngine: решение отказано — {entity_id}, событие '{event}', причина {reason}"
+            )
+            return
+
         if self._log_every_rejection:
             # Флаг возвращает прежнее поведение целиком: каждый отказ пишется.
-            logger.warning(f"No FSM definition found for entity {entity_id}")
+            logger.warning(
+                f"FSMEngine: отказ по сущности {entity_id} ({reason}), событие '{event}'"
+            )
             return
 
         key = (entity_id, reason)
@@ -592,9 +673,25 @@ class FSMEngine:
         Example:
              engine.get_entities_by_device("light.kitchen")
             ["light.kitchen_lighting_10", "light.kitchen_night_light_20"]
+
+        Устройство берётся из ``target_device_id``, а не разбирается из
+        идентификатора по префиксу: ``fan.base_smart`` — префикс
+        ``fan.base_smart_2``, и поиск по ``startswith`` возвращал автоматы
+        **другого** устройства. В бою (спека 014, 2026-10-12) датчик спальни
+        маршрутизировался на оба рекуператора сразу. Префиксный путь остаётся
+        запасным — для определений, собранных без ``target_device_id`` (тесты).
         """
+        exact = [
+            entity_id
+            for entity_id, definition in self._definitions.items()
+            if definition.target_device_id == device_id
+        ]
+        if exact:
+            return exact
         return [
-            entity_id for entity_id in self._definitions if entity_id.startswith(f"{device_id}_")
+            entity_id
+            for entity_id, definition in self._definitions.items()
+            if definition.target_device_id is None and entity_id.startswith(f"{device_id}_")
         ]
 
     @property
@@ -1215,11 +1312,28 @@ class FSMEngine:
 
             if missing is not None:
                 guard_denials.setdefault(missing, str(transition.guard))
+                if _is_diagnostic_entity(entity_id):
+                    # Климат и вентиляция разбираются утром по журналу: отказ
+                    # пишется на КАЖДОМ событии с входом, из которого он вырос.
+                    log.warning(
+                        f"[ДИАГНОСТИКА] {entity_id}: '{current_state.current_state}' → "
+                        f"'{transition.to_state}' по '{event}' — условие "
+                        f"{transition.guard}: ОТКАЗ ({missing}); вход: "
+                        f"{_diagnostic_context(merged_context)}"
+                    )
                 log.debug(
                     f"Entity {entity_id}: Guard '{transition.guard}' failed for transition "
                     f"'{current_state.current_state}' -> '{transition.to_state}' ({missing})"
                 )
                 continue
+
+            if _is_diagnostic_entity(entity_id):
+                log.warning(
+                    f"[ДИАГНОСТИКА] {entity_id}: '{current_state.current_state}' → "
+                    f"'{transition.to_state}' по '{event}' — условие "
+                    f"{transition.guard}: РАЗРЕШЕНО; действие {transition.action}; вход: "
+                    f"{_diagnostic_context(merged_context)}"
+                )
 
             # Execute action
             context_patch = await self._execute_action(
