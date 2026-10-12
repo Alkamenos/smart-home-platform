@@ -247,6 +247,10 @@ KNOWN_BEHAVIOR_PARAM_KEYS: frozenset[str] = frozenset(
         "humidity_threshold",
         "motion_timeout_sec",
         "brightness",
+        # Явные яркость и цвет при включении света (требование владельца
+        # 2026-10-13, B48): иначе лампа вспоминает прошлые настройки.
+        "brightness_pct",
+        "color_temp_kelvin",
         "schedule",
         "target_temp",
         # Параметры вентиляции (спека 014, data-model.md §5).
@@ -1157,6 +1161,21 @@ class FSMEngine:
         if definition is None or not definition.params:
             return {}
         return dict(definition.params)
+
+    def definition_params(self, entity_id: str) -> dict[str, Any]:
+        """Публично: параметры поведения автомата (из манифеста).
+
+        Нужны тому, кто решает о поведении снаружи переходов — например, сверке
+        вечернего света: она различает свет, гаснущий по отбою
+        (``off_by: sleep``), и свет, живущий до рассвета (``off_by: sunrise``).
+
+        Args:
+            entity_id: Идентификатор автомата.
+
+        Returns:
+            Копия параметров либо пустой словарь.
+        """
+        return self._definition_params(entity_id)
 
     def _enrich_context_for_action(self, entity_id: str, context: dict[str, Any]) -> dict[str, Any]:
         """Enrich context with target_device_id and params from FSM definition.

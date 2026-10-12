@@ -803,9 +803,17 @@ class Container:
         def _daylight() -> Any:
             return getattr(getattr(adapter, "_ws_client", None), "daylight", None)
 
+        def _sleeping() -> Any:
+            # Модификатор «мы спим»: по нему свет с `off_by: sleep` должен быть
+            # выключен, и сверка не имеет права включать его обратно (боевой
+            # дефект 2026-10-13: гирлянда вернулась через минуту после отбоя).
+            return getattr(getattr(adapter, "_ws_client", None), "asleep", None)
+
         from core.services.deco_light_watcher import DecorativeLightWatcher
 
-        self._deco_watcher = DecorativeLightWatcher(engine=self.fsm, daylight_supplier=_daylight)
+        self._deco_watcher = DecorativeLightWatcher(
+            engine=self.fsm, daylight_supplier=_daylight, sleeping_supplier=_sleeping
+        )
         # Как сторож и суточный цикл: в синхронной сборке (тесты, Container.build()
         # без цикла событий) запуск пропускается — фоновая задача без работающего
         # цикла завершилась бы сразу, и вместо тихой пустоты осталось бы висящее

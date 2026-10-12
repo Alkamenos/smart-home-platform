@@ -104,12 +104,15 @@ def _manifest() -> Manifest:
     )
 
 
-def _build(daylight: bool | None) -> tuple[FSMEngine, DecorativeLightWatcher, _RecordingDispatcher]:
+def _build(
+    daylight: bool | None, sleeping: bool = False
+) -> tuple[FSMEngine, DecorativeLightWatcher, _RecordingDispatcher]:
     """Собрать движок, сверку и помнящий команды диспетчер.
 
     Args:
         daylight: Что «видит» сверка: True — светло, False — темно,
             None — состояние солнца неизвестно.
+        sleeping: Включён ли модификатор «мы спим».
 
     Returns:
         Движок, сверка и диспетчер.
@@ -125,7 +128,9 @@ def _build(daylight: bool | None) -> tuple[FSMEngine, DecorativeLightWatcher, _R
     dispatcher = _RecordingDispatcher()
     engine.set_command_dispatcher(dispatcher)  # type: ignore[arg-type]
     FSMFactory(engine=engine, registry=registry, event_bus=None).create_and_register(_manifest())
-    watcher = DecorativeLightWatcher(engine=engine, daylight_supplier=lambda: daylight)
+    watcher = DecorativeLightWatcher(
+        engine=engine, daylight_supplier=lambda: daylight, sleeping_supplier=lambda: sleeping
+    )
     return engine, watcher, dispatcher
 
 
@@ -209,6 +214,57 @@ class TestUnknownSunIsSilence:
         assert dispatcher.intents == [], (
             "при неизвестном состоянии солнца сверка обязана молчать: иначе она "
             "выключила бы свет среди ночи из-за молчания датчика"
+        )
+
+
+class TestSleepDoesNotRelight:
+    """Отбой учитывается: свет, гаснущий по «мы спим», не возвращают."""
+
+    @pytest.mark.asyncio
+    async def test_garland_stays_off_while_sleeping(self) -> None:
+        """Ночью при «мы спим» гирлянда не включается обратно.
+
+        Боевой дефект 2026-10-13: сторож видел «темно, а света нет» и возвращал
+        гирлянду через минуту после отбоя. Ночное освещение (`off_by: sunrise`)
+        при этом гореть обязано.
+
+        Returns:
+            Ничего.
+        """
+        _, watcher, dispatcher = _build(daylight=False, sleeping=True)
+
+        await watcher.check_once()
+
+        assert GARLAND not in dispatcher.devices(), (
+            f"гирлянда включилась ночью при отбое: {dispatcher.devices()} — "
+            "её погасил модификатор «мы спим», и возвращать её нельзя"
+        )
+        assert NIGHT_LIGHT in dispatcher.devices(), (
+            "ночное освещение должно гореть до рассвета, даже когда мы спим"
+        )
+
+    @pytest.mark.asyncio
+    async def test_lit_garland_is_turned_off_when_sleep_starts(self) -> None:
+        """Если гирлянда всё же горит при отбое — сторож её гасит.
+
+        Returns:
+            Ничего.
+        """
+        _, watcher, dispatcher = _build(daylight=False, sleeping=False)
+        await watcher.check_once()  # темно, не спим — гирлянда включается
+        assert GARLAND in dispatcher.devices()
+        dispatcher.intents.clear()
+
+        watcher._sleeping_supplier = lambda: True  # noqa: SLF001
+        await watcher.check_once()
+
+        garland_off = [
+            intent
+            for intent in dispatcher.intents
+            if intent.device_id == GARLAND and intent.service == "turn_off"
+        ]
+        assert garland_off, (
+            f"гирлянда горит при отбое, а сторож её не погасил: {dispatcher.intents}"
         )
 
 
