@@ -555,6 +555,7 @@ GUARD_DATA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     # причины в журнале означают разное: «датчик молчит» и «уставка негодна».
     "may_heat": ("temperature",),
     "mode_for_weather": ("outside_temperature",),
+    "should_run_max_supply": ("temperature",),
     # Температура комнаты приходит под именем роли `temperature`, а не под
     # `source_room_temperature`: прежний ключ никто не писал, и объявленное
     # требование останавливало условие на «данных нет» при живом датчике.
@@ -629,6 +630,7 @@ def build_guards(
         "stops_on_sunrise": make_stops_on_sunrise(),
         "may_heat": make_may_heat(),
         "mode_for_weather": make_mode_for_weather(),
+        "should_run_max_supply": make_should_run_max_supply(),
         "speed_within_limits": make_speed_within_limits(),
         "owner_wants_airing": make_owner_wants_airing(),
         "should_run_exhaust": make_should_run_exhaust(),
@@ -1271,14 +1273,25 @@ DEFAULT_WINTER_THRESHOLD = 5.0
 MIN_SPEED = 0
 MAX_SPEED = 100
 
-#: Разница «комната − улица», °C, с которой рекуперация переключается на приток.
-#:
-#: Приток — это быстрое охлаждение свежим воздухом (research.md D18): пока
-#: разница мала, рекуператор возвращает тепло, а когда помещение заметно теплее
-#: улицы, выгоднее подать холодный воздух прямо. Захардкоженный порог рос бы
-#: вместе с домом, поэтому он приходит параметром поведения; это — запасное
-#: значение.
-DEFAULT_SUPPLY_DELTA = 5.0
+#: Обычная скорость рекуператора, %. Совпадает с боевым манифестом дома и с
+#: документированным значением по умолчанию (data-model.md §5); сюда формула
+#: падает, когда параметр не задан. Прибор квантует к [14, 29, 43, …] (D15).
+DEFAULT_SPEED_NORMAL = 43.0
+
+#: Минимальная скорость рекуператора, %. Ниже неё прибор работает впустую; это
+#: решение дома, поэтому рабочее значение приходит параметром поведения
+#: (``speed_min``), а это — запасное.
+DEFAULT_SPEED_MIN = 14.0
+
+#: Температура улицы, °C, при которой скорость рекуператора обычная. Теплее —
+#: обычная, холоднее — скорость падает: гнать морозный воздух в дом дороже, чем
+#: сберечь тепло. Решение дома, поэтому рабочее значение — параметр
+#: (``speed_cold_reference``).
+DEFAULT_SPEED_COLD_REFERENCE = 5.0
+
+#: На сколько процентов снижать скорость рекуператора на каждый градус улицы
+#: ниже ``speed_cold_reference``. Рабочее значение — параметр (``speed_cold_gain``).
+DEFAULT_SPEED_COLD_GAIN = 2.0
 
 #: Порог температуры санузла, °C, с которого вытяжка считается нужной (T086).
 #: Владелец выбрал 25 °C: зимой санузел держится на 23–24 °C, а выше — уже
@@ -1343,40 +1356,44 @@ def _room_temperature(context: dict[str, Any]) -> float | None:
     return value
 
 
-def _room_needs_cooling(context: dict[str, Any], room: float | None) -> bool:
-    """Комнате нужен холодный приток: она не ниже потолка комфорта.
+def _room_is_above_comfort(context: dict[str, Any], room: float | None) -> bool:
+    """В комнате жарче потолка комфорта: нужен максимальный приток.
 
     Порог — глобальная ``comfort_max`` (``input_number.maksimalno_komfortnaia_temperatura``),
     единый для дома: то же значение решает, пора ли охлаждать кондиционером
     (``may_cool``). Отдельного порога вентиляции нет намеренно — две ручки для
     «жарко» разошлись бы, и владелец настраивал бы одну из двух.
 
-    Потолка нет — приток не выбирается: «жарко» неизвестно, а на морозе
-    угадывание означало бы лишний приток свежего воздуха.
+    Потолка нет — приток не включается: «жарко» неизвестно, а на морозе
+    угадывание означало бы лишний приток свежего воздуха (уточнение владельца
+    2026-10-12, research.md D22).
 
     Args:
         context: Контекст перехода.
         room: Температура комнаты в градусах либо ``None``, если показания нет.
 
     Returns:
-        True, если комната не ниже потолка комфорта.
+        True, если комната строго выше потолка комфорта.
     """
     if room is None:
         return False
     ceiling = _comfort_max_value(context)
     if ceiling is None:
         return False
-    return room >= ceiling
+    return room > ceiling
 
 
 def _speed_from_context(context: dict[str, Any]) -> float:
-    """Скорость рекуператора по разнице температур и модификатору сна.
+    """Скорость рекуператора от температуры улицы и модификатора сна.
 
-    Формула (FR-020): ``speed_normal + |улица − комната| × speed_delta_gain``,
-    с обычной скоростью в мёртвой зоне ``|Δ| ≤ delta_deadband`` (FR-030) и
-    ночным потолком, который **только понижает** (FR-022, T088). Показания
-    комнаты нет — берётся обычная скорость: это не «данные есть», а безопасное
-    значение по умолчанию, и оно совпадает с мёртвой зоной.
+    Правило владельца (FR-052, FR-053, research.md D22): не холоднее опорной
+    температуры улицы (``speed_cold_reference``) скорость обычная
+    (``speed_normal``); холоднее — падает на ``speed_cold_gain`` процентов за
+    градус и не опускается ниже ``speed_min``. Ночью при нормальной температуре
+    комнаты скорость — минимальная.
+
+    Показания улицы нет — берётся обычная скорость: это не «данные есть», а
+    безопасное значение по умолчанию (вентиляция тише обычной не сломает дом).
 
     Args:
         context: Контекст перехода.
@@ -1384,29 +1401,27 @@ def _speed_from_context(context: dict[str, Any]) -> float:
     Returns:
         Скорость в процентах, ещё не ограниченная 0–100.
     """
-    outside = _number(context, "outside_temperature")
-    room = _room_temperature(context)
     normal = _number(context, "speed_normal")
-    gain = _number(context, "speed_delta_gain")
-    deadband = _number(context, "delta_deadband")
-    normal = 30.0 if normal is None else normal
-    gain = 0.0 if gain is None else gain
-    deadband = 0.0 if deadband is None else deadband
+    normal = DEFAULT_SPEED_NORMAL if normal is None else normal
+    minimum = _number(context, "speed_min")
+    minimum = DEFAULT_SPEED_MIN if minimum is None else minimum
 
-    if outside is None or room is None:
-        speed = normal
-    else:
-        delta = abs(outside - room)
-        speed = normal if delta <= deadband else normal + delta * gain
-
+    # Ночью при нормальной температуре — минимум: тишина важнее воздухообмена,
+    # а жаркую комнату в это время ведёт уже «Приток MAX», не эта ветка.
     if _is_night(context):
-        night_max = _number(context, "speed_night_max")
-        if night_max is not None:
-            # Потолок только понижает: тихую скорость поднимать нельзя. Ночью
-            # при нормальной температуре это и даёт минимальную скорость
-            # (T088) — проветривать в тишине, но не замерзать.
-            speed = min(speed, night_max)
-    return speed
+        return min(normal, minimum)
+
+    outside = _number(context, "outside_temperature")
+    if outside is None:
+        return normal
+
+    reference = _number(context, "speed_cold_reference")
+    reference = DEFAULT_SPEED_COLD_REFERENCE if reference is None else reference
+    gain = _number(context, "speed_cold_gain")
+    gain = DEFAULT_SPEED_COLD_GAIN if gain is None else gain
+
+    speed = normal if outside >= reference else normal - (reference - outside) * gain
+    return min(normal, max(minimum, speed))
 
 
 def _is_night(context: dict[str, Any]) -> bool:
@@ -1451,8 +1466,19 @@ def _ventilation_allowed(context: dict[str, Any]) -> tuple[bool, str | None]:
     """Право автоматики вентиляции работать сейчас.
 
     Порядок проверок — по силе права: фиче-флаг дома выключает вентиляцию
-    целиком (T090), выключатель владельца сильнее любого правила (FR-027),
-    работающий обогрев делает проветривание бессмысленным (T089, D18).
+    целиком (T090), выключатель владельца сильнее любого правила (FR-027), а
+    рекуператор в комнате холоднее уставки не работает вовсе: приток свежего
+    воздуха в остывающий дом бессмысленен (FR-049). Это правило заменило прежнее
+    «выключать при работающем обогреве» (T089, FR-055): пока комнате нужен
+    обогрев, она ниже уставки, и вентиляция стоит сама.
+
+    Комнатная температура спрашивается только у рекуператора: вытяжка санузла
+    работает и в остывающем доме — санузел сушат не ради тепла.
+
+    Если уставка не прочитана, правило «холодно» не применяется и вентиляция
+    продолжает работать: воздух в доме важнее остановки из-за молчащей ручки.
+    Это осознанный выбор, а не пропуск — пропажу уставки видно по глобальным
+    настройкам, тогда как лишняя остановка вентиляции заметна только по дому.
 
     Args:
         context: Контекст перехода.
@@ -1464,8 +1490,11 @@ def _ventilation_allowed(context: dict[str, Any]) -> tuple[bool, str | None]:
         return False, "ventilation_disabled"
     if context.get("ventilation_on") is False:
         return False, "turned_off_by_owner"
-    if context.get("heating_active") is True:
-        return False, "heating_active"
+    if _ventilation_role(context) == "supply":
+        room = _room_temperature(context)
+        setpoint = _number(context, "climate_setpoint")
+        if room is not None and setpoint is not None and room < setpoint:
+            return False, "room_below_setpoint"
     return True, None
 
 
@@ -1502,7 +1531,7 @@ def _bathroom_is_uncomfortable(context: dict[str, Any]) -> bool | None:
 
 
 def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
-    """Построить условие «выбрать режим вентиляции».
+    """Построить условие «выбрать обычный режим вентиляции».
 
     Физику теплообмена платформа не считает: у рекуператора есть готовые режимы,
     и вычислять приближение — значит заменить работу устройства худшим
@@ -1510,17 +1539,20 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
     заданного параметрами поведения, и кладёт его в контекст под именем
     ``chosen_mode``.
 
-    Режим зависит от модификатора владельца «зима» (research.md D18): зимой —
-    рекуперация, летом — рекуперация (лето). Приток выбирается только для
-    охлаждения: летом — когда комната заметно теплее улицы, зимой — только
-    когда в комнате жарко выше потолка комфорта (уточнение владельца
-    2026-10-12). Без показания улицы режим **не выбирается**: при морозе
-    угадывание означало бы лишний приток свежего воздуха, летом — душный дом.
+    Режим задаёт модификатор владельца «зима» (FR-050, research.md D22): при
+    ``is_winter`` = true — ``mode_winter`` («Рекуперация (зима)»), при false —
+    ``mode_summer`` («Рекуперация (лето)»). Охлаждающий максимальный приток здесь
+    не выбирается: им заведует отдельное условие ``should_run_max_supply``,
+    которое ведёт автомат в ``AIRING`` с таймером. Пока модификатор не прочитан,
+    режим определяется порогом температуры улицы (``winter_mode_threshold``).
+
+    Без показания улицы режим **не выбирается**: при морозе угадывание означало
+    бы лишний приток свежего воздуха, летом — душный дом.
 
     Условие отказывает и тогда, когда вентиляции работать нельзя: фиче-флаг
-    выключен, выключатель владельца в off или в комнате работает обогрев
-    (FR-027, FR-031, T089, T090). Иначе перехода в SUPPLY из IDLE не было бы
-    вовсе, и причина отказа осталась бы неназванной.
+    выключен, выключатель владельца в off или в комнате холоднее уставки
+    (FR-027, FR-049). Иначе перехода в SUPPLY из IDLE не было бы вовсе, и
+    причина отказа осталась бы неназванной.
 
     Args:
         Ничего.
@@ -1530,23 +1562,7 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
     """
 
     def mode_for_weather(state: Any, context: dict[str, Any]) -> bool:
-        """Выбрать режим по модификатору «зима», дельте температур и погоде.
-
-        Зимой режим — рекуперация: она возвращает тепло, а сырой приток на
-        морозе дом охлаждает. Приток в зимнем режиме выбирается **только** когда
-        в комнате жарко — выше потолка комфорта ``comfort_max`` — и подача
-        свежего воздуха действительно охлаждает (уточнение владельца 2026-10-12:
-        «приток — для охлаждения»). Раньше дельта «комната − улица» перебивала
-        зиму: при разнице от ``supply_delta_threshold`` включался сырой приток на
-        высокой скорости, и в холодный сезон это остужало дом (боевой разбор
-        2026-10-12).
-
-        Летом приток выбирается при заметной дельте (комната теплее улицы не
-        меньше ``supply_delta_threshold``): свежий воздух охлаждает быстрее
-        рекуперации. При неизвестном сезоне — то же правило охлаждения, иначе
-        прежний порог температуры улицы. Потолка комфорта нет — приток не
-        выбирается: без него «жарко» неизвестно, а на морозе угадывание дало бы
-        лишний приток.
+        """Выбрать режим по модификатору «зима» и погоде.
 
         Args:
             state: Состояние автомата (не используется).
@@ -1560,41 +1576,21 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
         if not allowed or _ventilation_role(context) != "supply":
             return False
 
-        outside = _number(context, "outside_temperature")
-        if outside is None:
-            return False
-
-        room = _room_temperature(context)
-        supply_delta = _number(context, "supply_delta_threshold")
-        supply_delta = DEFAULT_SUPPLY_DELTA if supply_delta is None else supply_delta
-
         is_winter = context.get("is_winter")
-        chosen: Any = None
         if is_winter is True:
-            # Зимой — рекуперация, приток только при жаре в комнате (T094).
-            chosen = (
-                context.get("mode_supply")
-                if _room_needs_cooling(context, room)
-                else context.get("mode_winter")
-            )
+            chosen: Any = context.get("mode_winter")
         elif is_winter is False:
-            chosen = (
-                context.get("mode_supply")
-                if room is not None and (room - outside) >= supply_delta
-                else context.get("mode_summer")
-            )
+            chosen = context.get("mode_summer")
         else:
+            outside = _number(context, "outside_temperature")
+            if outside is None:
+                return False
             threshold = _number(context, "winter_mode_threshold")
             if threshold is None:
                 threshold = DEFAULT_WINTER_THRESHOLD
-            if _room_needs_cooling(context, room):
-                chosen = context.get("mode_supply")
-            else:
-                chosen = (
-                    context.get("mode_winter")
-                    if outside <= threshold
-                    else context.get("mode_summer")
-                )
+            chosen = (
+                context.get("mode_winter") if outside <= threshold else context.get("mode_summer")
+            )
 
         context["chosen_mode"] = chosen
         # Скорость считается здесь же: переход IDLE → SUPPLY шлёт одним
@@ -1628,19 +1624,82 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
     return mode_for_weather
 
 
+def make_should_run_max_supply() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «в комнате жарко — пора на максимальный приток».
+
+    Жарко — это температура комнаты строго выше потолка комфорта
+    (``input_number.maksimalno_komfortnaia_temperatura``). Тогда платформа
+    включает «Приток MAX» на срок ``airing_seconds``, а возврат к обычному
+    режиму делает таймер шаблона (FR-051, research.md D22). Порог берётся из
+    переменной дома, а не зашит в код (FR-056): второй ручки «жарко» быть не
+    должно.
+
+    Условие отказывает, когда вентиляции работать нельзя (фиче-флаг,
+    выключатель владельца, комната холоднее уставки): жаркой комнаты при
+    выключенной вентиляции не бывает, но причина отказа должна быть названа.
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def should_run_max_supply(state: Any, context: dict[str, Any]) -> bool:
+        """Проверить, жарче ли в комнате потолка комфорта.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если комната строго выше потолка комфорта.
+        """
+        del state
+        allowed, _ = _ventilation_allowed(context)
+        if not allowed or _ventilation_role(context) != "supply":
+            return False
+        return _room_is_above_comfort(context, _room_temperature(context))
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа.
+
+        Args:
+            state: Состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо ``None``: если в комнате не жарко, это штатное
+            решение, и называть его незачем.
+        """
+        del state
+        allowed, reason = _ventilation_allowed(context)
+        if not allowed:
+            return reason
+        if _ventilation_role(context) != "supply":
+            return None
+        if _comfort_max_value(context) is None:
+            return "guard_data_missing"
+        if _room_temperature(context) is None:
+            return "sensor_stale"
+        return None
+
+    should_run_max_supply.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return should_run_max_supply
+
+
 def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «посчитать скорость и ограничить её».
 
-    Формула из ``data-model.md`` §5:
-    ``speed_normal + |улица − комната| × speed_delta_gain``, с нулём в мёртвой
-    зоне ``|Δ| ≤ delta_deadband`` (FR-030 — без неё рекуператор дёргался бы на
-    каждое показание), ограничением 0–100 и ночным потолком, который **только
-    понижает** (FR-022).
+    Формула из ``data-model.md`` §5 (FR-052): не холоднее опорной температуры
+    улицы — ``speed_normal``, холоднее — ниже на ``speed_cold_gain`` процентов за
+    градус, не ниже ``speed_min``; ночью при нормальной температуре — минимум
+    (FR-053).
 
     Выключачка владельца ``ventilation_on = off`` сильнее любого правила
     (FR-027): условие отказывает с причиной ``turned_off_by_owner``, а переход
     ``SUPPLY → IDLE`` гасит прибор — «полностью выключает», а не «крутит на
-    нуле» (T090). То же у выключенного фиче-флага и у работающего обогрева.
+    нуле» (T090). То же у выключенного фиче-флага и у комнаты холоднее уставки.
 
     Args:
         Ничего.
@@ -1665,9 +1724,7 @@ def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
         if not allowed or _ventilation_role(context) != "supply":
             return False
 
-        outside = _number(context, "outside_temperature")
-        room = _room_temperature(context)
-        if outside is None or room is None:
+        if _number(context, "outside_temperature") is None:
             return False
 
         context["percentage"] = _clamp_speed(_speed_from_context(context))
@@ -1691,8 +1748,6 @@ def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
             return None
         if _number(context, "outside_temperature") is None:
             return "outside_temp_missing"
-        if _room_temperature(context) is None:
-            return "sensor_stale"
         return None
 
     speed_within_limits.deny_reason = deny_reason  # type: ignore[attr-defined]
@@ -1865,7 +1920,7 @@ def make_exhaust_should_stop() -> Callable[[Any, dict[str, Any]], bool]:
     Отдельное условие, а не отрицание `should_run_exhaust`: одно условие — одно
     решение (конституция I). Вытяжка гаснет, когда модификатор владельца снят И
     санузел вернулся в норму ИЛИ вентиляции работать нельзя (фиче-флаг,
-    выключатель, обогрев).
+    выключатель владельца, комната холоднее уставки).
 
     Args:
         Ничего.
@@ -1901,7 +1956,7 @@ def make_ventilation_should_stop() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «вентиляции работать нельзя — погасить».
 
     Переход в ``IDLE`` из ``SUPPLY``/``AIRING``: фиче-флаг выключен, выключатель
-    владельца в off или в комнате работает обогрев (FR-027, FR-031, T089, T090).
+    владельца в off или температура комнаты ниже уставки (FR-027, FR-049).
     Проветривание по модификатору здесь тоже гасится: владелец выключил
     вентиляцию целиком — приток не исключение.
 
@@ -2068,6 +2123,7 @@ REGISTERED_GUARDS = (
     "may_dry",
     "may_stay_idle",
     "mode_for_weather",
+    "should_run_max_supply",
     "speed_within_limits",
     "owner_wants_airing",
     "should_run_exhaust",
