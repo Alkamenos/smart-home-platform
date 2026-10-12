@@ -255,6 +255,22 @@ transitions:
     action: "airing_off"
     timeout_sec: 3600.0
 
+  # Жарко и уже в «Притоке MAX» — подтвердить режим прибору. Перехода из AIRING
+  # в AIRING не было, и команда не уходила: прибор оставался на прежнем режиме —
+  # в бою 2026-10-13 «Рекуперация (зима)» на ночном минимуме 14 %, хотя в комнате
+  # 27 °C, а автомат считал себя в максимальном притоке. Стоит ДО остановки: пока
+  # жарко, режим подтверждается, а не гасится.
+  - from_state: "AIRING"
+    to_state: "AIRING"
+    trigger: "temperature_changed"
+    guard: "should_run_max_supply"
+    action: "fan_airing_on"
+  - from_state: "AIRING"
+    to_state: "AIRING"
+    trigger: "settings_changed"
+    guard: "should_run_max_supply"
+    action: "fan_airing_on"
+
   # Во время проветривания владелец выключил вентиляцию или комната остыла ниже
   # уставки — погасить, не дожидаясь таймера.
   - from_state: "AIRING"

@@ -964,7 +964,7 @@ def fan_set_preset(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     )
 
 
-def fan_airing_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+def fan_airing_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
     """Включить проветривание: режим максимального притока (``mode_airing``).
 
     Отдельное действие, а не общий ``fan_set_preset``: имя режима проветривания
@@ -979,16 +979,25 @@ def fan_airing_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
         context: Контекст с ``entity_id`` и ``mode_airing``.
 
     Returns:
-        Команда режима либо ``None`` без устройства или названия режима.
+        Шаги: режим максимального притока, затем включение прибора.
     """
     del state
     mode = context.get("mode_airing")
     if not isinstance(mode, str) or not mode.strip():
         logger.warning("fan_airing_on: нет режима проветривания (mode_airing) в контексте")
-        return None
-    return _fan_intent(
+        return []
+    preset = _fan_intent(
         {**context, "preset_mode": mode}, "set_preset_mode", "fan_airing_on", keys=("preset_mode",)
     )
+    # Прибор может быть выключен (владелец выключал вентиляцию, рекуператор
+    # остался off): одного режима мало — прибор надо ещё и включить. Включение
+    # уходит с процентом 100: без него интеграция меняет атрибуты, но прибор не
+    # запускает (боевой разбор 2026-10-13: жарко, а рекуператор off). MAX-режим
+    # форсирует 100 сам, поэтому процент совпадает с режимом.
+    power = _fan_intent(
+        {**context, "percentage": 100}, "turn_on", "fan_airing_on", keys=("percentage",)
+    )
+    return [step for step in (preset, power) if step is not None]
 
 
 def fan_apply_mode_and_speed(state: Any, context: dict[str, Any]) -> list[CommandIntent]:

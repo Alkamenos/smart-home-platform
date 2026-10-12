@@ -617,17 +617,20 @@ class TestCommandsCarryOnlyOwnFields:
         )
 
     def test_airing_on_sends_only_preset_mode(self) -> None:
-        """Проветривание уходит одним режимом, без накопленного процента.
+        """Проветривание шлёт режим отдельным шагом, без накопленного процента.
 
         Returns:
             Ничего.
         """
-        intent = _action("fan_airing_on")(
-            None,
-            {"entity_id": "fan.base_smart", "mode_airing": "Приток MAX", "percentage": 43},
+        steps = _steps(
+            _action("fan_airing_on")(
+                None,
+                {"entity_id": "fan.base_smart", "mode_airing": "Приток MAX", "percentage": 43},
+            )
         )
-        assert intent is not None
-        assert set(intent.data) == {"preset_mode"}
+        preset = [step for step in steps if step.service == "set_preset_mode"]
+        assert len(preset) == 1
+        assert set(preset[0].data) == {"preset_mode"}
 
     def test_exhaust_on_sends_no_data(self) -> None:
         """Вытяжке данные не нужны, даже если в контексте есть чужие поля.
@@ -645,18 +648,26 @@ class TestCommandsCarryOnlyOwnFields:
 class TestAiringOn:
     """Проветривание ставит режим из своего параметра (T085)."""
 
-    def test_airing_on_sends_mode_airing(self) -> None:
-        """Действие берёт режим из ``mode_airing``, а не из накопленного.
+    def test_airing_on_sends_mode_and_powers_on(self) -> None:
+        """Действие ставит режим из ``mode_airing`` и включает прибор.
+
+        Одного режима мало: если рекуператор был выключен, «Приток MAX» стоял бы
+        выключенным (боевой разбор 2026-10-13).
 
         Returns:
             Ничего.
         """
-        intent = _action("fan_airing_on")(
-            None, {"entity_id": "fan.base_smart", "mode_airing": "Приток MAX"}
+        steps = _steps(
+            _action("fan_airing_on")(
+                None, {"entity_id": "fan.base_smart", "mode_airing": "Приток MAX"}
+            )
         )
-        assert intent is not None
-        assert (intent.domain, intent.service) == ("fan", "set_preset_mode")
-        assert intent.data == {"preset_mode": "Приток MAX"}
+        assert [(step.domain, step.service) for step in steps] == [
+            ("fan", "set_preset_mode"),
+            ("fan", "turn_on"),
+        ]
+        assert steps[0].data == {"preset_mode": "Приток MAX"}
+        assert steps[1].data == {"percentage": 100}
 
     def test_airing_on_without_mode_is_silent(self) -> None:
         """Параметра режима нет — команды нет, но и выдумки нет.
@@ -664,7 +675,7 @@ class TestAiringOn:
         Returns:
             Ничего.
         """
-        assert _action("fan_airing_on")(None, {"entity_id": "fan.base_smart"}) is None
+        assert _action("fan_airing_on")(None, {"entity_id": "fan.base_smart"}) == []
 
 
 class TestModifierReset:

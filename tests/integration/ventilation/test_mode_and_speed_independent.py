@@ -261,6 +261,41 @@ class TestSupplyModeFollowsWinterModifier:
         )
 
     @pytest.mark.asyncio
+    async def test_hot_airing_reasserts_max_supply_on_next_reading(self) -> None:
+        """Уже в «Притоке MAX» и всё ещё жарко — режим подтверждается прибору.
+
+        Перехода из AIRING в AIRING не было, и команда не уходила: прибор
+        оставался на прежнем режиме (в бою 2026-10-13 — «Рекуперация (зима)» на
+        минимуме 14 % при 27 °C в комнате).
+
+        Returns:
+            Ничего.
+        """
+        engine, router, dispatcher = _build()
+
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="28.0",
+            old_state="27.0",
+            context=_context(outside_temperature=0.0, comfort_max=25.0),
+        )
+        assert engine.get_state(FSM_ID).current_state == "AIRING"  # type: ignore[union-attr]
+        dispatcher.intents.clear()
+
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="28.5",
+            old_state="28.0",
+            context=_context(outside_temperature=0.0, comfort_max=25.0),
+        )
+
+        assert dispatcher.services() == ["set_preset_mode", "turn_on"], (
+            f"на новом показании ушло {dispatcher.services()} вместо подтверждения "
+            "режима: прибор при жаре должен оставаться в «Притоке MAX» (и включён)"
+        )
+        assert dispatcher.intents[0].data["preset_mode"] == "Приток MAX"
+
+    @pytest.mark.asyncio
     async def test_winter_delta_alone_does_not_pick_supply(self) -> None:
         """Зимой дельта сама по себе приток не включает (регрессия 2026-10-12).
 
