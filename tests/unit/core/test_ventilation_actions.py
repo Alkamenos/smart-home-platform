@@ -556,6 +556,91 @@ class TestVentilationActions:
         )
 
 
+class TestCommandsCarryOnlyOwnFields:
+    """В команду едет ровно то, что принимает её услуга (боевой дефект 2026-10-12).
+
+    Контекст перехода накопительный и хранит и ``preset_mode``, и ``percentage``.
+    Если действие кладёт в данные оба поля, Home Assistant отвергает команду
+    целиком с ``400 Bad Request``: ``fan.set_preset_mode`` с лишним
+    ``percentage`` не применялся вовсе, и рекуператор оставался в прежнем режиме,
+    пока платформа считала, что переключила его.
+    """
+
+    def test_set_preset_sends_only_preset_mode(self) -> None:
+        """У команды режима нет чужого поля ``percentage``.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_set_preset")(
+            None,
+            {
+                "entity_id": "fan.base_smart",
+                "preset_mode": "Рекуперация (зима)",
+                "percentage": 43,
+            },
+        )
+        assert intent is not None
+        assert set(intent.data) == {"preset_mode"}, (
+            f"в данных команды режима {sorted(intent.data)}: лишний ключ означает "
+            "400 и потерю команды — режим не переключится"
+        )
+
+    def test_set_percentage_sends_only_percentage(self) -> None:
+        """У команды скорости нет чужого поля ``preset_mode``.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_set_percentage")(
+            None,
+            {"entity_id": "fan.base_smart", "preset_mode": "Приток MAX", "percentage": 43},
+        )
+        assert intent is not None
+        assert set(intent.data) == {"percentage"}
+
+    def test_turn_off_sends_no_data(self) -> None:
+        """``fan.turn_off`` уходит без данных, даже если процент в контексте.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_turn_off")(
+            None,
+            {"entity_id": "fan.base_smart", "percentage": 100, "preset_mode": "Приток MAX"},
+        )
+        assert intent is not None
+        assert intent.data == {}, (
+            f"в команду выключения ушло {intent.data!r}: лишний ключ роняет её "
+            "с 400, и прибор остаётся работать"
+        )
+
+    def test_airing_on_sends_only_preset_mode(self) -> None:
+        """Проветривание уходит одним режимом, без накопленного процента.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_airing_on")(
+            None,
+            {"entity_id": "fan.base_smart", "mode_airing": "Приток MAX", "percentage": 43},
+        )
+        assert intent is not None
+        assert set(intent.data) == {"preset_mode"}
+
+    def test_exhaust_on_sends_no_data(self) -> None:
+        """Вытяжке данные не нужны, даже если в контексте есть чужие поля.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("exhaust_on")(
+            None, {"entity_id": "fan.vytyazhka", "percentage": 50, "preset_mode": "Приток"}
+        )
+        assert intent is not None
+        assert intent.data == {}
+
+
 class TestAiringOn:
     """Проветривание ставит режим из своего параметра (T085)."""
 
