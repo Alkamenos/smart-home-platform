@@ -4,6 +4,68 @@
 
 ## Последние значимые изменения
 
+### 2026-10-13: шторы — открыть или закрыть по флагам дома (спека 015)
+
+**Шторы решаются по флагам дома, а не по датчикам и не по часам.** Новый шаблон
+`cover_modes` (состояния `OPEN`/`CLOSED`), условия `covers_should_close` /
+`covers_should_open`, единственный триггер — `settings_changed`. Решение — только
+«открыть или закрыть», движение делает прибор (`cover.open_cover` /
+`cover.close_cover`); **позицию шторы платформа не читает**.
+
+Правила (`specs/015-cover-control/spec.md`):
+
+- **Обычная жизнь** (`input_boolean.my_doma` = true): шторы закрыты, когда включён
+  модификатор «мы спим» (`input_boolean.sleep_mode`), и открыты, когда он выключен
+  — **но только если** владелец разрешил закрывать ночью
+  (`input_boolean.zakryvat_shtory_nochiu` = true). Разрешение снято — ночью шторы
+  не закрываются (причина `covers_night_close_off`).
+- **Штора над входной дверью** (`cover.shtora_v_gostinnoi_pravaia`, параметр
+  `cover_role: door`) **не закрывается, пока кто-нибудь дома** — пожарная
+  безопасность (причина `cover_fire_safety`).
+- **Дома никого** (`my_doma` = false и `input_boolean.sobaki_doma` = false) —
+  закрываются **все** шторы, включая дверь.
+- **Дома только собаки** (`my_doma` = false, `sobaki_doma` = true) — закрываются
+  только спальня и кабинет (параметр `closes_when_dogs_only: true` у
+  `cover.shtora_v_spalne` и `cover.shtora_v_kabinete`); остальные остаются
+  открытыми (причина `covers_dogs_only`).
+- **`my_doma` = false отменяет логику «мы спим»**: решает отсутствие людей, а не сон.
+- **Аварийный флаг** (`input_boolean.covers_emergency_open`) — шторы открываются,
+  **игнорируя все остальные правила**, включая выключенный фиче-флаг (причина
+  `cover_emergency`).
+- **Фиче-флаг** `input_boolean.feature_covers` = false — платформа шторы не трогает
+  (причина `covers_disabled`), кроме аварии.
+
+**Неизвестные значения трактуются безопаснее.** Неизвестный `my_doma` считается
+как «люди дома» (дверь не запирается); неизвестный `sobaki_doma` при `my_doma` =
+false — как «собак нет» (закрыть всё).
+
+**Немедленность.** Смену флагов дома и модификатора «мы спим» доносит `HAAdapter`
+событием `settings_changed`: `EventRouter.route_settings_change` теперь рассылает
+его по `engine.entities_with_trigger("settings_changed")`, а раньше — только
+вентиляции по подстроке имени. Первый пересмотр штор делается **один раз при
+подключении**: без него штора не приняла бы решение до первого переключения флага,
+которого может не быть часами.
+
+**Диагностика** (правило владельца о логах): шаблон `cover_modes` включён в
+`DIAGNOSTIC_TEMPLATES`, а флаги штор — в `DIAGNOSTIC_CONTEXT_KEYS`, чтобы утренний
+разбор видел, почему штора открыта или закрыта.
+
+**Изменённые файлы:** `src/features/cover_modes.yaml` (новый),
+`src/core/guards/builtin.py`, `src/core/action_handlers.py`,
+`src/core/events/fsm_events.py`, `src/core/events/event_router.py`,
+`src/adapters/ha_adapter.py`, `src/core/container.py`,
+`src/core/models/manifest.py`, `src/core/fsm/engine.py`,
+`src/features/CONTRACT.yaml`, `tools/gen_template_contract.py`; манифесты
+`deploy/docker/config/manifest.yaml` и `instances/leonids_house_prod/manifest.yaml`
+(4 шторы и `automation_rules.cover`); тесты
+`tests/unit/core/test_cover_guards.py`, `tests/unit/core/test_cover_actions.py`,
+`tests/integration/covers/test_cover_modes_settings_change.py`.
+
+**Проверено:** `ruff`, `mypy strict`, `pytest` — 3214 passed. **Живьём не
+проверялось.** Открыто: владельцу создать `input_boolean.covers_emergency_open` в
+Home Assistant (без него аварийный флаг не читается); позиция штор не читается,
+ручное движение автоматику не отменяет.
+
 ### 2026-10-12 (вечер): окончательные правила вентиляции — уставка, «Приток MAX», скорость от холода
 
 Владелец пересмотрел логику вентиляции целиком (research.md D22, spec.md

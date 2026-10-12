@@ -261,6 +261,14 @@
 4. CLI commands lack integration tests
    - File: `cli.py`
    - Fix: Add end-to-end CLI tests
+6. Шторы: позиция прибора платформе не видна, ручное движение автоматику не отменяет
+   - Source: `specs/015-cover-control/` (спека 015, US1–US3)
+   - Платформа отправляет только «открыть»/«закрыть» (`cover.open_cover` /
+     `cover.close_cover`) и не читает положение шторы: в журнале будет команда, но
+     не факт исполнения. Ручное движение человеком автоматику не отменяет — при
+     следующем `settings_changed` штора снова получит решение платформы.
+   - Пока не закрыто: чтение позиции (`current_position`/`moving`) и учёт ручного
+     управления (локкаут) в шторах не реализованы.
 
 ### Low Priority
 5. Dashboard generator could use templates
