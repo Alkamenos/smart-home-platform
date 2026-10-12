@@ -194,10 +194,10 @@ git push origin main
 
 | Агент | Права | Когда запускать |
 |-------|-------|-----------------|
-| `researcher` | read-only, без shell | Перед реализацией: найти затронутые файлы, логику, тесты |
-| `reviewer` | правки запрещены; shell — только `git diff/status/log/show` | После тестов: независимое ревью diff, вердикт APPROVE / REQUEST_CHANGES |
+| `researcher` | read-only, без shell; MCP — `contextqmd` + `claude-mem` (поиск) | Перед реализацией: найти затронутые файлы, логику, тесты, требования в `specs/` |
+| `reviewer` | правки запрещены; shell — только `git diff/status/log/show`; сверка со `specs/` и конституцией | После тестов: независимое ревью diff, вердикт APPROVE / REQUEST_CHANGES |
 | `test-writer` | правки только в `tests/`; shell — только запуск тестов (`make test*`, `pytest`, `ruff`) | Параллельно с реализацией: написать/дополнить и запустить pytest-тесты |
-| `docs-writer` | правки только в `.ai/01_PROJECT_STATE.md`, `.ai/02_ARCHITECTURE.md`, `.ai/03_ROADMAP.md` | После реализации: записать логику изменения (правило «Логику — в документацию»), до коммита |
+| `docs-writer` | правки только в `.ai/01_PROJECT_STATE.md`, `.ai/02_ARCHITECTURE.md`, `.ai/03_ROADMAP.md`; после правок — реиндекс ContextQMD | После реализации: записать логику изменения (правило «Логику — в документацию»), до коммита |
 | `deploy-checker` | read-only; shell — только `deploy.sh status/health/verify`, `docker ps/logs/stats/inspect`, `curl localhost:8125` | При боевых задачах: проверить статус, health и логи развёрнутой платформы |
 
 Правила:
@@ -209,6 +209,15 @@ git push origin main
   с реализацией идёт только `test-writer`.
 - `docs-writer` пишет логику, а не код: «при каких условиях срабатывает, чему
   противоречит, что проверено живьём».
+- **MCP — по назначению, а не «на всякий случай».** Субагентам доступны
+  `contextqmd` (поиск по `specs/` и `.ai/`) и `claude-mem` (прошлая работа,
+  `mem_search`); `docs` (библиотечная документация) — только командой `/docs`.
+  Вызовы идут через Code Mode и тратят `steps`, поэтому один точный запрос
+  лучше перебора.
+- **spec-kit ролям не нужен как процесс.** Роли читают его артефакты: требования —
+  `specs/<NNN>-<slug>/spec.md`, принципы — `.specify/memory/constitution.md`.
+  Команды `/speckit-*` — инструмент владельца/главного агента, субагенты их не
+  вызывают.
 
 ### Команды
 
