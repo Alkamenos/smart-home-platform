@@ -254,3 +254,49 @@ class TestSetpointMirrorsToThermostat:
         await adapter.sync_setpoint(SETPOINT_ENTITY, "30.0", own_action=False)
 
         assert not calls, "без термостата в правилах синхронизатор пытался кому-то писать"
+
+
+class TestEventWiresTheSync:
+    """Событие термостата доходит до синхронизатора (врезка в on_state_change)."""
+
+    @pytest.mark.asyncio
+    async def test_thermostat_event_triggers_sync(self) -> None:
+        """Событие климат-термостата вызывает sync_setpoint.
+
+        Роль термостата — `thermostat`, а не `setpoint`: проверка только по
+        `setpoint` пропускала событие целиком, и синхронизация не запускалась
+        вовсе (живой прогон 2026-10-12).
+
+        Returns:
+            Ничего.
+        """
+        called: list[tuple[str, str, bool]] = []
+
+        async def sync_setpoint(entity_id: str, value: str, own_action: bool) -> None:
+            called.append((entity_id, value, own_action))
+
+        class _Client:
+            def global_role(self, entity: str) -> str:
+                return "thermostat" if entity == THERMOSTAT else "setpoint"
+
+            daylight = True
+            asleep = False
+
+        adapter = _adapter()
+        adapter._ws_client = _Client()  # type: ignore[assignment]
+        adapter.sync_setpoint = sync_setpoint  # type: ignore[assignment]
+        adapter._manual_lockout_middleware = None
+        adapter._own_context_ids = __import__("collections").deque()
+        adapter._token = None
+        adapter._session = None
+        adapter._engine = None
+        adapter._event_router = None
+        adapter.heater_timer_of = {}
+
+        await adapter.on_state_change(THERMOSTAT, "heat", "heat", {})
+
+        assert called, (
+            "событие термостата не дошло до синхронизатора: роль `thermostat` "
+            "не обрабатывается, и «термостат → уставка» молчит"
+        )
+        assert called[0][0] == THERMOSTAT

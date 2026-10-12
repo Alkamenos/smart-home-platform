@@ -316,6 +316,11 @@ class SimpleHAWebSocketClient:
         # 2026-10-10 — подняли уставку с 21 до 25, в контексте осталось 21).
         role = self.global_role(entity)
         if role is not None:
+            if role == "thermostat":
+                # Термостат — источник уставки, но сам в контекст не кладётся:
+                # его значение (режим heat/off) условиям не нужно, а цель
+                # синхронизатор читает из атрибута сам.
+                return True
             if role == "setpoint" and entity.startswith("climate."):
                 # Уставка климат-устройства — цель в атрибуте, а не состояние
                 # (там режим heat/off). Без этого климат-термостат положил бы в
@@ -1307,7 +1312,7 @@ class HAAdapter:
         client = self._ws_client
         role_of = getattr(client, "global_role", None)
         setpoint_role = role_of(entity_id) if role_of is not None else None
-        if setpoint_role == "setpoint":
+        if setpoint_role in ("setpoint", "thermostat"):
             # Синхронизация «термостат ↔ уставка» (требование владельца
             # 2026-10-12): источник истины — последнее изменённое, вторая
             # сторона зеркалится. Наша собственная команда сюда не попадает
