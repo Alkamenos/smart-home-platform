@@ -37,6 +37,7 @@ from core.events.fsm_events import (
     REASON_UNKNOWN_ENTITY,
     build_transition_payload,
 )
+from core.models.manifest import AutomationDomainRules
 
 
 if TYPE_CHECKING:
@@ -228,6 +229,68 @@ class FSMDefinition:
     def initial(self) -> str:
         """Alias for initial_state for backward compatibility."""
         return self.initial_state
+
+
+#: Параметры поведения, которые входят в контекст автомата. Нужны для чистки
+#: устаревших: контекст состояния накопительный (``{**current_state.context}``),
+#: и параметр, **убранный** из манифеста, жил бы в нём вечно. Боевой дефект
+#: 2026-10-12: ``managed_by_hardware: true`` из манифеста до 2026-10-10 остался
+#: в ``state.json`` гостиной, и конвектор отказывал при любой уставке.
+KNOWN_BEHAVIOR_PARAM_KEYS: frozenset[str] = frozenset(
+    {
+        # Параметры шаблонов (см. src/features/*.yaml и спеки).
+        "heater_timer",
+        "run_minutes",
+        "hysteresis",
+        "managed_by_hardware",
+        "off_by",
+        "humidity_threshold",
+        "motion_timeout_sec",
+        "brightness",
+        "schedule",
+        "target_temp",
+        # Параметры вентиляции (спека 014, data-model.md §5).
+        "mode_supply",
+        "mode_summer",
+        "mode_winter",
+        "mode_night",
+        "mode_airing",
+        "mode_exhaust",
+        "speed_normal",
+        "speed_delta_gain",
+        "speed_night_max",
+        "delta_deadband",
+        "airing_seconds",
+        "source_room",
+        "winter_mode_threshold",
+    }
+    # Доменные правила дома фабрика превращает в параметры поведения (T012
+    # спеки 014), значит и они попадают в контекст состояния.
+    | frozenset(AutomationDomainRules.model_fields)
+)
+
+
+def sanitise_stale_params(context: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    """Убрать из накопленного контекста параметры, которых больше нет в манифесте.
+
+    Параметры принадлежат манифесту, а не состоянию: они дополняются при
+    каждом переходе (``update``), поэтому их безопасно вычищать из накопления.
+    Чистится только известное — ``KNOWN_BEHAVIOR_PARAM_KEYS``: белый список
+    оператор для чужих ключей сломал бы чужое поведение быстрее, чем нашлось бы.
+
+    Args:
+        context: Накопленный контекст состояния автомата.
+        params: Параметры поведения из манифеста для этого автомата.
+
+    Returns:
+        Копия контекста без устаревших параметров.
+    """
+    cleaned = dict(context)
+    for key in KNOWN_BEHAVIOR_PARAM_KEYS:
+        if key not in params and key in cleaned:
+            logger.debug(f"Убран устаревший параметр {key} из контекста перехода")
+            del cleaned[key]
+    return cleaned
 
 
 class FSMEngine:
@@ -948,6 +1011,18 @@ class FSMEngine:
             log.error(f"Action '{name}' raised exception: {e}")
             return {}
 
+    def sanitise_for_merge(self, context: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+        """Вычистить устаревшие параметры из контекста перед мержем.
+
+        Args:
+            context: Накопленный контекст состояния.
+            params: Параметры поведения из манифеста.
+
+        Returns:
+            Очищенный контекст.
+        """
+        return sanitise_stale_params(context, params)
+
     def _definition_params(self, entity_id: str) -> dict[str, Any]:
         """Параметры поведения автомата.
 
@@ -1090,7 +1165,9 @@ class FSMEngine:
             return False
 
         # Merge contexts
-        merged_context = {**current_state.context}
+        merged_context = sanitise_stale_params(
+            current_state.context, self._definition_params(entity_id)
+        )
         # Параметры поведения видны и условиям, а не только действиям. Раньше
         # они доезжали только до действий (`_enrich_context_for_action`), и
         # условие читало зашитое в своё имя значение: у `humidity_above_60`
