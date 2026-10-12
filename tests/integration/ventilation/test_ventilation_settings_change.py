@@ -46,7 +46,7 @@ SUPPLY_PARAMS: dict[str, Any] = {
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
     "mode_airing": "Приток MAX",
-    "speed_normal": 43,
+    "speed_normal": 42,
     "speed_min": 14,
     "speed_cold_reference": 5.0,
     "speed_cold_gain": 2.0,

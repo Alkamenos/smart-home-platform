@@ -47,7 +47,7 @@ SUPPLY_PARAMS: dict[str, Any] = {
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
     "mode_airing": "Приток MAX",
-    "speed_normal": 43,
+    "speed_normal": 42,
     "speed_min": 14,
     "speed_cold_reference": 5.0,
     "speed_cold_gain": 2.0,
@@ -181,7 +181,7 @@ class TestOutsideSensorFailureIsIsolated:
 
         assert engine.get_state(SUPPLY_FSM).current_state == "IDLE"  # type: ignore[union-attr]
         assert "set_preset_mode" not in dispatcher.services()
-        assert "set_percentage" not in dispatcher.services(), (
+        assert "turn_on" not in dispatcher.services(), (
             f"без улицы ушли команды {dispatcher.services()}: режим и скорость "
             "выбирать не по чему (FR-029)"
         )

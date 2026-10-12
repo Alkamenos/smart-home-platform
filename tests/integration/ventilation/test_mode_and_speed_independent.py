@@ -47,7 +47,7 @@ SUPPLY_PARAMS: dict[str, Any] = {
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
     "mode_airing": "Приток MAX",
-    "speed_normal": 43,
+    "speed_normal": 42,
     "speed_min": 14,
     "speed_cold_reference": 5.0,
     "speed_cold_gain": 2.0,
@@ -168,7 +168,7 @@ class TestModeAndSpeedAreIndependent:
             context=_context(outside_temperature=17.0),
         )
 
-        assert dispatcher.services() == ["set_preset_mode", "set_percentage"], (
+        assert dispatcher.services() == ["set_preset_mode", "turn_on"], (
             f"команды вентиляции {dispatcher.services()} вместо «режим, затем "
             "скорость»: у рекуператора это две независимые оси, и одна команда "
             "не может задать обе (FR-021); скорость не должна теряться, потому "
@@ -204,13 +204,13 @@ class TestModeAndSpeedAreIndependent:
             context=_context(outside_temperature=-5.0),
         )
 
-        assert dispatcher.services() == ["set_percentage"], (
+        assert dispatcher.services() == ["turn_on"], (
             f"на показании датчика ушло {dispatcher.services()} вместо одной "
             "команды скорости: режим должен меняться по «зиме», а не на каждое "
             "показание (research.md D7)"
         )
-        # 43 − (5 − (−5)) × 2 = 23
-        assert dispatcher.intents[0].data["percentage"] == 23, (
+        # 42 − (5 − (−5)) × 2 = 22
+        assert dispatcher.intents[0].data["percentage"] == 22, (
             f"скорость {dispatcher.intents[0].data.get('percentage')!r} при улице "
             "−5 °C: холоднее — тише (FR-052)"
         )

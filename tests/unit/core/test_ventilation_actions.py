@@ -46,7 +46,7 @@ DEFAULTS = {
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
     "mode_airing": "Приток MAX",
-    "speed_normal": 43,
+    "speed_normal": 42,
     "speed_min": 14,
     "speed_cold_reference": 5.0,
     "speed_cold_gain": 2.0,
@@ -339,8 +339,8 @@ class TestSpeedWithinLimits:
         }
 
         assert guard(None, context) is True
-        # 43 − (5 − 0) × 2 = 33
-        assert context["percentage"] == 33, (
+        # 42 − (5 − 0) × 2 = 32
+        assert context["percentage"] == 32, (
             f"скорость {context.get('percentage')!r} при улице 0 °C: холоднее — "
             "значит тише, чтобы не гнать мороз в дом"
         )
@@ -487,10 +487,11 @@ class TestVentilationActions:
         assert intent is not None
 
         assert intent.domain == "fan"
-        assert intent.service == "set_percentage"
+        assert intent.service == "turn_on"
         assert intent.data["percentage"] == 45, (
-            f"в команду ушло {intent.data!r}: у сервиса `fan.set_percentage` "
-            "нет параметра `value` — Home Assistant отвергнет команду"
+            f"в команду ушло {intent.data!r}: скорость задаётся сервисом "
+            "`fan.turn_on` с процентом (у боевого прибора `fan.set_percentage` "
+            "ненадёжен — research.md D24)"
         )
         assert set(intent.data) == {"percentage"}, (
             f"в данных команды {sorted(intent.data)}: лишний ключ означает "
@@ -536,7 +537,7 @@ class TestVentilationActions:
             "обе (FR-021)"
         )
         services = {(step.domain, step.service) for step in steps}
-        assert services == {("fan", "set_preset_mode"), ("fan", "set_percentage")}
+        assert services == {("fan", "set_preset_mode"), ("fan", "turn_on")}
 
     def test_exhaust_has_no_speed(self) -> None:
         """Вытяжка без скорости: только вкл/выкл.
@@ -688,7 +689,7 @@ class TestModifierReset:
         )
         assert [step.service for step in steps] == [
             "set_preset_mode",
-            "set_percentage",
+            "turn_on",
             "turn_off",
         ]
         assert steps[-1].domain == "input_boolean"

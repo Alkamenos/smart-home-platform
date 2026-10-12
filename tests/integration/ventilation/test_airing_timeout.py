@@ -48,7 +48,7 @@ PARAMS: dict[str, Any] = {
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
     "mode_airing": "Приток MAX",
-    "speed_normal": 43,
+    "speed_normal": 42,
     "speed_min": 14,
     "speed_cold_reference": 5.0,
     "speed_cold_gain": 2.0,
@@ -249,7 +249,7 @@ class TestAiringTimeoutActionResetsModifier:
 
         assert [step.service for step in steps] == [
             "set_preset_mode",
-            "set_percentage",
+            "turn_on",
             "turn_off",
         ], (
             "по истечении проветривания должны уйти обычный режим, скорость и "
@@ -272,6 +272,6 @@ class TestAiringTimeoutActionResetsModifier:
             {"entity_id": FAN, "preset_mode": "Рекуперация (зима)", "percentage": 43},
         )
 
-        assert [step.service for step in steps] == ["set_preset_mode", "set_percentage"], (
+        assert [step.service for step in steps] == ["set_preset_mode", "turn_on"], (
             "без сущности модификатора шаги снятия быть не может, но обычный режим вернуться обязан"
         )
