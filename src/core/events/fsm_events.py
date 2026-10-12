@@ -129,6 +129,21 @@ REASON_MODIFIER_OFF: Final[str] = "modifier_off"
 #: различать «спим», «ночь», «данных нет» и «просто светло» (правило о логах
 #: 2026-10-09). Отказ «светло» — штатное решение, а не поломка датчика.
 REASON_DAYLIGHT: Final[str] = "daylight"
+#: Шторам закрываться не нужно (спека 015) — штатное решение: не спим, или
+#: разрешение закрывать ночью снято, или штора над дверью при людях в доме.
+REASON_COVERS_STAY_OPEN: Final[str] = "covers_stay_open"
+#: Шторам открываться не нужно — они должны оставаться закрытыми.
+REASON_COVERS_STAY_CLOSED: Final[str] = "covers_stay_closed"
+#: Штору над дверью нельзя закрывать, пока кто-то дома: пожарная безопасность.
+REASON_COVER_FIRE_SAFETY: Final[str] = "cover_fire_safety"
+#: Спим, но владелец снял разрешение закрывать шторы ночью.
+REASON_COVERS_NIGHT_CLOSE_OFF: Final[str] = "covers_night_close_off"
+#: Людей нет, но дома собаки — закрываются только спальня и кабинет.
+REASON_COVERS_DOGS_ONLY: Final[str] = "covers_dogs_only"
+#: Аварийный флаг: шторы должны быть открыты, закрывать нельзя.
+REASON_COVER_EMERGENCY: Final[str] = "cover_emergency"
+#: Фиче-флаг штор выключен: платформа шторы не трогает.
+REASON_COVERS_DISABLED: Final[str] = "covers_disabled"
 
 #: Причины, которые условие может назвать само (словарь ограничен, чтобы метрика
 #: не расползалась новыми метками). ``guard_data_missing`` здесь потому, что
@@ -156,6 +171,13 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
         REASON_HEATING_ACTIVE,
         REASON_ROOM_BELOW_SETPOINT,
         REASON_BATHROOM_COMFORTABLE,
+        REASON_COVERS_STAY_OPEN,
+        REASON_COVERS_STAY_CLOSED,
+        REASON_COVER_FIRE_SAFETY,
+        REASON_COVERS_NIGHT_CLOSE_OFF,
+        REASON_COVERS_DOGS_ONLY,
+        REASON_COVER_EMERGENCY,
+        REASON_COVERS_DISABLED,
     }
 )
 
@@ -185,6 +207,13 @@ REASON_TEXT: Final[dict[str, str]] = {
     REASON_HEATING_ACTIVE: "в комнате работает обогрев",
     REASON_ROOM_BELOW_SETPOINT: "в комнате холоднее уставки — вентиляция не нужна",
     REASON_BATHROOM_COMFORTABLE: "в санузле сухо и не жарко",
+    REASON_COVERS_STAY_OPEN: "шторам закрываться не нужно",
+    REASON_COVERS_STAY_CLOSED: "шторы остаются закрытыми",
+    REASON_COVER_FIRE_SAFETY: "штора над дверью не закрывается при людях",
+    REASON_COVERS_NIGHT_CLOSE_OFF: "закрытие штор ночью выключено владельцем",
+    REASON_COVERS_DOGS_ONLY: "дома собаки — закрываются только спальня и кабинет",
+    REASON_COVER_EMERGENCY: "аварийный флаг: шторы открываются",
+    REASON_COVERS_DISABLED: "шторы отключены флажком дома",
     # Коды действий (T007)
     "action_on": "включено по расписанию",
     "action_off": "выключено по расписанию",

@@ -997,6 +997,63 @@ def fan_apply_mode_and_speed(state: Any, context: dict[str, Any]) -> list[Comman
     return [step for step in (mode_step, speed_step) if step is not None]
 
 
+def _cover_intent(context: dict[str, Any], service: str, source: str) -> CommandIntent | None:
+    """Собрать команду шторы.
+
+    В данных — ничего, кроме сущности: ``cover.open_cover`` и
+    ``cover.close_cover`` параметров не принимают, а лишний ключ Home Assistant
+    отвергает с 400 Bad Request (research.md D23). Движением прибора платформа
+    не управляет — она только просит открыть или закрыть.
+
+    Args:
+        context: Контекст перехода.
+        service: Услуга Home Assistant (``open_cover`` или ``close_cover``).
+        source: Источник для аудита и блокировок.
+
+    Returns:
+        CommandIntent либо ``None``, если устройство не указано.
+    """
+    entity_id = extract_device_id(context)
+    if not entity_id:
+        logger.warning(f"{source}: нет entity_id в контексте")
+        return None
+    logger.info(f"Создаю команду {service} для {entity_id}")
+    return CommandIntent(
+        device_id=entity_id,
+        domain="cover",
+        service=service,
+        data={},
+        priority=context.get("priority", 50),
+        source=source,
+    )
+
+
+def cover_open(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Открыть штору.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id``.
+
+    Returns:
+        Команда открытия либо ``None`` без устройства.
+    """
+    return _cover_intent(context, "open_cover", "cover_open")
+
+
+def cover_close(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Закрыть штору.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id``.
+
+    Returns:
+        Команда закрытия либо ``None`` без устройства.
+    """
+    return _cover_intent(context, "close_cover", "cover_close")
+
+
 def exhaust_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     """Включить вытяжку.
 
@@ -1178,6 +1235,9 @@ ACTION_HANDLERS: dict[str, Any] = {
     "airing_after_timeout": airing_after_timeout,
     "airing_off": airing_off,
     "exhaust_after_timeout": exhaust_after_timeout,
+    # Шторы (спека 015).
+    "cover_open": cover_open,
+    "cover_close": cover_close,
 }
 
 
