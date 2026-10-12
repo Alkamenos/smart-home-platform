@@ -316,6 +316,18 @@ class SimpleHAWebSocketClient:
         # 2026-10-10 — подняли уставку с 21 до 25, в контексте осталось 21).
         role = self.global_role(entity)
         if role is not None:
+            if role == "setpoint" and entity.startswith("climate."):
+                # Уставка климат-устройства — цель в атрибуте, а не состояние
+                # (там режим heat/off). Без этого климат-термостат положил бы в
+                # climate_setpoint строку heat — условия обогрева получали бы
+                # «данных нет».
+                raw = payload.get("new_state")
+                attributes = raw.get("attributes") if isinstance(raw, dict) else None
+                target = attributes.get("temperature") if isinstance(attributes, dict) else None
+                if target is None:
+                    # Атрибута нет — неизвестно, а не «цель пропала».
+                    return True
+                state = str(target)
             self.store_global(role, state, entity)
             return True
         if entity == "sun.sun":
@@ -818,6 +830,44 @@ if TYPE_CHECKING:
     from core.events.event_router import EventRouter
 
 
+#: Погрешность сравнения уставки. Шаг слайдера — 0.5 °C, поэтому меньшие
+#: расхождения — плавание дробных значений, а не разное мнение источников.
+SETPOINT_EPSILON = 0.05
+
+
+def _is_number(value: Any) -> bool:
+    """Значение приводится к числу.
+
+    Args:
+        value: Что проверить.
+
+    Returns:
+        True, если это число или числовая строка.
+    """
+    try:
+        float(value)  # type: ignore[arg-type]
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _as_float(value: Any) -> float | None:
+    """Привести к числу или вернуть None.
+
+    Args:
+        value: Что привести.
+
+    Returns:
+        Число либо None.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 #: Роли глобальных сущностей климата и вентиляции и поле клиента, которое они
 #: заполняют. Ключ роли совпадает с ключом в правилах дома
 #: (``automation_rules.climate`` / ``.ventilation``), значение — с полем, которое
@@ -1012,6 +1062,135 @@ class HAAdapter:
         state = payload.get("state")
         return state if isinstance(state, str) else None
 
+    async def get_attribute(self, entity_id: str, attribute: str) -> Any:
+        """Прочитать атрибут сущности Home Assistant.
+
+        Цель климат-устройства (`climate.*`) живёт в атрибуте `temperature`,
+        а не в состоянии: состояние климата — это режим (heat/off). Уставка
+        дома — цель термостата, поэтому без чтения атрибута синхронизация
+        «термостат ↔ уставка» нечем сверить (требование владельца
+        2026-10-12).
+
+        Args:
+            entity_id: Сущность Home Assistant.
+            attribute: Имя атрибута.
+
+        Returns:
+            Значение атрибута либо ``None``, если не прочитать.
+        """
+        if self._session is None or not self._token:
+            return None
+
+        http_url = cast(str, self._ws_url)
+        base = http_url.replace("wss://", "https://").replace("ws://", "http://")
+        base = base.split("/api/websocket")[0].rstrip("/")
+        try:
+            async with self._session.get(
+                f"{base}/api/states/{entity_id}",
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status != 200:
+                    return None
+                payload = await response.json()
+        except (TimeoutError, aiohttp.ClientError, ValueError):
+            return None
+
+        if not isinstance(payload, dict):
+            return None
+        attributes = payload.get("attributes")
+        return attributes.get(attribute) if isinstance(attributes, dict) else None
+
+    async def sync_setpoint(self, entity_id: str, value: str, own_action: bool) -> None:
+        """Синхронизировать термостат и уставку дома в обоих направлениях.
+
+        Требование владельца 2026-10-12: изменение цели термостата меняет
+        уставку, изменение уставки пишется в термостат. Источник истины —
+        последнее изменённое; вторая сторона — зеркало.
+
+        Петля обрывается дважды: наши команды возвращаются из Home Assistant
+        с тем же ``context.id`` (``own_action``), а равные значения не порождают
+        команду вовсе.
+
+        Args:
+            entity_id: Сущность, у которой изменилось значение.
+            value: Новое значение (для климата — режим, цель читается из
+                атрибута).
+            own_action: Событие вызвано собственной командой платформы.
+
+        Returns:
+            Ничего. Ошибки логируются и не прерывают обработку события.
+        """
+        if own_action:
+            return
+
+        thermostat = self.climate_entities.get("thermostat")
+        setpoint_entity = self.climate_entities.get("setpoint")
+        if not thermostat or not setpoint_entity:
+            # Термостат не задан в правилах — синхронизировать не с кем.
+            return
+
+        if entity_id == thermostat:
+            raw = (
+                value if _is_number(value) else await self.get_attribute(thermostat, "temperature")
+            )
+            target = _as_float(raw)
+            if target is None:
+                logger.warning(f"sync_setpoint: цель термостата {raw!r} не число")
+                return
+            current = _as_float(await self.get_state(setpoint_entity))
+            if current is not None and abs(current - target) < 0.05:
+                return
+            logger.warning(
+                f"Термостат {thermostat} задал уставку {target}: "
+                f"{setpoint_entity} зеркалируется (было {current})"
+            )
+            await self.call_service("input_number", "set_value", setpoint_entity, {"value": target})
+            return
+
+        if entity_id == setpoint_entity:
+            target = _as_float(value)
+            if target is None:
+                logger.warning(f"sync_setpoint: уставка {value!r} не число")
+                return
+            current = _as_float(await self.get_attribute(thermostat, "temperature"))
+            if current is not None and abs(current - target) < 0.05:
+                return
+            logger.warning(
+                f"Уставка {setpoint_entity} = {target}: зеркалируется в цель "
+                f"термостата {thermostat} (была {current})"
+            )
+            await self.call_service(
+                "climate", "set_temperature", thermostat, {"temperature": target}
+            )
+
+    @staticmethod
+    def setpoint_from_event(entity_id: str, payload: dict[str, Any]) -> str | None:
+        """Новая уставка из события: атрибут цели у климата, состояние у остальных.
+
+        У `climate.*` цель живёт в атрибуте `temperature`, а состояние климата —
+        это режим (`heat`/`off`). Подставить состояние в уставку значило бы
+        положить строку `heat` туда, где условие ждёт число.
+
+        Args:
+            entity_id: Сущность события.
+            payload: Конверт события (`event.data`).
+
+        Returns:
+            Новая уставка либо ``None``, если прочитать нельзя.
+        """
+        if entity_id.startswith("climate."):
+            raw = payload.get("new_state")
+            if isinstance(raw, dict):
+                attributes = raw.get("attributes")
+                if isinstance(attributes, dict):
+                    target = attributes.get("temperature")
+                    return str(target) if target is not None else None
+            return None
+        raw = payload.get("new_state")
+        state = raw.get("state") if isinstance(raw, dict) else raw
+        return str(state) if state is not None else None
+
     def remember_entity_unit(self, entity_id: str, unit: Any) -> None:
         """Запомнить единицу измерения сущности, прочитанную у устройства.
 
@@ -1124,6 +1303,17 @@ class HAAdapter:
         log.info(
             f"HAAdapter: state_change received for {entity_id}: '{old_state}' -> '{new_state}'"
         )
+
+        client = self._ws_client
+        role_of = getattr(client, "global_role", None)
+        setpoint_role = role_of(entity_id) if role_of is not None else None
+        if setpoint_role == "setpoint":
+            # Синхронизация «термостат ↔ уставка» (требование владельца
+            # 2026-10-12): источник истины — последнее изменённое, вторая
+            # сторона зеркалится. Наша собственная команда сюда не попадает
+            # (own_action) — иначе термостат и уставка ввалились бы в петлю.
+            with contextlib.suppress(Exception):
+                await self.sync_setpoint(entity_id, new_state, own_action)
 
         event_context: dict[str, Any] = {
             **self._event_context(entity_id),
@@ -1482,6 +1672,12 @@ class HAAdapter:
             return None
 
         state = payload.get("state") if isinstance(payload, dict) else None
+        if entity.startswith("climate.") and isinstance(payload, dict):
+            # Цель климат-устройства — в атрибуте temperature: состояние там
+            # режим (heat/off), и читать его как уставку нельзя.
+            attributes = payload.get("attributes")
+            if isinstance(attributes, dict) and attributes.get("temperature") is not None:
+                state = attributes.get("temperature")
         return str(state) if state is not None else None
 
     async def _refresh_climate_globals(self) -> None:

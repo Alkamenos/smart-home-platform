@@ -324,6 +324,10 @@ class Container:
             return
         for field_name in (
             "setpoint_entity",
+            # Термостат — источник истины для уставки и зеркало слайдера:
+            # синхронизатору нужно знать имя сущности, но его цель живёт в
+            # атрибуте, поэтому в контекст событий поле не попадает.
+            "thermostat_entity",
             "comfort_max_entity",
             "season_entity",
             "feature_entity",
