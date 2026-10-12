@@ -147,7 +147,7 @@ REST 2026-10-10.
 | `mode_winter` | `str` | из списка устройства | `Рекуперация (зима)` | FR-019, FR-050 |
 | `mode_airing` | `str` | из списка устройства | `Приток MAX` | FR-024, FR-051 |
 | `winter_mode_threshold` | `float` | 0–30 | 5.0 | FR-019 |
-| `speed_normal` | `int` | 0–100 | 43 | FR-020, FR-052 |
+| `speed_normal` | `int` | 0–100 | 42 | FR-020, FR-052 |
 | `speed_min` | `int` | 0–100 | 14 | FR-022, FR-052, FR-053 |
 | `speed_cold_reference` | `float` | −30–30 | 5.0 | FR-052 |
 | `speed_cold_gain` | `float` | 0–20 | 2.0 | FR-052 |

@@ -199,7 +199,7 @@ contracts/interface-contracts.md, quickstart.md
 - [x] T057 [US3] Действия `fan_set_percentage` (`set_percentage`), `fan_set_preset` (`set_preset_mode`), `fan_apply_mode_and_speed` (два намерения подряд; атомарности в системе нет, порядок — по доставке), `exhaust_on`/`exhaust_off` — `src/core/action_handlers.py`
 - [x] T058 [US3] Новый шаблон `ventilation_modes` с состояниями `IDLE`, `SUPPLY`, `AIRING`, `EXHAUST` (FR-024, FR-025, FR-026); `AIRING` выходит по `timeout` через `airing_seconds`; `EXHAUST` отдельно, потому что вытяжка меняет направление, а не скорость — `src/features/ventilation_modes.yaml`
 - [x] T059 [US3] Объявить параметры `ventilation_modes` в контракте с диапазонами из `data-model.md` §5; режимы — параметры, а не константы: список принадлежит устройству, и замена рекуператора не должна требовать правки кода — `src/features/CONTRACT.yaml` · ✅ 2026-10-12: 15 параметров с диапазонами и пометкой действенности; `mode_night`/`mode_exhaust` удалены как не имеющие силы
-- [ ] T060 [US3] Прописать оба рекуператора и вытяжку в боевой манифест — `instances/leonids_house/manifest.yaml`
+- [x] T060 [US3] Прописать оба рекуператора и вытяжку в боевой манифест — эталон `instances/leonids_house_prod/manifest.yaml` (боевой том уже с ними; T105 переносит эталон в git)
 - [x] T061 [US3] Регенерация контракта шаблонов — `tools/gen_template_contract.py`
 - [ ] T062 [US3] Боевая проверка шага 5 `quickstart.md`: выключалка, режим, независимость скорости, ночной предел, проветривание с самоотключением, вытяжка, сценарий «жарко у печи», колебания не дёргают вентилятор
 
@@ -428,26 +428,42 @@ Task: "Тест: таймер перехода климата взводится
 правила (`spec.md` FR-049…FR-056, `research.md` D22) отменяют приток по дельте,
 правило по обогреву и ночной потолок; см. `data-model.md` §5.
 
-- [ ] T095 Выключение по уставке: вентиляция стоит, когда `ventiliatsiia` = off,
+- [x] T095 Выключение по уставке: вентиляция стоит, когда `ventiliatsiia` = off,
   фиче-флаг = off или температура комнаты ниже `input_number.temperatura` —
   `_ventilation_allowed` (`src/core/guards/builtin.py`), новая причина
   `room_below_setpoint` (`src/core/events/fsm_events.py`); убрать правило по
   `heating_active` (T089, FR-055)
-- [ ] T096 Режим по сезону: `mode_for_weather` выбирает только `mode_winter` /
+- [x] T096 Режим по сезону: `mode_for_weather` выбирает только `mode_winter` /
   `mode_summer`, приток по дельте (`mode_supply`) убран (FR-050)
-- [ ] T097 Жарко → «Приток MAX» с таймером: температура выше `comfort_max` →
+- [x] T097 Жарко → «Приток MAX» с таймером: температура выше `comfort_max` →
   переход `IDLE`/`SUPPLY` → `AIRING` (новый guard, напр. `should_run_max_supply`,
   действие `fan_airing_on`), возврат к обычному режиму по `airing_seconds`
   (FR-051)
-- [ ] T098 Скорость: холоднее улица → ниже (не ниже `speed_min`), не холоднее
+- [x] T098 Скорость: холоднее улица → ниже (не ниже `speed_min`), не холоднее
   `speed_cold_reference` → `speed_normal`; ночью при нормальной температуре —
   `speed_min` — `_speed_from_context` (FR-052, FR-053)
-- [ ] T099 Параметры: убрать инертные `mode_supply`, `supply_delta_threshold`,
+- [x] T099 Параметры: убрать инертные `mode_supply`, `supply_delta_threshold`,
   `speed_delta_gain`, `speed_night_max`, `delta_deadband`; добавить `speed_min`,
   `speed_cold_reference`, `speed_cold_gain` (шаблон, боевой манифест, CONTRACT,
   data-model §5)
-- [ ] T100 Тесты и приёмка под новые правила: unit-проверки режима/скорости/жары/
+- [x] T100 Тесты и приёмка под новые правила: unit-проверки режима/скорости/жары/
   уставки, интеграционные — «ниже уставки → стоп», «жарко → Приток MAX», «ночью →
   минимум»; обновить `quickstart.md` шаг 5
 - [ ] T101 Боевая проверка новых правил в доме (после T060)
 
+**Фаза 12: боевые находки (2026-10-12, вечер).**
+
+- [x] T102 Скорость рекуператора: слать `fan.turn_on` с `percentage` вместо
+  `fan.set_percentage` (на приборе последний ненадёжен) и обычная скорость 42
+  вместо 43 (прибор округляет вверх) — `fan_set_percentage`,
+  `DEFAULT_SPEED_NORMAL`; research.md D24
+- [x] T103 Отказ Home Assistant виден: `SimpleHAWebSocketClient.call_service`
+  проверяет `success` и поднимает исключение — B41
+- [x] T104 Сверка датчиков при подключении: `HAAdapter._reconcile_sensor_states`
+  читает датчики роутера (`EventRouter.mapped_sensors`) и проводит их тем же
+  путём, что и событие — B40
+- [x] T105 Боевой манифест в git: эталон `instances/leonids_house_prod/manifest.yaml`
+  как источник посева (`CONFIG_SEED_PATH`); демо-семя остаётся тестовой фикстурой
+- [ ] T101/T062 Повторная боевая приёмка: режим применяется, скорость на ступени
+  42 %, «жарко → Приток MAX» и «ниже уставки → стоп» (учесть 60-минутную
+  блокировку ручного управления после ручных команд)
