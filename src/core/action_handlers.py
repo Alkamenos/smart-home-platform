@@ -805,13 +805,26 @@ def climate_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     return _climate_intent(context, "turn_off", "climate_off")
 
 
-def _fan_intent(context: dict[str, Any], service: str, source: str) -> CommandIntent | None:
+def _fan_intent(
+    context: dict[str, Any],
+    service: str,
+    source: str,
+    keys: tuple[str, ...] = (),
+) -> CommandIntent | None:
     """Собрать команду вентилятора.
+
+    ``keys`` перечисляет поля, которые **разрешено** положить в данные команды
+    именно этой услуги. Собирать все известные поля подряд нельзя: у сервисов
+    Home Assistant строгая схема, и лишний ключ роняет команду целиком — HA
+    отвечает ``400 Bad Request``. Так ``fan.set_preset_mode`` с подмешанным
+    ``percentage`` не применялся вовсе, и рекуператор оставался в прежнем режиме,
+    пока платформа считала, что переключила его (боевой разбор 2026-10-12).
 
     Args:
         context: Контекст перехода.
         service: Услуга Home Assistant.
         source: Источник для аудита и блокировок.
+        keys: Поля контекста, допустимые в данных этой услуги.
 
     Returns:
         CommandIntent либо ``None``, если устройство не указано.
@@ -821,10 +834,7 @@ def _fan_intent(context: dict[str, Any], service: str, source: str) -> CommandIn
         logger.warning(f"{source}: нет entity_id в контексте")
         return None
 
-    data: dict[str, Any] = {}
-    for key in ("percentage", "preset_mode"):
-        if context.get(key) is not None:
-            data[key] = context[key]
+    data: dict[str, Any] = {key: context[key] for key in keys if context.get(key) is not None}
 
     logger.info(f"Создаю команду {service} для {entity_id}, данные: {data}")
 
@@ -848,11 +858,14 @@ def fan_turn_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     Returns:
         Команда включения либо ``None`` без устройства.
     """
-    return _fan_intent(context, "turn_on", "fan_turn_on")
+    return _fan_intent(context, "turn_on", "fan_turn_on", keys=("percentage",))
 
 
 def fan_turn_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     """Выключить вентилятор.
+
+    Данных нет вовсе: ``fan.turn_off`` скорости не принимает, а лишний ключ
+    (например, накопленный ``percentage``) роняет команду с 400.
 
     Args:
         state: Текущее состояние автомата (не используется).
@@ -893,7 +906,12 @@ def fan_set_percentage(state: Any, context: dict[str, Any]) -> CommandIntent | N
         logger.warning(f"fan_set_percentage: процент {value} вне диапазона 0–100")
         return None
 
-    return _fan_intent({**context, "percentage": value}, "set_percentage", "fan_set_percentage")
+    return _fan_intent(
+        {**context, "percentage": value},
+        "set_percentage",
+        "fan_set_percentage",
+        keys=("percentage",),
+    )
 
 
 def fan_set_preset(state: Any, context: dict[str, Any]) -> CommandIntent | None:
@@ -920,6 +938,7 @@ def fan_set_preset(state: Any, context: dict[str, Any]) -> CommandIntent | None:
         {**context, "preset_mode": preset_mode},
         "set_preset_mode",
         "fan_set_preset",
+        keys=("preset_mode",),
     )
 
 
@@ -945,7 +964,9 @@ def fan_airing_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     if not isinstance(mode, str) or not mode.strip():
         logger.warning("fan_airing_on: нет режима проветривания (mode_airing) в контексте")
         return None
-    return _fan_intent({**context, "preset_mode": mode}, "set_preset_mode", "fan_airing_on")
+    return _fan_intent(
+        {**context, "preset_mode": mode}, "set_preset_mode", "fan_airing_on", keys=("preset_mode",)
+    )
 
 
 def fan_apply_mode_and_speed(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
