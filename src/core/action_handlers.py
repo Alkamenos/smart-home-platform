@@ -66,11 +66,25 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
 
     priority = context.get("priority", 50)
     source = context.get("source", "lighting")
+    brightness_pct = context.get("brightness_pct")
     brightness = context.get("brightness")
+    color_temp_kelvin = context.get("color_temp_kelvin")
+    rgb_color = context.get("rgb_color")
 
+    # Яркость и цвет задаются явно, а не «как помнит лампа»: без этого свет,
+    # горевший ночником (красным на 3 %), включается потом тем же красным,
+    # потому что прибор восстанавливает последние настройки (требование
+    # владельца 2026-10-13). Что именно передать, решает поведение (params
+    # манифеста); пустое значение означает «не трогать эту ось».
     data: dict[str, Any] = {}
-    if brightness is not None:
+    if brightness_pct is not None:
+        data["brightness_pct"] = brightness_pct
+    elif brightness is not None:
         data["brightness"] = brightness
+    if color_temp_kelvin is not None:
+        data["color_temp_kelvin"] = color_temp_kelvin
+    elif rgb_color is not None:
+        data["rgb_color"] = rgb_color
 
     logger.info(f"Creating turn_on_light intent for {entity_id}")
 

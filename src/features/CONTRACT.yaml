@@ -245,6 +245,16 @@ templates:
         range: "0-255"
         effective: true
         note: "Яркость включения; уходит в команду HA."
+      brightness_pct:
+        type: int
+        range: "0-100"
+        effective: true
+        note: "Яркость включения в процентах; сильнее brightness, если заданы оба. Задавать явно, иначе лампа вспоминает прошлую (требование владельца 2026-10-13)."
+      color_temp_kelvin:
+        type: int
+        range: "2000-6500"
+        effective: true
+        note: "Цветовая температура включения, К. Сильнее rgb_color, если заданы оба; задавать явно, иначе лампа возвращает прошлый цвет."
       motion_timeout_sec:
         type: int
         range: "30-3600"
