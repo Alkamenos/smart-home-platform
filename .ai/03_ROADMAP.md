@@ -241,6 +241,13 @@
   - Priority: MEDIUM
   - Effort: 3-5 days
 
+- [ ] Состояние локации (Location State) — машиночитаемый снимок из датчиков
+  - Files: `core/models/location.py`, `core/services/location_state.py`, `core/services/location_mirror.py`, `webui/routes/locations.py`
+  - Detail: `specs/016-location-state/` (spec.md, data-model.md, research.md, tasks.md)
+  - Note: спроектировано 2026-10-13 по запросу владельца («машинное зрение для ИИ»); не реализовано. Комнаты + особые зоны (улица, грядки), роли датчиков расширяются, текущее состояние + журнал изменений, зеркало в HA через MQTT-автообнаружение
+  - Priority: MEDIUM
+  - Effort: 3-5 days
+
 ## Phase 12: Platform Maturity [FUTURE]
 - [ ] Plugin system for custom behaviors
 - [ ] Multi-instance support (multiple houses)
