@@ -44,13 +44,13 @@ EXHAUST_FSM = f"{EXHAUST_FAN}_ventilation_modes_{PRIORITY}"
 
 SUPPLY_PARAMS: dict[str, Any] = {
     "ventilation_role": "supply",
-    "mode_supply": "Приток",
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
     "mode_airing": "Приток MAX",
-    "speed_normal": 30,
-    "speed_delta_gain": 5.0,
-    "delta_deadband": 0.3,
+    "speed_normal": 43,
+    "speed_min": 14,
+    "speed_cold_reference": 5.0,
+    "speed_cold_gain": 2.0,
 }
 
 EXHAUST_PARAMS: dict[str, Any] = {

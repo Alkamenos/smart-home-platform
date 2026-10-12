@@ -7,8 +7,7 @@
 
 Проверка идёт на настоящих объектах движка, роутера и фабрики — не подменой:
 нас интересуют соединения между модулями (`EventRouter.route_settings_change`
-считает `heating_active` и шлёт `settings_changed`, шаблон на этот триггер
-пересматривает решение).
+шлёт `settings_changed`, шаблон на этот триггер пересматривает решение).
 
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
@@ -44,13 +43,13 @@ HEATER_FSM = f"{HEATER}_climate_control_{PRIORITY}"
 
 SUPPLY_PARAMS: dict[str, Any] = {
     "ventilation_role": "supply",
-    "mode_supply": "Приток",
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
     "mode_airing": "Приток MAX",
-    "speed_normal": 30,
-    "speed_delta_gain": 5.0,
-    "delta_deadband": 0.3,
+    "speed_normal": 43,
+    "speed_min": 14,
+    "speed_cold_reference": 5.0,
+    "speed_cold_gain": 2.0,
 }
 
 CLIMATE_PARAMS: dict[str, Any] = {
@@ -98,7 +97,9 @@ class _RecordingDispatcher:
 def _manifest() -> Manifest:
     """Манифест из одной комнаты: датчик, рекуператор и обогреватель.
 
-    Обогреватель нужен, чтобы роутер считал `heating_active` по-настоящему.
+    Обогреватель нужен, чтобы у комнаты был климат-автомат: по нему роутер
+    считает `heating_active` — теперь признак диагностический, и проверка
+    убеждается, что сам по себе он вентиляцию больше не гасит (FR-055).
 
     Returns:
         Модель манифеста.
@@ -222,25 +223,48 @@ async def test_owner_switch_on_starts_ventilation() -> None:
     )
 
 
-@pytest.mark.asyncio
-async def test_heating_blocks_ventilation_start_on_settings_change() -> None:
-    """Работающий обогрев не даёт пересмотру включить вентиляцию (T089/FR-031).
+async def test_cold_room_blocks_ventilation_start_on_settings_change() -> None:
+    """Комната холоднее уставки — пересмотр не включает вентиляцию (FR-049).
 
     Returns:
         Ничего.
     """
     engine, router, dispatcher = _build()
+
+    await router.route_settings_change(
+        {**_winter, "ventilation_on": True, "temperature": 20.0, "climate_setpoint": 22.5}
+    )
+
+    assert _state(engine, FAN_FSM) == "IDLE", (
+        "пересмотр включил вентиляцию в комнате холоднее уставки: приток унёс бы "
+        "тепло, которое платформа только что потратила (FR-049)"
+    )
+    assert dispatcher.intents == []
+
+
+@pytest.mark.asyncio
+async def test_heating_no_longer_blocks_ventilation() -> None:
+    """Работающий обогрев больше не гасит вентиляцию сам по себе (FR-055).
+
+    Право на вентиляцию определяет уставка: если комната выше уставки, обогрев
+    вентиляции не мешает.
+
+    Returns:
+        Ничего.
+    """
+    engine, router, _ = _build()
     state = engine.get_state(HEATER_FSM)
     assert state is not None
     state.current_state = "HEATING"
 
-    await router.route_settings_change({**_winter, "ventilation_on": True})
-
-    assert _state(engine, FAN_FSM) == "IDLE", (
-        "пересмотр не увидел работающий обогрев и включил вентиляцию: приток "
-        "унёс бы тепло, которое платформа только что потратила"
+    await router.route_settings_change(
+        {**_winter, "ventilation_on": True, "temperature": 24.0, "climate_setpoint": 22.5}
     )
-    assert dispatcher.intents == []
+
+    assert _state(engine, FAN_FSM) == "SUPPLY", (
+        "обогрев всё ещё гасит вентиляцию: правило по обогреву заменено правилом "
+        "по уставке (FR-055), а комната 24 °C выше уставки 22.5"
+    )
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,8 @@
 
 Ключевая мысль: смена скорости не должна пересылать режим. Иначе рекуператор
 на каждом показании датчика щёлкал бы режимом, и это выглядело бы как поломка
-(research.md D7). Режим меняется только по модификатору «зима» и дельте.
+(research.md D7). Режим меняется только по модификатору «зима», а при жаре —
+переходом в `AIRING` («Приток MAX»).
 
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
@@ -43,13 +44,13 @@ FSM_ID = f"{FAN}_ventilation_modes_{PRIORITY}"
 #: Режимы и коэффициенты — как в манифесте дома (data-model.md §5).
 SUPPLY_PARAMS: dict[str, Any] = {
     "ventilation_role": "supply",
-    "mode_supply": "Приток",
     "mode_summer": "Рекуперация (лето)",
     "mode_winter": "Рекуперация (зима)",
     "mode_airing": "Приток MAX",
-    "speed_normal": 30,
-    "speed_delta_gain": 5.0,
-    "delta_deadband": 0.3,
+    "speed_normal": 43,
+    "speed_min": 14,
+    "speed_cold_reference": 5.0,
+    "speed_cold_gain": 2.0,
 }
 
 
@@ -198,20 +199,20 @@ class TestModeAndSpeedAreIndependent:
         dispatcher.intents.clear()
         await router.route_state_change(
             entity_id=SENSOR,
-            new_state="15.0",
+            new_state="20.5",
             old_state="20.0",
-            context=_context(outside_temperature=17.0),
+            context=_context(outside_temperature=-5.0),
         )
 
         assert dispatcher.services() == ["set_percentage"], (
             f"на показании датчика ушло {dispatcher.services()} вместо одной "
-            "команды скорости: режим должен меняться по «зиме» и дельте, а не "
-            "на каждое показание (research.md D7)"
+            "команды скорости: режим должен меняться по «зиме», а не на каждое "
+            "показание (research.md D7)"
         )
-        # 30 + |17 − 15| × 5 = 40
-        assert dispatcher.intents[0].data["percentage"] == 40, (
-            f"скорость {dispatcher.intents[0].data.get('percentage')!r} при разнице "
-            "2 °C: должна быть 40"
+        # 43 − (5 − (−5)) × 2 = 23
+        assert dispatcher.intents[0].data["percentage"] == 23, (
+            f"скорость {dispatcher.intents[0].data.get('percentage')!r} при улице "
+            "−5 °C: холоднее — тише (FR-052)"
         )
 
 
@@ -237,15 +238,15 @@ class TestSupplyModeFollowsWinterModifier:
         assert dispatcher.intents[0].data["preset_mode"] == "Рекуперация (лето)"
 
     @pytest.mark.asyncio
-    async def test_hot_room_picks_supply_for_fast_cooling(self) -> None:
-        """Комната выше потолка комфорта — выбран приток (быстрое охлаждение).
+    async def test_hot_room_switches_to_max_supply(self) -> None:
+        """Комната выше потолка комфорта — переход в AIRING и «Приток MAX».
 
         Returns:
             Ничего.
         """
-        _, router, dispatcher = _build()
+        engine, router, dispatcher = _build()
 
-        # Комната 28 выше потолка комфорта 25 → приток для охлаждения.
+        # Комната 28 выше потолка комфорта 25 → максимальный приток.
         await router.route_state_change(
             entity_id=SENSOR,
             new_state="28.0",
@@ -253,9 +254,10 @@ class TestSupplyModeFollowsWinterModifier:
             context=_context(outside_temperature=0.0, comfort_max=25.0),
         )
 
-        assert dispatcher.intents[0].data["preset_mode"] == "Приток", (
-            "комната выше потолка комфорта — должен выбираться приток: свежий "
-            "воздух охлаждает быстрее рекуперации (уточнение владельца, T094)"
+        assert engine.get_state(FSM_ID).current_state == "AIRING"  # type: ignore[union-attr]
+        assert dispatcher.intents[0].data["preset_mode"] == "Приток MAX", (
+            "комната выше потолка комфорта — должен включаться «Приток MAX»: "
+            "свежий воздух охлаждает быстрее рекуперации (FR-051)"
         )
 
     @pytest.mark.asyncio
