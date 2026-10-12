@@ -42,8 +42,9 @@ CONTRACT_PATH = FEATURES_DIR / "CONTRACT.yaml"
 
 SOURCE_SENSOR = "sensor"
 SOURCE_ENGINE = "engine"
+SOURCE_PLATFORM = "platform"
 SOURCE_NONE = "НЕТ ПРОИСХОДИТЕЛЯ"
-ALLOWED_SOURCES = {SOURCE_SENSOR, SOURCE_ENGINE, SOURCE_NONE}
+ALLOWED_SOURCES = {SOURCE_SENSOR, SOURCE_ENGINE, SOURCE_PLATFORM, SOURCE_NONE}
 
 
 def _load(path: pathlib.Path) -> Any:
@@ -207,6 +208,21 @@ class TestProducersAreHonest:
         for name, entry in contract["templates"].items():
             for trigger, source in entry["triggers"].items():
                 assert source in ALLOWED_SOURCES, f"{name}.{trigger}: неизвестная метка {source!r}"
+
+    def test_settings_changed_is_marked_as_platform(self) -> None:
+        """Смену переключателя вентиляции порождает платформа, а не датчик.
+
+        Returns:
+            Ничего.
+        """
+        contract = _load(CONTRACT_PATH)
+        for name, entry in contract["templates"].items():
+            if "settings_changed" in entry["triggers"]:
+                assert entry["triggers"]["settings_changed"] == SOURCE_PLATFORM, (
+                    f"{name}.settings_changed: указано "
+                    f"{entry['triggers']['settings_changed']!r}, а событие порождает "
+                    "HAAdapter через EventRouter.route_settings_change"
+                )
 
     def test_unproduced_triggers_list_matches_marks(self) -> None:
         """Поле unproduced_triggers совпадает с метками в triggers."""
