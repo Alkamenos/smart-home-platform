@@ -238,22 +238,44 @@ class TestSupplyModeFollowsWinterModifier:
 
     @pytest.mark.asyncio
     async def test_hot_room_picks_supply_for_fast_cooling(self) -> None:
-        """Комната заметно теплее улицы — выбран приток (быстрое охлаждение).
+        """Комната выше потолка комфорта — выбран приток (быстрое охлаждение).
 
         Returns:
             Ничего.
         """
         _, router, dispatcher = _build()
 
-        # Комната 28, улица 0 → дельта 28 ≥ порога 5 (по умолчанию) → приток.
+        # Комната 28 выше потолка комфорта 25 → приток для охлаждения.
         await router.route_state_change(
             entity_id=SENSOR,
             new_state="28.0",
             old_state="27.0",
-            context=_context(outside_temperature=0.0),
+            context=_context(outside_temperature=0.0, comfort_max=25.0),
         )
 
         assert dispatcher.intents[0].data["preset_mode"] == "Приток", (
-            "при большой дельте «комната − улица» должен выбираться приток: "
-            "свежий воздух охлаждает быстрее рекуперации (research.md D18)"
+            "комната выше потолка комфорта — должен выбираться приток: свежий "
+            "воздух охлаждает быстрее рекуперации (уточнение владельца, T094)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_winter_delta_alone_does_not_pick_supply(self) -> None:
+        """Зимой дельта сама по себе приток не включает (регрессия 2026-10-12).
+
+        Returns:
+            Ничего.
+        """
+        _, router, dispatcher = _build()
+
+        # Комната 22 при потолке 25 — не жарко; дельта 22 ≥ 5, но зима важнее.
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="22.0",
+            old_state="21.9",
+            context=_context(outside_temperature=0.0, comfort_max=25.0),
+        )
+
+        assert dispatcher.intents[0].data["preset_mode"] == "Рекуперация (зима)", (
+            "зимой большая дельта включила сырой приток и рекуператор остужал дом "
+            "(боевой разбор 2026-10-12)"
         )

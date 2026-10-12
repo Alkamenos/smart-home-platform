@@ -142,6 +142,83 @@ class TestModeForWeather:
             "outside_temp_missing"
         )
 
+    def test_winter_keeps_recuperation_despite_delta(self) -> None:
+        """Зимой большая дельта «комната − улица» не включает сырой приток (T094).
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("mode_for_weather")
+        context = {
+            **DEFAULTS,
+            "outside_temperature": 0.0,
+            "is_winter": True,
+            "source_room_temperature": 22.0,
+            "comfort_max": 25.0,
+        }
+
+        assert guard(None, context) is True
+        assert context["chosen_mode"] == DEFAULTS["mode_winter"], (
+            "зимой при комнате ниже потолка комфорта выбран приток: сырой уличный "
+            "воздух охлаждает дом, хотя рекуперация вернула бы тепло "
+            "(боевой разбор 2026-10-12)"
+        )
+
+    def test_winter_hot_room_picks_supply(self) -> None:
+        """Зимой жаркая комната (не ниже потолка комфорта) — приток для охлаждения.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("mode_for_weather")
+        context = {
+            **DEFAULTS,
+            "outside_temperature": 0.0,
+            "is_winter": True,
+            "source_room_temperature": 27.0,
+            "comfort_max": 25.0,
+        }
+
+        assert guard(None, context) is True
+        assert context["chosen_mode"] == DEFAULTS["mode_supply"]
+
+    def test_winter_without_comfort_ceiling_keeps_recuperation(self) -> None:
+        """Нет потолка комфорта — приток не выбирается: «жарко» неизвестно.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("mode_for_weather")
+        context = {
+            **DEFAULTS,
+            "outside_temperature": 0.0,
+            "is_winter": True,
+            "source_room_temperature": 30.0,
+        }
+
+        assert guard(None, context) is True
+        assert context["chosen_mode"] == DEFAULTS["mode_winter"], (
+            "без потолка комфорта выбран приток наугад: зимой это лишний сырой "
+            "воздух, а «жарко» платформа знать не может"
+        )
+
+    def test_summer_hot_room_still_picks_supply(self) -> None:
+        """Летом приток остаётся выбором охлаждения по дельте.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("mode_for_weather")
+        context = {
+            **DEFAULTS,
+            "outside_temperature": 24.0,
+            "is_winter": False,
+            "source_room_temperature": 29.0,
+        }
+
+        assert guard(None, context) is True
+        assert context["chosen_mode"] == DEFAULTS["mode_supply"]
+
 
 class TestSpeedWithinLimits:
     """Скорость считается по разнице температур и ограничивается."""
