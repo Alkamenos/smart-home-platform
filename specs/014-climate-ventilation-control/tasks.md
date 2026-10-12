@@ -197,7 +197,7 @@ contracts/interface-contracts.md, quickstart.md
 - [x] T055 [US3] Условие `owner_wants_airing` и `sensor_is_alive` — `src/core/guards/builtin.py`
 - [x] T056 [US3] Причины отказов `ventilation_disabled`, `turned_off_by_owner`, `outside_temp_missing`, `sensor_stale` — `src/core/events/fsm_events.py`
 - [x] T057 [US3] Действия `fan_set_percentage` (`set_percentage`), `fan_set_preset` (`set_preset_mode`), `fan_apply_mode_and_speed` (два намерения подряд; атомарности в системе нет, порядок — по доставке), `exhaust_on`/`exhaust_off` — `src/core/action_handlers.py`
-- [ ] T058 [US3] Новый шаблон `ventilation_modes` с состояниями `IDLE`, `SUPPLY`, `AIRING`, `EXHAUST` (FR-024, FR-025, FR-026); `AIRING` выходит по `timeout` через `airing_seconds`; `EXHAUST` отдельно, потому что вытяжка меняет направление, а не скорость — `src/features/ventilation_modes.yaml`
+- [x] T058 [US3] Новый шаблон `ventilation_modes` с состояниями `IDLE`, `SUPPLY`, `AIRING`, `EXHAUST` (FR-024, FR-025, FR-026); `AIRING` выходит по `timeout` через `airing_seconds`; `EXHAUST` отдельно, потому что вытяжка меняет направление, а не скорость — `src/features/ventilation_modes.yaml`
 - [ ] T059 [US3] Объявить параметры `ventilation_modes` в контракте с диапазонами из `data-model.md` §5; режимы — параметры, а не константы: список принадлежит устройству, и замена рекуператора не должна требовать правки кода — `src/features/CONTRACT.yaml`
 - [ ] T060 [US3] Прописать оба рекуператора и вытяжку в боевой манифест — `instances/leonids_house/manifest.yaml`
 - [x] T061 [US3] Регенерация контракта шаблонов — `tools/gen_template_contract.py`
