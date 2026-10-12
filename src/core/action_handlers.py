@@ -882,8 +882,16 @@ def fan_set_percentage(state: Any, context: dict[str, Any]) -> CommandIntent | N
 
     Скорость — отдельная ось рекуператора и не зависит от режима (FR-020,
     FR-021). В данных команды лежит **ровно** ``percentage``: лишний ключ в
-    ``fan.set_percentage`` Home Assistant отвергает с 400 Bad Request, и вместе с
-    ним теряется вся команда.
+    команде Home Assistant отвергает с 400 Bad Request, и вместе с ним теряется
+    вся команда.
+
+    Скорость задаётся сервисом ``fan.turn_on`` с процентом, а не
+    ``fan.set_percentage``: у боевого рекуператора последний врёт — на живых
+    замерах 2026-10-12 запрос 14 давал 100 %, запрос 71 не применялся вовсе,
+    тогда как ``fan.turn_on`` с процентом ставил нужную ступень надёжно и не
+    сбивал режим (research.md D24). Оба сервиса — стандартные сервисы Home
+    Assistant, ``fan.turn_on`` с ``percentage`` заодно гарантирует, что прибор
+    включён (скорость у выключенного рекуператора не принимается).
 
     Args:
         state: Состояние автомата (не используется).
@@ -908,7 +916,7 @@ def fan_set_percentage(state: Any, context: dict[str, Any]) -> CommandIntent | N
 
     return _fan_intent(
         {**context, "percentage": value},
-        "set_percentage",
+        "turn_on",
         "fan_set_percentage",
         keys=("percentage",),
     )
