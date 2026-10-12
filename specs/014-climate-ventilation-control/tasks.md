@@ -423,3 +423,31 @@ Task: "Тест: таймер перехода климата взводится
   в `mode_for_weather` (`src/core/guards/builtin.py`): при `is_winter` режим
   «Рекуперация (зима)», приток — не ниже потолка комфорта `comfort_max`. Закрывает
   дефект 2026-10-12: дельта включала сырой приток на морозе и дом остывал
+
+**Фаза 11: переработка вентиляции по D22 (владелец, вечер 2026-10-12).** Новые
+правила (`spec.md` FR-049…FR-056, `research.md` D22) отменяют приток по дельте,
+правило по обогреву и ночной потолок; см. `data-model.md` §5.
+
+- [ ] T095 Выключение по уставке: вентиляция стоит, когда `ventiliatsiia` = off,
+  фиче-флаг = off или температура комнаты ниже `input_number.temperatura` —
+  `_ventilation_allowed` (`src/core/guards/builtin.py`), новая причина
+  `room_below_setpoint` (`src/core/events/fsm_events.py`); убрать правило по
+  `heating_active` (T089, FR-055)
+- [ ] T096 Режим по сезону: `mode_for_weather` выбирает только `mode_winter` /
+  `mode_summer`, приток по дельте (`mode_supply`) убран (FR-050)
+- [ ] T097 Жарко → «Приток MAX» с таймером: температура выше `comfort_max` →
+  переход `IDLE`/`SUPPLY` → `AIRING` (новый guard, напр. `should_run_max_supply`,
+  действие `fan_airing_on`), возврат к обычному режиму по `airing_seconds`
+  (FR-051)
+- [ ] T098 Скорость: холоднее улица → ниже (не ниже `speed_min`), не холоднее
+  `speed_cold_reference` → `speed_normal`; ночью при нормальной температуре —
+  `speed_min` — `_speed_from_context` (FR-052, FR-053)
+- [ ] T099 Параметры: убрать инертные `mode_supply`, `supply_delta_threshold`,
+  `speed_delta_gain`, `speed_night_max`, `delta_deadband`; добавить `speed_min`,
+  `speed_cold_reference`, `speed_cold_gain` (шаблон, боевой манифест, CONTRACT,
+  data-model §5)
+- [ ] T100 Тесты и приёмка под новые правила: unit-проверки режима/скорости/жары/
+  уставки, интеграционные — «ниже уставки → стоп», «жарко → Приток MAX», «ночью →
+  минимум»; обновить `quickstart.md` шаг 5
+- [ ] T101 Боевая проверка новых правил в доме (после T060)
+
