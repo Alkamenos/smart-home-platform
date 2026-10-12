@@ -150,6 +150,7 @@ class Container:
         # Суточный цикл света создаётся при сборке по правилам манифеста.
         self._day_cycle: DayCycleService | None = None
         self._deco_watcher: DecorativeLightWatcher | None = None
+        self._ventilation_watchdog: Any | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
@@ -646,6 +647,7 @@ class Container:
         self._start_watchdog()
         self._start_day_cycle()
         self._start_deco_watcher()
+        self._start_ventilation_watchdog()
         self._start_sensor_health()
 
         return PlatformContext(
@@ -826,6 +828,29 @@ class Container:
             return
         self._deco_watcher.start()
         logger.info(f"Сверка вечернего света: {self._deco_watcher.describe()}")
+
+    def _start_ventilation_watchdog(self) -> None:
+        """Запустить сторожа вентиляции (защита от дрейфа прибора).
+
+        Рекуператор может «соскочить» с заданного режима сам, между событиями
+        датчика: в бою 2026-10-13 платформа отправляла «Приток MAX», а через
+        2–5 минут прибор снова стоял на «Рекуперации (зиме)», и вернуть его было
+        нечем. Сторож раз в интервал подтверждает решение автоматов вентиляции.
+
+        Returns:
+            Ничего.
+        """
+        from core.services.ventilation_watchdog import VentilationWatchdog
+
+        self._ventilation_watchdog = VentilationWatchdog(engine=self.fsm)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Сторож вентиляции не запущен: нет работающего цикла событий")
+            self._ventilation_watchdog = None
+            return
+        self._ventilation_watchdog.start()
+        logger.info(f"Сторож вентиляции: {self._ventilation_watchdog.describe()}")
 
     def _start_sensor_health(self) -> None:
         """Запустить наблюдение за батарейками датчиков, если это возможно.
