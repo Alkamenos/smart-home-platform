@@ -1188,6 +1188,30 @@ class HAAdapter:
         attributes = payload.get("attributes")
         return attributes.get(attribute) if isinstance(attributes, dict) else None
 
+    async def refresh_units(self, entity_ids: Iterable[str]) -> int:
+        """Запомнить единицы измерения сущностей наблюдения (спека 016).
+
+        Отдельно от ``refresh_entity_units``: там речь о таймерах обогрева и
+        своё предупреждение. Здесь — единицы датчиков (температура, влажность,
+        почва): без них снимок локации отдаёт «22.4» без «°C», и значение нельзя
+        ни сравнить, ни построить по нему график.
+
+        Args:
+            entity_ids: Сущности, единицу которых нужно знать.
+
+        Returns:
+            Сколько единиц удалось запомнить.
+        """
+        learned = 0
+        for entity_id in sorted({entity for entity in entity_ids if entity}):
+            unit = await self.get_attribute(entity_id, "unit_of_measurement")
+            if isinstance(unit, str) and unit.strip():
+                self.remember_entity_unit(entity_id, unit)
+                learned += 1
+        if learned:
+            logger.info(f"HAAdapter: единицы измерения запомнены для {learned} сущностей")
+        return learned
+
     async def sync_setpoint(self, entity_id: str, value: str, own_action: bool) -> None:
         """Синхронизировать термостат и уставку дома в обоих направлениях.
 

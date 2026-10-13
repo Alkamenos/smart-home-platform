@@ -328,6 +328,16 @@ class TestHelpers:
         assert service.role_of("spalnia", "sensor.chuzhoi") is None
         assert service.sensor_entities("takogo_net") == []
 
+    def test_bound_entities_lists_all_sensors(self) -> None:
+        """Сервис называет все привязанные сущности — для чтения единиц."""
+        assert _service().bound_entities() == [
+            "binary_sensor.m_spalnia",
+            "binary_sensor.okno_spalnia",
+            "sensor.pochva",
+            "sensor.t_spalnia",
+            "sensor.t_ulitsa",
+        ]
+
     def test_subscribe_registers_handler(self) -> None:
         """Подписка на шину регистрирует обработчик."""
 

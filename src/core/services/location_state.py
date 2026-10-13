@@ -320,6 +320,14 @@ class LocationStateService:
                 return role
         return None
 
+    def bound_entities(self) -> list[str]:
+        """Все сущности, привязанные к локациям.
+
+        Returns:
+            Отсортированный список сущностей (датчики комнат и особых зон).
+        """
+        return sorted(self._roles_by_entity)
+
     async def prime(self) -> int:
         """Прочитать текущие значения привязанных датчиков (FR-001).
 

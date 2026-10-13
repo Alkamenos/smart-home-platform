@@ -11,6 +11,7 @@ for better modularity and testability.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from dataclasses import dataclass
 from datetime import time as dt_time
@@ -913,11 +914,17 @@ class Container:
             return
 
         async def _prime() -> None:
-            """Дождаться связи с домом и прочитать показания."""
+            """Дождаться связи с домом, узнать единицы и прочитать показания."""
             for _ in range(60):
                 if getattr(adapter, "is_connected", False):
                     break
                 await asyncio.sleep(1.0)
+            # Единицы — до показаний: снимок без единицы нельзя ни сравнить, ни
+            # нарисовать, а кэш единиц заполняется только таймерами обогрева.
+            refresh = getattr(adapter, "refresh_units", None)
+            if refresh is not None:
+                with contextlib.suppress(Exception):
+                    await refresh(service.bound_entities())
             try:
                 await service.prime()
             except Exception as exc:  # noqa: BLE001 — чтение не должно ронять платформу
