@@ -19,12 +19,26 @@ from core.fsm.engine import FSMEngine
 from core.services.ventilation_watchdog import VentilationWatchdog
 
 
+class _State:
+    """Состояние автомата для заглушки движка."""
+
+    def __init__(self, current_state: str) -> None:
+        self.current_state = current_state
+
+
 class _Engine:
     """Движок-заглушка: помнит подтверждения по автоматам."""
 
-    def __init__(self, entities: list[str], devices: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        entities: list[str],
+        devices: dict[str, str] | None = None,
+        states: dict[str, str] | None = None,
+    ) -> None:
         self._entities = entities
         self._devices = devices or {}
+        #: Состояние автомата; по умолчанию «в работе» — как у вентиляции в AIRING.
+        self._states = states or {}
         self.confirmed: list[str] = []
         self.contexts: list[dict[str, Any] | None] = []
 
@@ -39,6 +53,19 @@ class _Engine:
         """
         assert trigger == "settings_changed"
         return list(self._entities)
+
+    def get_state(self, entity_id: str) -> _State | None:
+        """Вернуть состояние автомата.
+
+        Args:
+            entity_id: Автомат.
+
+        Returns:
+            Состояние либо ``None``, если автомата нет.
+        """
+        if entity_id not in self._entities:
+            return None
+        return _State(self._states.get(entity_id, "AIRING"))
 
     def device_id_of(self, entity_id: str) -> str | None:
         """Вернуть прибор автомата.
@@ -199,6 +226,33 @@ class TestStoppedDevice:
         assert engine.contexts == [None], (
             "молчание прибора принято за остановку: команда ушла бы наугад"
         )
+
+    @pytest.mark.asyncio
+    async def test_idle_automaton_is_not_disturbed(self) -> None:
+        """Стоящему автомату остановленный прибор — норма, признак не шлётся.
+
+        Returns:
+            Ничего.
+        """
+        engine = _Engine(
+            ["fan.vykliuchatel_sanuzel_switch2_ventilation_modes_10"],
+            devices={
+                "fan.vykliuchatel_sanuzel_switch2_ventilation_modes_10": (
+                    "fan.vykliuchatel_sanuzel_switch2"
+                )
+            },
+            states={"fan.vykliuchatel_sanuzel_switch2_ventilation_modes_10": "IDLE"},
+        )
+        adapter = _Adapter(state="off")
+        watchdog = VentilationWatchdog(engine=engine, adapter=adapter)  # type: ignore[arg-type]
+
+        await watchdog.check_once()
+
+        assert engine.contexts == [None], (
+            "стоящему автомату шлётся признак остановки: он подтвердил бы решение "
+            "включением прибора, которому положено стоять"
+        )
+        assert adapter.reads == [], "состояние прибора читается даже для IDLE"
 
 
 def test_engine_type_is_used() -> None:

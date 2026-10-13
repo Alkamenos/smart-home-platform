@@ -42,6 +42,10 @@ from core.fsm.engine import FSMEngine
 #: Часть имени автомата, по которой отбираются автоматы вентиляции.
 VENTILATION_MARKER = "_ventilation_modes_"
 
+#: Состояние «прибор стоит по решению». Для него остановленный прибор —
+#: норма, и подтверждать нечего: признак остановки ни одному переходу не нужен.
+IDLE_STATE = "IDLE"
+
 
 class VentilationWatchdog:
     """Подтверждать решение автоматов вентиляции по времени.
@@ -92,15 +96,22 @@ class VentilationWatchdog:
     async def _device_off_context(self, entity_id: str) -> dict[str, Any] | None:
         """Прочитать состояние прибора и назвать остановку.
 
+        Спрашивается только у работающего автомата: если он стоит (`IDLE`), то
+        выключенный прибор — норма, и признак не нужен ни одному переходу.
+
         Args:
             entity_id: Идентификатор автомата вентиляции.
 
         Returns:
-            ``{"_device_is_off": True}``, если прибор остановлен, иначе ``None``.
-            Неудача чтения — тоже ``None``: молчание прибора не повод слать
-            команду, а следующая проверка повторит попытку.
+            ``{"_device_is_off": True}``, если автомат считает себя в работе, а
+            прибор остановлен. Иначе ``None``. Неудача чтения — тоже ``None``:
+            молчание прибора не повод слать команду наугад, а следующая проверка
+            повторит попытку.
         """
         if self._adapter is None:
+            return None
+        current = getattr(self.engine.get_state(entity_id), "current_state", None)
+        if current is None or current == IDLE_STATE:
             return None
         device = self.engine.device_id_of(entity_id)
         if not device:
@@ -113,8 +124,8 @@ class VentilationWatchdog:
         if state is None or str(state).strip().lower() != "off":
             return None
         logger.info(
-            f"Сторож вентиляции: прибор {device} остановлен — "
-            f"{entity_id} подтвердит решение включением"
+            f"Сторож вентиляции: прибор {device} остановлен, а автомат "
+            f"{entity_id} считает себя в работе ({current}) — подтвердит решение включением"
         )
         return {"_device_is_off": True}
 
