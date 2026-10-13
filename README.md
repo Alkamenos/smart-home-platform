@@ -138,7 +138,7 @@ smart-home-platform/
 │   ├── cli/                   # CLI entry point (shp): bulk-import, export-fsm, shell
 │   ├── services/              # Config watcher, backup, watchdog, FSM state bridge
 │   ├── dashboard/             # Lovelace dashboard generator
-│   ├── webui/                 # Web UI (FastAPI + HTMX): discovery, FSM view
+│   ├── webui/                 # Web UI: API + раздача статики фронтенда (FastAPI)
 │   ├── features/              # YAML behavior templates (lighting, climate, ...)
 │   ├── smart_home/            # Installable package (CLI entry point)
 │   └── bootstrap.py           # Platform initialization
@@ -147,11 +147,29 @@ smart-home-platform/
 ├── examples/                  # Code examples (batcher, pyscript, sample plugin)
 ├── fsm_demo/                  # Runnable demos (kitchen_demo, full_house_demo)
 ├── docs/                      # Documentation (start at docs/README.md)
+├── frontend/                  # Web UI (Next.js, статическая сборка) — спека 017
 ├── deploy/                    # Docker deployment for Home Assistant
 ├── .ai/                       # AI context: workflow, rules, enhancements backlog
 ├── specs/                     # Feature specifications (Spec Kit)
 ├── Makefile                   # Build/test/lint aliases
 └── pyproject.toml             # Dependencies and tool configuration
+```
+
+## 🖥️ Веб-интерфейс
+
+Пульт инженера: пять разделов — «Дом», «Автоматика», «Журнал», «Настройка»,
+«Система» (спека [`specs/017-webui-redesign`](specs/017-webui-redesign/spec.md)).
+Фронтенд — Next.js со статической сборкой (`frontend/`), раздаётся тем же
+процессом FastAPI с того же адреса: внешних CDN нет, интерфейс работает без
+выхода в интернет. Старый серверный Jinja+HTMX интерфейс удалён.
+
+```bash
+make frontend-install   # один раз: зависимости фронтенда
+make frontend-build     # сборка статики в frontend/out
+make run-webui          # http://localhost:8000 — интерфейс и API на одном порту
+
+make frontend-test      # юнит-тесты фронтенда (Vitest)
+make test-browser       # E2E (Playwright) — нужен собранный фронт и платформа
 ```
 
 ## 📖 Specifications

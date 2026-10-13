@@ -111,10 +111,9 @@ echo ""
 # одного теста (спека 009, US3).
 #
 # Состав набора задаётся в pyproject.toml; здесь он не переопределяется.
-# Браузерные тесты (tests/test_webui_playwright.py, 25 шт.) исключены из общего
-# прогона — playwright sync API держит running event loop и ломает
-# последующие async-тесты (Known Issue #13). Это объявленное исключение:
-# запускается отдельной командой `make test-browser`.
+# Браузерные тесты нового интерфейса живут во фронтенде (frontend/tests/e2e):
+# нужен собранный фронт и работающая платформа, поэтому они не входят в прогон
+# и запускаются отдельно — это объявленное исключение.
 echo "1️⃣  Running tests..."
 # Вывод сохраняется во временный файл, а код возврата pytest проверяется
 # отдельно: в конвейере `pytest | tail` статус берётся от последней команды,
@@ -133,9 +132,9 @@ rm -f "$TEST_OUTPUT"
 echo ""
 
 echo "1️⃣b Browser tests (declared exclusion — run separately, see note)"
-echo -e "${BLUE}   Not part of this run: tests/test_webui_playwright.py${NC}"
-echo -e "${BLUE}   Reason: playwright sync API holds a running event loop (Known Issue #13)${NC}"
-echo -e "${BLUE}   Run with: make test-browser${NC}"
+echo -e "${BLUE}   Not part of this run: frontend E2E (Playwright)${NC}"
+echo -e "${BLUE}   Where: frontend/tests/e2e${NC}"
+echo -e "${BLUE}   Run with: pnpm --dir frontend test:e2e${NC}"
 echo ""
 
 # 2. Type checking
