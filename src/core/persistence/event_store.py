@@ -355,6 +355,87 @@ class EventStore:
             for row in rows
         ]
 
+    def query_journal(
+        self,
+        *,
+        entity_ids: Iterable[str] | None = None,
+        trace_id: str | None = None,
+        from_ts: float | None = None,
+        to_ts: float | None = None,
+        before_ts: float | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Общая лента журнала: события датчиков и переходы автоматов (спека 017).
+
+        Интерфейсу нужен один журнал, а не два: «что произошло» складывается из
+        изменений состояний и переходов автоматов. Таблицы разные, поэтому лента
+        собирается объединением и сортируется по времени — новые первыми.
+
+        Уровня записи в схеме нет (ни у событий, ни у переходов нет колонки
+        важности), поэтому по уровню здесь не фильтруется: выдумывать уровень из
+        типа события значило бы показывать несуществующее.
+
+        Args:
+            entity_ids: Фильтр по сущностям (события датчиков и автоматы). Пустая
+                коллекция — журнал пуст; ``None`` — без фильтра.
+            trace_id: Фильтр по трассировке — цепочка «событие → решение».
+            from_ts: Начало интервала (epoch), включительно.
+            to_ts: Конец интервала (epoch), включительно.
+            before_ts: Курсор: вернуть записи строго старше этого момента.
+            limit: Сколько записей вернуть не больше.
+
+        Returns:
+            Записи журнала словарями, новые первыми.
+        """
+        wanted: list[str] | None = None
+        if entity_ids is not None:
+            wanted = sorted({entity for entity in entity_ids if entity})
+            if not wanted:
+                return []
+
+        union = """
+            SELECT timestamp, 'event' AS kind, entity_id, old_state, new_state,
+                   event_type AS detail, trace_id,
+                   NULL AS from_state, NULL AS to_state, NULL AS trigger_name,
+                   NULL AS success, NULL AS reason
+            FROM events
+            UNION ALL
+            SELECT timestamp, 'transition' AS kind, entity_id, NULL, NULL, NULL, trace_id,
+                   from_state, to_state, trigger_name,
+                   success, reason
+            FROM fsm_transitions
+        """
+        query = f"SELECT * FROM ({union}) AS journal WHERE 1=1"
+        params: list[Any] = []
+        if wanted:
+            placeholders = ", ".join("?" for _ in wanted)
+            query += f" AND entity_id IN ({placeholders})"
+            params.extend(wanted)
+        if trace_id:
+            query += " AND trace_id = ?"
+            params.append(trace_id)
+        if from_ts:
+            query += " AND timestamp >= ?"
+            params.append(from_ts)
+        if to_ts:
+            query += " AND timestamp <= ?"
+            params.append(to_ts)
+        if before_ts:
+            query += " AND timestamp < ?"
+            params.append(before_ts)
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
+
+        return [dict(row) for row in rows]
+
     def save_override(
         self,
         entity_id: str,

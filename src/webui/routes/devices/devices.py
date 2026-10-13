@@ -31,6 +31,7 @@ from webui.routes.devices.deps import (
     get_sync_history,
     record_sync_event,
 )
+from webui.services.decisions import decision_view
 
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,13 @@ class DeviceResponse(BaseModel):
     automation: AutomationInfo = Field(
         default_factory=lambda: AutomationInfo(configured=False, reason="no_automation"),
         description="Automation availability for the device",
+    )
+    decision: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Последнее решение автоматики: исход, причина человеческим языком и "
+            "время. Нужно интерфейсу, чтобы ответить «почему так» без журнала"
+        ),
     )
 
 
@@ -298,6 +306,7 @@ def _to_device_response(
     device: Any,
     fsm_views: list[FSMStateView] | None = None,
     behaviors: list[dict[str, Any]] | None = None,
+    decision: dict[str, Any] | None = None,
 ) -> DeviceResponse:
     """Собирает ответ API из модели устройства.
 
@@ -312,6 +321,7 @@ def _to_device_response(
         device: Модель устройства.
         fsm_views: Состояния автоматов устройства.
         behaviors: Поведения устройства из манифеста; при отсутствии — пустой список.
+        decision: Последнее решение автоматики (спека 017, US3).
 
     Returns:
         Ответ API с устройством.
@@ -336,6 +346,7 @@ def _to_device_response(
         fsm=views,
         behaviors=behaviors or [],
         automation=build_automation_info([view.fsm_id for view in views]),
+        decision=decision,
     )
 
 
@@ -363,8 +374,19 @@ async def get_device(request: Request, device_id: UUID) -> DeviceResponse:
 
     await _require_access_or_403(request, device_id, _ROLE_VIEWER)
 
+    # Состояния автоматов и последнее решение: без них страница прибора не
+    # отвечает на «почему так» (спека 017, US3). Ключи решения — идентификаторы
+    # автоматов устройства и его сущность.
+    container = getattr(request.app.state, "container", None)
+    engine = getattr(container, "fsm", None)
+    fsm_views = build_all_fsm_state_views(engine, {device.ha_entity_id}) if engine else []
+    decision = decision_view(engine, [view.fsm_id for view in fsm_views] + [device.ha_entity_id])
+
     return _to_device_response(
-        device, behaviors=_device_behaviors(get_lifecycle_service(request), device.ha_entity_id)
+        device,
+        fsm_views=fsm_views,
+        behaviors=_device_behaviors(get_lifecycle_service(request), device.ha_entity_id),
+        decision=decision,
     )
 
 

@@ -12,13 +12,16 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from webui.routes import event_store
+from webui.services.manifest_runtime import apply_manifest_to_runtime
 
 
 router = APIRouter(tags=["locations"])
@@ -104,7 +107,108 @@ async def list_locations(request: Request) -> JSONResponse:
     if service is None:
         return _unavailable()
     locations = service.locations()
+    # Роли датчиков — из манифеста через наблюдение: интерфейсу они нужны, чтобы
+    # показать и отредактировать привязку «роль → сущность» (спека 017, US5).
+    for location in locations:
+        sensors: dict[str, str] = {}
+        for entity in service.sensor_entities(location["id"]):
+            role = service.role_of(location["id"], entity)
+            if role:
+                sensors[role] = entity
+        location["sensors"] = sensors
     return JSONResponse({"count": len(locations), "locations": locations})
+
+
+#: Сущность Home Assistant: домен и объект.
+_ENTITY_RE = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
+
+
+class LocationSensorsUpdate(BaseModel):
+    """Новая привязка ролей датчиков локации."""
+
+    sensors: dict[str, str] = Field(
+        default_factory=dict, description="Роль датчика → сущность Home Assistant"
+    )
+
+
+def _apply_sensors(manifest: Any, location_id: str, sensors: dict[str, str]) -> bool:
+    """Записать привязки датчиков в модель манифеста.
+
+    Комнаты манифеста — тоже локации, но их датчики лежат в ``rooms[].sensors``;
+    особые зоны — в ``locations[].sensors``. Правка идёт туда, где локация
+    объявлена, иначе изменение ушло бы в никуда.
+
+    Args:
+        manifest: Модель манифеста (веб-слоя).
+        location_id: Идентификатор локации.
+        sensors: Новая привязка ролей.
+
+    Returns:
+        True, если локация найдена и обновлена.
+    """
+    for room in getattr(manifest, "rooms", []):
+        if room.id == location_id:
+            room.sensors = dict(sensors)
+            return True
+    for location in getattr(manifest, "locations", []):
+        if location.id == location_id:
+            location.sensors = dict(sensors)
+            return True
+    return False
+
+
+@router.put("/api/v1/locations/{location_id}", response_class=JSONResponse)
+async def update_location_sensors(
+    location_id: str, request: Request, body: LocationSensorsUpdate
+) -> JSONResponse:
+    """Задать роли датчиков локации (спека 017, US5, FR-026).
+
+    Args:
+        location_id: Идентификатор локации (комната или особая зона).
+        request: Входящий HTTP-запрос.
+        body: Новая привязка «роль → сущность».
+
+    Returns:
+        ``{"status": "saved", ...}`` при успехе; ``400`` при некорректной
+        сущности; ``404`` для неизвестной локации; ``503`` без хранилища.
+    """
+    for role, entity in body.sensors.items():
+        if not role.strip():
+            raise HTTPException(status_code=400, detail="Роль датчика не может быть пустой")
+        if not _ENTITY_RE.match(entity):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Сущность {entity!r} не похожа на сущность Home Assistant (домен.объект)",
+            )
+
+    store = getattr(request.app.state, "manifest_store", None)
+    if store is None:
+        return JSONResponse(
+            {"error": "Хранилище манифеста недоступно: платформа не собрана"},
+            status_code=503,
+        )
+    try:
+        if store.current is None:
+            store.load()
+    except Exception as e:  # noqa: BLE001 — причина попадает в ответ
+        return JSONResponse({"error": f"Манифест не прочитан: {e}"}, status_code=503)
+
+    if not _apply_sensors(store.current, location_id, body.sensors):
+        return JSONResponse(
+            {"error": f"Локация {location_id!r} не описана в манифесте"}, status_code=404
+        )
+
+    store.save()
+
+    container = getattr(request.app.state, "container", None)
+    lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
+    warnings: list[str] = []
+    try:
+        apply_manifest_to_runtime(store, container, lifecycle_service)
+    except Exception as exc:  # noqa: BLE001 — причина попадает в ответ
+        warnings.append(f"Роли сохранены, но не применены в рантайме: {exc}")
+
+    return JSONResponse({"status": "saved", "location_id": location_id, "warnings": warnings})
 
 
 @router.get("/api/v1/locations/{location_id}/state", response_class=JSONResponse)

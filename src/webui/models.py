@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from core.models.manifest import LocationConfig
+
 
 class InstanceConfig(BaseModel):
     """Instance configuration model."""
@@ -86,6 +88,10 @@ class ManifestModel(BaseModel):
     instance: InstanceConfig = Field(..., description="Instance configuration")
     version: int = Field(default=1, description="Manifest schema version")
     rooms: list[RoomConfig] = Field(default_factory=list, description="Rooms in the smart home")
+    locations: list[LocationConfig] = Field(
+        default_factory=list,
+        description="Особые зоны наблюдения (улица, грядки) — спека 016",
+    )
     automation_rules: AutomationRules = Field(
         default_factory=AutomationRules, description="Automation rules"
     )
