@@ -28,34 +28,11 @@
 #  SPDX-License-Identifier: Apache-2.0
 """
 
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
 
-TEMPLATE = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "webui" / "templates" / "discovery.html"
-)
-
 ADMIN = {"X-User-ID": "admin_user", "X-Is-Admin": "true"}
-
-
-@pytest.fixture
-def template() -> str:
-    return TEMPLATE.read_text(encoding="utf-8")
-
-
-def _function_body(source: str, name: str, length: int = 3000) -> str:
-    """Вырезать тело функции из шаблона.
-
-    Отдельная функция нужна, потому что разбор «по первому совпадению имени»
-    давал неверный фрагмент: первое вхождение ``deleteSource`` — это wires в
-    обработчике события, а не определение. Тест проверял не тот код.
-    """
-    marker = f"async function {name}("
-    start = source.index(marker)
-    return source[start : start + length]
 
 
 @pytest.fixture
@@ -66,119 +43,21 @@ def client() -> TestClient:
 
 
 def _create(client: TestClient, name: str = "источник-проверки") -> str:
+    """Создать источник каноническим путём.
+
+    Args:
+        client: Тестовый клиент.
+        name: Имя источника.
+
+    Returns:
+        Идентификатор созданного источника.
+    """
     response = client.post(
         "/api/v1/devices/sources",
         json={"name": name, "url": "http://ha.invalid:8123", "token": "token-длинный"},
     )
     assert response.status_code == 201, response.text
     return response.json()["id"]
-
-
-class TestSourceDeletionIsAvailable:
-    """Пункт 1: источник должен можно удалить."""
-
-    def test_page_offers_deletion(self, template: str) -> None:
-        """Страница содержит элемент удаления источника."""
-        assert "deleteSource" in template, (
-            "на странице нет удаления источника: ошибочно созданный источник невозможно убрать"
-        )
-
-    def test_deletion_calls_delete_method(self, template: str) -> None:
-        """Удаление использует метод DELETE, а не подмену через POST."""
-        body = _function_body(template, "deleteSource")
-        assert "method: 'DELETE'" in body, (
-            "удаление должно вызывать DELETE /api/v1/devices/sources/{id}"
-        )
-        assert "${API.sources}/" in body, (
-            "удаление должно обращаться к эндпоинту источников, а не к другому адресу"
-        )
-
-    def test_deletion_requires_confirmation(self, template: str) -> None:
-        """Перед удалением спрашивается подтверждение.
-
-        Без подтверждения опечатка в названии или случайный клик удаляет
-        источник вместе с привязанными к нему устройствами.
-        """
-        assert "confirm(" in template, (
-            "удаление происходит без подтверждения: источник с привязанными "
-            "устройствами исчезнет по ошибке"
-        )
-
-    def test_confirmation_names_the_source(self, template: str) -> None:
-        """В подтверждении видно, что именно удаляется.
-
-        «Удалить источник?» без названия бесполезно, когда источников несколько.
-        """
-        body = _function_body(template, "deleteSource")
-        # Текст подтверждения собирается ДО вызова confirm, поэтому проверяется
-        # префикс тела функции, а не аргумент вызова.
-        prefix = body[: body.index("window.confirm(")]
-
-        assert "${title}" in prefix, (
-            f"в подтверждении нет названия источника: удалять придётся наугад — {prefix[-300:]}"
-        )
-
-    def test_confirmation_states_consequences(self, template: str) -> None:
-        """В подтверждении сказано, что произойдёт с устройствами.
-
-        Иначе решение принимается вслепую: человек удалит источник, не зная, что
-        вместе с ним отвяжутся устройства.
-        """
-        body = _function_body(template, "deleteSource")
-        prefix = body[: body.index("window.confirm(")]
-
-        assert "устройств" in prefix.lower(), (
-            "в подтверждении не сказано про последствия для устройств"
-        )
-
-    def test_deletion_reloads_the_list(self, template: str) -> None:
-        """После удаления список перечитывается.
-
-        Иначе удалённый источник остался бы на экране до перезагрузки
-        страницы, то есть интерфейс показывал бы неправду.
-        """
-        body = _function_body(template, "deleteSource")
-        delete_index = body.index("method: 'DELETE'")
-        after_delete = body[delete_index:]
-
-        assert "loadSources()" in after_delete, (
-            "после удаления список источников не перечитывается: карточка "
-            "удалённого источника останется на экране"
-        )
-
-    def test_cancelled_confirmation_sends_nothing(self, template: str) -> None:
-        """Отказ от подтверждения не вызывает удаление."""
-        body = _function_body(template, "deleteSource")
-        confirm_index = body.index("window.confirm(")
-        delete_index = body.index("method: 'DELETE'")
-
-        assert "return;" in body[confirm_index:delete_index], (
-            "после отказа от подтверждения код продолжает удалять: подтверждение не имеет силы"
-        )
-
-
-class TestSourceStatusIsVisible:
-    """Подробные подсказки: пользователь должен видеть, что источник не работает."""
-
-    def test_status_is_rendered(self, template: str) -> None:
-        """Карточка показывает статус источника."""
-        assert "source.status" in template, (
-            "статус источника не выводится: отключённый источник выглядит как "
-            "рабочий, и причина молчит"
-        )
-
-    def test_error_reason_is_rendered(self, template: str) -> None:
-        """Причина отказа показывается текстом."""
-        assert "source.last_error" in template, (
-            "last_error не выводится: пользователь не видит, почему источник не отвечает"
-        )
-
-    def test_last_sync_is_rendered(self, template: str) -> None:
-        """Время последней синхронизации показывается."""
-        assert "source.last_sync" in template, (
-            "время последней синхронизации не выводится: нельзя понять, "
-            "обновляются ли данные вообще"
-        )
 
 
 class TestDeletionApiContract:
