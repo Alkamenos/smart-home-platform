@@ -8,30 +8,30 @@
 
 ## Фаза 1: Модель локации и роли датчиков
 
-- [ ] T001 Секция `locations:` в манифесте — `Location` (id, name, kind, sensors)
+- [x] T001 Секция `locations:` в манифесте — `Location` (id, name, kind, sensors)
   в `src/core/models/manifest.py`; комнаты остаются локациями автоматически
   (`kind: room`). Обновить Pydantic-модели и версию манифеста при необходимости
-- [ ] T002 Расширить роли датчиков: в `SENSOR_EVENT_MAP`
+- [x] T002 Расширить роли датчиков: в `SENSOR_EVENT_MAP`
   (`src/core/events/event_router.py`) добавить `illuminance`, `pressure`,
   `wind_speed`, `wind_gust`, `rain`, `uv_index`, `co2`, `soil_moisture`,
   `soil_temperature`, `soil_ph`, `soil_ec`; роли попадают и в подписку HA
   (`collect_subscribed_entities`), иначе датчик не получит событий
-- [ ] T003 Модели снимка в `src/core/models/location.py`: `Reading`
+- [x] T003 Модели снимка в `src/core/models/location.py`: `Reading`
   (value, unit, at, stale, available) и `LocationSnapshot` (readings, derived)
-- [ ] T004 Тесты модели: разбор секции `locations:`, неизвестная роль не глотается
+- [x] T004 Тесты модели: разбор секции `locations:`, неизвестная роль не глотается
   молча (warning), пустая локация допустима
 
 ## Фаза 2: Сбор снимка и производные
 
-- [ ] T005 `src/core/services/location_state.py`: подписка на шину `state_change`,
+- [x] T005 `src/core/services/location_state.py`: подписка на шину `state_change`,
   обновление «последнее значение + время» по роли (переиспользовать разбор из
   `event_router`, без хардкода ролей)
-- [ ] T006 Производные: `occupied`, `last_motion_at`/`last_motion_ago_sec`,
+- [x] T006 Производные: `occupied`, `last_motion_at`/`last_motion_ago_sec`,
   `contacts_open`, `stale_count`/`stale_sensors`, `available_count`;
   пороги — параметры дома (`presence_window_sec`, `stale_after_sec`)
-- [ ] T007 Логи решения при старте: сколько локаций и датчиков, какие молчат
+- [x] T007 Логи решения при старте: сколько локаций и датчиков, какие молчат
   (правило владельца о подробных логах)
-- [ ] T008 Тесты: показание изменилось → снимок обновился; датчик молчит → `stale`;
+- [x] T008 Тесты: показание изменилось → снимок обновился; датчик молчит → `stale`;
   `unavailable` не идёт в производные; несколько датчиков одной роли — список
 
 ## Фаза 3: Журнал изменений
