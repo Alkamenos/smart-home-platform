@@ -683,7 +683,7 @@ def _temperature_value(context: dict[str, Any]) -> float | None:
 
     Значение приходит в контексте под именем роли датчика (``temperature``) и
     роутер уже приводит его к числу, когда это возможно
-    (``event_router.py::_as_measurement``). Остаётся отсечь нечисловые значения:
+    (``event_router.py::as_measurement``). Остаётся отсечь нечисловые значения:
     ``unavailable``, ``unknown``, пустая строка — это отсутствие данных, а не
     ноль градусов.
 

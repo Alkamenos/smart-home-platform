@@ -365,8 +365,41 @@ rooms:
 # две команды на каждое событие — второе включение отменяло бы первое, а в
 # журнале это выглядело бы как «свет включается и сразу выключается».
 
+# Особые зоны наблюдения (спека 016). Комнаты выше — тоже локации; здесь только
+# то, что не является комнатой: улица и грядки. Привязка датчиков явная
+# (FR-010): роль → сущность Home Assistant, без угадывания по именам.
+#
+# Порог молчания у зон увеличен до суток: датчик дождя и датчики почвы —
+# батарейные и передают редко, а час молчания для них норма, а не тревога.
+# Датчик освещённости и датчики почвы сейчас недоступны (`unavailable`) —
+# привязка всё равно нужна: снимок обязан показать их недоступными, а не
+# выдумать значения (FR-011), и владелец сразу видит, что менять батарейки.
+locations:
+- id: ulitsa
+  name: Улица
+  kind: outdoor
+  sensors:
+    temperature: sensor.temperatura_na_ulitse_srednee
+    rain: binary_sensor.datchik_dozhdia_water_leak
+    illuminance: sensor.datchik_osveshchennosti_illuminance
+    battery: sensor.datchik_dozhdia_battery
+  stale_after_sec: 86400
+- id: gryadki
+  name: Грядки
+  kind: garden
+  sensors:
+    soil_moisture: sensor.0xa4c138ef3971344e_soil_moisture
+    soil_ec: sensor.0xa4c138ef3971344e_soil_fertility
+    illuminance: sensor.0xa4c138ef3971344e_illuminance
+  stale_after_sec: 86400
+
 automation_rules:
   global_manual_lockout_min: 60
+  # Наблюдение за локациями (спека 016). Порог молчания общий для комнат (час);
+  # зоны с батарейными датчиками переопределяют его у себя (сутки).
+  locations:
+    stale_after_sec: 3600
+    presence_window_sec: 600
   # Часовой пояс дома. Контейнер работает в UTC, дом — в Asia/Yekaterinburg: без
   # этого окно «день» считалось по часам контейнера и разрешало включать свет
   # с 02:00 до 04:00 по местному (Known Issue #86).

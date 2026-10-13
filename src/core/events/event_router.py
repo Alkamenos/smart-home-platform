@@ -17,12 +17,15 @@ from core.fsm.engine import FSMEngine
 from core.models.manifest import Manifest
 
 
-def _as_measurement(value: str | Any) -> Any:
+def as_measurement(value: str | Any) -> Any:
     """Привести показание датчика к числу, если это возможно.
 
     Числом — чтобы условие сравнивало числа, а не строки. Строкой — чтобы
     нечитаемое значение осталось нечитаемым: молчаливое превращение «unavailable»
     в ноль выдало бы заведомо ложное решение за честное.
+
+    Общая для маршрутизатора (условия читают числа) и для снимка локации
+    (спека 016): и там, и там показание датчика приходит одной строкой.
 
     Args:
         value: Новое состояние датчика, как его прислал Home Assistant.
@@ -65,6 +68,15 @@ def collect_subscribed_entities(manifest: Any) -> list[str]:
                 seen.add(entity_id)
                 entities.append(entity_id)
 
+    # Особые зоны наблюдения (спека 016): у них нет устройств, только датчики.
+    # Без них подписка HA не отдавала бы события погоды и почвы, и снимок локации
+    # оставался бы пустым, хотя датчики в манифесте описаны.
+    for location in getattr(manifest, "locations", []) or []:
+        for entity_id in (location.sensors or {}).values():
+            if entity_id and entity_id not in seen:
+                seen.add(entity_id)
+                entities.append(entity_id)
+
     return entities
 
 
@@ -81,8 +93,27 @@ class EventRouter:
         "motion": ["motion_detected", "motion_cleared"],
         "temperature": ["temperature_changed"],
         "humidity": ["humidity_changed"],
+        # Освещённость: роль `lux` (исторически — в шаблонах света) и её синоним
+        # `illuminance` из спеки 016. Синоним шлёт то же `brightness_changed`,
+        # иначе светильник комнаты с привязкой `illuminance` молчал бы, и
+        # добавляет свой `illuminance_changed` для наблюдателей.
         "lux": ["brightness_changed"],
+        "illuminance": ["brightness_changed", "illuminance_changed"],
         "contact": ["opened", "closed"],
+        # Роли наблюдения (спека 016, FR-005). Автоматов у них нет, но роль
+        # обязана быть известна маршрутизатору: неизвестная роль не попадает в
+        # маршруты, а её датчик — в подписку HA, и событий от него не придёт.
+        "pressure": ["pressure_changed"],
+        "wind_speed": ["wind_speed_changed"],
+        "wind_gust": ["wind_gust_changed"],
+        "rain": ["rain_changed"],
+        "uv_index": ["uv_index_changed"],
+        "co2": ["co2_changed"],
+        "soil_moisture": ["soil_moisture_changed"],
+        "soil_temperature": ["soil_temperature_changed"],
+        "soil_ph": ["soil_ph_changed"],
+        "soil_ec": ["soil_ec_changed"],
+        "battery": ["battery_changed"],
     }
 
     def __init__(self, manifest: Manifest, engine: FSMEngine) -> None:
@@ -289,7 +320,7 @@ class EventRouter:
             # выглядеть как честное «влажность 0, значит выключить».
             role = self._sensor_roles.get((entity_id, fsm_entity_id))
             if role:
-                external_ctx[role] = _as_measurement(new_state)
+                external_ctx[role] = as_measurement(new_state)
 
             logger.info(f"Routing: sensor={entity_id} → fsm={fsm_entity_id}, event={event_name}")
 

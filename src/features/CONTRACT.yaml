@@ -14,7 +14,19 @@ sensor_events:
   temperature: [temperature_changed]
   humidity: [humidity_changed]
   lux: [brightness_changed]
+  illuminance: [brightness_changed, illuminance_changed]
   contact: [opened, closed]
+  pressure: [pressure_changed]
+  wind_speed: [wind_speed_changed]
+  wind_gust: [wind_gust_changed]
+  rain: [rain_changed]
+  uv_index: [uv_index_changed]
+  co2: [co2_changed]
+  soil_moisture: [soil_moisture_changed]
+  soil_temperature: [soil_temperature_changed]
+  soil_ph: [soil_ph_changed]
+  soil_ec: [soil_ec_changed]
+  battery: [battery_changed]
 
 engine_events:
   # События, которые порождает сам движок, а не внешний источник.
@@ -93,9 +105,21 @@ registered_guards:  # реестр после register_all_guards
 
 uncovered_platform_events:
   # События, которые платформа публикует, но ни один шаблон не слушает.
+  - battery_changed
   - brightness_changed
   - closed
+  - co2_changed
+  - illuminance_changed
   - opened
+  - pressure_changed
+  - rain_changed
+  - soil_ec_changed
+  - soil_moisture_changed
+  - soil_ph_changed
+  - soil_temperature_changed
+  - uv_index_changed
+  - wind_gust_changed
+  - wind_speed_changed
 
 templates:
   climate_control:

@@ -68,6 +68,52 @@ class RoomConfig(BaseModel):
         return v
 
 
+class LocationConfig(BaseModel):
+    """Именованная область наблюдения вне комнат (спека 016).
+
+    Комнаты манифеста — тоже локации (``kind: room``) и описываются как раньше:
+    их датчики лежат в ``RoomConfig.sensors``. Этот раздел — для зон вне комнат
+    (улица, грядки): у них нет устройств, только датчики. Привязка явная
+    (FR-010): роль → сущность Home Assistant, без угадывания по именам.
+
+    Attributes:
+        id: Идентификатор локации, уникальный среди локаций и комнат.
+        name: Человекочитаемое имя (идёт в снимок и в зеркало).
+        kind: Вид зоны — ``outdoor``, ``garden``, ``other``. Влияет на оформление
+            и умолчания, но не на логику снимка.
+        sensors: Роль датчика → сущность Home Assistant.
+    """
+
+    id: str
+    name: str
+    kind: str = "other"
+    sensors: dict[str, str] = Field(default_factory=dict)
+    stale_after_sec: int | None = None
+    """Свой порог молчания для локации. ``None`` — порог дома
+    (``automation_rules.locations.stale_after_sec``). Нужен зонам с редкими
+    батарейными датчиками (грядки, освещённость): для них час молчания —
+    норма, а не тревога."""
+
+    @field_validator("sensors")
+    @classmethod
+    def validate_sensor_ids(cls, v: dict[str, str]) -> dict[str, str]:
+        """Проверить, что сущности датчиков заданы.
+
+        Args:
+            v: Привязка «роль → сущность».
+
+        Returns:
+            Ту же привязку.
+
+        Raises:
+            ValueError: Если у роли пустая сущность.
+        """
+        for sensor_type, entity_id in v.items():
+            if not entity_id.strip():
+                raise ValueError(f"Sensor '{sensor_type}' has empty entity_id")
+        return v
+
+
 class AutomationDomainRules(BaseModel):
     """Domain-specific automation rules.
 
@@ -265,6 +311,21 @@ class AutomationDomainRules(BaseModel):
         return value
 
 
+class LocationRules(BaseModel):
+    """Правила наблюдения за локациями (спека 016).
+
+    Порог молчания и окно присутствия — параметры дома, а не константы кода:
+    датчики дома разные, и «молчит» означает разное время для сетевого датчика
+    температуры и для батарейного датчика почвы.
+    """
+
+    stale_after_sec: int = 3600
+    """Молчание дольше этого времени — датчик помечается ``stale``."""
+
+    presence_window_sec: int = 600
+    """Движение считает локацию занятой это время после последнего срабатывания."""
+
+
 class AutomationRules(BaseModel):
     """Global automation rules and domain-specific overrides."""
 
@@ -278,6 +339,8 @@ class AutomationRules(BaseModel):
     ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     cover: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     """Шторы дома (спека 015): общие флаги и правила закрытия."""
+    locations: LocationRules = Field(default_factory=LocationRules)
+    """Наблюдение за локациями (спека 016): порог молчания, окно присутствия."""
 
 
 class Dashboard(BaseModel):
@@ -295,6 +358,9 @@ class Manifest(BaseModel):
     instance: InstanceConfig
     version: int = 1
     rooms: list[RoomConfig] = Field(default_factory=list)
+    #: Особые зоны наблюдения вне комнат (спека 016): улица, грядки. Комнаты
+    #: тоже локации и описываются как раньше — в ``rooms``.
+    locations: list[LocationConfig] = Field(default_factory=list)
     automation_rules: AutomationRules = Field(default_factory=AutomationRules)
     dashboard: Dashboard = Field(default_factory=Dashboard)
 
