@@ -2,6 +2,7 @@
 
 import sqlite3
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -283,6 +284,64 @@ class EventStore:
         cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
+
+        return [
+            SensorEvent(
+                entity_id=row["entity_id"],
+                old_state=row["old_state"],
+                new_state=row["new_state"],
+                event_type=row["event_type"],
+                trace_id=row["trace_id"],
+                timestamp=row["timestamp"],
+            )
+            for row in rows
+        ]
+
+    def get_events_for_entities(
+        self,
+        entity_ids: Iterable[str],
+        from_ts: float | None = None,
+        to_ts: float | None = None,
+        limit: int = 500,
+    ) -> list[SensorEvent]:
+        """События нескольких сущностей — история локации (спека 016, FR-006).
+
+        Журнал локации — это выборка из того же журнала событий: у локации
+        несколько датчиков, и её история — их общая лента. Отдельная таблица не
+        нужна: срок хранения и очистка уже общие.
+
+        Args:
+            entity_ids: Сущности датчиков локации.
+            from_ts: Начало интервала (epoch), включительно.
+            to_ts: Конец интервала (epoch), включительно.
+            limit: Сколько записей вернуть не больше.
+
+        Returns:
+            Записи, новые первыми. Пусто, если сущностей нет.
+        """
+        ids = sorted({entity for entity in entity_ids if entity})
+        if not ids:
+            return []
+
+        placeholders = ", ".join("?" for _ in ids)
+        query = f"SELECT * FROM events WHERE entity_id IN ({placeholders})"
+        params: list[Any] = list(ids)
+        if from_ts:
+            query += " AND timestamp >= ?"
+            params.append(from_ts)
+        if to_ts:
+            query += " AND timestamp <= ?"
+            params.append(to_ts)
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
 
         return [
             SensorEvent(
