@@ -25,22 +25,34 @@ interface RoleRow {
 export function LocationRolesEditor({ location }: { location: LocationSummary }) {
     const queryClient = useQueryClient();
     const [rows, setRows] = useState<RoleRow[]>(() =>
-        Object.entries(location.sensors ?? {}).map(([role, entity]) => ({ role, entity })),
+        Object.entries(location.sensors ?? {}).flatMap(([role, value]) =>
+            (Array.isArray(value) ? value : [value]).map((entity) => ({ role, entity })),
+        ),
     );
     const [message, setMessage] = useState<string | null>(null);
 
     const save = useMutation({
-        mutationFn: () =>
-            apiFetch(`/api/v1/locations/${encodeURIComponent(location.id)}`, {
+        mutationFn: () => {
+            // Одна сущность на роль — строка; несколько (две камеры) — список.
+            const grouped: Record<string, string | string[]> = {};
+            for (const row of rows) {
+                const role = row.role.trim();
+                const entity = row.entity.trim();
+                if (!role || !entity) continue;
+                const current = grouped[role];
+                if (current === undefined) {
+                    grouped[role] = entity;
+                } else if (Array.isArray(current)) {
+                    current.push(entity);
+                } else {
+                    grouped[role] = [current, entity];
+                }
+            }
+            return apiFetch(`/api/v1/locations/${encodeURIComponent(location.id)}`, {
                 method: "PUT",
-                body: JSON.stringify({
-                    sensors: Object.fromEntries(
-                        rows
-                            .filter((row) => row.role.trim() && row.entity.trim())
-                            .map((row) => [row.role.trim(), row.entity.trim()]),
-                    ),
-                }),
-            }),
+                body: JSON.stringify({ sensors: grouped }),
+            });
+        },
         onSuccess: () => {
             setMessage("Роли сохранены");
             void queryClient.invalidateQueries({ queryKey: ["locations"] });

@@ -12,11 +12,75 @@ Room-based architecture:
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
+
+
+#: Привязка роли датчика: одна сущность или несколько.
+#:
+#: Несколько сущностей нужны там, где одну роль закрывают разные устройства:
+#: две камеры на террасе дают и движение, и детекции «человек/животное/машина».
+#: Снимок локации и раньше умел «роль → список показаний», схема манифеста —
+#: нет; теперь умеет и она.
+SensorBinding = str | list[str]
+
+#: Роль датчика → сущность или список сущностей.
+SensorMap = dict[str, SensorBinding]
+
+
+def iter_role_entities(sensors: Mapping[str, SensorBinding] | None) -> Iterator[tuple[str, str]]:
+    """Развернуть привязки датчиков в пары «роль — сущность».
+
+    Args:
+        sensors: Привязки локации или комнаты.
+
+    Yields:
+        Пары «роль, сущность» — по одной на каждую сущность роли.
+    """
+    for role, value in (sensors or {}).items():
+        if isinstance(value, str):
+            yield role, value
+        else:
+            for entity in value or []:
+                yield role, entity
+
+
+def role_entities(sensors: Mapping[str, SensorBinding] | None, role: str) -> list[str]:
+    """Сущности одной роли.
+
+    Args:
+        sensors: Привязки локации или комнаты.
+        role: Роль датчика.
+
+    Returns:
+        Список сущностей (пустой, если роли нет).
+    """
+    value = (sensors or {}).get(role)
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else list(value)
+
+
+def all_sensor_entities(sensors: Mapping[str, SensorBinding] | None) -> list[str]:
+    """Все сущности датчиков без повторов, в исходном порядке.
+
+    Args:
+        sensors: Привязки локации или комнаты.
+
+    Returns:
+        Список сущностей.
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+    for _, entity in iter_role_entities(sensors):
+        if entity and entity not in seen:
+            seen.add(entity)
+            result.append(entity)
+    return result
 
 
 class InstanceConfig(BaseModel):
@@ -55,15 +119,15 @@ class RoomConfig(BaseModel):
 
     id: str
     name: str
-    sensors: dict[str, str] = Field(default_factory=dict)
+    sensors: SensorMap = Field(default_factory=dict)
     devices: list[DeviceConfig] = Field(default_factory=list)
 
     @field_validator("sensors")
     @classmethod
-    def validate_sensor_ids(cls, v: dict[str, str]) -> dict[str, str]:
+    def validate_sensor_ids(cls, v: SensorMap) -> SensorMap:
         """Ensure sensor entity IDs are non-empty."""
-        for sensor_type, entity_id in v.items():
-            if not entity_id.strip():
+        for sensor_type, entity in iter_role_entities(v):
+            if not entity.strip():
                 raise ValueError(f"Sensor '{sensor_type}' has empty entity_id")
         return v
 
@@ -87,7 +151,7 @@ class LocationConfig(BaseModel):
     id: str
     name: str
     kind: str = "other"
-    sensors: dict[str, str] = Field(default_factory=dict)
+    sensors: SensorMap = Field(default_factory=dict)
     stale_after_sec: int | None = None
     """Свой порог молчания для локации. ``None`` — порог дома
     (``automation_rules.locations.stale_after_sec``). Нужен зонам с редкими
@@ -404,7 +468,7 @@ class Manifest(BaseModel):
                 return device
         return None
 
-    def get_sensors_for_device(self, device_id: str) -> dict[str, str]:
+    def get_sensors_for_device(self, device_id: str) -> SensorMap:
         """Get sensors available for a device (from its room)."""
         room = self.get_room_for_device(device_id)
         return room.sensors if room else {}

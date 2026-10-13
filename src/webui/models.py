@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from core.models.manifest import LocationConfig, LocationRules
+from core.models.manifest import LocationConfig, LocationRules, SensorMap
 
 
 class InstanceConfig(BaseModel):
@@ -43,8 +43,12 @@ class RoomConfig(BaseModel):
 
     id: str = Field(..., description="Room identifier")
     name: str = Field(..., description="Human-readable room name")
-    sensors: dict[str, str] = Field(default_factory=dict, description="Room sensors")
+    sensors: SensorMap = Field(
+        default_factory=dict, description="Room sensors: роль → сущность или список"
+    )
     devices: list[DeviceConfig] = Field(default_factory=list, description="Room devices")
+
+    model_config = {"extra": "allow"}
 
 
 class AutomationDomainRules(BaseModel):

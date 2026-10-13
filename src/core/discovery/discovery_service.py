@@ -118,10 +118,11 @@ class DeviceDiscoveryService:
         Returns:
             True, если устройство уже описано в комнате.
         """
-        return (
-            any(device.id == entity_id for device in room.devices)
-            or entity_id in (room.sensors or {}).values()
-        )
+        from core.models.manifest import all_sensor_entities
+
+        return any(
+            device.id == entity_id for device in room.devices
+        ) or entity_id in all_sensor_entities(room.sensors)
 
     async def scan_devices(
         self,

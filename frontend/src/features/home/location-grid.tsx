@@ -410,12 +410,11 @@ function activeDetections(snapshot: LocationSnapshot): Array<{ role: string; lab
     const roles = ["person", "animal", "vehicle"];
     return roles
         .map((role) => {
-            const reading = firstReading(snapshot, role);
-            if (!reading || !reading.available) {
-                return null;
-            }
-            const on = ["on", "true", "1", "detected"].includes(
-                String(reading.value).toLowerCase(),
+            const readings = snapshot.readings?.[role] ?? [];
+            const on = readings.some(
+                (reading) =>
+                    reading.available &&
+                    ["on", "true", "1", "detected"].includes(String(reading.value).toLowerCase()),
             );
             return on ? { role, label: roleLabel(role) } : null;
         })

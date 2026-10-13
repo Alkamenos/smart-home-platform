@@ -14,7 +14,7 @@ from typing import Any
 from loguru import logger
 
 from core.fsm.engine import FSMEngine
-from core.models.manifest import Manifest
+from core.models.manifest import Manifest, all_sensor_entities, iter_role_entities
 
 
 def as_measurement(value: str | Any) -> Any:
@@ -60,7 +60,7 @@ def collect_subscribed_entities(manifest: Any) -> list[str]:
 
     for room in getattr(manifest, "rooms", []) or []:
         candidates: list[Any] = [
-            *(room.sensors or {}).values(),
+            *all_sensor_entities(room.sensors),
             *(getattr(device, "id", None) for device in (room.devices or [])),
         ]
         for entity_id in candidates:
@@ -72,7 +72,7 @@ def collect_subscribed_entities(manifest: Any) -> list[str]:
     # Без них подписка HA не отдавала бы события погоды и почвы, и снимок локации
     # оставался бы пустым, хотя датчики в манифесте описаны.
     for location in getattr(manifest, "locations", []) or []:
-        for entity_id in (location.sensors or {}).values():
+        for entity_id in all_sensor_entities(location.sensors):
             if entity_id and entity_id not in seen:
                 seen.add(entity_id)
                 entities.append(entity_id)
@@ -164,7 +164,7 @@ class EventRouter:
                 continue
 
             # Each sensor in room routes to all devices in that room
-            for sensor_type, sensor_id in room.sensors.items():
+            for sensor_type, sensor_id in iter_role_entities(room.sensors):
                 events = self.SENSOR_EVENT_MAP.get(sensor_type, [])
                 if not events:
                     logger.warning(f"Unknown sensor type '{sensor_type}' in room '{room.id}'")

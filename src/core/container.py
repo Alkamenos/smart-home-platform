@@ -32,7 +32,12 @@ from core.events.fsm_events import EVENT_PLATFORM_STARTED
 from core.fsm.engine import FSMEngine
 from core.fsm.factory import FSMFactory
 from core.guards.builtin import register_all_guards
-from core.models.manifest import Manifest, load_manifest
+from core.models.manifest import (
+    Manifest,
+    all_sensor_entities,
+    load_manifest,
+    role_entities,
+)
 from core.persistence.manual_control_store import ManualControlStore
 from core.registry import Registry
 
@@ -439,7 +444,7 @@ class Container:
         pairs: dict[str, str] = {}
         for room in self.manifest.rooms:
             sensors = room.sensors or {}
-            temperature = sensors.get("temperature") if hasattr(sensors, "get") else None
+            temperature = next(iter(role_entities(sensors, "temperature")), None)
             for device in room.devices:
                 for behavior in device.behaviors:
                     timer = (behavior.params or {}).get("heater_timer")
@@ -1025,7 +1030,7 @@ class Container:
         # сканируется по дому: подписка на всё — Known Issue #82.
         batteries: list[str] = []
         for room in self.manifest.rooms:
-            for sensor_id in (room.sensors or {}).values():
+            for sensor_id in all_sensor_entities(room.sensors):
                 if "_battery" not in sensor_id:
                     batteries.append(f"{sensor_id.rsplit('_', 1)[0]}_battery")
 

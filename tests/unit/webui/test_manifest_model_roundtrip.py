@@ -52,3 +52,23 @@ def test_manifest_model_should_keep_locations_section() -> None:
     dumped = ManifestModel(**MANIFEST).model_dump()
 
     assert [location["id"] for location in dumped["locations"]] == ["ulitsa"]
+
+
+def test_manifest_model_should_keep_role_lists() -> None:
+    """Роль с несколькими сущностями (две камеры) переживает разбор и выгрузку."""
+    model = ManifestModel(
+        instance={"id": "p", "name": "P", "owner": "p", "created_at": ""},
+        rooms=[
+            {
+                "id": "terassa",
+                "name": "Терраса",
+                "sensors": {"person": ["binary_sensor.a", "binary_sensor.b"]},
+                "devices": [],
+            }
+        ],
+    )
+
+    assert model.model_dump()["rooms"][0]["sensors"]["person"] == [
+        "binary_sensor.a",
+        "binary_sensor.b",
+    ]

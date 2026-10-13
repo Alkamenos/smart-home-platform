@@ -22,6 +22,7 @@ from core.models.manifest import (
     DeviceConfig,
     Manifest,
     RoomConfig,
+    iter_role_entities,
 )
 
 
@@ -116,7 +117,7 @@ class LovelaceGenerator:
             "contact": {"icon": "mdi:door", "name": "Контакт"},
         }
 
-        for sensor_type, entity_id in room.sensors.items():
+        for sensor_type, entity_id in iter_role_entities(room.sensors):
             config = sensor_type_config.get(sensor_type, {})
             cards.append(
                 {

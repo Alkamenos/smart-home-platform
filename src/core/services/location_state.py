@@ -34,7 +34,12 @@ from core.models.location import (
     SensorReading,
     build_snapshot,
 )
-from core.models.manifest import Manifest
+from core.models.manifest import (
+    Manifest,
+    SensorMap,
+    all_sensor_entities,
+    iter_role_entities,
+)
 
 
 #: Имя события шины, которое публикует адаптер на каждое изменение состояния.
@@ -64,7 +69,7 @@ class _LocationDefinition:
         name: str,
         kind: str,
         stale_after_sec: int,
-        sensors: dict[str, str],
+        sensors: SensorMap,
     ) -> None:
         self.id = location_id
         self.name = name
@@ -139,7 +144,7 @@ class LocationStateService:
         name: str,
         kind: str,
         stale_after_sec: int,
-        sensors: dict[str, str],
+        sensors: SensorMap,
     ) -> None:
         """Добавить локацию и запомнить её датчики.
 
@@ -161,7 +166,7 @@ class LocationStateService:
             sensors=sensors,
         )
         self._readings.setdefault(location_id, {})
-        for role, entity_id in sensors.items():
+        for role, entity_id in iter_role_entities(sensors):
             if not entity_id:
                 continue
             self._roles_by_entity.setdefault(entity_id, []).append((location_id, role))
@@ -260,7 +265,7 @@ class LocationStateService:
                 "id": location.id,
                 "name": location.name,
                 "kind": location.kind,
-                "sensor_count": len(location.sensors),
+                "sensor_count": len(all_sensor_entities(location.sensors)),
             }
             for location in self._locations.values()
         ]
@@ -300,7 +305,7 @@ class LocationStateService:
         location = self._locations.get(location_id)
         if location is None:
             return []
-        return sorted(location.sensors.values())
+        return sorted(all_sensor_entities(location.sensors))
 
     def role_of(self, location_id: str, entity_id: str) -> str | None:
         """Роль датчика в локации.
@@ -315,7 +320,7 @@ class LocationStateService:
         location = self._locations.get(location_id)
         if location is None:
             return None
-        for role, entity in location.sensors.items():
+        for role, entity in iter_role_entities(location.sensors):
             if entity == entity_id:
                 return role
         return None

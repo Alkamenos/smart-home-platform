@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from core.models.manifest import iter_role_entities
 from webui.routes import event_store
 from webui.services.manifest_runtime import apply_manifest_to_runtime, prime_location_state
 
@@ -110,11 +111,11 @@ async def list_locations(request: Request) -> JSONResponse:
     # Роли датчиков — из манифеста через наблюдение: интерфейсу они нужны, чтобы
     # показать и отредактировать привязку «роль → сущность» (спека 017, US5).
     for location in locations:
-        sensors: dict[str, str] = {}
+        sensors: dict[str, list[str]] = {}
         for entity in service.sensor_entities(location["id"]):
             role = service.role_of(location["id"], entity)
             if role:
-                sensors[role] = entity
+                sensors.setdefault(role, []).append(entity)
         location["sensors"] = sensors
     return JSONResponse({"count": len(locations), "locations": locations})
 
@@ -124,14 +125,18 @@ _ENTITY_RE = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
 
 class LocationSensorsUpdate(BaseModel):
-    """Новая привязка ролей датчиков локации."""
+    """Новая привязка ролей датчиков локации.
 
-    sensors: dict[str, str] = Field(
-        default_factory=dict, description="Роль датчика → сущность Home Assistant"
+    Роль может закрываться несколькими сущностями (две камеры на террасе):
+    значение — сущность или список сущностей.
+    """
+
+    sensors: dict[str, str | list[str]] = Field(
+        default_factory=dict, description="Роль датчика → сущность или список сущностей"
     )
 
 
-def _apply_sensors(manifest: Any, location_id: str, sensors: dict[str, str]) -> bool:
+def _apply_sensors(manifest: Any, location_id: str, sensors: dict[str, Any]) -> bool:
     """Записать привязки датчиков в модель манифеста.
 
     Комнаты манифеста — тоже локации, но их датчики лежат в ``rooms[].sensors``;
@@ -172,7 +177,7 @@ async def update_location_sensors(
         ``{"status": "saved", ...}`` при успехе; ``400`` при некорректной
         сущности; ``404`` для неизвестной локации; ``503`` без хранилища.
     """
-    for role, entity in body.sensors.items():
+    for role, entity in iter_role_entities(body.sensors):
         if not role.strip():
             raise HTTPException(status_code=400, detail="Роль датчика не может быть пустой")
         if not _ENTITY_RE.match(entity):

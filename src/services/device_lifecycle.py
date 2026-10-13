@@ -487,11 +487,16 @@ class DeviceLifecycleService:
         for room in self.manifest.rooms:
             room.devices = [d for d in room.devices if d.id != ha_entity_id]
             if room.sensors:
-                room.sensors = {
-                    sensor_type: entity_id
-                    for sensor_type, entity_id in room.sensors.items()
-                    if entity_id != ha_entity_id
-                }
+                filtered: dict[str, str | list[str]] = {}
+                for role, value in room.sensors.items():
+                    if isinstance(value, str):
+                        if value != ha_entity_id:
+                            filtered[role] = value
+                        continue
+                    kept = [entity for entity in value if entity != ha_entity_id]
+                    if kept:
+                        filtered[role] = kept
+                room.sensors = filtered
 
     @staticmethod
     def _upsert_manifest_entry(

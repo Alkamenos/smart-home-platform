@@ -94,12 +94,26 @@ def _client(tmp_path: Path, *, with_store: bool = True) -> TestClient:
 
 
 def test_list_should_include_sensor_roles(tmp_path: Path) -> None:
-    """Список локаций несёт привязку «роль → сущность»."""
+    """Список локаций несёт привязку «роль → сущности»."""
     body = _client(tmp_path).get("/api/v1/locations").json()
 
     by_id = {item["id"]: item for item in body["locations"]}
-    assert by_id["spalnia"]["sensors"] == {"temperature": "sensor.t_spalnia"}
-    assert by_id["ulitsa"]["sensors"] == {"temperature": "sensor.t_ulitsa"}
+    assert by_id["spalnia"]["sensors"] == {"temperature": ["sensor.t_spalnia"]}
+    assert by_id["ulitsa"]["sensors"] == {"temperature": ["sensor.t_ulitsa"]}
+
+
+def test_update_should_accept_list_of_entities(tmp_path: Path) -> None:
+    """Роль может закрываться несколькими сущностями (две камеры)."""
+    client = _client(tmp_path)
+
+    response = client.put(
+        "/api/v1/locations/spalnia",
+        json={"sensors": {"person": ["binary_sensor.a", "binary_sensor.b"]}},
+    )
+
+    assert response.status_code == 200
+    sensors = client.get("/api/v1/manifest").json()["manifest"]["rooms"][0]["sensors"]
+    assert sensors["person"] == ["binary_sensor.a", "binary_sensor.b"]
 
 
 def test_update_should_write_room_sensors(tmp_path: Path) -> None:
