@@ -320,6 +320,17 @@ class LocationStateService:
                 return role
         return None
 
+    def locations_of(self, entity_id: str) -> list[str]:
+        """Локации, к которым привязана сущность.
+
+        Args:
+            entity_id: Сущность Home Assistant.
+
+        Returns:
+            Идентификаторы локаций (пусто, если сущность не привязана).
+        """
+        return [location_id for location_id, _ in self._roles_by_entity.get(entity_id, [])]
+
     def bound_entities(self) -> list[str]:
         """Все сущности, привязанные к локациям.
 

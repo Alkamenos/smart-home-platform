@@ -325,6 +325,12 @@ class LocationRules(BaseModel):
     presence_window_sec: int = 600
     """Движение считает локацию занятой это время после последнего срабатывания."""
 
+    mirror_enabled: bool = True
+    """Публиковать ли снимки локаций в Home Assistant через MQTT."""
+
+    mqtt_prefix: str = "behavioral"
+    """Префикс топиков зеркала (значения и автообнаружение)."""
+
 
 class AutomationRules(BaseModel):
     """Global automation rules and domain-specific overrides."""

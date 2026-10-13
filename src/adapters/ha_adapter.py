@@ -1572,10 +1572,23 @@ class HAAdapter:
         self,
         domain: str,
         service: str,
-        entity_id: str,
+        entity_id: str = "",
         data: dict[str, Any] | None = None,
         trace_id: str | None = None,
     ) -> bool:
+        """Вызвать сервис Home Assistant.
+
+        Args:
+            domain: Домен сервиса (``fan``, ``mqtt``).
+            service: Имя сервиса (``turn_on``, ``publish``).
+            entity_id: Сущность-адресат. Пусто — у сервиса адресата нет
+                (``mqtt.publish`` публикует в топик, а не в сущность).
+            data: Данные вызова.
+            trace_id: Идентификатор трассы.
+
+        Returns:
+            True, если сервис выполнен.
+        """
         data = data or {}
         trace_id = trace_id or self._generate_trace_id()
         log = self._get_logger(trace_id)
@@ -1602,7 +1615,10 @@ class HAAdapter:
         # недоказуем — а именно здесь в бою 2026-10-11 и терялись команды
         # обогревателей: намерение принималось, а эта строка молчала, и цепочка
         # «решение → команда → прибор» выглядела исправной до конца.
-        log.warning(f"HAAdapter: calling service {domain}.{service} for {entity_id}, data={data}")
+        log.warning(
+            f"HAAdapter: calling service {domain}.{service} for {entity_id or '(без сущности)'}, "
+            f"data={data}"
+        )
 
         try:
             if self._mode == "pyscript":
@@ -1633,7 +1649,9 @@ class HAAdapter:
             log.error("HAAdapter: hass instance not available in pyscript mode")
             return False
 
-        service_data = {**data, "entity_id": entity_id}
+        service_data = {**data}
+        if entity_id:
+            service_data["entity_id"] = entity_id
 
         try:
             await self._hass.services.async_call(
@@ -1731,7 +1749,9 @@ class HAAdapter:
             log.error("HAAdapter: WebSocket client not connected")
             return False
 
-        service_data = {**data, "entity_id": entity_id}
+        service_data = {**data}
+        if entity_id:
+            service_data["entity_id"] = entity_id
 
         # Окно «мы командовали» ставим ДО отправки: изменение состояния приходит
         # в цикл чтения, пока мы ещё ждём ответа сервиса, — и, отметив команду

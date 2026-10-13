@@ -69,6 +69,8 @@ class PlatformContext:
     #: Наблюдение за локациями (спека 016): последние показания датчиков и
     #: снимки. Нужно интерфейсу, чтобы отдавать снимок и историю.
     location_state: Any = None
+    #: Зеркало снимков в Home Assistant через MQTT (спека 016).
+    location_mirror: Any = None
 
     async def shutdown(self) -> None:
         """Idempotent shutdown: watchdog, adapter, FSM engine, dispatcher cleanup loop.
@@ -159,6 +161,8 @@ class Container:
         self._location_state: Any | None = None
         #: Фоновая задача первичного чтения показаний локаций.
         self._location_prime_task: Any | None = None
+        #: Зеркало снимков локаций в Home Assistant (спека 016).
+        self._location_mirror: Any | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
@@ -675,8 +679,9 @@ class Container:
             # была ложной, то есть мёртвой веткой. Сторож читает состояния
             # движка, поэтому порядок в shutdown() важен (FR-017).
             watchdog=self._watchdog,
-            # Наблюдение за локациями (спека 016): снимок и история.
+            # Наблюдение за локациями (спека 016): снимок, история и зеркало.
             location_state=self._location_state,
+            location_mirror=self._location_mirror,
             # Менеджер развёртывания обязан быть в контексте: режим должен быть
             # виден снаружи (`/health`), иначе оператор снова не может отличить
             # режим тени от активного — ровно тот случай, что породил #77.
@@ -890,7 +895,57 @@ class Container:
             self.manifest, unit_provider=unit_provider, state_reader=state_reader
         )
         self._location_state.subscribe(self.event_bus)
+        self._location_mirror = self._build_location_mirror(adapter)
+        self._location_mirror.bind(self.event_bus)
         self._schedule_location_prime()
+
+    def _build_location_mirror(self, adapter: Any) -> Any:
+        """Собрать зеркало локаций в Home Assistant (спека 016, FR-008).
+
+        Публикация идёт через адаптер (``mqtt.publish``): ``core`` не импортирует
+        ``adapters``. Без адаптера зеркало собирается выключенным — снимок и
+        журнал от этого не страдают (FR-009).
+
+        Args:
+            adapter: Адаптер Home Assistant либо ``None``.
+
+        Returns:
+            Зеркало локаций.
+        """
+        from core.services.location_mirror import LocationMirror
+
+        rules = self.manifest.automation_rules.locations
+        publisher = None
+        if adapter is not None:
+
+            async def _publish(topic: str, payload: str, retain: bool) -> bool:
+                """Опубликовать топик через Home Assistant.
+
+                Args:
+                    topic: Топик MQTT.
+                    payload: Полезная нагрузка.
+                    retain: Хранить ли сообщение на брокере.
+
+                Returns:
+                    True, если Home Assistant принял публикацию.
+                """
+                return bool(
+                    await adapter.call_service(
+                        "mqtt",
+                        "publish",
+                        "",
+                        data={"topic": topic, "payload": payload, "retain": retain},
+                    )
+                )
+
+            publisher = _publish
+
+        return LocationMirror(
+            state=self._location_state,
+            publish=publisher,
+            prefix=rules.mqtt_prefix,
+            enabled=rules.mirror_enabled,
+        )
 
     def _schedule_location_prime(self) -> None:
         """Прочитать текущие показания датчиков, когда появится связь с домом.
@@ -929,6 +984,12 @@ class Container:
                 await service.prime()
             except Exception as exc:  # noqa: BLE001 — чтение не должно ронять платформу
                 logger.warning(f"Первичное чтение локаций не удалось: {exc}")
+            mirror = self._location_mirror
+            if mirror is not None:
+                try:
+                    await mirror.publish_all()
+                except Exception as exc:  # noqa: BLE001 — зеркало не важнее снимка
+                    logger.warning(f"Зеркало локаций не опубликовано: {exc}")
 
         self._location_prime_task = asyncio.create_task(_prime())
 
