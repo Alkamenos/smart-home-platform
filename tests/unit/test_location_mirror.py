@@ -165,6 +165,27 @@ class TestDiscovery:
         assert config["unit_of_measurement"] == "°C"
 
     @pytest.mark.asyncio
+    async def test_entity_id_is_ours_not_device_name(self) -> None:
+        """Идентификатор сущности задаётся явно, а не собирается из имени устройства.
+
+        Без `object_id` Home Assistant склеивает имя устройства и имя сущности:
+        выходило «gostinaia_gostinaia_temperature» вместо
+        «behavioral_gostinaia_temperature».
+
+        Returns:
+            Ничего.
+        """
+        publisher = _Publisher()
+
+        await _mirror(publisher).publish("spalnia")
+
+        config = json.loads(
+            publisher.payload("homeassistant/sensor/behavioral_spalnia_temperature/config")
+        )
+        assert config["object_id"] == "behavioral_spalnia_temperature"
+        assert config["has_entity_name"] is True
+
+    @pytest.mark.asyncio
     async def test_discovery_is_sent_once(self) -> None:
         """Повторная публикация не повторяет объявление."""
         publisher = _Publisher()

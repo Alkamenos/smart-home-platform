@@ -44,6 +44,27 @@ BINARY_ROLES = frozenset({"motion", "contact", "rain"})
 #: Как называется зеркало в Home Assistant как устройство.
 MANUFACTURER = "Smart Home Platform"
 
+#: Человекочитаемые имена ролей для Home Assistant: владелец видит их в
+#: интерфейсе, и «temperature» там неуместно.
+ROLE_LABELS: dict[str, str] = {
+    "temperature": "температура",
+    "humidity": "влажность",
+    "illuminance": "освещённость",
+    "pressure": "давление",
+    "motion": "движение",
+    "contact": "проём",
+    "rain": "дождь",
+    "wind_speed": "ветер",
+    "wind_gust": "порыв ветра",
+    "uv_index": "УФ-индекс",
+    "co2": "CO₂",
+    "soil_moisture": "влага почвы",
+    "soil_temperature": "температура почвы",
+    "soil_ph": "кислотность почвы",
+    "soil_ec": "проводимость почвы",
+    "battery": "батарейка",
+}
+
 
 class LocationMirror:
     """Публиковать снимки локаций в Home Assistant.
@@ -201,7 +222,12 @@ class LocationMirror:
                 f"{self._discovery}/sensor/{self._prefix}_{location.id}/config",
                 json.dumps(
                     {
-                        "name": f"{location.name}: состояние",
+                        "name": "состояние",
+                        # `has_entity_name` + `object_id`: без них Home Assistant
+                        # собирает идентификатор из имени устройства и имени
+                        # сущности — выходило «gostinaia_gostinaia_temperature».
+                        "has_entity_name": True,
+                        "object_id": f"{self._prefix}_{location.id}",
                         "unique_id": f"{self._prefix}_{location.id}",
                         "state_topic": f"{self._prefix}/location/{location.id}/state",
                         "json_attributes_topic": (
@@ -222,7 +248,9 @@ class LocationMirror:
                 continue
             component = "binary_sensor" if role in BINARY_ROLES else "sensor"
             config: dict[str, Any] = {
-                "name": f"{location.name}: {role}",
+                "name": ROLE_LABELS.get(role, role),
+                "has_entity_name": True,
+                "object_id": f"{self._prefix}_{location.id}_{role}",
                 "unique_id": f"{self._prefix}_{location.id}_{role}",
                 "state_topic": f"{self._prefix}/location/{location.id}/{role}/state",
                 "json_attributes_topic": (
