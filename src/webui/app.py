@@ -5,29 +5,22 @@
 
 from __future__ import annotations
 
-import copy
 import json
 from collections.abc import Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 import yaml
-from fastapi import FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI
 from loguru import logger
 
-from core.models.device import Device
-from core.models.manifest import BehaviorConfig
 from core.persistence.atomic import atomic_write_text
 from core.persistence.manifest_store import ManifestStore
 
-from .models import InstanceConfig, ManifestModel
+from .models import ManifestModel
 
 
 if TYPE_CHECKING:
-    from adapters.ha_adapter import HAAdapter
     from core.container import Container
     from services.device_service import DeviceService
 
@@ -218,25 +211,6 @@ def _parse_behaviors_from_form(form_data: Any, behavior_model: Any) -> list[Any]
     return behaviors
 
 
-def _form_error(request: Request, message: str) -> HTMLResponse:
-    """Собирает HTML-ответ с ошибкой формы.
-
-    Args:
-        request: HTTP запрос.
-        message: Текст ошибки.
-
-    Returns:
-        Ответ с partial-шаблоном ошибки.
-    """
-    templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-    return templates.TemplateResponse(
-        request,
-        "partials/save_error.html",
-        {"error": message},
-        status_code=400,
-    )
-
-
 def create_app(
     manifest_path: str | None = None, container_instance: Container | None = None
 ) -> FastAPI:
@@ -257,10 +231,6 @@ def create_app(
         version="1.0.0",
     )
 
-    # Setup templates
-    template_dir = Path(__file__).parent / "templates"
-    templates = Jinja2Templates(directory=str(template_dir))
-
     # Include routes
     from .routes import router
 
@@ -276,6 +246,23 @@ def create_app(
     from .routes.locations import router as locations_router
 
     app.include_router(locations_router)
+
+    # Спека 017: идентичность интерфейса, агрегат первого экрана «Дом» и канал
+    # живых изменений состояния. Регистрируются до монтирования статики, чтобы
+    # маршруты API имели приоритет над раздачей фронтенда.
+    from .routes.events import router as events_router
+    from .routes.logs import router as logs_router
+    from .routes.manifest import router as manifest_router
+    from .routes.overview import router as overview_router
+    from .routes.session import router as session_router
+    from .routes.ws_events import router as ws_events_router
+
+    app.include_router(session_router)
+    app.include_router(overview_router)
+    app.include_router(events_router)
+    app.include_router(manifest_router)
+    app.include_router(logs_router)
+    app.include_router(ws_events_router)
 
     # US4/T004: регистрация middleware контроля доступа (идентификация на
     # device-endpoints). Регистрируется ДО включения маршрутов — действует
@@ -304,9 +291,14 @@ def create_app(
 
     # Initialize manifest store
     manifest_store = ManifestStore(manifest_path, ManifestModel)
+    # Хранилище доступно маршрутам правки манифеста (спека 017, US5): правка идёт
+    # через тот же экземпляр, что и остальные пути, иначе записи разойдутся.
+    app.state.manifest_store = manifest_store
 
     # Initialize log store
     log_store = LogStore()
+    # Технические логи доступны разделу «Система» (спека 017, US6).
+    app.state.log_store = log_store
 
     # Add initial info log
     log_store.add("INFO", "Web UI started")
@@ -349,21 +341,13 @@ def create_app(
             _ = _container.build()  # Trigger initialization
             logger.info("Created new container instance for discovery routes")
 
-        # ИЗВЕСТНЫЙ БАГ (не исправлен здесь — только типы): Container.adapter
-        # возвращает MockAdapter, если переменная HA_TOKEN не задана, а
-        # init_discovery_routes ожидает HAAdapter. При этом у MockAdapter нет
-        # property is_connected, который читает DeviceDiscoveryService.scan_devices,
-        # поэтому /discovery/* завершится AttributeError -> HTTP 500.
-        # cast() ничего не меняет во время выполнения.
-        # HAAdapter импортирован только под TYPE_CHECKING, поэтому cast()
-        # получает имя строкой: иначе подстановка обратилась бы к
-        # несуществующему в рантайме имени и упала бы с NameError.
-        init_discovery_routes(
-            cast("HAAdapter", _container.adapter), manifest_path, manifest_store=manifest_store
-        )
-        logger.info("Discovery routes initialized with shared adapter")
+        # Справочник комнат для формы импорта: важно передать то же хранилище
+        # манифеста, что использует остальной интерфейс, иначе список комнат
+        # разойдётся с реальным.
+        init_discovery_routes(manifest_path, manifest_store=manifest_store)
+        logger.info("Room reference initialized")
     except Exception as e:
-        logger.warning(f"Could not initialize discovery routes: {e}")
+        logger.warning(f"Could not initialize room reference: {e}")
 
     # Expose the platform container to routers that need it (e.g. FSM diagrams)
     app.state.container = _container
@@ -456,6 +440,14 @@ def create_app(
         app.state.device_service = device_service
         app.state.lifecycle_service = lifecycle_service
         app.state.fsm_broadcaster = fsm_broadcaster
+
+        # Живые показания датчиков для первого экрана «Дом» (спека 017, FR-012):
+        # менеджер канала событий подписывается на шину. Идентичность и подписки
+        # проверяются при каждой доставке, соединение без auth ничего не получает.
+        from webui.routes.ws_events import event_stream, on_state_change
+
+        app.state.event_stream = event_stream
+        event_bus.subscribe("state_change", on_state_change)
         default_user_id, default_user_is_admin = _resolve_default_user()
         app.state.default_user_id = default_user_id
         app.state.default_user_is_admin = default_user_is_admin
@@ -466,708 +458,21 @@ def create_app(
     except Exception as e:
         logger.warning(f"Could not initialize device services: {e}")
 
+    # Спека 017: статический интерфейс. Собранный фронтенд (``frontend/out``)
+    # раздаётся тем же процессом с того же origin — CORS не нужен, а API
+    # зарегистрирован выше и потому имеет приоритет. Монтирование идёт до старых
+    # серверных страниц: новый интерфейс заменяет их (старые удаляются отдельной
+    # задачей). Если сборки нет, платформа работает как раньше.
+    from .static_serving import mount_frontend, should_serve_frontend
+
+    if should_serve_frontend() and mount_frontend(app):
+        logger.info("Frontend static export mounted (frontend/out)")
+
     # Живые обновления состояний автоматов доставляются каналом устройств
     # /api/v1/ws/devices: в нём есть идентификация пользователя, подписки и
     # проверка прав при каждой доставке. Прежний /ws/live не имел ни того, ни
     # другого, а его раздатчик не вызывался ниоткуда, поэтому эндпоинт выведен
     # из эксплуатации (spec 007, FR-025, R-08).
-
-    @app.get("/", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def index(request: Request) -> HTMLResponse:
-        """Render the main manifest editor page.
-
-        Args:
-            request: FastAPI request object.
-
-        Returns:
-            HTML response with the manifest editor form.
-        """
-        try:
-            manifest_store.load()
-        except Exception as e:
-            logger.error(f"Failed to load manifest: {e}")
-            manifest_store.current = ManifestModel(
-                # Экземпляр InstanceConfig собирается явно (а не из dict):
-                # все четыре поля — строки без валидаторов, результат
-                # идентичен словарю, который раньше принимал pydantic.
-                instance=InstanceConfig(
-                    id="error",
-                    name="Error loading",
-                    owner="unknown",
-                    created_at="",
-                ),
-                version=1,
-                rooms=[],
-            )
-
-        # Calculate stats
-        # cast() — чисто типовое действие (подставляет значение как есть):
-        # к этому моменту current гарантированно заполнен — либо load()
-        # отработал, либо в except подставлена запасная модель.
-        current_manifest = cast(Any, manifest_store.current)
-        total_devices = sum(len(room.devices) for room in current_manifest.rooms)
-        total_behaviors = sum(
-            len(device.behaviors) for room in current_manifest.rooms for device in room.devices
-        )
-
-        # T009-T010: Snapshot состояний дома и решения автоматов (FR-001, FR-005)
-        engine = getattr(request.app.state, "container", None)
-        if engine is not None:
-            engine = getattr(engine, "engine", None)
-        adapter = getattr(request.app.state, "container", None)
-        if adapter is not None:
-            adapter = getattr(adapter, "adapter", None)
-
-        snapshot_dict: dict[str, Any] = {}
-        decisions_dict: dict[str, Any] = {}
-        snapshot_at = 0.0
-        home_reachable = True
-
-        if engine is not None:
-            try:
-                # T005: Решения по всем автоматам в манифесте (по комнатам)
-                # Snapshot будет загружаться асинхронно на странице через API
-                for room in current_manifest.rooms:
-                    for device in room.devices:
-                        # fsm_id == идентификатор в системе (обычно entity_id)
-                        fsm_id = getattr(device, "entity_id", None)
-                        if fsm_id:
-                            decision = engine.explain(fsm_id)
-                            if decision:
-                                decisions_dict[fsm_id] = {
-                                    "at": decision.at,
-                                    "outcome": decision.outcome,
-                                    "reason_code": decision.reason_code,
-                                    "reason_text": decision.reason_text,
-                                    "trigger": decision.trigger,
-                                }
-            except Exception as e:
-                logger.warning(f"Failed to read decisions: {e}")
-
-        # T010: can_control по роли пользователя
-        user_role = getattr(request.state, "user_role", "viewer")
-        can_control = user_role in ("controller", "admin")
-
-        logger.info(
-            f"index: snapshot={len(snapshot_dict)} items, "
-            f"decisions={len(decisions_dict)} items, "
-            f"home_reachable={home_reachable}"
-        )
-
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            {
-                "manifest": current_manifest,
-                "has_unsaved_changes": manifest_store.has_unsaved_changes,
-                "total_devices": total_devices,
-                "total_behaviors": total_behaviors,
-                "user_id": getattr(request.app.state, "default_user_id", None) or "admin_user",
-                "user_is_admin": bool(getattr(request.app.state, "default_user_is_admin", False)),
-                # T009-T010: Новые ключи контекста
-                "snapshot": snapshot_dict,
-                "decisions": decisions_dict,
-                "snapshot_at": snapshot_at,
-                "home_reachable": home_reachable,
-                "can_control": can_control,
-            },
-        )
-
-    @app.post("/save", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def save_manifest(
-        request: Request,
-    ) -> HTMLResponse:
-        """Save the edited manifest to YAML file.
-
-        Args:
-            request: FastAPI request object.
-
-        Returns:
-            HTML response with success/error message.
-        """
-        try:
-            manifest_store.save()
-            return templates.TemplateResponse(
-                request,
-                "partials/save_success.html",
-                {"message": "Manifest saved successfully!"},
-            )
-        except Exception as e:
-            logger.error(f"Failed to save manifest: {e}")
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": str(e)},
-                status_code=400,
-            )
-
-    @app.get("/manifest/reload")  # type: ignore[untyped-decorator]
-    async def reload_manifest(request: Request) -> Response:
-        """Перечитывает манифест из файла в работающую платформу.
-
-        Откатывает только манифест. Устройства в постоянном хранилище остаются:
-        откат хранилища не заявлен, и делать это молча опаснее, чем не делать.
-
-        Args:
-            request: FastAPI request object.
-
-        Returns:
-            Перенаправление на главную или сообщение об ошибке.
-        """
-        container = getattr(request.app.state, "container", None)
-        if container is None:
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": "Контейнер платформы недоступен"},
-                status_code=400,
-            )
-
-        try:
-            manifest_store.reload_into(container.manifest)
-        except Exception as e:
-            logger.error(f"Не удалось перечитать манифест: {e}")
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": str(e)},
-                status_code=400,
-            )
-
-        # Снимаем автоматы, которых больше нет в манифесте, и заводим новые.
-        # Состояния сохраняются: лампа, включённая по движению, не должна
-        # «забывать» об этом после перечитывания файла.
-        wanted = {d.entity_id for d in container.factory.create_from_manifest(container.manifest)}
-        for entity_id in list(container.fsm.get_all_states()):
-            if entity_id not in wanted:
-                container.fsm.unregister(entity_id)
-        for definition in container.factory.create_from_manifest(container.manifest):
-            container.fsm.register_definition(definition, restore_state=True)
-        container.factory._template_cache.clear()
-
-        # Карта маршрутизации строится из манифеста, поэтому перечитывание
-        # обязано её перестроить: иначе датчик новой комнаты молчал бы.
-        lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
-        if lifecycle_service is not None:
-            lifecycle_service._rebuild_event_routing()
-        elif container.event_router is not None:
-            container.event_router._build_mapping()
-
-        logger.info(
-            f"Манифест перечитан: комнат {len(container.manifest.rooms)}, автоматов {len(wanted)}"
-        )
-
-        return RedirectResponse(url="/")
-
-    @app.get("/rooms/{room_id}/edit", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def edit_room(request: Request, room_id: int) -> HTMLResponse:
-        """Edit a specific room.
-
-        Args:
-            request: FastAPI request object.
-            room_id: Index of the room to edit.
-
-        Returns:
-            HTML fragment with room edit form.
-        """
-        try:
-            if manifest_store.current is None or room_id >= len(manifest_store.current.rooms):
-                raise HTTPException(status_code=404, detail="Room not found")
-
-            room = manifest_store.current.rooms[room_id]
-            return templates.TemplateResponse(
-                request,
-                "partials/room_form.html",
-                {"room": room, "room_index": room_id},
-            )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to load room: {e}")
-            raise HTTPException(status_code=500, detail=str(e)) from e
-
-    @app.post("/rooms/add", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def add_room(
-        request: Request,
-        room_id: str = Form(...),
-        room_name: str = Form(...),
-    ) -> HTMLResponse:
-        """Add a new room to the manifest.
-
-        Args:
-            request: FastAPI request object.
-            room_id: Room identifier.
-            room_name: Human-readable room name.
-
-        Returns:
-            HTML fragment with updated room list or error message.
-        """
-        try:
-            if manifest_store.current is None:
-                raise HTTPException(status_code=500, detail="No manifest loaded")
-
-            # Save backup for undo
-            manifest_store.backup = copy.deepcopy(manifest_store.current)
-
-            # Create new room
-            from .models import RoomConfig
-
-            new_room = RoomConfig(id=room_id, name=room_name, sensors={}, devices=[])
-            manifest_store.current.rooms.append(new_room)
-            manifest_store.mark_changed()
-
-            # Return updated room card
-            return templates.TemplateResponse(
-                request,
-                "partials/room_card.html",
-                {"room": new_room, "room_index": len(manifest_store.current.rooms) - 1},
-            )
-        except Exception as e:
-            logger.error(f"Failed to add room: {e}")
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": str(e)},
-                status_code=400,
-            )
-
-    @app.post("/rooms/{room_id}/update", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def update_room(
-        request: Request,
-        room_id: int,
-        name: str = Form(...),
-    ) -> HTMLResponse:
-        """Update an existing room.
-
-        Args:
-            request: FastAPI request object.
-            room_id: Index of the room to update.
-            name: New room name.
-
-        Returns:
-            HTML fragment with updated room card.
-        """
-        try:
-            if manifest_store.current is None or room_id >= len(manifest_store.current.rooms):
-                raise HTTPException(status_code=404, detail="Room not found")
-
-            # Save backup for undo
-            manifest_store.backup = copy.deepcopy(manifest_store.current)
-
-            # Update room
-            room = manifest_store.current.rooms[room_id]
-            room.name = name
-            manifest_store.mark_changed()
-
-            # Return updated room card
-            return templates.TemplateResponse(
-                request,
-                "partials/room_card.html",
-                {"room": room, "room_index": room_id},
-            )
-        except Exception as e:
-            logger.error(f"Failed to update room: {e}")
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": str(e)},
-                status_code=400,
-            )
-
-    @app.post("/devices/{room_id}/{device_entity_id}/delete", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def delete_device_from_room(
-        request: Request,
-        room_id: int,
-        device_entity_id: str,
-        user_id: str = Form(...),
-        is_admin: bool = Form(False),
-    ) -> HTMLResponse:
-        """T041: Удаляет устройство из комнаты вместе с конфигурацией.
-
-        Каскад выполняет сервис жизненного цикла: снятие машин состояний,
-        отзыв прав, удаление из хранилища и манифеста, перестроение
-        маршрутизации, аудит. Интерфейс получает обновлённую карточку
-        комнаты; при перезагрузке страницы устройство не возвращается.
-
-        Args:
-            request: FastAPI request object.
-            room_id: Индекс комнаты в манифесте.
-            device_entity_id: Идентификатор сущности Home Assistant.
-            user_id: Пользователь, инициировавший удаление (для аудита).
-            is_admin: Признак прав администратора.
-
-        Returns:
-            Обновлённая карточка комнаты или сообщение об ошибке.
-        """
-        if not is_admin:
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": "Удаление устройства доступно только администратору"},
-                status_code=403,
-            )
-
-        try:
-            lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
-            device_service = getattr(request.app.state, "device_service", None)
-            if lifecycle_service is None or device_service is None:
-                raise HTTPException(status_code=503, detail="Сервис устройств недоступен")
-
-            device = device_service.find_device_by_ha_entity_id(device_entity_id)
-            if device is None:
-                return templates.TemplateResponse(
-                    request,
-                    "partials/save_error.html",
-                    {"error": f"Устройство {device_entity_id} не найдено в списке"},
-                    status_code=404,
-                )
-
-            await lifecycle_service.delete_device(device, user_id=user_id)
-
-            # Ядро обновило манифест — синхронизируем веб-представление
-            _sync_manifest_store(manifest_store, lifecycle_service.manifest)
-            manifest_store.mark_changed()
-
-            # _sync_manifest_store() выше гарантированно заполнил current,
-            # поэтому тип-уровневое уточнение через cast() ничего не меняет.
-            current_manifest = cast(Any, manifest_store.current)
-            index = (
-                room_id
-                if 0 <= room_id < len(current_manifest.rooms)
-                else len(current_manifest.rooms) - 1
-            )
-            logger.info(f"Устройство {device_entity_id} удалено из комнаты {room_id}")
-            return templates.TemplateResponse(
-                request,
-                "partials/room_card.html",
-                {"room": current_manifest.rooms[index], "room_index": index},
-            )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Не удалось удалить устройство {device_entity_id}: {e}")
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": f"Не удалось удалить устройство: {e}"},
-                status_code=500,
-            )
-
-    @app.delete("/rooms/{room_id}", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def delete_room(request: Request, room_id: int) -> HTMLResponse:
-        """Delete a room from the manifest.
-
-        Args:
-            request: FastAPI request object.
-            room_id: Index of the room to delete.
-
-        Returns:
-            Empty HTML fragment (room removed).
-        """
-        try:
-            if manifest_store.current is None or room_id >= len(manifest_store.current.rooms):
-                raise HTTPException(status_code=404, detail="Room not found")
-
-            # Save backup for undo
-            manifest_store.backup = copy.deepcopy(manifest_store.current)
-
-            # Delete room
-            manifest_store.current.rooms.pop(room_id)
-            manifest_store.mark_changed()
-
-            # Return empty content
-            return HTMLResponse(content="")
-        except Exception as e:
-            logger.error(f"Failed to delete room: {e}")
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": str(e)},
-                status_code=400,
-            )
-
-    @app.get("/devices/{room_id}/{device_id}/edit", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def edit_device(request: Request, room_id: int, device_id: str) -> HTMLResponse:
-        """Edit a specific device.
-
-        Args:
-            request: FastAPI request object.
-            room_id: Index of the room containing the device.
-            device_id: ID of the device to edit.
-
-        Returns:
-            HTML fragment with device edit form.
-        """
-        try:
-            # Ensure manifest is loaded
-            if manifest_store.current is None:
-                manifest_store.load()
-
-            current_manifest = cast(Any, manifest_store.current)
-            if room_id >= len(current_manifest.rooms):
-                raise HTTPException(status_code=404, detail="Room not found")
-
-            room = current_manifest.rooms[room_id]
-            device = None
-            device_index = -1
-            for idx, dev in enumerate(room.devices):
-                if dev.id == device_id:
-                    device = dev
-                    device_index = idx
-                    break
-
-            if device is None:
-                raise HTTPException(status_code=404, detail="Device not found")
-
-            # Источник устройства из единого хранилища (может отсутствовать)
-            device_source_id = ""
-            try:
-                device_service = getattr(request.app.state, "device_service", None)
-                stored = (
-                    device_service.find_device_by_ha_entity_id(device_id)
-                    if device_service
-                    else None
-                )
-                if stored is not None:
-                    device_source_id = str(stored.source_id)
-            except Exception as e:
-                logger.debug(f"Источник устройства {device_id} не найден: {e}")
-
-            # Load available templates
-            from .template_loader import get_template_loader
-
-            loader = get_template_loader()
-            templates_data = loader.load_all()
-            template_list = sorted(templates_data.keys())
-
-            return templates.TemplateResponse(
-                request,
-                "partials/device_form.html",
-                {
-                    "device": device,
-                    "device_index": device_index,
-                    "room_index": room_id,
-                    "current_room_id": room.id,
-                    "available_rooms": cast(Any, manifest_store.current).rooms,
-                    "available_templates": template_list,
-                    "available_sources": _load_sources_for_form(
-                        getattr(request.app.state, "persistence", None)
-                    ),
-                    "current_source_id": device_source_id,
-                },
-            )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to load device: {e}")
-            raise HTTPException(status_code=500, detail=str(e)) from e
-
-    @app.get("/devices/{room_id}/add", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def add_device(request: Request, room_id: int) -> HTMLResponse:
-        """Add a new device form.
-
-        Args:
-            request: FastAPI request object.
-            room_id: Index of the room to add device to.
-
-        Returns:
-            HTML fragment with empty device form.
-        """
-        try:
-            # Ensure manifest is loaded
-            if manifest_store.current is None:
-                manifest_store.load()
-
-            # Load available templates
-            from .template_loader import get_template_loader
-
-            loader = get_template_loader()
-            templates_data = loader.load_all()
-            template_list = sorted(templates_data.keys())
-
-            # Get room info
-            rooms = manifest_store.current.rooms if manifest_store.current else []
-            current_room_id = rooms[room_id].id if room_id < len(rooms) else ""
-
-            return templates.TemplateResponse(
-                request,
-                "partials/device_form.html",
-                {
-                    "device": {},
-                    "device_index": -1,
-                    "room_index": room_id,
-                    "current_room_id": current_room_id,
-                    "available_rooms": rooms,
-                    "available_templates": template_list,
-                    "available_sources": _load_sources_for_form(
-                        getattr(request.app.state, "persistence", None)
-                    ),
-                    "current_source_id": "",
-                },
-            )
-        except Exception as e:
-            logger.error(f"Failed to load add device form: {e}")
-            raise HTTPException(status_code=500, detail=str(e)) from e
-
-    @app.post("/devices/save", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def save_device(
-        request: Request,
-        room_index: str = Form(...),
-        device_index: str = Form(...),
-        device_id: str = Form(...),
-        device_type: str = Form(...),
-        device_name: str = Form(""),
-        source_id: str = Form(""),
-    ) -> HTMLResponse:
-        """Сохраняет устройство через сервис жизненного цикла.
-
-        Устройство попадает в единый источник (DeviceService), в манифест и
-        получает машину состояний сразу, без перезапуска (spec 006, US1).
-        Источник обязателен: без него устройство нельзя ни синхронизировать,
-        ни адресовать командами (FR-007, D-009).
-
-        Args:
-            request: FastAPI request object.
-            room_index: Index of the room (для выбора комнаты по умолчанию).
-            device_index: Index of the device (-1 для нового) — не используется,
-                идентификация идёт по ``device_id``.
-            device_id: Device entity ID.
-            device_type: Device type.
-            device_name: Human-readable device name.
-            source_id: Источник устройства (обязателен).
-
-        Returns:
-            HTML response with success/error message.
-        """
-        try:
-            from .models import BehaviorConfig as WebBehaviorConfig
-
-            # Ensure manifest is loaded
-            if manifest_store.current is None:
-                manifest_store.load()
-
-            form_data = await request.form()
-            room_idx = int(room_index)
-
-            current_manifest = cast(Any, manifest_store.current)
-            if room_idx >= len(current_manifest.rooms):
-                raise HTTPException(status_code=404, detail="Room not found")
-
-            if not source_id:
-                return _form_error(
-                    request,
-                    "Выберите источник устройства — без него синхронизация и команды невозможны",
-                )
-
-            behaviors = _parse_behaviors_from_form(form_data, WebBehaviorConfig)
-            core_behaviors = [
-                BehaviorConfig(
-                    template=behavior.template,
-                    priority=behavior.priority,
-                    params=behavior.params,
-                )
-                for behavior in behaviors
-            ]
-
-            target_room_id = form_data.get("room_id", "") or current_manifest.rooms[room_idx].id
-
-            lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
-            if lifecycle_service is None:
-                raise HTTPException(status_code=503, detail="Сервис жизненного цикла недоступен")
-
-            device = Device(
-                ha_entity_id=device_id,
-                source_id=UUID(source_id),
-                name=device_name or device_id,
-                device_type=device_type,
-                state={},
-                status="available",
-            )
-            user_id = getattr(request.app.state, "default_user_id", None) or "admin_user"
-
-            device, _created = await lifecycle_service.add_device(
-                device, room_id=target_room_id, behaviors=core_behaviors, user_id=user_id
-            )
-
-            # Синхронизируем веб-представление манифеста с ядерным и сохраняем
-            _sync_manifest_store(manifest_store, lifecycle_service.manifest)
-            manifest_store.backup = copy.deepcopy(manifest_store.current)
-            manifest_store.mark_changed()
-            manifest_store.save()
-            logger.info(f"Device {device_id} saved and activated: {device.ha_entity_id}")
-
-            return templates.TemplateResponse(
-                request,
-                "partials/save_success.html",
-                {"message": f"Устройство {device_id} сохранено и запущено!"},
-            )
-
-        except HTTPException as e:
-            logger.error(f"Failed to save device: {e.detail}")
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": str(e.detail)},
-                status_code=e.status_code,
-            )
-        except Exception as e:
-            logger.error(f"Failed to save device: {e}")
-            return templates.TemplateResponse(
-                request,
-                "partials/save_error.html",
-                {"error": str(e)},
-                status_code=400,
-            )
-
-    @app.get("/logs", response_class=HTMLResponse)  # type: ignore[untyped-decorator]
-    async def logs_page(request: Request) -> HTMLResponse:
-        """Render the logs page.
-
-        Args:
-            request: FastAPI request object.
-
-        Returns:
-            HTML response with logs viewer.
-        """
-        return templates.TemplateResponse(request, "logs.html", {})
-
-    @app.get("/api/logs")  # type: ignore[untyped-decorator]
-    async def get_logs(limit: int = 1000) -> list:
-        """Get application logs.
-
-        Args:
-            limit: Maximum number of logs to return.
-
-        Returns:
-            List of log entries.
-        """
-        return log_store.get_logs(limit)
-
-    @app.delete("/api/logs")  # type: ignore[untyped-decorator]
-    async def clear_logs() -> dict:
-        """Clear all logs.
-
-        Returns:
-            Status message.
-        """
-        log_store.clear()
-        logger.info("Logs cleared via API")
-        return {"status": "success", "message": "Logs cleared"}
-
-    @app.websocket("/ws/logs")  # type: ignore[untyped-decorator]
-    async def websocket_logs(websocket: WebSocket) -> None:
-        """WebSocket endpoint for real-time log streaming.
-
-        Args:
-            websocket: WebSocket connection.
-        """
-        await websocket.accept()
-        try:
-            while True:
-                # Keep connection alive
-                await websocket.receive_text()
-        except WebSocketDisconnect:
-            pass
 
     return app
 

@@ -125,9 +125,14 @@ class TestDevicesAPI:
         assert data["name"] == "Get By Id Success", data
         assert data["device_type"] == "light", data
         assert data["source_id"] == sample_source["id"], data
-        # Ответ устройства обязан совпадать с ответом создания: оба строятся
-        # одним _to_device_response, и расхождение означало бы разные контракты.
-        assert data == created, f"GET устройства вернул не то, что создал apply:\n{data}\n{created}"
+        # Ответ устройства непустой там, где apply его не отдаёт: GET добавляет
+        # состояния автоматов и решение (спека 017). Сравниваются устойчивые поля,
+        # а автоматика проверяется отдельно.
+        stable = {"fsm", "automation", "decision"}
+        assert {k: v for k, v in data.items() if k not in stable} == {
+            k: v for k, v in created.items() if k not in stable
+        }, f"GET устройства вернул не то, что создал apply:\n{data}\n{created}"
+        assert data["automation"]["configured"] is True, data
 
 
 class TestDeviceConfigAPI:

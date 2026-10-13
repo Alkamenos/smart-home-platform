@@ -24,7 +24,6 @@
 #  SPDX-License-Identifier: Apache-2.0
 """
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -122,72 +121,4 @@ class TestFailClosedOnBrokenService:
 
         assert not (response.status_code == 200 and response.json().get("count") == admin_states), (
             "упавшая фильтрация выдала полный доступ к состояниям"
-        )
-
-
-class TestDashboardSendsItsIdentity:
-    """Дашборд обязан передавать идентичность, как это делает index.html.
-
-    Без этого сервер не может отличить пользователя от постороннего запроса,
-    и исправление дефолта сломало бы сам дашборд.
-    """
-
-    def test_dashboard_body_carries_identity_attributes(self) -> None:
-        """На `<body>` есть data-user-id и data-user-is-admin."""
-        source = (TEMPLATES / "dashboard.html").read_text(encoding="utf-8")
-
-        body = re.search(r"<body[^>]*>", source)
-        assert body, "не найден тег <body> в dashboard.html"
-        tag = body.group(0)
-
-        assert "data-user-id" in tag, (
-            "у dashboard.html нет data-user-id: сервер не сможет определить, "
-            "кто делает запрос, и вернёт отказ вместо данных"
-        )
-        assert "data-user-is-admin" in tag, "у dashboard.html нет data-user-is-admin"
-
-    def test_dashboard_auth_headers_are_not_empty(self) -> None:
-        """authHeaders() возвращает настоящие заголовки, а не пустой объект."""
-        source = (TEMPLATES / "dashboard.html").read_text(encoding="utf-8")
-
-        body_match = re.search(r"function authHeaders\(\)\s*\{(.*?)\n\s*\}", source, re.S)
-        assert body_match, "не найдена функция authHeaders() в dashboard.html"
-        body = body_match.group(1)
-
-        assert "X-User-ID" in body, (
-            "authHeaders() не отправляет X-User-ID — запрос уйдёт анонимным, "
-            "и после исправления дефолта дашборд покажет пустую страницу"
-        )
-        assert "X-Is-Admin" in body, "authHeaders() не отправляет X-Is-Admin"
-
-    def test_dashboard_route_passes_identity_to_template(self) -> None:
-        """Маршрут дашборда передаёт user_id и user_is_admin в контекст."""
-        source = (
-            Path(__file__).resolve().parent.parent.parent
-            / "src"
-            / "webui"
-            / "routes"
-            / "__init__.py"
-        ).read_text(encoding="utf-8")
-
-        response_block = re.search(r'"dashboard\.html",\s*\{(.*?)\}', source, re.S)
-        assert response_block, "не найден отдача dashboard.html"
-        context = response_block.group(1)
-
-        assert "user_id" in context, (
-            "маршрут дашборда не передаёт user_id: шаблон получит пустую "
-            "идентичность и не сможет построить заголовки"
-        )
-        assert "user_is_admin" in context, "маршрут дашборда не передаёт user_is_admin"
-
-    def test_dashboard_page_actually_contains_rendered_identity(self) -> None:
-        """Живой ответ дашборда содержит идентичность, а не пустые значения."""
-        response = TestClient(__import__("main").app).get("/dashboard")
-
-        assert response.status_code == 200
-        body = response.text
-        body_tag = re.search(r"<body[^>]*>", body)
-        assert body_tag, "в ответе дашборда нет <body>"
-        assert "data-user-id" in body_tag.group(0), (
-            "отрисованный дашборд не содержит data-user-id — идентичность теряется"
         )

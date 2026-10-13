@@ -171,33 +171,3 @@ class TestCreatingFromEnvironment:
             f"обычный пользователь получил {response.status_code} вместо 403: "
             "источник создаётся с токеном из окружения, это привилегия администратора"
         )
-
-
-class TestPageOffersTheSuggestion:
-    """Страница должна предлагать создание из окружения, а не молчать."""
-
-    @pytest.fixture
-    def template(self) -> str:
-        from pathlib import Path
-
-        return (
-            Path(__file__).resolve().parent.parent.parent
-            / "src"
-            / "webui"
-            / "templates"
-            / "discovery.html"
-        ).read_text(encoding="utf-8")
-
-    def test_page_requests_suggestion(self, template: str) -> None:
-        """Страница запрашивает подсказку."""
-        assert "/from-env" in template, (
-            "страница не предлагает создать источник из переменных окружения"
-        )
-
-    def test_page_does_not_prefill_token_into_field(self, template: str) -> None:
-        """Токен не подставляется в поле формы."""
-        body = template[template.index("<body") :]
-        token_field = body[body.find('id="source-token"') :][:200]
-        assert "token" not in token_field.lower() or "source-token" in token_field, (
-            "поле токена не должно наполняться значением из окружения"
-        )

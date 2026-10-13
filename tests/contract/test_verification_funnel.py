@@ -108,27 +108,25 @@ class TestCollectionWorks:
 class TestExclusionsAreDeclared:
     """Исключения обязаны нести причину."""
 
-    def test_playwright_exclusion_has_a_stated_reason(self, pytest_config):
-        """Исключение браузерных тестов объявлено с причиной.
+    def test_browser_tests_left_the_backend_suite(self, pytest_config):
+        """Браузерные тесты старого интерфейса удалены вместе с ним (спека 017).
 
-        Без причины исключение молча сокращает набор: именно так браузерные
-        тесты разъехались с шаблонами, и никто этого не заметил.
+        Раньше файл исключался из общего прогона; теперь его нет: интерфейс
+        проверяется Playwright во фронтенде (`frontend/tests/e2e`), отдельной
+        целью — исключать в `addopts` нечего.
         """
-        assert "test_webui_playwright.py" in pytest_config["addopts"], (
-            "браузерные тесты исключены из общего прогона — это объявленное исключение"
+        assert "test_webui_playwright.py" not in pytest_config["addopts"], (
+            "файла больше нет — исключение устарело"
         )
-
-        # Причина обязана быть записана рядом с самим объявлением.
-        text = PYPROJECT.read_text(encoding="utf-8")
-        reasons = [line for line in text.splitlines() if line.strip().startswith("#")]
-        assert any("playwright" in line.lower() for line in reasons), (
-            "рядом с исключением браузерных тестов должна стоять причина"
+        assert not (ROOT / "tests" / "test_webui_playwright.py").exists(), (
+            "старые браузерные тесты должны быть удалены вместе со старым интерфейсом"
         )
 
     def test_every_ignore_in_addopts_is_documented(self, pytest_config):
         """Каждое исключение в `addopts` объяснено комментарием.
 
-        Проверка поштучная: молчаливое сокращение набора опаснее явного.
+        Исключений может и не быть — тогда документировать нечего. Проверка
+        поштучная: молчаливое сокращение набора опаснее явного.
         """
         text = PYPROJECT.read_text(encoding="utf-8")
         comments = [line for line in text.splitlines() if line.strip().startswith("#")]
@@ -138,7 +136,6 @@ class TestExclusionsAreDeclared:
             if token.startswith("--ignore=")
         ]
 
-        assert ignores, "ожидается хотя бы одно объявленное исключение"
         for target in ignores:
             name = Path(target).name
             assert any(name in line for line in comments), (
@@ -228,17 +225,20 @@ class TestAutomatedChecksRunTests:
         assert "FAILED=1" in after, "провал тестов не влияет на код возврата скрипта"
 
     def test_run_checks_declares_browser_exclusion(self):
-        """Исключение браузерных тестов объявлено в результате проверки.
+        """Браузерные тесты не входят в прогон, и это сказано вслух.
 
-        Иначе 25 тестов молча исчезают: скрипт их не запускает и не говорит
-        об этом, а человек читает отчёт как «проверено всё».
+        После спеки 017 браузерные тесты живут во фронтенде
+        (``frontend/tests/e2e``). Скрипт обязан называть исключение и способ их
+        запустить — иначе человек прочтёт отчёт как «проверено всё».
         """
         text = RUN_CHECKS.read_text(encoding="utf-8")
 
-        assert "test_webui_playwright.py" in text, (
-            "скрипт проверки обязан называть исключённые браузерные тесты"
+        assert "test_webui_playwright.py" not in text, (
+            "скрипт ссылается на удалённый файл браузерных тестов"
         )
-        assert "test-browser" in text, "скрипт должен указывать, как запустить исключённые тесты"
+        assert "frontend" in text and "e2e" in text, (
+            "скрипт обязан сказать, где живут браузерные тесты и как их запустить"
+        )
 
     def test_run_checks_distinguishes_tool_presence_from_actual_run(self):
         """Проверка наличия бинаря не выдаётся за запуск тестов.

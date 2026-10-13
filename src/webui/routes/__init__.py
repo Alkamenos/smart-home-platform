@@ -7,13 +7,10 @@ from __future__ import annotations
 
 import json
 import re
-import time
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, Response
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse, Response
 from loguru import logger
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -22,16 +19,7 @@ from webui.models import build_all_fsm_state_views
 from webui.routes.readiness import collect_checks
 
 
-if TYPE_CHECKING:
-    pass
-
-
 router = APIRouter()
-
-# Setup templates
-# Шаблоны лежат в src/webui/templates/, а этот модуль — в src/webui/routes/
-template_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=str(template_dir))
 
 # Initialize EventStore
 event_store = EventStore()
@@ -414,59 +402,6 @@ async def get_fsm_diagram(request: Request, entity_id: str) -> Response:
         )
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request) -> HTMLResponse:
-    """Dashboard page with event charts and FSM diagrams.
-
-    Args:
-        request: FastAPI request object.
-
-    Returns:
-        Dashboard HTML page with Chart.js graphs and FSM diagrams.
-    """
-    # Collect all devices from manifest
-    devices = []
-    try:
-        # Try to get container from app state
-        container = request.app.state.container
-        if container and hasattr(container, "manifest") and container.manifest:
-            for room in container.manifest.rooms:
-                for device in room.devices:
-                    devices.append(
-                        {
-                            "id": device.id,
-                            "type": device.type,
-                            "name": device.name,
-                            "room": room.id,
-                            "behaviors": [
-                                {
-                                    "template": b.template,
-                                    "priority": b.priority,
-                                }
-                                for b in (device.behaviors or [])
-                            ],
-                        }
-                    )
-    except Exception as e:
-        logger.warning(f"Could not load devices for dashboard: {e}")
-
-    return templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {
-            "title": "Dashboard",
-            "devices": devices,
-            # Идентичность передаётся в шаблон, чтобы его fetch-запросы несли
-            # X-User-ID / X-Is-Admin. Раньше эти значения здесь отсутствовали, а
-            # authHeaders() в шаблоне возвращал пустой объект — дашборд работал
-            # только потому, что сервер при отсутствии заголовков отдавал
-            # состояния всех устройств (Known Issue про дефолт «на отказ»).
-            "user_id": getattr(request.app.state, "default_user_id", None) or "admin_user",
-            "user_is_admin": bool(getattr(request.app.state, "default_user_is_admin", False)),
-        },
-    )
-
-
 @router.get("/ready", response_class=JSONResponse)
 async def check_readiness(request: Request) -> JSONResponse:
     """Проверить готовность платформы к работе.
@@ -504,57 +439,6 @@ async def check_readiness(request: Request) -> JSONResponse:
     )
 
 
-@router.get("/api/history/activity-heatmap")
-async def get_activity_heatmap() -> dict:
-    """Карта активности по фактическим записям (FR-033, FR-036).
-
-    Раньше значения выдумывались генератором с фиксированным зерном, поэтому
-    график выглядел правдоподобно и менялся от запуска к запуску (решение D-2).
-    Теперь карта считается по журналу переходов и событий, а при отсутствии
-    записей возвращает ``has_data: false`` вместо правдоподобных нулей.
-
-    Returns:
-        JSON с днями, часами, значениями и признаком наличия данных.
-    """
-    try:
-        return event_store.get_activity_heatmap()
-    except Exception as e:
-        logger.error(f"Failed to build activity heatmap: {e}")
-        return {"days": [], "hours": [], "data": [], "has_data": False, "error": str(e)}
-
-
-@router.get("/api/events/history")
-async def get_events_history() -> dict:
-    """История событий за сутки по настенным часам (FR-033, FR-036).
-
-    Корзины считаются по часам суток (``0`` — полночь). Прежние корзины
-    считались «часов назад» при подписях от ``00:00``, из-за чего график
-    отображался задом наперёд.
-
-    Returns:
-        JSON с подписями, набором данных и признаком наличия данных.
-    """
-    try:
-        history = event_store.get_hourly_history(hours=24)
-    except Exception as e:
-        logger.error(f"Failed to build events history: {e}")
-        return {"labels": [], "datasets": [], "has_data": False, "error": str(e)}
-
-    return {
-        "labels": history["labels"],
-        "datasets": [
-            {
-                "label": "Events (Last 24h)",
-                "data": history["data"],
-                "borderColor": "#0d6efd",
-                "tension": 0.1,
-                "fill": False,
-            }
-        ],
-        "has_data": history["has_data"],
-    }
-
-
 @router.get("/api/overrides")
 async def get_overrides() -> list[dict]:
     """Get active manual overrides.
@@ -563,46 +447,6 @@ async def get_overrides() -> list[dict]:
         List of active override records.
     """
     return event_store.get_active_overrides()
-
-
-@router.post("/api/override")
-async def create_override(request: Request) -> Any:
-    """Create a new manual override.
-
-    Args:
-        request: FastAPI request with JSON body containing:
-            - entity_id: Device entity ID
-            - action: Override action (e.g., "force_on", "force_off")
-            - duration: Duration in seconds
-
-    Returns:
-        Status message.
-    """
-    try:
-        data = await request.json()
-        entity_id = data.get("entity_id")
-        action = data.get("action")
-        duration = data.get("duration", 3600)  # Default 1 hour
-
-        if not entity_id or not action:
-            return {"error": "Missing entity_id or action"}, 400
-
-        current_time = time.time()
-        expires_at = current_time + duration
-
-        event_store.save_override(
-            entity_id=entity_id,
-            started_at=current_time,
-            expires_at=expires_at,
-            reason=f"Manual override: {action}",
-            user_id="webui",
-        )
-
-        return {"status": "success", "message": f"Override created for {entity_id}"}
-
-    except Exception as e:
-        logger.error(f"Failed to create override: {e}")
-        return {"error": str(e)}, 500
 
 
 @router.delete("/api/override/{entity_id}")
@@ -622,147 +466,3 @@ async def remove_override(entity_id: str) -> Any:
     except Exception as e:
         logger.error(f"Failed to remove override: {e}")
         return {"error": str(e)}, 500
-
-
-@router.get("/api/ai/suggestions")
-async def get_ai_suggestions() -> dict:
-    """Подсказки из журнала (FR-035, FR-036).
-
-    Раньше при пустом журнале возвращались три выдуманные записи, не совпадавшие
-    по форме с настоящими строками, поэтому интерфейс всегда показывал вымысел.
-    Выдумка удалена полностью (решение D-2): пустой раздел честнее правдоподобной
-    лжи.
-
-    Returns:
-        JSON со списком подсказок и признаком наличия данных.
-    """
-    try:
-        suggestions = event_store.get_suggestions()
-    except Exception as e:
-        logger.error(f"Failed to load AI suggestions: {e}")
-        return {"suggestions": [], "has_data": False, "error": str(e)}
-
-    return {"suggestions": suggestions, "has_data": bool(suggestions)}
-
-
-@router.post("/api/ai/suggestion/{suggestion_id}/respond")
-async def respond_to_suggestion(suggestion_id: str, request: Request) -> Any:
-    """Respond to an AI suggestion (accept/reject).
-
-    Args:
-        suggestion_id: ID of the suggestion to respond to.
-        request: FastAPI request with JSON body containing:
-            - action: 'accept' or 'reject'
-
-    Returns:
-        Status message.
-    """
-    try:
-        data = await request.json()
-        action = data.get("action")
-
-        if action not in ["accept", "reject"]:
-            return {"error": "Action must be 'accept' or 'reject'"}, 400
-
-        # Словарь маршрута — словарь хранилища: "accepted"/"rejected" в
-        # ai_suggestions.status не существуют, UPDATE не проходил, а ответ
-        # был "success" (Known Issue #45). Принятие — это applied, отклонение —
-        # dismissed; "snoozed" хранилище тоже понимает, но действие в UI
-        # для него не предусмотрено (dashboard.html:569-570).
-        new_status = "applied" if action == "accept" else "dismissed"
-        # Лишний аргумент responded_at приводил к TypeError и ответу 500:
-        # метод такого параметра не принимает (spec 007, FR-036).
-        # cast(): suggestion_id приходит из пути как str, а метод ждёт int;
-        # приведение не делаем — это изменило бы поведение при нечисловом id.
-        event_store.update_suggestion_status(
-            suggestion_id=cast(int, suggestion_id),
-            status=new_status,
-        )
-
-        return {"status": "success", "message": f"Suggestion {suggestion_id} {new_status}"}
-
-    except Exception as e:
-        logger.error(f"Failed to respond to suggestion {suggestion_id}: {e}")
-        return {"error": str(e)}, 500
-
-
-@router.get("/api/templates")
-async def list_templates() -> dict[str, Any]:
-    """Get all available FSM templates.
-
-    Returns:
-        JSON with list of templates and their parameters.
-    """
-    from ..template_loader import get_template_loader
-
-    try:
-        loader = get_template_loader()
-        templates_dict = loader.load_all()
-
-        result = {
-            "templates": [template.to_dict() for template in templates_dict.values()],
-            "count": len(templates_dict),
-        }
-        return result
-    except Exception as e:
-        logger.error(f"Failed to load templates: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.get("/api/behavior-params/{template_name}")
-async def get_behavior_params(template_name: str) -> dict[str, Any]:
-    """Возвращает описание параметров шаблона из контракта.
-
-    `/api/templates/{name}` отдаёт параметры из YAML шаблона и не содержит
-    диапазонов и отметки действенности. Форма правки обязана знать оба: без
-    диапазона она предложила бы значение, которое сервер отвергнет, а без
-    отметки ``effective`` — показала бы инертный параметр как рабочий.
-
-    Args:
-        template_name: Имя шаблона.
-
-    Returns:
-        Словарь с именем шаблона и описанием параметров.
-
-    Raises:
-        HTTPException: 404 если шаблона нет в контракте.
-    """
-    from core.behavior_params import load_contract, template_params
-
-    params = template_params(load_contract(), template_name)
-    if params is None:
-        raise HTTPException(
-            status_code=404, detail=f"Шаблон '{template_name}' отсутствует в контракте"
-        )
-    return {"template": template_name, "params": params}
-
-
-@router.get("/api/templates/{template_name}")
-async def get_template(template_name: str) -> dict[str, Any]:
-    """Get a specific template by name.
-
-    Args:
-        template_name: Name of the template (without .yaml extension).
-
-    Returns:
-        JSON with template metadata and parameters.
-
-    Raises:
-        HTTPException: If template not found or error loading templates.
-    """
-    from ..template_loader import get_template_loader
-
-    try:
-        loader = get_template_loader()
-        templates_dict = loader.load_all()
-
-        if template_name not in templates_dict:
-            raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
-
-        template = templates_dict[template_name]
-        return template.to_dict()
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get template {template_name}: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from e
