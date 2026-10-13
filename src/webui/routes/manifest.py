@@ -12,12 +12,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from core.persistence.manifest_store import ManifestShrinkError
-from webui.services.manifest_runtime import apply_manifest_to_runtime
+from webui.services.manifest_runtime import apply_manifest_to_runtime, prime_location_state
 
 
 router = APIRouter(tags=["manifest"])
@@ -72,11 +72,16 @@ async def get_manifest(request: Request) -> JSONResponse:
 
 
 @router.put("/api/v1/manifest", response_class=JSONResponse)
-async def put_manifest(request: Request) -> JSONResponse:
+async def put_manifest(request: Request, allow_removal: bool = Query(False)) -> JSONResponse:
     """Проверить и сохранить манифест.
 
     Args:
         request: Входящий HTTP-запрос с телом-манифестом.
+        allow_removal: Разрешить запись, при которой из описания дома исчезают
+            комнаты или устройства. По умолчанию запрещено: тихое уменьшение
+            состава дома означает, что часть дома молча выпала из автоматики.
+            Осознанное удаление (например, перенос устройства в другую комнату)
+            передаёт флаг явно.
 
     Returns:
         ``{"status": "saved"}`` при успехе; ``400`` с ошибками по полям, если
@@ -108,7 +113,7 @@ async def put_manifest(request: Request) -> JSONResponse:
 
     store.current = model
     try:
-        store.save()
+        store.save(allow_removal=allow_removal)
     except ManifestShrinkError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
 
@@ -120,6 +125,7 @@ async def put_manifest(request: Request) -> JSONResponse:
     warnings: list[str] = []
     try:
         apply_manifest_to_runtime(store, container, lifecycle_service)
+        await prime_location_state(container)
     except Exception as exc:  # noqa: BLE001 — причина попадает в ответ
         warnings.append(f"Манифест сохранён, но не применён в рантайме: {exc}")
 

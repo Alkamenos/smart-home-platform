@@ -10,10 +10,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 
-from webui.services.manifest_runtime import apply_manifest_to_runtime
+from webui.services.manifest_runtime import apply_manifest_to_runtime, prime_location_state
 
 
 class _Store:
@@ -108,3 +109,35 @@ def test_apply_should_prefer_lifecycle_service_for_routing() -> None:
 def test_apply_should_be_noop_without_container() -> None:
     """Без контейнера применение ничего не делает (и не падает)."""
     apply_manifest_to_runtime(_Store(), None)
+
+
+def test_apply_should_rebuild_location_state() -> None:
+    """Наблюдение за локациями перестраивается — новые роли видны без перезапуска."""
+    rebuilt: list[int] = []
+    service = SimpleNamespace(rebuild=lambda: rebuilt.append(1))
+    container = SimpleNamespace(
+        manifest=SimpleNamespace(rooms=[]),
+        factory=_Factory(),
+        fsm=_FSM(),
+        event_router=None,
+        location_state=service,
+    )
+
+    apply_manifest_to_runtime(_Store(), container)
+
+    assert rebuilt == [1]
+
+
+def test_prime_location_state_should_read_current_values() -> None:
+    """Первичное чтение вызывается после перестройки."""
+    primed: list[int] = []
+
+    async def prime() -> int:
+        primed.append(1)
+        return 1
+
+    container = SimpleNamespace(location_state=SimpleNamespace(prime=prime))
+
+    asyncio.run(prime_location_state(container))
+
+    assert primed == [1]

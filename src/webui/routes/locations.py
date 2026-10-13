@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from webui.routes import event_store
-from webui.services.manifest_runtime import apply_manifest_to_runtime
+from webui.services.manifest_runtime import apply_manifest_to_runtime, prime_location_state
 
 
 router = APIRouter(tags=["locations"])
@@ -205,6 +205,7 @@ async def update_location_sensors(
     warnings: list[str] = []
     try:
         apply_manifest_to_runtime(store, container, lifecycle_service)
+        await prime_location_state(container)
     except Exception as exc:  # noqa: BLE001 — причина попадает в ответ
         warnings.append(f"Роли сохранены, но не применены в рантайме: {exc}")
 

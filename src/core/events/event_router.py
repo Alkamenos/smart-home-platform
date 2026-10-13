@@ -114,6 +114,12 @@ class EventRouter:
         "soil_ph": ["soil_ph_changed"],
         "soil_ec": ["soil_ec_changed"],
         "battery": ["battery_changed"],
+        # Детекции камер (спека 017): «человек / животное / машина». Наблюдение,
+        # автоматов у них нет, но роль объявлена, чтобы маршрутизатор не считал
+        # её неизвестной и не писал предупреждение на каждую комнату с камерой.
+        "person": ["person_detected", "person_cleared"],
+        "animal": ["animal_detected", "animal_cleared"],
+        "vehicle": ["vehicle_detected", "vehicle_cleared"],
     }
 
     def __init__(self, manifest: Manifest, engine: FSMEngine) -> None:

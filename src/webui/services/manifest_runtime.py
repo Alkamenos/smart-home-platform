@@ -60,6 +60,33 @@ def apply_manifest_to_runtime(
     elif container.event_router is not None:
         container.event_router._build_mapping()
 
+    # Наблюдение за локациями строится один раз при старте: без перестройки
+    # новые привязки датчиков не появятся в снимке до перезапуска, то есть
+    # «сохранено, но не применено» (спека 017, FR-027).
+    service = getattr(container, "location_state", None)
+    rebuild = getattr(service, "rebuild", None)
+    if callable(rebuild):
+        rebuild()
+
     logger.info(
         f"Манифест применён: комнат {len(container.manifest.rooms)}, автоматов {len(wanted)}"
     )
+
+
+async def prime_location_state(container: Any) -> None:
+    """Прочитать текущие значения датчиков после перестройки наблюдения.
+
+    Событие изменения придёт не для каждого датчика (контакт окна не менялся) —
+    без первичного чтения новый датчик показывался бы пустым до первого события.
+
+    Args:
+        container: Контейнер платформы.
+    """
+    service = getattr(container, "location_state", None)
+    prime = getattr(service, "prime", None)
+    if not callable(prime):
+        return
+    try:
+        await prime()
+    except Exception as exc:  # noqa: BLE001 — чтение не должно ломать применение
+        logger.warning(f"Наблюдение за локациями: первичное чтение не удалось: {exc}")

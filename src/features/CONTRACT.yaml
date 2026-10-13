@@ -27,6 +27,9 @@ sensor_events:
   soil_ph: [soil_ph_changed]
   soil_ec: [soil_ec_changed]
   battery: [battery_changed]
+  person: [person_detected, person_cleared]
+  animal: [animal_detected, animal_cleared]
+  vehicle: [vehicle_detected, vehicle_cleared]
 
 engine_events:
   # События, которые порождает сам движок, а не внешний источник.
@@ -105,12 +108,16 @@ registered_guards:  # реестр после register_all_guards
 
 uncovered_platform_events:
   # События, которые платформа публикует, но ни один шаблон не слушает.
+  - animal_cleared
+  - animal_detected
   - battery_changed
   - brightness_changed
   - closed
   - co2_changed
   - illuminance_changed
   - opened
+  - person_cleared
+  - person_detected
   - pressure_changed
   - rain_changed
   - soil_ec_changed
@@ -118,6 +125,8 @@ uncovered_platform_events:
   - soil_ph_changed
   - soil_temperature_changed
   - uv_index_changed
+  - vehicle_cleared
+  - vehicle_detected
   - wind_gust_changed
   - wind_speed_changed
 

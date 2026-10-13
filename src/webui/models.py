@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from core.models.manifest import LocationConfig
+from core.models.manifest import LocationConfig, LocationRules
 
 
 class InstanceConfig(BaseModel):
@@ -63,14 +63,31 @@ class AutomationDomainRules(BaseModel):
     away_mode_enabled: bool = Field(default=False, description="Enable away mode")
     humidity_based: bool = Field(default=False, description="Enable humidity-based automation")
 
+    # Поля домена расширяются ядром (ночное окно, комнаты, шторы): без разрешения
+    # «лишних» полей правка манифеста через интерфейс вычёркивала бы их.
+    model_config = {"extra": "allow"}
+
 
 class AutomationRules(BaseModel):
-    """Global automation rules."""
+    """Global automation rules.
+
+    Поля повторяют каноническую модель ядра: пропущенное поле при сохранении
+    манифеста через интерфейс молча терялось бы — так уже произошло с
+    ``time_zone``, ``cover`` и ``locations``. ``extra: allow`` страхует от
+    повторов при добавлении новых разделов в ядре.
+    """
 
     global_manual_lockout_min: int = Field(default=60, description="Global manual lockout minutes")
+    time_zone: str | None = Field(default=None, description="Часовой пояс дома")
     lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     climate: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
+    cover: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
+    locations: LocationRules = Field(
+        default_factory=LocationRules, description="Правила наблюдения за локациями (спека 016)"
+    )
+
+    model_config = {"extra": "allow"}
 
 
 class DashboardConfig(BaseModel):

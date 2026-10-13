@@ -33,6 +33,9 @@ SERIES_ROLES = frozenset(
         "motion",
         "contact",
         "rain",
+        "person",
+        "animal",
+        "vehicle",
     }
 )
 

@@ -339,6 +339,29 @@ class LocationStateService:
         """
         return sorted(self._roles_by_entity)
 
+    def rebuild(self) -> None:
+        """Перестроить описание локаций из манифеста, сохранив показания.
+
+        Нужен при правке манифеста (в том числе из интерфейса): состав комнат,
+        зон и привязок датчиков меняется, а сервис строится один раз при старте.
+        Без перестройки новые роли не появлялись бы в снимке до перезапуска —
+        то есть «сохранено, но не применено». Показания снятых с наблюдения
+        датчиков удаляются, иначе они оставались бы в снимке призраками.
+        """
+        self._rules = self._manifest.automation_rules.locations
+        self._locations.clear()
+        self._roles_by_entity.clear()
+        self._build()
+
+        bound = set(self._roles_by_entity)
+        self._readings = {
+            location_id: {
+                entity: reading for entity, reading in readings.items() if entity in bound
+            }
+            for location_id, readings in self._readings.items()
+            if location_id in self._locations
+        }
+
     async def prime(self) -> int:
         """Прочитать текущие значения привязанных датчиков (FR-001).
 

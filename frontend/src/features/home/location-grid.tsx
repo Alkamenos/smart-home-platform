@@ -6,7 +6,7 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sparkline } from "@/components/ui/sparkline";
-import { kindLabel } from "@/lib/labels";
+import { kindLabel, roleLabel } from "@/lib/labels";
 import { relativeTime } from "@/lib/time";
 import type { LocationSnapshot, Reading } from "@/lib/types";
 
@@ -249,8 +249,17 @@ function LocationRow({ snapshot }: { snapshot: LocationSnapshot }) {
             <td className="px-3 py-2">
                 <ReadingCell snapshot={snapshot} role="humidity" />
             </td>
-            <td className="text-muted px-3 py-2 whitespace-nowrap">
-                {lastMotion ? relativeTime(lastMotion) : "—"}
+            <td className="px-3 py-2 whitespace-nowrap">
+                <span className="text-muted">{lastMotion ? relativeTime(lastMotion) : "—"}</span>
+                {activeDetections(snapshot).length > 0 ? (
+                    <span className="ml-2 inline-flex gap-1">
+                        {activeDetections(snapshot).map((detection) => (
+                            <Badge key={detection.role} variant="info">
+                                {detection.label}
+                            </Badge>
+                        ))}
+                    </span>
+                ) : null}
             </td>
             <td className="px-3 py-2">
                 {contactsOpen > 0 ? (
@@ -389,6 +398,28 @@ function unavailableCount(snapshot: LocationSnapshot): number {
     return Object.values(snapshot.readings ?? {})
         .flat()
         .filter((reading) => !reading.available).length;
+}
+
+/**
+ * Активные детекции камеры: человек / животное / машина (спека 017).
+ *
+ * @param snapshot Снимок локации.
+ * @returns Список активных детекций с подписями.
+ */
+function activeDetections(snapshot: LocationSnapshot): Array<{ role: string; label: string }> {
+    const roles = ["person", "animal", "vehicle"];
+    return roles
+        .map((role) => {
+            const reading = firstReading(snapshot, role);
+            if (!reading || !reading.available) {
+                return null;
+            }
+            const on = ["on", "true", "1", "detected"].includes(
+                String(reading.value).toLowerCase(),
+            );
+            return on ? { role, label: roleLabel(role) } : null;
+        })
+        .filter((item): item is { role: string; label: string } => item !== null);
 }
 
 /**
