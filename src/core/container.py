@@ -65,6 +65,9 @@ class PlatformContext:
     day_cycle: Any = None
     deco_watcher: Any = None
     deployment: Any = None
+    #: Наблюдение за локациями (спека 016): последние показания датчиков и
+    #: снимки. Нужно интерфейсу, чтобы отдавать снимок и историю.
+    location_state: Any = None
 
     async def shutdown(self) -> None:
         """Idempotent shutdown: watchdog, adapter, FSM engine, dispatcher cleanup loop.
@@ -151,6 +154,8 @@ class Container:
         self._day_cycle: DayCycleService | None = None
         self._deco_watcher: DecorativeLightWatcher | None = None
         self._ventilation_watchdog: Any | None = None
+        # Наблюдение за локациями (спека 016): снимки и история.
+        self._location_state: Any | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
@@ -649,6 +654,7 @@ class Container:
         self._start_deco_watcher()
         self._start_ventilation_watchdog()
         self._start_sensor_health()
+        self._start_location_state()
 
         return PlatformContext(
             day_cycle=self._day_cycle,
@@ -666,6 +672,8 @@ class Container:
             # была ложной, то есть мёртвой веткой. Сторож читает состояния
             # движка, поэтому порядок в shutdown() важен (FR-017).
             watchdog=self._watchdog,
+            # Наблюдение за локациями (спека 016): снимок и история.
+            location_state=self._location_state,
             # Менеджер развёртывания обязан быть в контексте: режим должен быть
             # виден снаружи (`/health`), иначе оператор снова не может отличить
             # режим тени от активного — ровно тот случай, что породил #77.
@@ -856,6 +864,24 @@ class Container:
             return
         self._ventilation_watchdog.start()
         logger.info(f"Сторож вентиляции: {self._ventilation_watchdog.describe()}")
+
+    def _start_location_state(self) -> None:
+        """Подписать наблюдение за локациями на изменения состояний (спека 016).
+
+        Снимок собирается из событий шины ``state_change``, которые публикует
+        адаптер после фильтра подписки. Единицы измерения берутся у адаптера:
+        они читаются из Home Assistant, а не дублируются в манифесте — второе
+        место правды разошлось бы с домом.
+
+        Returns:
+            Ничего.
+        """
+        from core.services.location_state import LocationStateService
+
+        adapter = self._adapter
+        unit_provider = getattr(adapter, "get_entity_unit", None)
+        self._location_state = LocationStateService(self.manifest, unit_provider=unit_provider)
+        self._location_state.subscribe(self.event_bus)
 
     def _start_sensor_health(self) -> None:
         """Запустить наблюдение за батарейками датчиков, если это возможно.
