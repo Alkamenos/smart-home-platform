@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test test-verbose test-fast test-block check-fast test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm frontend-install frontend-build frontend-lint frontend-test dev-frontend
+.PHONY: help test test-verbose test-fast test-block check-fast test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap sync-prod-manifest changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm frontend-install frontend-build frontend-lint frontend-test dev-frontend
 
 # Default target
 help:
@@ -223,6 +223,10 @@ sync-roadmap:
 	@echo "📊 Syncing roadmap..."
 	@python .ai/scripts/sync_roadmap.py
 	@echo "✅ ROADMAP.md updated"
+
+# Эталон манифеста всегда приводится к боевому (правило владельца 2026-10-14).
+sync-prod-manifest:
+	@bash .ai/scripts/sync_prod_manifest.sh
 
 # Changelog generation
 changelog:
