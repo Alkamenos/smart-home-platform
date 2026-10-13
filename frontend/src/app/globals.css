@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/*
+ * Токены интерфейса инженера (спека 017, R-10).
+ * Тёмная тема по умолчанию, спокойные поверхности, акцент только на важном.
+ */
+@theme {
+    --color-background: #0b0f17;
+    --color-surface: #121826;
+    --color-surface-2: #1a2233;
+    --color-border: #232c3d;
+    --color-foreground: #e6eaf2;
+    --color-muted: #8b95a7;
+    --color-accent: #4f8cff;
+    --color-accent-foreground: #ffffff;
+    --color-success: #34d399;
+    --color-warning: #fbbf24;
+    --color-danger: #f87171;
+
+    --font-sans:
+        ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+        "Noto Sans", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+    html {
+        color-scheme: dark;
+    }
+
+    body {
+        background-color: var(--color-background);
+        color: var(--color-foreground);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+    }
+
+    /* Текущее состояние автомата на схеме (спека 017, FR-022). */
+    .fsm-current rect,
+    .fsm-current polygon,
+    .fsm-current circle,
+    .fsm-current path {
+        stroke: var(--color-accent);
+        stroke-width: 3px;
+    }
+}
