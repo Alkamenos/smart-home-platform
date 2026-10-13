@@ -98,6 +98,24 @@ else
     info "⚛️  Diff по коду: $diff_size/500 строк"
 fi
 
+# 7. Фронтенд нового интерфейса (спека 017). Проверки запускаются только когда
+#    в коммит попали файлы frontend/ — иначе каждый коммит платил бы за сборку
+#    фронтенда. Репозиторий использует .githooks, а не pre-commit-фреймворк,
+#    поэтому проверки продублированы здесь, а не только в .pre-commit-config.yaml.
+if git diff --cached --name-only | grep -q '^frontend/'; then
+    info "🧩 Проверка фронтенда (eslint, tsc, vitest)..."
+    if ! command -v pnpm &>/dev/null; then
+        warn "pnpm не найден — проверка фронтенда пропущена (установи pnpm)"
+    else
+        if ! (cd "$ROOT/frontend" && pnpm exec eslint && pnpm exec tsc --noEmit); then
+            fail "❌ Фронтенд: eslint/tsc не прошли"
+        fi
+        if ! (cd "$ROOT/frontend" && pnpm exec vitest run --reporter=dot); then
+            fail "❌ Фронтенд: тесты не прошли"
+        fi
+    fi
+fi
+
 info "✅ Все статические проверки пройдены"
 
 # ──────────────────────────────────────────────
