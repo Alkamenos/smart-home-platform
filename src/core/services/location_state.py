@@ -22,7 +22,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -88,9 +88,11 @@ class LocationStateService:
         manifest: Manifest,
         *,
         unit_provider: Callable[[str], str | None] | None = None,
+        state_reader: Callable[[str], Awaitable[str | None]] | None = None,
     ) -> None:
         self._manifest = manifest
         self._unit_provider = unit_provider
+        self._state_reader = state_reader
         self._rules = manifest.automation_rules.locations
         self._locations: dict[str, _LocationDefinition] = {}
         #: Сущность → [(локация, роль)]: один датчик бывает привязан к двум
@@ -317,6 +319,36 @@ class LocationStateService:
             if entity == entity_id:
                 return role
         return None
+
+    async def prime(self) -> int:
+        """Прочитать текущие значения привязанных датчиков (FR-001).
+
+        Без этого снимок на старте пуст: платформа узнаёт о датчике только из
+        события изменения, а у датчика, который не менялся (контакт окна), события
+        нет вовсе — и «что сейчас в комнате» оставалось бы неизвестным до первого
+        изменения. Чтение идёт **мимо журнала**: это не изменение показателя, а
+        его текущее значение, и запись его в журнал была бы потоком «каждую
+        минуту», который спека запрещает (FR-006).
+
+        Returns:
+            Сколько показаний прочитано. Ноль, если читать нечем.
+        """
+        if self._state_reader is None:
+            return 0
+        read = 0
+        for entity_id in sorted(self._roles_by_entity):
+            try:
+                value = await self._state_reader(entity_id)
+            except Exception as exc:  # noqa: BLE001 — один датчик не мешает другим
+                logger.warning(f"Наблюдение за локациями: {entity_id} не прочитан: {exc}")
+                continue
+            if value is None:
+                continue
+            self.record(entity_id, value)
+            read += 1
+        if read:
+            logger.info(f"Наблюдение за локациями: прочитано текущих показаний — {read}")
+        return read
 
     def describe(self) -> dict[str, Any]:
         """Описание наблюдения для журнала при старте (FR-012).

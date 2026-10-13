@@ -15,6 +15,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
+
 from core.models.manifest import (
     AutomationRules,
     InstanceConfig,
@@ -221,6 +223,66 @@ class TestStaleThreshold:
 
         assert described["locations"] == 3
         assert "sensor.t_spalnia" in described["silent"]
+
+
+class TestPrime:
+    """Первичное чтение показаний (FR-001): снимок не пуст на старте."""
+
+    @pytest.mark.asyncio
+    async def test_prime_reads_all_bound_sensors(self) -> None:
+        """Чтение заполняет снимок значениями датчиков."""
+        states = {
+            "sensor.t_spalnia": "22.0",
+            "binary_sensor.m_spalnia": "off",
+            "binary_sensor.okno_spalnia": "on",
+            "sensor.t_ulitsa": "14.4",
+            "sensor.pochva": "unavailable",
+        }
+
+        async def reader(entity_id: str) -> str | None:
+            return states.get(entity_id)
+
+        service = LocationStateService(_manifest(), state_reader=reader)
+
+        read = await service.prime()
+
+        assert read == len(states)
+        snapshot = service.snapshot("spalnia")
+        assert snapshot.readings["temperature"][0].value == 22.0
+        assert snapshot.derived["contacts_open"] == ["binary_sensor.okno_spalnia"]
+
+    @pytest.mark.asyncio
+    async def test_prime_without_reader_reads_nothing(self) -> None:
+        """Без чтения состояний снимок остаётся пустым, ошибки нет."""
+        assert await LocationStateService(_manifest()).prime() == 0
+
+    @pytest.mark.asyncio
+    async def test_prime_survives_broken_sensor(self) -> None:
+        """Отказ одного датчика не отменяет остальные."""
+        called: list[str] = []
+
+        async def reader(entity_id: str) -> str | None:
+            called.append(entity_id)
+            if entity_id == "sensor.t_spalnia":
+                raise RuntimeError("нет связи")
+            return "off"
+
+        service = LocationStateService(_manifest(), state_reader=reader)
+
+        read = await service.prime()
+
+        assert read == len(called) - 1, "отказ одного датчика остановил чтение остальных"
+
+    @pytest.mark.asyncio
+    async def test_prime_skips_missing_values(self) -> None:
+        """Неизвестное значение не записывается выдуманным."""
+
+        async def reader(_: str) -> str | None:
+            return None
+
+        service = LocationStateService(_manifest(), state_reader=reader)
+
+        assert await service.prime() == 0
 
 
 class TestUnitProvider:

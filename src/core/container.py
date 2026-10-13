@@ -156,6 +156,8 @@ class Container:
         self._ventilation_watchdog: Any | None = None
         # Наблюдение за локациями (спека 016): снимки и история.
         self._location_state: Any | None = None
+        #: Фоновая задача первичного чтения показаний локаций.
+        self._location_prime_task: Any | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
@@ -882,8 +884,46 @@ class Container:
 
         adapter = self._adapter
         unit_provider = getattr(adapter, "get_entity_unit", None)
-        self._location_state = LocationStateService(self.manifest, unit_provider=unit_provider)
+        state_reader = getattr(adapter, "get_entity_state", None)
+        self._location_state = LocationStateService(
+            self.manifest, unit_provider=unit_provider, state_reader=state_reader
+        )
         self._location_state.subscribe(self.event_bus)
+        self._schedule_location_prime()
+
+    def _schedule_location_prime(self) -> None:
+        """Прочитать текущие показания датчиков, когда появится связь с домом.
+
+        Снимок собирается из событий, а событий на старте нет: читаем значения
+        сами — иначе «что сейчас в комнате» неизвестно до первого изменения
+        (FR-001). Чтение идёт в фоне и не мешает сборке платформы; без рабочего
+        цикла событий задача не создаётся.
+
+        Returns:
+            Ничего.
+        """
+        service = self._location_state
+        adapter = self._adapter
+        if service is None or adapter is None:
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Первичное чтение локаций не запущено: нет работающего цикла")
+            return
+
+        async def _prime() -> None:
+            """Дождаться связи с домом и прочитать показания."""
+            for _ in range(60):
+                if getattr(adapter, "is_connected", False):
+                    break
+                await asyncio.sleep(1.0)
+            try:
+                await service.prime()
+            except Exception as exc:  # noqa: BLE001 — чтение не должно ронять платформу
+                logger.warning(f"Первичное чтение локаций не удалось: {exc}")
+
+        self._location_prime_task = asyncio.create_task(_prime())
 
     @property
     def location_state(self) -> Any:
