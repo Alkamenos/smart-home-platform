@@ -31,3 +31,27 @@ repos:
         language: system
         pass_filenames: false
         types: [ python ]
+
+      # Фронтенд нового интерфейса (спека 017, research R-13): проверки зеркальны
+      # питоновским, но запускаются только когда меняется frontend/ — иначе каждый
+      # коммит платил бы за сборку фронта.
+      - id: frontend-lint
+        name: frontend (eslint + tsc)
+        entry: bash -c 'cd frontend && pnpm exec eslint --fix && pnpm exec tsc --noEmit'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|mjs|js)$
+        pass_filenames: false
+
+      - id: frontend-format
+        name: frontend (prettier)
+        entry: bash -c 'cd frontend && pnpm exec prettier --write .'
+        language: system
+        files: ^frontend/
+        pass_filenames: false
+
+      - id: frontend-test
+        name: frontend (vitest)
+        entry: bash -c 'cd frontend && pnpm exec vitest run --reporter=dot'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false

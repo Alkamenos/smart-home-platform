@@ -1,3 +1,15 @@
+# Стадия сборки фронтенда (спека 017): интерфейс собирается в статику, в
+# рантайме Node не нужен. Из контекста исключены node_modules/.next/out
+# (.dockerignore) — собираются здесь.
+FROM node:lts-slim AS frontend
+WORKDIR /frontend
+RUN corepack enable
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY frontend/ ./
+RUN pnpm build
+
+
 # Production Dockerfile для Behavioral Platform
 # ВАЖНО: требуется Python >= 3.12 — src/webui/app.py использует PEP 695
 # (def _run_coroutine[T](...)), который не парсится на 3.11 (SyntaxError).
@@ -40,6 +52,10 @@ RUN pip install --no-cache-dir \
 
 # СЛОЙ 3: Копируем исходный код (изменяется часто)
 COPY src/ ./src/
+# Собранный фронтенд (спека 017): статика кладётся в образ и раздаётся самой
+# платформой; переменная включает раздачу вместо старых серверных страниц.
+COPY --from=frontend /frontend/out ./frontend/out
+ENV WEBUI_SERVE_FRONTEND=1
 # Конфигурация попадает в образ только как ПОСЕВ для тома: entrypoint
 # переносит её в $CONFIG_PATH, если каталог тома пуст. Копировать сразу в
 # $CONFIG_PATH нельзя — bind-mount всё равно замаскирует её пустым каталогом.

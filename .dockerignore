@@ -49,3 +49,10 @@ deploy/docker/*
 
 .DS_Store
 Thumbs.db
+
+# Фронтенд (спека 017): зависимости и сборка делаются в отдельной стадии образа,
+# из контекста исключаются — иначе node_modules раздувал бы передачу контекста.
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/coverage

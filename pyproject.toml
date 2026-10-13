@@ -82,7 +82,7 @@ testpaths = ["tests"]
 # test_webui_playwright.py исключён: playwright sync API держит running event loop
 # на весь прогон и ломает последующие async-тесты (Known Issue #13).
 # Запускать отдельно: pytest tests/test_webui_playwright.py
-addopts = "-v --cov=src --import-mode=importlib --ignore=tests/test_webui_playwright.py"
+addopts = "-v --cov=src --import-mode=importlib"
 timeout = 30
 
 # Метки для быстрого внутреннего цикла (B30): «проверь своё» должно быть одной

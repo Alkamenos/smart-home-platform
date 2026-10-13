@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test test-verbose test-fast test-block check-fast test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm
+.PHONY: help test test-verbose test-fast test-block check-fast test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm frontend-install frontend-build frontend-lint frontend-test dev-frontend
 
 # Default target
 help:
@@ -20,9 +20,9 @@ help:
 	@echo "  make test-integration - Run integration tests with real HA in Docker"
 	@echo "  make watch         - Run tests in watch mode (auto-rerun on changes)"
 	@echo ""
-	@echo "  Note: browser tests (tests/test_webui_playwright.py) are excluded"
-	@echo "  from the full suite because playwright sync API holds a running"
-	@echo "  event loop and breaks subsequent async tests (Known Issue #13)."
+	@echo "  Note: browser tests (frontend/tests/e2e, Playwright) are excluded"
+	@echo "  from the full suite: they need a built frontend and a running"
+	@echo "  platform. Run separately with 'make test-browser'."
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make lint          - Run linter (ruff/flake8)"
@@ -62,9 +62,9 @@ install-dev:
 # убирало 163 теста в 14 файлах (8.4% набора), нигде об этом не сообщая.
 # Исключения с причинами перечислены в specs/009-test-coverage/contracts/verification-funnel.md.
 #
-# Браузерные тесты (tests/test_webui_playwright.py, 25 шт.) исключены из общего
-# прогона: playwright sync API держит running event loop и ломает последующие
-# async-тесты (Known Issue #13). Запускаются отдельной целью `make test-browser`.
+# Браузерные тесты (frontend/tests/e2e, Playwright) исключены из общего прогона:
+# нужен собранный фронт и работающая платформа. Запускаются отдельной целью
+# `make test-browser`.
 
 test:
 	pytest --cov=. --cov-report=term-missing
@@ -90,10 +90,10 @@ test-block:
 # Внутренний цикл целиком: статика и быстрые тесты одной командой.
 check-fast: lint type-check test-fast
 
-# Браузерные тесты — объявленное исключение, поэтому отдельной целью,
-# а не молчаливым исчезновением из результата.
+# Браузерные тесты нового интерфейса (спека 017): Playwright во фронтенде.
+# Нужны собранный фронт (make frontend-build) и запущенная платформа.
 test-browser:
-	pytest tests/test_webui_playwright.py -v --no-cov
+	cd frontend && pnpm test:e2e
 
 test-single:
 	@if [ -z "$(FILE)" ]; then \
@@ -160,11 +160,30 @@ run-mock:
 run-webui:
 	@echo "🌐 Starting WebUI server..."
 	@echo "Open http://localhost:8000 in your browser"
-	uvicorn src.webui.app:create_app --factory --reload --host 0.0.0.0 --port 8000
+	WEBUI_SERVE_FRONTEND=1 uvicorn src.webui.app:create_app --factory --reload --host 0.0.0.0 --port 8000
 
 run-webui-prod:
 	@echo "🌐 Starting WebUI server (production mode)..."
-	uvicorn src.webui.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 4
+	WEBUI_SERVE_FRONTEND=1 uvicorn src.webui.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 4
+
+# Фронтенд нового интерфейса (спека 017). Сборка кладёт статику в frontend/out,
+# которую раздаёт сама платформа (WEBUI_SERVE_FRONTEND=1).
+frontend-install:
+	@echo "📦 Installing frontend dependencies..."
+	cd frontend && pnpm install
+
+frontend-build:
+	@echo "🏗️  Building frontend (static export)..."
+	cd frontend && pnpm build
+
+frontend-lint:
+	cd frontend && pnpm lint && pnpm typecheck
+
+frontend-test:
+	cd frontend && pnpm test
+
+dev-frontend:
+	cd frontend && pnpm dev
 
 run-simulator: run-mock
 
