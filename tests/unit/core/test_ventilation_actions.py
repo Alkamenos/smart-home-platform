@@ -402,6 +402,28 @@ class TestStartupReapply:
         assert guard(None, context) is False
 
 
+class TestDeviceIsOff:
+    """Остановленный прибор: сторож сообщает факт, шаблон решает (B54)."""
+
+    def test_off_flag_allows_power_on(self) -> None:
+        """Признак остановки разрешает подтверждение с включением.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("device_is_off")
+        assert guard(None, {"_device_is_off": True}) is True
+
+    def test_without_flag_refuses(self) -> None:
+        """Без признака остановки включать нельзя — только режим.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("device_is_off")
+        assert guard(None, {**DEFAULTS}) is False
+
+
 class TestSpeedWithinLimits:
     """Скорость зависит от температуры улицы и времени суток (FR-052, FR-053)."""
 

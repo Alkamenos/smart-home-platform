@@ -835,14 +835,19 @@ class Container:
         Рекуператор может «соскочить» с заданного режима сам, между событиями
         датчика: в бою 2026-10-13 платформа отправляла «Приток MAX», а через
         2–5 минут прибор снова стоял на «Рекуперации (зиме)», и вернуть его было
-        нечем. Сторож раз в интервал подтверждает решение автоматов вентиляции.
+        нечем. Второе наблюдение того же дня (B54): прибор может быть
+        **остановлен**, хотя автомат считает себя в работе — команда принята
+        Home Assistant, но не применена прибором. Сторож раз в интервал
+        подтверждает решение автоматов вентиляции и читает настоящее состояние
+        прибора: остановленному сообщается одноразовый факт `_device_is_off`, и
+        шаблон подтверждает решение включением.
 
         Returns:
             Ничего.
         """
         from core.services.ventilation_watchdog import VentilationWatchdog
 
-        self._ventilation_watchdog = VentilationWatchdog(engine=self.fsm)
+        self._ventilation_watchdog = VentilationWatchdog(engine=self.fsm, adapter=self._adapter)
         try:
             asyncio.get_running_loop()
         except RuntimeError:

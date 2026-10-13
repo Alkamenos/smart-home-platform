@@ -13,6 +13,15 @@
 что делать: жарко — подтвердить «Приток MAX», жара прошла — вернуть обычный
 режим. Команда уходит, только если состояние действительно меняется.
 
+Второе наблюдение того же дня (B54): прибор может быть **остановлен**, хотя
+автомат считает себя в работе. Команда бывает принята Home Assistant
+(«выполнен»), но не применена прибором — в бою кабинет включился только со
+второй попытки. Подтверждение шлёт только режим, поэтому остановленный
+рекуператор сам не поднимется. Сторож читает настоящее состояние прибора
+(`get_entity_state`) и, если он `off`, сообщает автомату одноразовый факт
+`_device_is_off`: шаблон сам решает, что это вход, и уходит с включением прибора.
+Факт читает сторож, решение принимает шаблон — как и в остальных пересмотрах.
+
 Интервал — минуты, а не секунды: сторож не должен превращаться в поток команд.
 Значение по умолчанию — 5 минут: дрейф прибора заметен, а работы почти нет.
 """
@@ -40,15 +49,28 @@ class VentilationWatchdog:
     Args:
         engine: Движок автоматов.
         interval_minutes: Как часто подтверждать решение. По умолчанию 5 минут.
+        adapter: Адаптер Home Assistant для чтения состояния прибора. Без него
+            сторож только подтверждает решение (как раньше): остановленный прибор
+            он заметить не сможет.
     """
 
-    def __init__(self, engine: FSMEngine, interval_minutes: float = 5.0) -> None:
+    def __init__(
+        self,
+        engine: FSMEngine,
+        interval_minutes: float = 5.0,
+        adapter: Any | None = None,
+    ) -> None:
         self.engine = engine
         self.interval_minutes = interval_minutes
+        self._adapter = adapter
         self._task: asyncio.Task[None] | None = None
 
     async def check_once(self) -> None:
         """Подтвердить решение каждого автомата вентиляции.
+
+        Перед подтверждением читается настоящее состояние прибора: если он
+        остановлен, автомат получает одноразовый признак ``_device_is_off``, и
+        шаблон подтверждает решение включением, а не одним режимом.
 
         Returns:
             Ничего.
@@ -56,10 +78,45 @@ class VentilationWatchdog:
         for entity_id in self.engine.entities_with_trigger("settings_changed"):
             if VENTILATION_MARKER not in entity_id:
                 continue
+            external_ctx = await self._device_off_context(entity_id)
             try:
-                await self.engine.trigger(entity_id, "settings_changed", respect_debounce=False)
+                await self.engine.trigger(
+                    entity_id,
+                    "settings_changed",
+                    external_ctx=external_ctx,
+                    respect_debounce=False,
+                )
             except Exception:  # noqa: BLE001 — один автомат не мешает остальным
                 logger.warning(f"Сторож вентиляции: {entity_id} не обработал подтверждение")
+
+    async def _device_off_context(self, entity_id: str) -> dict[str, Any] | None:
+        """Прочитать состояние прибора и назвать остановку.
+
+        Args:
+            entity_id: Идентификатор автомата вентиляции.
+
+        Returns:
+            ``{"_device_is_off": True}``, если прибор остановлен, иначе ``None``.
+            Неудача чтения — тоже ``None``: молчание прибора не повод слать
+            команду, а следующая проверка повторит попытку.
+        """
+        if self._adapter is None:
+            return None
+        device = self.engine.device_id_of(entity_id)
+        if not device:
+            return None
+        try:
+            state = await self._adapter.get_entity_state(device)
+        except Exception as exc:  # noqa: BLE001 — чтение не должно ронять сторожа
+            logger.warning(f"Сторож вентиляции: состояние {device} не прочитано: {exc}")
+            return None
+        if state is None or str(state).strip().lower() != "off":
+            return None
+        logger.info(
+            f"Сторож вентиляции: прибор {device} остановлен — "
+            f"{entity_id} подтвердит решение включением"
+        )
+        return {"_device_is_off": True}
 
     async def _run(self) -> None:
         """Подтверждать решение до остановки.

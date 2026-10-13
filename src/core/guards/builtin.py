@@ -633,6 +633,7 @@ def build_guards(
         "should_run_max_supply": make_should_run_max_supply(),
         "airing_should_end": make_airing_should_end(),
         "startup_reapply": make_startup_reapply(),
+        "device_is_off": make_device_is_off(),
         "speed_within_limits": make_speed_within_limits(),
         "covers_should_close": make_covers_should_close(),
         "covers_should_open": make_covers_should_open(),
@@ -1932,6 +1933,40 @@ def make_startup_reapply() -> Callable[[Any, dict[str, Any]], bool]:
     return startup_reapply
 
 
+def make_device_is_off() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «сторож сообщил, что прибор остановлен».
+
+    Команда может быть принята Home Assistant («выполнен»), но не применена
+    прибором: на боевой приёмке 2026-10-13 кабинет включился только со второй
+    попытки (B54). Остановленный рекуператор сам не поднимется — подтверждение
+    шлёт только режим (включение с процентом повторять нельзя, оно сбрасывает
+    режим), — поэтому сторож читает настоящее состояние прибора и сообщает факт
+    «прибор off» одноразовым признаком, а решение принимает шаблон: вход в
+    «Приток MAX» уходит с включением прибора.
+
+    Признак одноразовый (ключ с ведущим подчёркиванием), в накопленный контекст
+    он не попадает — иначе всплыл бы на следующем событии.
+
+    Returns:
+        Функция ``(state, context) -> bool``.
+    """
+
+    def device_is_off(state: Any, context: dict[str, Any]) -> bool:
+        """Проверить, что сторож сообщил об остановленном приборе.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если прибор остановлен.
+        """
+        del state
+        return bool(context.get("_device_is_off"))
+
+    return device_is_off
+
+
 def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «посчитать скорость и ограничить её».
 
@@ -2370,6 +2405,7 @@ REGISTERED_GUARDS = (
     "should_run_max_supply",
     "airing_should_end",
     "startup_reapply",
+    "device_is_off",
     "speed_within_limits",
     "covers_should_close",
     "covers_should_open",

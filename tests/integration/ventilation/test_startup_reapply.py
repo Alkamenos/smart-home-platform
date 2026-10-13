@@ -255,6 +255,32 @@ class TestStartupReapply:
         )
 
     @pytest.mark.asyncio
+    async def test_stopped_device_is_powered_on(self) -> None:
+        """Признак остановки прибора превращает подтверждение во вход (B54).
+
+        Returns:
+            Ничего.
+        """
+        engine, router, dispatcher = _build()
+        _restore(engine, FAN_FSM, "AIRING")
+
+        await router.route_settings_change(
+            {
+                "outside_temperature": 0.0,
+                "is_winter": True,
+                "ventilation_on": True,
+                "_device_is_off": True,
+            }
+        )
+
+        assert dispatcher.services_for(FAN) == ["turn_on", "set_preset_mode"], (
+            f"остановленному прибору ушло {dispatcher.services_for(FAN)}: "
+            "подтверждение одним режимом не поднимет рекуператор"
+        )
+        fan_intents = [i for i in dispatcher.intents if i.device_id == FAN]
+        assert fan_intents[1].data["preset_mode"] == "Приток MAX"
+
+    @pytest.mark.asyncio
     async def test_startup_flag_does_not_survive_the_event(self) -> None:
         """Одноразовый признак запуска не переживает свой пересмотр (B43).
 
