@@ -370,6 +370,38 @@ class TestAiringShouldEnd:
         )
 
 
+class TestStartupReapply:
+    """Первый пересмотр после запуска платформы (B43, спека 014)."""
+
+    def test_startup_marker_allows_reapply(self) -> None:
+        """Восстановленный «Приток MAX» подтверждается как вход.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("startup_reapply")
+        assert guard(None, {**DEFAULTS, "startup_reapply": True}) is True
+
+    def test_without_marker_no_reapply(self) -> None:
+        """Обычный пересмотр идёт обычным путём — без включения прибора.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("startup_reapply")
+        assert guard(None, {**DEFAULTS}) is False
+
+    def test_exhaust_role_is_not_reapplied(self) -> None:
+        """У вытяжки нет «Притока MAX» — условие ей отказывает.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("startup_reapply")
+        context = {**DEFAULTS, "startup_reapply": True, "ventilation_role": "exhaust"}
+        assert guard(None, context) is False
+
+
 class TestSpeedWithinLimits:
     """Скорость зависит от температуры улицы и времени суток (FR-052, FR-053)."""
 
@@ -734,6 +766,22 @@ class TestAiringOn:
         ]
         assert steps[0].data == {"percentage": 100}
         assert steps[1].data == {"preset_mode": "Приток MAX"}
+
+    def test_airing_reassert_sends_only_mode(self) -> None:
+        """Подтверждение режима шлёт только режим, без включения.
+
+        Включение с процентом прибор обрабатывает с задержкой и сбрасывается на
+        базовый режим — в подтверждении его быть не должно.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_airing_reassert")(
+            None, {"entity_id": "fan.base_smart", "mode_airing": "Приток MAX"}
+        )
+        assert intent is not None
+        assert (intent.domain, intent.service) == ("fan", "set_preset_mode")
+        assert intent.data == {"preset_mode": "Приток MAX"}
 
     def test_airing_on_without_mode_is_silent(self) -> None:
         """Параметра режима нет — команды нет, но и выдумки нет.

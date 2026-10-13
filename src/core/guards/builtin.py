@@ -632,6 +632,7 @@ def build_guards(
         "mode_for_weather": make_mode_for_weather(),
         "should_run_max_supply": make_should_run_max_supply(),
         "airing_should_end": make_airing_should_end(),
+        "startup_reapply": make_startup_reapply(),
         "speed_within_limits": make_speed_within_limits(),
         "covers_should_close": make_covers_should_close(),
         "covers_should_open": make_covers_should_open(),
@@ -1898,6 +1899,39 @@ def make_airing_should_end() -> Callable[[Any, dict[str, Any]], bool]:
     return airing_should_end
 
 
+def make_startup_reapply() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «это первый пересмотр после запуска платформы».
+
+    При запуске автомат восстанавливает прежнее состояние, но входа в него нет —
+    и команда прибору не уходит: рекуператор остаётся в том режиме, в котором был,
+    а после потери питания — выключенным, хотя автомат считает себя в «Притоке
+    MAX» (боевая находка B43). Адаптер при подключении шлёт один общий пересмотр
+    ``settings_changed`` и помечает его этим признаком: тогда восстановленный
+    «Приток MAX» подтверждается как обычный вход — с включением прибора, — а
+    не только режимом.
+
+    Returns:
+        Функция ``(state, context) -> bool``.
+    """
+
+    def startup_reapply(state: Any, context: dict[str, Any]) -> bool:
+        """Проверить, что пересмотр пришёл от запуска платформы.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True для первого пересмотра и роли ``supply``.
+        """
+        del state
+        if not context.get("startup_reapply"):
+            return False
+        return _ventilation_role(context) == "supply"
+
+    return startup_reapply
+
+
 def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «посчитать скорость и ограничить её».
 
@@ -2335,6 +2369,7 @@ REGISTERED_GUARDS = (
     "mode_for_weather",
     "should_run_max_supply",
     "airing_should_end",
+    "startup_reapply",
     "speed_within_limits",
     "covers_should_close",
     "covers_should_open",

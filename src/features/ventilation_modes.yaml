@@ -255,6 +255,17 @@ transitions:
     action: "airing_off"
     timeout_sec: 3600.0
 
+  # Первый пересмотр после запуска платформы: автомат восстановил «Приток MAX»,
+  # но входа в это состояние не было, и команда прибору не уходила — рекуператор
+  # оставался в прежнем режиме, а после потери питания и вовсе выключенным (B43).
+  # Подтверждаем как обычный вход — с включением прибора. Стоит ПЕРВЫМ среди
+  # settings_changed: остальные переходы решают по показанию.
+  - from_state: "AIRING"
+    to_state: "AIRING"
+    trigger: "settings_changed"
+    guard: "startup_reapply"
+    action: "fan_airing_on"
+
   # Жарко и уже в «Притоке MAX» — подтвердить режим прибору. Перехода из AIRING
   # в AIRING не было, и команда не уходила: прибор оставался на прежнем режиме —
   # в бою 2026-10-13 «Рекуперация (зима)» на ночном минимуме 14 %, хотя в комнате
@@ -264,12 +275,12 @@ transitions:
     to_state: "AIRING"
     trigger: "temperature_changed"
     guard: "should_run_max_supply"
-    action: "fan_airing_on"
+    action: "fan_airing_reassert"
   - from_state: "AIRING"
     to_state: "AIRING"
     trigger: "settings_changed"
     guard: "should_run_max_supply"
-    action: "fan_airing_on"
+    action: "fan_airing_reassert"
 
   # Жара прошла, а прибор всё ещё на максимальном притоке — вернуть обычный
   # режим, не дожидаясь часового таймера (иначе дом переохладится). Стоит после
@@ -309,6 +320,16 @@ transitions:
     # Значение по умолчанию; манифест переопределяет через exhaust_seconds
     # (factory: _TIMEOUT_OVERRIDE_KEYS).
     timeout_sec: 3600.0
+
+  # Вытяжка уже работает, но пришёл пересмотр настроек (в том числе первый после
+  # запуска платформы): подтвердить прибору решение. Иначе восстановленный автомат
+  # считал бы себя в вытяжке, а прибор стоял (B43). Стоит ДО остановки: пока вытяжка
+  # нужна, она подтверждается, а не гасится.
+  - from_state: "EXHAUST"
+    to_state: "EXHAUST"
+    trigger: "settings_changed"
+    guard: "should_run_exhaust"
+    action: "exhaust_on"
 
   # Вытяжка больше не нужна: модификатор снят и санузел в норме (T086), либо
   # вентиляции работать нельзя.

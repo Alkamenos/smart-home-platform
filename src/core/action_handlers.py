@@ -974,12 +974,15 @@ def fan_airing_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
     проветривание и следующий переход поставил бы «Приток MAX» вместо обычного
     режима (боевой урок: состояние накопительное, research.md D17).
 
+    Действие для ВХОДА в ``AIRING``: прибор мог быть выключен, поэтому он ещё и
+    включается. Подтверждение уже работающего прибора — ``fan_airing_reassert``.
+
     Args:
         state: Состояние автомата (не используется).
         context: Контекст с ``entity_id`` и ``mode_airing``.
 
     Returns:
-        Шаги: режим максимального притока, затем включение прибора.
+        Шаги: включение прибора, затем режим максимального притока.
     """
     del state
     mode = context.get("mode_airing")
@@ -1000,6 +1003,36 @@ def fan_airing_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
         {**context, "preset_mode": mode}, "set_preset_mode", "fan_airing_on", keys=("preset_mode",)
     )
     return [step for step in (power, preset) if step is not None]
+
+
+def fan_airing_reassert(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Подтвердить режим максимального притока, НЕ трогая включение.
+
+    Нужно в состоянии ``AIRING``: прибор уже работает, и его надо лишь удержать
+    на «Притоке MAX». Включение с процентом здесь нельзя — прибор обрабатывает
+    его с задержкой и переключается на базовый режим, «соскакивая» с максимума
+    (боевой разбор 2026-10-13: через 17 секунд после подтверждения прибор снова
+    стоял на «Рекуперации (зиме)»). Сам «Приток MAX» форсирует 100, поэтому
+    скорости не нужно.
+
+    Args:
+        state: Состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и ``mode_airing``.
+
+    Returns:
+        Команда режима либо ``None`` без устройства или названия режима.
+    """
+    del state
+    mode = context.get("mode_airing")
+    if not isinstance(mode, str) or not mode.strip():
+        logger.warning("fan_airing_reassert: нет режима проветривания (mode_airing) в контексте")
+        return None
+    return _fan_intent(
+        {**context, "preset_mode": mode},
+        "set_preset_mode",
+        "fan_airing_reassert",
+        keys=("preset_mode",),
+    )
 
 
 def fan_apply_mode_and_speed(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
@@ -1254,6 +1287,7 @@ ACTION_HANDLERS: dict[str, Any] = {
     "fan_set_percentage": fan_set_percentage,
     "fan_set_preset": fan_set_preset,
     "fan_airing_on": fan_airing_on,
+    "fan_airing_reassert": fan_airing_reassert,
     "fan_apply_mode_and_speed": fan_apply_mode_and_speed,
     "exhaust_on": exhaust_on,
     "exhaust_off": exhaust_off,

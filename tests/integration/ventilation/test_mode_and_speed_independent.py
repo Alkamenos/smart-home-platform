@@ -292,9 +292,10 @@ class TestSupplyModeFollowsWinterModifier:
             context=_context(outside_temperature=0.0, comfort_max=25.0),
         )
 
-        assert dispatcher.services() == ["turn_on", "set_preset_mode"], (
+        assert dispatcher.services() == ["set_preset_mode"], (
             f"на новом показании ушло {dispatcher.services()} вместо подтверждения "
-            "режима: прибор при жаре должен оставаться в «Притоке MAX» (и включён)"
+            "режима: прибор при жаре должен оставаться в «Притоке MAX», и включение "
+            "в подтверждении не шлётся (оно сбрасывает режим)"
         )
         assert dispatcher.intents[-1].data["preset_mode"] == "Приток MAX"
 
