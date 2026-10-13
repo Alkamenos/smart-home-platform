@@ -380,7 +380,7 @@ class TestStartupReapply:
             Ничего.
         """
         guard = _guard("startup_reapply")
-        assert guard(None, {**DEFAULTS, "startup_reapply": True}) is True
+        assert guard(None, {**DEFAULTS, "_startup_reapply": True}) is True
 
     def test_without_marker_no_reapply(self) -> None:
         """Обычный пересмотр идёт обычным путём — без включения прибора.
@@ -398,7 +398,7 @@ class TestStartupReapply:
             Ничего.
         """
         guard = _guard("startup_reapply")
-        context = {**DEFAULTS, "startup_reapply": True, "ventilation_role": "exhaust"}
+        context = {**DEFAULTS, "_startup_reapply": True, "ventilation_role": "exhaust"}
         assert guard(None, context) is False
 
 

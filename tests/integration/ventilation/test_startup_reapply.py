@@ -188,7 +188,7 @@ _STARTUP: dict[str, Any] = {
     "outside_temperature": 0.0,
     "is_winter": True,
     "ventilation_on": True,
-    "startup_reapply": True,
+    "_startup_reapply": True,
 }
 
 
@@ -246,16 +246,37 @@ class TestStartupReapply:
         engine, router, dispatcher = _build()
         _restore(engine, FAN_FSM, "AIRING")
 
-        await router.route_settings_change(
-            {
-                **_STARTUP,
-                "startup_reapply": False,
-                "temperature": 28.0,
-                "comfort_max": 25.0,
-            }
-        )
+        context = {k: v for k, v in _STARTUP.items() if k != "_startup_reapply"}
+        await router.route_settings_change({**context, "temperature": 28.0, "comfort_max": 25.0})
 
         assert dispatcher.services_for(FAN) == ["set_preset_mode"], (
             f"обычный пересмотр ушёл как {dispatcher.services_for(FAN)}: включение "
             "с процентом в подтверждении сбрасывает режим прибора"
+        )
+
+    @pytest.mark.asyncio
+    async def test_startup_flag_does_not_survive_the_event(self) -> None:
+        """Одноразовый признак запуска не переживает свой пересмотр (B43).
+
+        Если он останется в накопленном контексте, следующее событие — тик
+        сторожа — снова отправит включение с процентом и сбросит режим прибора
+        (боевая находка 2026-10-13: признак всплыл через пять минут).
+
+        Returns:
+            Ничего.
+        """
+        engine, router, dispatcher = _build()
+        _restore(engine, FAN_FSM, "AIRING")
+
+        await router.route_settings_change({**_STARTUP, "temperature": 28.0, "comfort_max": 25.0})
+        assert dispatcher.services_for(FAN) == ["turn_on", "set_preset_mode"]
+        dispatcher.intents.clear()
+
+        # Следующий пересмотр — уже без признака запуска (как тик сторожа).
+        context = {k: v for k, v in _STARTUP.items() if k != "_startup_reapply"}
+        await router.route_settings_change({**context, "temperature": 28.0, "comfort_max": 25.0})
+
+        assert dispatcher.services_for(FAN) == ["set_preset_mode"], (
+            f"через пять минут ушло {dispatcher.services_for(FAN)}: одноразовый "
+            "признак запуска пережил событие и снова включил прибор с процентом"
         )

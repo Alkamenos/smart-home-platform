@@ -162,11 +162,11 @@ async def test_startup_reapply_only_on_first_connect() -> None:
 
     first: dict[str, Any] = route.await_args_list[0].args[0]
     second: dict[str, Any] = route.await_args_list[1].args[0]
-    assert first["startup_reapply"] is True, (
+    assert first["_startup_reapply"] is True, (
         "первый пересмотр не помечен как запуск: восстановленный «Приток MAX» "
         "не включит прибор (B43)"
     )
-    assert second["startup_reapply"] is False, (
+    assert second["_startup_reapply"] is False, (
         "при переподключении снова шлётся включение с процентом: оно сбрасывает "
         "режим прибора (боевой разбор 2026-10-13)"
     )

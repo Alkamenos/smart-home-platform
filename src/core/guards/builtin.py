@@ -1925,7 +1925,7 @@ def make_startup_reapply() -> Callable[[Any, dict[str, Any]], bool]:
             True для первого пересмотра и роли ``supply``.
         """
         del state
-        if not context.get("startup_reapply"):
+        if not context.get("_startup_reapply"):
             return False
         return _ventilation_role(context) == "supply"
 
