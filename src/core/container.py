@@ -876,12 +876,27 @@ class Container:
         Returns:
             Ничего.
         """
+        if self._location_state is not None:
+            return
         from core.services.location_state import LocationStateService
 
         adapter = self._adapter
         unit_provider = getattr(adapter, "get_entity_unit", None)
         self._location_state = LocationStateService(self.manifest, unit_provider=unit_provider)
         self._location_state.subscribe(self.event_bus)
+
+    @property
+    def location_state(self) -> Any:
+        """Наблюдение за локациями (спека 016).
+
+        Сервис создаётся по требованию: интерфейсу он нужен и тогда, когда
+        ``build()`` ещё не вызывался.
+
+        Returns:
+            Сервис наблюдения: снимки локаций и их история.
+        """
+        self._start_location_state()
+        return self._location_state
 
     def _start_sensor_health(self) -> None:
         """Запустить наблюдение за батарейками датчиков, если это возможно.

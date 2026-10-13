@@ -271,6 +271,12 @@ def create_app(
 
     app.include_router(discovery_router)
 
+    # Состояние и история локаций (спека 016, FR-007). Регистрируется рядом с
+    # основными маршрутами: снимок читается у платформы, история — из журнала.
+    from .routes.locations import router as locations_router
+
+    app.include_router(locations_router)
+
     # US4/T004: регистрация middleware контроля доступа (идентификация на
     # device-endpoints). Регистрируется ДО включения маршрутов — действует
     # на все пути, но проверяет только область /api/v1/devices/**
