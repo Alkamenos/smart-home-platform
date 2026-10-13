@@ -34,6 +34,9 @@ class _Client:
 
     def __init__(self) -> None:
         self.ventilation_on: bool | None = None
+        #: Числовые переключатели: порог «жарко» и уставка комнаты.
+        self.comfort_max: float | None = None
+        self.climate_setpoint: float | None = None
 
     def global_role(self, entity: str) -> str | None:
         """Роль глобальной сущности по её идентификатору.
@@ -50,6 +53,8 @@ class _Client:
             "input_boolean.zima": "season",
             "input_boolean.provetrivanie": "airing",
             "input_boolean.provetrivanie_vytyazhka": "exhaust",
+            "input_number.maksimalno_komfortnaia_temperatura": "comfort_max",
+            "input_number.temperatura": "setpoint",
             "sensor.datchik_temperatury_kabinet_temperature": None,
         }.get(entity)
 
@@ -99,6 +104,72 @@ async def test_season_modifier_reevaluates_ventilation() -> None:
     await adapter.on_state_change("input_boolean.zima", "off", "on", {})
 
     route.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_comfort_max_change_reevaluates_ventilation_immediately() -> None:
+    """Смена потолка комфорта пересматривает вентиляцию сразу (B42).
+
+    Returns:
+        Ничего.
+    """
+    adapter, route, client = _build()
+    client.comfort_max = 23.0
+
+    await adapter.on_state_change(
+        "input_number.maksimalno_komfortnaia_temperatura", "23.0", "25.0", {}
+    )
+
+    route.assert_awaited_once()
+    context: dict[str, Any] = route.await_args.args[0]
+    assert context["comfort_max"] == 23.0, (
+        "роутер получил старый потолок комфорта: правило «жарко» решит по "
+        "прежнему порогу и приток включится не тогда, когда нужно"
+    )
+
+
+@pytest.mark.asyncio
+async def test_setpoint_change_reevaluates_ventilation_immediately() -> None:
+    """Смена уставки комнаты пересматривает вентиляцию сразу (B42).
+
+    Returns:
+        Ничего.
+    """
+    adapter, route, client = _build()
+    client.climate_setpoint = 22.0
+
+    await adapter.on_state_change("input_number.temperatura", "22.0", "22.5", {})
+
+    route.assert_awaited_once()
+    context: dict[str, Any] = route.await_args.args[0]
+    assert context["climate_setpoint"] == 22.0, (
+        "роутер получил старую уставку: правило «вентиляция стоит ниже уставки» "
+        "(FR-049) решит по прежней цели"
+    )
+
+
+@pytest.mark.asyncio
+async def test_startup_reapply_only_on_first_connect() -> None:
+    """Признак запуска ставится один раз, при переподключении — уже нет.
+
+    Returns:
+        Ничего.
+    """
+    adapter, route, _ = _build()
+
+    await adapter._route_settings_change_if_possible()
+    await adapter._route_settings_change_if_possible()
+
+    first: dict[str, Any] = route.await_args_list[0].args[0]
+    second: dict[str, Any] = route.await_args_list[1].args[0]
+    assert first["startup_reapply"] is True, (
+        "первый пересмотр не помечен как запуск: восстановленный «Приток MAX» "
+        "не включит прибор (B43)"
+    )
+    assert second["startup_reapply"] is False, (
+        "при переподключении снова шлётся включение с процентом: оно сбрасывает "
+        "режим прибора (боевой разбор 2026-10-13)"
+    )
 
 
 @pytest.mark.asyncio
