@@ -20,6 +20,12 @@
 рекуператор сам не поднимется. Сторож читает настоящее состояние прибора
 (`get_entity_state`) и, если он `off`, сообщает автомату одноразовый факт
 `_device_is_off`: шаблон сам решает, что это вход, и уходит с включением прибора.
+
+Третье, обратное (B55, тема B40): прибор может **работать**, когда автомат стоит
+(`IDLE`) — решения вентилировать не было, а вентиляция идёт. Такому автомату
+сторож сообщает факт `_device_is_on`, и шаблон гасит прибор, если никакого
+другого решения нет.
+
 Факт читает сторож, решение принимает шаблон — как и в остальных пересмотрах.
 
 Интервал — минуты, а не секунды: сторож не должен превращаться в поток команд.
@@ -72,9 +78,9 @@ class VentilationWatchdog:
     async def check_once(self) -> None:
         """Подтвердить решение каждого автомата вентиляции.
 
-        Перед подтверждением читается настоящее состояние прибора: если он
-        остановлен, автомат получает одноразовый признак ``_device_is_off``, и
-        шаблон подтверждает решение включением, а не одним режимом.
+        Перед подтверждением читается настоящее состояние прибора: остановленный
+        прибор автомат получает одноразовым признаком ``_device_is_off``, а
+        работающий при стоящем автомате — ``_device_is_on``. Шаблон решает сам.
 
         Returns:
             Ничего.
@@ -82,7 +88,7 @@ class VentilationWatchdog:
         for entity_id in self.engine.entities_with_trigger("settings_changed"):
             if VENTILATION_MARKER not in entity_id:
                 continue
-            external_ctx = await self._device_off_context(entity_id)
+            external_ctx = await self._device_state_context(entity_id)
             try:
                 await self.engine.trigger(
                     entity_id,
@@ -93,35 +99,47 @@ class VentilationWatchdog:
             except Exception:  # noqa: BLE001 — один автомат не мешает остальным
                 logger.warning(f"Сторож вентиляции: {entity_id} не обработал подтверждение")
 
-    async def _device_off_context(self, entity_id: str) -> dict[str, Any] | None:
-        """Прочитать состояние прибора и назвать остановку.
+    async def _device_state_context(self, entity_id: str) -> dict[str, Any] | None:
+        """Прочитать состояние прибора и назвать расхождение с решением.
 
-        Спрашивается только у работающего автомата: если он стоит (`IDLE`), то
-        выключенный прибор — норма, и признак не нужен ни одному переходу.
+        Расхождений два, и оба — одноразовые признаки для шаблона:
+
+        - автомат считает себя в работе, а прибор остановлен (``_device_is_off``):
+          команда могла не примениться, и подтверждение обязано включить прибор;
+        - автомат стоит (``IDLE``), а прибор работает (``_device_is_on``): решения
+          вентилировать не было, и прибор надо погасить.
 
         Args:
             entity_id: Идентификатор автомата вентиляции.
 
         Returns:
-            ``{"_device_is_off": True}``, если автомат считает себя в работе, а
-            прибор остановлен. Иначе ``None``. Неудача чтения — тоже ``None``:
-            молчание прибора не повод слать команду наугад, а следующая проверка
-            повторит попытку.
+            Признак расхождения либо ``None``, если прибор и решение согласны.
+            Неудача чтения — тоже ``None``: молчание прибора не повод слать
+            команду наугад, а следующая проверка повторит попытку.
         """
         if self._adapter is None:
             return None
         current = getattr(self.engine.get_state(entity_id), "current_state", None)
-        if current is None or current == IDLE_STATE:
-            return None
         device = self.engine.device_id_of(entity_id)
-        if not device:
+        if current is None or not device:
             return None
         try:
             state = await self._adapter.get_entity_state(device)
         except Exception as exc:  # noqa: BLE001 — чтение не должно ронять сторожа
             logger.warning(f"Сторож вентиляции: состояние {device} не прочитано: {exc}")
             return None
-        if state is None or str(state).strip().lower() != "off":
+        if state is None:
+            return None
+        reading = str(state).strip().lower()
+        if current == IDLE_STATE:
+            if reading != "on":
+                return None
+            logger.info(
+                f"Сторож вентиляции: прибор {device} работает, а автомат "
+                f"{entity_id} стоит — подтвердит решение гашением"
+            )
+            return {"_device_is_on": True}
+        if reading != "off":
             return None
         logger.info(
             f"Сторож вентиляции: прибор {device} остановлен, а автомат "

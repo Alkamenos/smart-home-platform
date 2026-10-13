@@ -65,6 +65,7 @@ registered_guards:  # реестр после register_all_guards
   - covers_should_close
   - covers_should_open
   - device_is_off
+  - device_is_on
   - exhaust_should_stop
   - has_usable_reading
   - humidity_above_60
@@ -324,8 +325,8 @@ templates:
   ventilation_modes:
     reachable: true
     in_manifest: []
-    actions: [fan_airing_on, exhaust_on, fan_apply_mode_and_speed, fan_set_percentage, fan_turn_off, airing_after_timeout, airing_off, fan_airing_reassert, exhaust_after_timeout, exhaust_off]
-    guards: [owner_wants_airing, should_run_max_supply, should_run_exhaust, mode_for_weather, speed_within_limits, ventilation_should_stop, device_is_off, startup_reapply, airing_should_end, exhaust_should_stop]
+    actions: [fan_airing_on, exhaust_on, fan_apply_mode_and_speed, fan_turn_off, fan_set_percentage, airing_after_timeout, airing_off, fan_airing_reassert, exhaust_after_timeout, exhaust_off]
+    guards: [owner_wants_airing, should_run_max_supply, should_run_exhaust, mode_for_weather, device_is_on, speed_within_limits, ventilation_should_stop, device_is_off, startup_reapply, airing_should_end, exhaust_should_stop]
     triggers:
       temperature_changed: sensor
       humidity_changed: sensor

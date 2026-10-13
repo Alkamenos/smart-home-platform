@@ -252,7 +252,28 @@ class TestStoppedDevice:
             "стоящему автомату шлётся признак остановки: он подтвердил бы решение "
             "включением прибора, которому положено стоять"
         )
-        assert adapter.reads == [], "состояние прибора читается даже для IDLE"
+
+    @pytest.mark.asyncio
+    async def test_working_device_with_idle_automaton_is_reported(self) -> None:
+        """Прибор работает, а автомат стоит — признак работы (B55).
+
+        Returns:
+            Ничего.
+        """
+        engine = _Engine(
+            ["fan.base_smart_ventilation_modes_10"],
+            devices={"fan.base_smart_ventilation_modes_10": "fan.base_smart"},
+            states={"fan.base_smart_ventilation_modes_10": "IDLE"},
+        )
+        adapter = _Adapter(state="on")
+        watchdog = VentilationWatchdog(engine=engine, adapter=adapter)  # type: ignore[arg-type]
+
+        await watchdog.check_once()
+
+        assert engine.contexts == [{"_device_is_on": True}], (
+            "автомат не узнал, что прибор работает при стоящем решении: "
+            "вентиляция идёт сама по себе (B40/B55)"
+        )
 
 
 def test_engine_type_is_used() -> None:

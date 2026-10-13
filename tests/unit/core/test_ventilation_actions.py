@@ -424,6 +424,28 @@ class TestDeviceIsOff:
         assert guard(None, {**DEFAULTS}) is False
 
 
+class TestDeviceIsOn:
+    """Работающий прибор при стоящем автомате: сторож сообщает, шаблон гасит."""
+
+    def test_on_flag_allows_turn_off(self) -> None:
+        """Признак работы разрешает гашение.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("device_is_on")
+        assert guard(None, {"_device_is_on": True}) is True
+
+    def test_without_flag_refuses(self) -> None:
+        """Без признака работы гасить нечего.
+
+        Returns:
+            Ничего.
+        """
+        guard = _guard("device_is_on")
+        assert guard(None, {**DEFAULTS}) is False
+
+
 class TestSpeedWithinLimits:
     """Скорость зависит от температуры улицы и времени суток (FR-052, FR-053)."""
 

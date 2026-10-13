@@ -281,6 +281,35 @@ class TestStartupReapply:
         assert fan_intents[1].data["preset_mode"] == "Приток MAX"
 
     @pytest.mark.asyncio
+    async def test_working_device_with_idle_automaton_is_turned_off(self) -> None:
+        """Прибор работает, а решения вентилировать не было — погасить (B55).
+
+        Комната холоднее уставки: обычный режим не выбирается, значит других
+        решений у автомата нет, и работающий прибор надо погасить.
+
+        Returns:
+            Ничего.
+        """
+        engine, router, dispatcher = _build()
+        _restore(engine, FAN_FSM, "IDLE")
+
+        await router.route_settings_change(
+            {
+                "outside_temperature": 0.0,
+                "is_winter": True,
+                "ventilation_on": True,
+                "temperature": 15.0,
+                "climate_setpoint": 22.0,
+                "_device_is_on": True,
+            }
+        )
+
+        assert dispatcher.services_for(FAN) == ["turn_off"], (
+            f"работающему прибору при стоящем автомате ушло "
+            f"{dispatcher.services_for(FAN)}: вентиляция шла бы без решения (B40/B55)"
+        )
+
+    @pytest.mark.asyncio
     async def test_startup_flag_does_not_survive_the_event(self) -> None:
         """Одноразовый признак запуска не переживает свой пересмотр (B43).
 

@@ -634,6 +634,7 @@ def build_guards(
         "airing_should_end": make_airing_should_end(),
         "startup_reapply": make_startup_reapply(),
         "device_is_off": make_device_is_off(),
+        "device_is_on": make_device_is_on(),
         "speed_within_limits": make_speed_within_limits(),
         "covers_should_close": make_covers_should_close(),
         "covers_should_open": make_covers_should_open(),
@@ -1967,6 +1968,37 @@ def make_device_is_off() -> Callable[[Any, dict[str, Any]], bool]:
     return device_is_off
 
 
+def make_device_is_on() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «сторож сообщил, что прибор работает».
+
+    Обратная сторона ``device_is_off`` (B55). Автомат стоит — значит решения
+    вентилировать не было. Если в это время прибор работает (владелец включил сам,
+    потерялась команда, команда не дошла), вентиляция идёт без решения: в бою
+    2026-10-12 рекуператор спальни работал, а автомат считал ``IDLE`` (B40).
+    Сторож читает настоящее состояние прибора и сообщает факт «прибор on»; шаблон
+    сам решает — гасит прибор, — но только когда никакого другого решения нет
+    (условие стоит последним в группе).
+
+    Returns:
+        Функция ``(state, context) -> bool``.
+    """
+
+    def device_is_on(state: Any, context: dict[str, Any]) -> bool:
+        """Проверить, что сторож сообщил о работающем приборе.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            True, если прибор работает.
+        """
+        del state
+        return bool(context.get("_device_is_on"))
+
+    return device_is_on
+
+
 def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «посчитать скорость и ограничить её».
 
@@ -2406,6 +2438,7 @@ REGISTERED_GUARDS = (
     "airing_should_end",
     "startup_reapply",
     "device_is_off",
+    "device_is_on",
     "speed_within_limits",
     "covers_should_close",
     "covers_should_open",
