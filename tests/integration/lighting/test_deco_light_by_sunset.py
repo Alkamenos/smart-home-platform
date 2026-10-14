@@ -268,10 +268,14 @@ class TestDecoLightDoesNotFollowMotion:
             "включалась по проходу и гасла через motion_timeout_sec"
         )
         assert "motion_cleared" not in triggers
-        assert "timeout" not in triggers, (
-            "у вечернего света нет таймера удержания: он горит до своего часа "
-            "выключения, а не десять минут после последнего прохода"
-        )
+        # Таймер у вечернего света есть, но **не** удержание по движению: это срок
+        # ручного оверрайда (60 минут, BACKLOG B57) — после ручного включения свет
+        # возвращается к автоматике. Удержания «десять минут после прохода» нет.
+        overrides = [t for t in template["transitions"] if t["trigger"] == "timeout"]
+        assert overrides, "нет возврата к автоматике по сроку оверрайда"
+        assert all(
+            t["from_state"] == "ON_MANUAL" and t["timeout_sec"] == 3600.0 for t in overrides
+        ), f"таймер вечернего света не про оверрайд: {overrides}"
 
     @pytest.mark.asyncio
     async def test_motion_event_leaves_decor_light_alone(self) -> None:
@@ -354,7 +358,18 @@ class TestDecoTemplateIsComplete:
         template = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
         listened = {t["trigger"] for t in template["transitions"] if t.get("trigger")}
 
-        produced = {"sunset_started", "sunrise_started", "sleep_started", "day_started"}
+        produced = {
+            "sunset_started",
+            "sunrise_started",
+            "sleep_started",
+            "day_started",
+            # Ручное действие человека и срок оверрайда: событие доставляет
+            # адаптер (изменение состояния сделал пользователь), а таймер —
+            # движок (BACKLOG B57).
+            "manual_switch_on",
+            "manual_switch_off",
+            "timeout",
+        }
         assert not (listened - produced), (
             f"шаблон слушает события, которых никто не порождает: {sorted(listened - produced)}"
         )

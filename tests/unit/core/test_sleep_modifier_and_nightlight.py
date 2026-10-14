@@ -174,7 +174,11 @@ class TestNightlightIsDimAndRed:
         )
 
     def test_nightlight_template_has_five_minute_timeout(self) -> None:
-        """В шаблоне ночника стоит таймаут в 300 секунд.
+        """Ночник: 300 с — удержание по движению, 3600 с — срок оверрайда.
+
+        Срок оверрайда (60 минут) появился вместе с возвратом к автоматике
+        (BACKLOG B57): ручное включение ночника возвращается к автоматике через
+        час, а автоматическое удержание по движению остаётся 5 минут.
 
         Returns:
             Ничего.
@@ -191,7 +195,8 @@ class TestNightlightIsDimAndRed:
             if transition["trigger"] == "timeout"
         ]
 
-        assert timeouts == [300.0], f"таймауты ночника: {timeouts}"
+        assert 300.0 in timeouts, f"нет автоматического удержания 300 с: {timeouts}"
+        assert 3600.0 in timeouts, f"нет срока оверрайда 3600 с: {timeouts}"
 
     def test_nightlight_requires_sleep_modifier(self) -> None:
         """Включение ночника обусловлено модификатором, а не только движением.

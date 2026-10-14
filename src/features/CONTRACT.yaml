@@ -198,13 +198,16 @@ templates:
     reachable: true
     in_manifest: []
     actions: [turn_on_light, turn_off_light]
-    guards: [is_manual_override_enabled, stops_on_sleep]
+    guards: [is_manual_override_enabled, stops_on_sleep, is_night_time]
     triggers:
       sunset_started: НЕТ ПРОИСХОДИТЕЛЯ
       sleep_started: НЕТ ПРОИСХОДИТЕЛЯ
       sunrise_started: НЕТ ПРОИСХОДИТЕЛЯ
       day_started: НЕТ ПРОИСХОДИТЕЛЯ
-    unproduced_triggers: [sunset_started, sleep_started, sunrise_started, day_started]
+      manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ
+      manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
+      timeout: engine
+    unproduced_triggers: [sunset_started, sleep_started, sunrise_started, day_started, manual_switch_on, manual_switch_off]
     gaps:
       - События заката и рассвета порождает адаптер по состоянию sun.sun, а не роутер: солнце не входит в манифест и в подписку, поэтому в карте SENSOR_EVENT_MAP его нет. Шаблон слушает то, чего роутер не публикует, и это нормально ровно до тех пор, пока события доставляет контейнер.
       - Включение по датчику освещённости не сделано: датчик сломан и ждёт замены (B31). Солнце уходит, а в доме ещё светло — при замене датчика для вечернего света это разные триггеры, и подменять один другим нельзя.
@@ -303,13 +306,15 @@ templates:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
     actions: [turn_on_night_light, turn_off_night_light]
-    guards: [modifier_is_on]
+    guards: [modifier_is_on, is_manual_override_enabled, is_night_time]
     triggers:
       motion_detected: sensor
       timeout: engine
       manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
       day_started: НЕТ ПРОИСХОДИТЕЛЯ
-    unproduced_triggers: [manual_switch_off, day_started]
+      manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ
+      sunrise_started: НЕТ ПРОИСХОДИТЕЛЯ
+    unproduced_triggers: [manual_switch_off, day_started, manual_switch_on, sunrise_started]
     gaps:
       - schedule_end не порождается — расписание не выключает ночной свет.
       - У состояния ON_NIGHT нет guard'а на ночь, поэтому оно достижимо и днём через motion_detected.

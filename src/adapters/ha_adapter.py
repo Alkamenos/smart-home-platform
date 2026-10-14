@@ -34,6 +34,13 @@ import aiohttp
 # Use standard logging instead of loguru for consistency with logging_service
 logger = logging.getLogger(__name__)
 
+#: Значения, означающие «включено» при ручном изменении: по ним автомату уходит
+#: ``manual_switch_on`` (BACKLOG B57).
+MANUAL_ON_VALUES = frozenset({"on", "open", "opening", "heat", "auto", "playing"})
+
+#: Значения, означающие «выключено»: автомату уходит ``manual_switch_off``.
+MANUAL_OFF_VALUES = frozenset({"off", "closed", "closing", "idle", "paused", "not_home"})
+
 
 # Предел ожидания закрытия WebSocket. Закрытие идёт по рукопожатию, и на
 # молчащем соединении оно может не прийти вовсе; ждать бесконечно означает
@@ -1385,6 +1392,44 @@ class HAAdapter:
             logger.warning(f"HAAdapter: единицы измерения прочитаны для {learned} сущностей")
         return learned
 
+    async def _route_manual_event(self, entity_id: str, new_state: str, log: Any) -> None:
+        """Отправить автоматам устройства ручное событие (BACKLOG B57).
+
+        Ручное изменение в Home Assistant меняет состояние прибора, и автомату
+        нужно узнать об этом, чтобы войти в ручное состояние и через срок
+        оверрайда вернуться к автоматике. События ``manual_switch_on``/
+        ``manual_switch_off`` уже объявлены шаблонами света; UI-путь их слал,
+        а изменения из Home Assistant — нет.
+
+        Args:
+            entity_id: Сущность, которую изменил человек.
+            new_state: Новое состояние.
+            log: Логгер с трассой.
+        """
+        engine = self._engine
+        get_fsms = getattr(engine, "get_entities_by_device", None)
+        trigger = getattr(engine, "trigger", None)
+        if not callable(get_fsms) or not callable(trigger):
+            return
+
+        value = str(new_state).strip().lower()
+        if value in MANUAL_ON_VALUES:
+            event = "manual_switch_on"
+        elif value in MANUAL_OFF_VALUES:
+            event = "manual_switch_off"
+        else:
+            return
+
+        for fsm_id in get_fsms(entity_id):
+            try:
+                await trigger(
+                    fsm_id,
+                    event,
+                    {"entity_id": entity_id, "target_device_id": entity_id, "source": "ha_manual"},
+                )
+            except Exception as e:  # noqa: BLE001 — ручное событие не должно ронять приём
+                log.warning(f"HAAdapter: ручное событие {event} не доставлено {fsm_id}: {e}")
+
     async def on_state_change(
         self,
         entity_id: str,
@@ -1392,6 +1437,14 @@ class HAAdapter:
         old_state: str,
         context: dict[str, Any] | None = None,
     ) -> None:
+        """Обработать изменение состояния из Home Assistant.
+
+        Args:
+            entity_id: Сущность.
+            new_state: Новое состояние.
+            old_state: Прежнее состояние.
+            context: Контекст события.
+        """
         context = context or {}
 
         user_id = context.get("user_id")
@@ -1488,6 +1541,16 @@ class HAAdapter:
                 )
             except Exception as e:
                 log.error(f"HAAdapter: EventRouter.route_state_change failed for {entity_id}: {e}")
+
+        # Ручное действие человека из Home Assistant: состояние меняет
+        # пользователь (есть `user_id`), а не платформа. Трекер это уже записал
+        # (из-за чего действует блокировка оверрайда), но автомату нужно
+        # **событие**, чтобы войти в ручное состояние и потом вернуться к
+        # автоматике через срок оверрайда (BACKLOG B57). Раньше такие изменения
+        # до автомата не доходили: ручное состояние умел только UI-путь, поэтому
+        # включённая руками гирлянда не возвращалась к автоматике.
+        if user_id and not own_action:
+            await self._route_manual_event(entity_id, new_state, log)
 
         # Переключатели вентиляции (владелец, фиче-флаг, сезон, проветривание и
         # вытяжка) живут в Home Assistant и приходят не от датчика. Автомат

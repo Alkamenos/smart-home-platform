@@ -38,6 +38,7 @@ debounce_sec: 0.5
 states:
   - "OFF"
   - "ON_NIGHT"
+  - "ON_MANUAL"
 
 transitions:
   # Движение, пока «мы спим» — включаем ночник. Guard читает состояние
@@ -88,3 +89,49 @@ transitions:
     to_state: "OFF"
     trigger: "day_started"
     action: null
+
+  # --- Ручное состояние: возврат к автоматике через срок оверрайда (B57) ---
+  #
+  # Ночник, включённый человеком, — ручное состояние: через 60 минут автомат
+  # возвращается к автоматике (ночью — снова ночной режим, днём — выключено),
+  # а не получает приказ «выключить». Концепция — .ai/02_ARCHITECTURE.md §7.
+  - from_state: "OFF"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    guard: "is_manual_override_enabled"
+    action: "turn_on_night_light"
+
+  # Новое ручное действие перезапускает срок: считаем от более позднего события.
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    action: null
+
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_off"
+    action: null
+
+  # Возврат к автоматике: ночью — ночной режим, днём — выключено.
+  - from_state: "ON_MANUAL"
+    to_state: "ON_NIGHT"
+    trigger: "timeout"
+    guard: "is_night_time"
+    action: "turn_on_night_light"
+    timeout_sec: 3600.0
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "timeout"
+    action: "turn_off_night_light"
+    timeout_sec: 3600.0
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "sunrise_started"
+    action: "turn_off_night_light"
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "day_started"
+    action: "turn_off_night_light"

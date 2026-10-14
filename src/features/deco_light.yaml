@@ -56,6 +56,7 @@ debounce_sec: 0.5
 states:
   - "OFF"
   - "ON_DECO"
+  - "ON_MANUAL"
 
 transitions:
   # Закат — вечерний свет включается.
@@ -145,3 +146,66 @@ transitions:
     to_state: "OFF"
     trigger: "day_started"
     action: null
+
+  # --- Ручное состояние: возврат к автоматике через срок оверрайда (B57) ---
+  #
+  # Человек включил или выключил свет сам (событие приходит из Home Assistant,
+  # когда состояние меняет пользователь). Автомат запоминает это как ручное
+  # состояние и через 60 минут **возвращается к автоматике** — пересчитывает
+  # решение, а не получает команду «выключить»: ночью это «горит» (ON_DECO),
+  # днём — «выключено», потому что днём декоративный свет автоматика не держит.
+  # Концепция — .ai/02_ARCHITECTURE.md §7.
+  - from_state: "OFF"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    guard: "is_manual_override_enabled"
+    action: "turn_on_light"
+
+  - from_state: "ON_DECO"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_off"
+    action: null
+
+  # Новое ручное действие перезапускает срок: считаем от более позднего события.
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    action: null
+
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_off"
+    action: null
+
+  # Возврат к автоматике: ночью — снова горит, днём — выключено.
+  - from_state: "ON_MANUAL"
+    to_state: "ON_DECO"
+    trigger: "timeout"
+    guard: "is_night_time"
+    action: "turn_on_light"
+    timeout_sec: 3600.0
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "timeout"
+    action: "turn_off_light"
+    timeout_sec: 3600.0
+
+  # Автоматика сильнее по своим событиям: рассвет и утро гасят свет.
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "sunrise_started"
+    action: "turn_off_light"
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "day_started"
+    action: "turn_off_light"
+
+  # Гирлянда гаснет вместе со «мы спим» (`off_by: sleep`); ночное освещение —
+  # нет, поэтому переход под условием.
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "sleep_started"
+    guard: "stops_on_sleep"
+    action: "turn_off_light"
