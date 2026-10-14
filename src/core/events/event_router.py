@@ -132,8 +132,12 @@ class EventRouter:
         # вентилятора кабинета). Раньше роль запоминалась один раз на сущность
         # через `setdefault`, и вторая комната получала маршрут без значения —
         # условие читало ключ, которого в контексте не было.
-        self._sensor_roles: dict[tuple[str, str], str] = {}
-        # Комната автомата и климат-автоматы комнаты: по ним в контекст события
+        self._sensor_roles: dict[
+            tuple[str, str], str
+        ] = {}  # Комната автомата и климат-автоматы комнаты: по ним в контекст события
+        #: Последнее измерение роли по паре «автомат, роль»: нужно пересмотру по
+        #: смене настройки, у которого нет собственного показания датчика.
+        self._last_measurements: dict[tuple[str, str], Any] = {}
         # кладётся признак «обогрев работает» (`heating_active`). Признак
         # **диагностический**: с 2026-10-12 (research.md D22, FR-055) ни одно
         # условие вентиляции его не читает — право вентиляции определяет уставка
@@ -219,6 +223,7 @@ class EventRouter:
 
         self._sensor_to_fsms.clear()
         self._sensor_roles.clear()
+        self._last_measurements.clear()
         self._fsm_to_room.clear()
         self._room_climate_fsms.clear()
         self._build_mapping()
@@ -327,6 +332,12 @@ class EventRouter:
             role = self._sensor_roles.get((entity_id, fsm_entity_id))
             if role:
                 external_ctx[role] = as_measurement(new_state)
+                # Последнее известное значение роли — чтобы пересмотр по смене
+                # настройки (`settings_changed`) видел те же показания, что и
+                # событие датчика: без этого условия вентиляции отказывали
+                # `guard_data_missing`, и выключатель владельца не пересчитывал
+                # режим (боевой разбор 2026-10-14).
+                self._last_measurements[(fsm_entity_id, role)] = external_ctx[role]
 
             logger.info(f"Routing: sensor={entity_id} → fsm={fsm_entity_id}, event={event_name}")
 
@@ -375,6 +386,13 @@ class EventRouter:
         entity_ids = self._engine.entities_with_trigger(self.SETTINGS_CHANGED)
         for fsm_entity_id in entity_ids:
             external_ctx = {**context}
+            # Последние показания датчиков комнаты: смена настройки не несёт
+            # собственного значения, а условиям вентиляции нужны температура и
+            # влажность. Без них пересмотр отказывал `guard_data_missing`, и
+            # решение владельца (выключатель, сезон, проветривание) не доходило.
+            for (fsm_id, role), value in self._last_measurements.items():
+                if fsm_id == fsm_entity_id:
+                    external_ctx.setdefault(role, value)
             heating = self._room_heating_active(fsm_entity_id)
             if heating is not None:
                 external_ctx["heating_active"] = heating
