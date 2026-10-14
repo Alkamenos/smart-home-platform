@@ -179,33 +179,33 @@ def _motion_echo_window(context: dict[str, Any]) -> float:
     return max(0.0, float(raw))
 
 
-def _motion_is_echo(state: Any, context: dict[str, Any], monotonic: Callable[[], float]) -> bool:
+def _motion_is_echo(context: dict[str, Any], wall_clock: Callable[[], float]) -> bool:
     """Считать ли движение эхом нашего же выключения света.
 
     Датчик, который видит сам свет (камера), срабатывает на смену освещённости:
     платформа гасит фонари, камера сообщает «движение», свет зажигается снова —
-    и мигает (боевой случай 2026-10-14). Признак эха — состояние автомата только
-    что вошло в «выключено»: значит, свет погасили мы сами.
+    и мигает (боевой случай 2026-10-14). Признак эха — время нашей команды
+    выключения (`light_off_at` в контексте состояния).
 
     Args:
-        state: Текущее состояние автомата.
         context: Контекст перехода.
-        monotonic: Источник монотонного времени.
+        wall_clock: Настенные часы (время команды тоже настенное и переживает
+            перезапуск платформы).
 
     Returns:
         True, если движение пришло в окне эха.
     """
     window = _motion_echo_window(context)
-    entered = getattr(state, "entered_at", None)
-    if window <= 0 or isinstance(entered, bool) or not isinstance(entered, (int, float)):
+    off_at = context.get("light_off_at")
+    if window <= 0 or isinstance(off_at, bool) or not isinstance(off_at, (int, float)):
         return False
-    return monotonic() - float(entered) <= window
+    return wall_clock() - float(off_at) <= window
 
 
 def make_may_turn_on(
     *,
     now: Callable[[Any], datetime] = _now_in,
-    monotonic: Callable[[], float] = time.monotonic,
+    wall_clock: Callable[[], float] = time.time,
 ) -> Callable[[Any, dict[str, Any]], bool]:
     """Построить guard «сейчас можно включать свет».
 
@@ -244,8 +244,8 @@ def make_may_turn_on(
 
     Args:
         now: Источник времени; подменяется в тестах.
-        monotonic: Источник монотонного времени; по нему считается «сколько
-            секунд назад свет был выключен».
+        wall_clock: Настенные часы; по ним считается «сколько секунд назад свет
+            был выключен» (время команды настенное и переживает перезапуск).
 
     Returns:
         Функция ``(state, context) -> bool``.
@@ -261,14 +261,7 @@ def make_may_turn_on(
         Returns:
             True, если включать можно.
         """
-        # Эхо датчика первым: движение, пришедшее в первые секунды после НАШЕГО
-        # выключения света, — это реакция датчика (камеры) на смену
-        # освещённости, а не человек. Боевой случай 2026-10-14: общая тревога
-        # камеры сада срабатывала через секунду после того, как платформа гасила
-        # фонари, и они зажигались снова — свет мигал, а «свет по движению»
-        # превращался в «горит всю ночь».
-        if _motion_is_echo(state, context, monotonic):
-            return False
+        del state  # состояние на решение не влияет: решает момент и комната
 
         # «Мы спим» — запрет первым и выше прочих: пока владелец держит
         # модификатор включённым, яркий свет не включается ни в одной комнате,
@@ -300,9 +293,6 @@ def make_may_turn_on(
         # включался (боевой дефект 2026-10-10, отказ `daylight` в санузле).
         # Поэтому солнце здесь не спрашивается вовсе.
         always_rooms = {str(item) for item in context.get("always_on_motion_rooms") or ()}
-        if room in always_rooms:
-            return True
-
         minutes = current.hour * 60 + current.minute
         start_minutes = start[0] * 60 + start[1]
         end_minutes = end[0] * 60 + end[1]
@@ -312,16 +302,25 @@ def make_may_turn_on(
             else minutes >= start_minutes or minutes <= end_minutes
         )
 
-        if in_quiet:
+        if room in always_rooms:
+            allowed = True
+        elif in_quiet:
             # Ночью при известном модификаторе решает только он: False —
             # владелец не спит, и движение включает свет, если темно (по
             # правилу владельца «свет по движению всегда, кроме периода мы
             # спим»). Окно тишины спрашивается, только когда сущности в доме
             # нет: тогда ночь уходит в ночные комнаты, как раньше.
-            if modifier is False:
-                return _dark_enough(context, current)
-            return room in night_rooms
-        return _dark_enough(context, current)
+            allowed = _dark_enough(context, current) if modifier is False else room in night_rooms
+        else:
+            allowed = _dark_enough(context, current)
+
+        if not allowed:
+            return False
+        # Последняя проверка — эхо датчика. Настоящие причины уже названы выше
+        # (см. `deny_reason`): эхо объясняет только тот случай, когда по всем
+        # правилам включать можно было, но движение пришло в первые секунды
+        # после нашего же выключения (камера увидела смену освещённости).
+        return not _motion_is_echo(context, wall_clock)
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
         """Назвать причину отказа: «мы спим», «ночь», «светло» или «нечем объяснить».
@@ -344,9 +343,7 @@ def make_may_turn_on(
             ночного окна без сущности модификатора, ``daylight``, если светло;
             иначе None.
         """
-        if _motion_is_echo(state, context, monotonic):
-            return "motion_echo"
-
+        del state
         modifier = context.get("sleep_modifier_on")
         if modifier is True:
             return "sleep_modifier"
@@ -379,6 +376,10 @@ def make_may_turn_on(
             return None
         if not _dark_enough(context, current):
             return "daylight"
+        # Настоящих причин нет: остаётся эхо датчика — движение в первые секунды
+        # после нашего же выключения (камера увидела смену освещённости).
+        if _motion_is_echo(context, wall_clock):
+            return "motion_echo"
         return None
 
     may_turn_on.deny_reason = deny_reason  # type: ignore[attr-defined]

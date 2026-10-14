@@ -412,6 +412,27 @@ def _diagnostic_context(context: dict[str, Any]) -> dict[str, Any]:
     return {key: context[key] for key in DIAGNOSTIC_CONTEXT_KEYS if key in context}
 
 
+def _turns_light_off(action: Any) -> bool:
+    """Гасит ли действие свет.
+
+    Нужно, чтобы условие включения света знало момент собственного выключения:
+    движение сразу после него — эхо датчика, а не человек (2026-10-14).
+
+    Args:
+        action: Имя действия перехода либо сама функция.
+
+    Returns:
+        True, если действие гасит свет.
+    """
+    return isinstance(action, str) and action in LIGHT_OFF_ACTIONS
+
+
+#: Действия, которые гасят свет. Перечислены явно, а не выведены из имени:
+#: «выключение» для света — только эти два, и догадка по подстроке записала бы
+#: сюда ещё и обогреватель.
+LIGHT_OFF_ACTIONS: Final[frozenset[str]] = frozenset({"turn_off_light", "turn_off_night_light"})
+
+
 class FSMEngine:
     """
     Async FSM Engine for smart home entities.
@@ -1435,6 +1456,17 @@ class FSMEngine:
             context_patch = await self._execute_action(
                 transition.action, entity_id, merged_context, log
             )
+            # Момент нашего выключения света запоминается в контексте состояния.
+            # Нужен условию включения: движение, пришедшее в первые секунды после
+            # НАШЕГО выключения, — это реакция датчика (камеры) на смену
+            # освещённости, а не человек; приняв его за человека, свет зажигается
+            # снова и мигает (боевой случай 2026-10-14, фонари сада).
+            #
+            # Считается по факту команды, а не по входу в состояние «выключено»:
+            # в него ведут и переходы без действия (расписание, «мы спим»), и по
+            # ним окно эха не должно открываться.
+            if _turns_light_off(transition.action):
+                context_patch = {**context_patch, "light_off_at": time.time()}
 
             new_context = _without_transient({**merged_context, **context_patch})
 
