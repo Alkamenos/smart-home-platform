@@ -1121,6 +1121,12 @@ def make_may_stay_idle() -> Callable[[Any, dict[str, Any]], bool]:
         del state
         if _temperature_value(context) is None:
             return False
+        if not _cooling_applicable(context):
+            # Обогреватель: «ничего не делать» — штатное решение, когда греть
+            # незачем по температуре. Гейт кондиционера к обогревателю не
+            # относится, и отказ «кондиционер запрещён» по обогревателю был
+            # шумом — около 720 записей в сутки (B66).
+            return _heating_denial(context) == "not_cold_enough"
         return _cooling_denial(context) == "not_above_comfort"
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
@@ -1136,6 +1142,10 @@ def make_may_stay_idle() -> Callable[[Any, dict[str, Any]], bool]:
         del state
         if _temperature_value(context) is None:
             return "guard_data_missing"
+        if not _cooling_applicable(context):
+            # Причину называет обогрев — она и мешала (климат выключен, нет
+            # уставки, в комнате свой термостат).
+            return _heating_denial(context)
         if _cooling_denial(context) == "not_above_comfort":
             return None
         return _cooling_denial(context) or "guard_data_missing"
@@ -1164,6 +1174,8 @@ def make_may_dry() -> Callable[[Any, dict[str, Any]], bool]:
             True, если осушение разрешено.
         """
         del state
+        if not _cooling_applicable(context):
+            return False
         return _drying_denial(context) is None
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
@@ -1177,10 +1189,29 @@ def make_may_dry() -> Callable[[Any, dict[str, Any]], bool]:
             Имя причины либо ``None``.
         """
         del state
+        if not _cooling_applicable(context):
+            return "not_applicable"
         return _drying_denial(context)
 
     may_dry.deny_reason = deny_reason  # type: ignore[attr-defined]
     return may_dry
+
+
+def _cooling_applicable(context: dict[str, Any]) -> bool:
+    """Относится ли охлаждение к этому прибору.
+
+    Обогреватель не охлаждает: переход «включить кондиционер» к нему не
+    относится, и это не отказ решения. Признак берётся из манифеста — параметр
+    поведения `cooling` объявляет кондиционер; без него прибор считается
+    обогревателем (B66).
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        True, если прибор умеет охлаждать.
+    """
+    return context.get("cooling") is True
 
 
 def _drying_denial(context: dict[str, Any]) -> str | None:
@@ -1231,6 +1262,8 @@ def make_may_cool() -> Callable[[Any, dict[str, Any]], bool]:
             True, если кондиционер можно включать.
         """
         del state
+        if not _cooling_applicable(context):
+            return False
         return _cooling_denial(context) is None
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
@@ -1244,6 +1277,8 @@ def make_may_cool() -> Callable[[Any, dict[str, Any]], bool]:
             Имя причины либо ``None``, когда охлаждать можно.
         """
         del state
+        if not _cooling_applicable(context):
+            return "not_applicable"
         return _cooling_denial(context)
 
     may_cool.deny_reason = deny_reason  # type: ignore[attr-defined]

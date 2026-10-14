@@ -42,7 +42,7 @@ def _ctx(temperature: Any = 27.0, **params: Any) -> dict[str, Any]:
     Returns:
         Словарь контекста.
     """
-    context: dict[str, Any] = {"room": "gostinaia", "sleep_modifier_on": False}
+    context: dict[str, Any] = {"room": "gostinaia", "sleep_modifier_on": False, "cooling": True}
     if temperature is not None:
         context["temperature"] = temperature
     context.update(params)
@@ -90,6 +90,34 @@ class TestCoolingAllowed:
         ctx = _ctx(COMFORT, is_winter=False, ac_allowed=True, comfort_max=COMFORT)
 
         assert guard(None, ctx) is False
+
+
+class TestCoolingNotApplicable:
+    """Обогреватель не охлаждает: переход к нему не относится (B66)."""
+
+    def test_heater_without_cooling_param_is_not_applicable(self) -> None:
+        """Без параметра `cooling` прибор считается обогревателем.
+
+        Returns:
+            Ничего.
+        """
+        guard = _may_cool()
+        context = _ctx(30.0, is_winter=False, ac_allowed=True, comfort_max=COMFORT)
+        context.pop("cooling")
+
+        assert guard(None, context) is False
+        assert guard.deny_reason(None, context) == "not_applicable"
+
+    def test_conditioner_with_flag_keeps_house_checks(self) -> None:
+        """У кондиционера запрет владельца остаётся своим именем, а не «не относится».
+
+        Returns:
+            Ничего.
+        """
+        guard = _may_cool()
+        context = _ctx(30.0, is_winter=False, ac_allowed=False, comfort_max=COMFORT)
+
+        assert guard.deny_reason(None, context) == "ac_not_allowed"
 
 
 class TestWinterForbids:

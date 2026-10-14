@@ -75,7 +75,7 @@ def _manifest(*, managed_by_hardware: bool = False) -> Manifest:
     Returns:
         Модель манифеста.
     """
-    params: dict[str, Any] = {"heater_timer": "number.ac_countdown"}
+    params: dict[str, Any] = {"heater_timer": "number.ac_countdown", "cooling": True}
     if managed_by_hardware:
         params["managed_by_hardware"] = True
     return Manifest(

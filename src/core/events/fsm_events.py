@@ -149,6 +149,13 @@ REASON_COVER_EMERGENCY: Final[str] = "cover_emergency"
 #: Фиче-флаг штор выключен: платформа шторы не трогает.
 REASON_COVERS_DISABLED: Final[str] = "covers_disabled"
 
+#: Переход не относится к этому прибору: у обогревателя нет охлаждения, и
+#: условие охлаждения говорит это прямо. Такой переход движок пропускает
+#: **молча** — это не отказ решения, а отсутствие самой возможности: иначе на
+#: каждое показание температуры в журнал шло бы «кондиционер запрещён» по
+#: обогревателю (B66, около 720 записей в сутки).
+REASON_NOT_APPLICABLE: Final[str] = "not_applicable"
+
 #: Причины, которые условие может назвать само (словарь ограничен, чтобы метрика
 #: не расползалась новыми метками). ``guard_data_missing`` здесь потому, что
 #: условие ночника тоже умеет назвать его само: модификатор «мы спим» — булево,
@@ -182,6 +189,7 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
         REASON_COVERS_DOGS_ONLY,
         REASON_COVER_EMERGENCY,
         REASON_COVERS_DISABLED,
+        REASON_NOT_APPLICABLE,
     }
 )
 
@@ -200,6 +208,7 @@ REASON_TEXT: Final[dict[str, str]] = {
     REASON_DAYLIGHT: "светло",
     REASON_SETPOINT_UNAVAILABLE: "уставка недоступна",
     REASON_CLIMATE_DISABLED: "климат отключен",
+    REASON_NOT_APPLICABLE: "переход к этому прибору не относится",
     REASON_AC_NOT_ALLOWED: "кондиционер запрещен",
     REASON_AC_FORBIDDEN_IN_WINTER: "кондиционер зимой не разрешен",
     REASON_NOT_ABOVE_COMFORT: "в комнате не жарко, выше потолка не поднялась",

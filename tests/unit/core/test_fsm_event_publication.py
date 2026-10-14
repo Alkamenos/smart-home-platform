@@ -258,6 +258,35 @@ class TestRejectedTransitions:
         assert len(noops) == 1, f"повторы засорили журнал: {len(noops)}"
         assert engine.rejection_counts().get(REASON_NO_TRANSITION) == 2
 
+    async def test_not_applicable_transition_is_skipped_silently(
+        self, engine: FSMEngine, published: list[tuple[str, dict[str, Any]]]
+    ) -> None:
+        """Переход, не относящийся к прибору, — не отказ и не решение (B66).
+
+        Обогреватель не охлаждает, и условие охлаждения говорит это прямо
+        (`not_applicable`). Если считать такой переход отказом, каждое показание
+        температуры даёт «кондиционер запрещён» по обогревателю — около 720
+        записей в сутки.
+        """
+
+        def deny(state: Any, context: dict[str, Any]) -> bool:
+            """Условие, называющее переход неприменимым."""
+            return False
+
+        deny.deny_reason = lambda state, context: "not_applicable"  # type: ignore[attr-defined]
+        engine.register_definition(make_definition(guard=deny))
+
+        await engine.trigger(FSM_ID, "motion_detected")
+        await flush(engine)
+
+        reasons = [item[1].get("reason") for item in published]
+        assert "not_applicable" not in reasons, "неприменимый переход попал в журнал"
+        assert "guard_failed" not in reasons, "неприменимый переход назван отказом условия"
+        assert reasons == [REASON_NO_TRANSITION], f"ожидалось «нет перехода»: {reasons}"
+        counts = engine.rejection_counts()
+        assert "not_applicable" not in counts, "неприменимый переход попал в счётчик"
+        assert "guard_failed" not in counts, f"неприменимый переход назван отказом: {counts}"
+
     async def test_should_publish_rejected_when_guard_fails(
         self, engine: FSMEngine, published: list[tuple[str, dict[str, Any]]]
     ) -> None:

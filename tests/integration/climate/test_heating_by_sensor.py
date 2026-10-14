@@ -310,6 +310,59 @@ ENGINE_EVENTS: set[str] = {"timeout"} | {
 }
 
 
+class TestCoolingBranchDoesNotApplyToHeater:
+    """Ветка охлаждения к обогревателю не относится (B66)."""
+
+    @pytest.mark.asyncio
+    async def test_real_blocker_is_still_named(self) -> None:
+        """Настоящая помеха обогреву остаётся названной, а не спрятанной.
+
+        Покой обогревателя теперь оправдан «незачем греть по температуре», но
+        выключенный владельцем климат обязан остаться отказом с причиной —
+        иначе утренний разбор не увидит, что мешало.
+
+        Returns:
+            Ничего.
+        """
+        engine, router, _dispatcher = _build()
+
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="18.0",
+            old_state="20.5",
+            context=_context("18.0", climate_enabled=False),
+        )
+
+        counts = engine.rejection_counts()
+        assert counts.get("climate_disabled") == 1, f"помеха не названа: {counts}"
+        assert "ac_not_allowed" not in counts, f"обогреватель отбивает охлаждение: {counts}"
+
+    @pytest.mark.asyncio
+    async def test_heater_never_reports_cooling_denial(self) -> None:
+        """Показание температуры по обогревателю не рождает отказ охлаждения.
+
+        Обогреватель не охлаждает, и шаблон климата общий с кондиционером:
+        раньше на каждое показание в журнал шло «кондиционер запрещён» — около
+        720 записей в сутки. Теперь условие называет переход неприменимым, и
+        движок пропускает его молча.
+
+        Returns:
+            Ничего.
+        """
+        engine, router, _dispatcher = _build()
+
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="24.0",
+            old_state="23.9",
+            context=_context("24.0"),
+        )
+
+        counts = engine.rejection_counts()
+        assert "ac_not_allowed" not in counts, f"обогреватель отбивает охлаждение: {counts}"
+        assert "ac_forbidden_in_winter" not in counts, f"сезон попал в обогреватель: {counts}"
+
+
 class TestTemplateListsItsOwnTriggers:
     """Шаблон должен слушать то, что платформа действительно публикует."""
 

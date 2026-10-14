@@ -33,6 +33,7 @@ from core.events.fsm_events import (
     REASON_GUARD_FAILED,
     REASON_NO_STATE,
     REASON_NO_TRANSITION,
+    REASON_NOT_APPLICABLE,
     REASON_TEXT,
     REASON_UNKNOWN_ENTITY,
     build_transition_payload,
@@ -1375,6 +1376,10 @@ class FSMEngine:
         # Причины отказов по условиям: отсутствие данных и «значение не подходят»
         # неразличимы в счётчике, если не различать их здесь.
         guard_denials: dict[str, str] = {}
+        # Сколько переходов оказалось неприменимо к прибору (у обогревателя нет
+        # охлаждения). Нужно, чтобы «нет подходящего перехода» не превратилось в
+        # отказ условия (B66).
+        not_applicable = 0
 
         # Process transitions (first valid one wins)
         for transition in matching_transitions:
@@ -1391,6 +1396,15 @@ class FSMEngine:
                     self._guard_denial_reason(transition.guard, current_state, merged_context)
                     or REASON_GUARD_FAILED
                 )
+
+            if missing == REASON_NOT_APPLICABLE:
+                # Переход к прибору не относится (у обогревателя нет охлаждения):
+                # это не отказ решения, и в журнал, счётчик отказов и последнее
+                # решение такое не пишется — иначе каждое показание температуры
+                # давало бы «кондиционер запрещён» по обогревателю (B66, около
+                # 720 записей в сутки).
+                not_applicable += 1
+                continue
 
             if missing is not None:
                 guard_denials.setdefault(missing, str(transition.guard))
@@ -1537,7 +1551,11 @@ class FSMEngine:
         # названная причина вроде ночного окна, и только потом общее
         # «условие не прошло». Раньше список понимал только первые два, и
         # ночной отказ приходил как безликое `guard_failed`.
-        if REASON_GUARD_DATA_MISSING in guard_denials:
+        if not guard_denials and not_applicable:
+            # Все подходящие переходы оказались неприменимы к прибору: честное
+            # имя — «нет подходящего перехода», а не отказ условия (B66).
+            reason = REASON_NO_TRANSITION
+        elif REASON_GUARD_DATA_MISSING in guard_denials:
             reason = REASON_GUARD_DATA_MISSING
         else:
             named = next((name for name in guard_denials if name in GUARD_DENIAL_REASONS), None)

@@ -171,6 +171,11 @@ templates:
         range: "true/false"
         effective: true
         note: "В комнате стоит штатный термостат; платформа обогревателем здесь не управляет (guards/builtin.py:make_may_heat)."
+      cooling:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "Прибор умеет охлаждать (кондиционер); по умолчанию false — обогреватель. Без этого параметра переходы COOLING и DRYING к прибору не относятся: условие называет причину `not_applicable`, и движок пропускает переход молча, а не пишет отказ `ac_not_allowed` (B66, около 720 записей в сутки)."
   cover_modes:
     reachable: true
     in_manifest: []
