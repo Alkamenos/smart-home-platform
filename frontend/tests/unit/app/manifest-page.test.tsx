@@ -4,6 +4,18 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/features/settings/manifest-editor", () => ({
+    // Редактор CodeMirror в jsdom не проверить; логика страницы (сохранение,
+    // ошибки) тестируется через простую textarea с тем же контрактом.
+    ManifestEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
+        <textarea
+            aria-label="Манифест"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+        />
+    ),
+}));
+
 import ManifestSettingsPage from "@/app/settings/manifest/page";
 import { resetIdentity } from "@/lib/api";
 
