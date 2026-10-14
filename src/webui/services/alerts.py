@@ -21,6 +21,9 @@ from pydantic import BaseModel
 KIND_STALE_SENSOR = "stale_sensor"
 KIND_UNAVAILABLE_SENSOR = "unavailable_sensor"
 KIND_UNAVAILABLE_DEVICE = "unavailable_device"
+# Расхождение «автомат ↔ прибор» (концепция §7, п. 4): решение есть, а прибор
+# его не отражает — команда не применилась либо прибор недоступен.
+KIND_DEVICE_MISMATCH = "device_mismatch"
 
 #: Значимость тревоги: ``warning`` — вмешаться, ``info`` — знать.
 SEVERITY_WARNING = "warning"
@@ -98,6 +101,70 @@ def build_alerts(locations: list[dict[str, Any]], devices: list[dict[str, Any]])
                 )
             )
 
+    return alerts
+
+
+#: Виды расхождения «автомат ↔ прибор» → человеческое объяснение.
+MISMATCH_LABELS = {
+    "device_on_decision_off": "горит, хотя решение — выключено",
+    "device_off_decision_on": "не горит, хотя решение — включить",
+    "device_unavailable": "не отвечает",
+}
+
+#: Те же виды для штор: про штору «горит» не говорят, у неё положение.
+MISMATCH_LABELS_COVER = {
+    "device_on_decision_off": "открыта, хотя решение — закрыть",
+    "device_off_decision_on": "закрыта, хотя решение — открыть",
+    "device_unavailable": "не отвечает",
+}
+
+
+def _mismatch_label(subject: str, reason: str) -> str:
+    """Назвать расхождение словами, подходящими прибору.
+
+    Args:
+        subject: Сущность прибора.
+        reason: Вид расхождения.
+
+    Returns:
+        Объяснение человеческим языком.
+    """
+    labels = MISMATCH_LABELS_COVER if subject.startswith("cover.") else MISMATCH_LABELS
+    return labels.get(reason, reason)
+
+
+def alerts_from_watchdog(snapshot: Any) -> list[Alert]:
+    """Собрать тревоги о расхождении «автомат ↔ прибор» из снимка сторожа.
+
+    Сторож читает фактическое состояние прибора у Home Assistant и называет
+    расхождение (``device_state``/``mismatch``). Здесь оно превращается в
+    тревогу, чтобы его видел не только журнал: «прибор горит, а решение —
+    выключено» — это то, что требует внимания, а не молчаливое согласие.
+
+    Args:
+        snapshot: Последний снимок сторожа (``FsmSnapshot``) либо ``None``.
+
+    Returns:
+        Список тревог; пустой, если сторожа нет или расхождений нет.
+    """
+    if snapshot is None:
+        return []
+    alerts: list[Alert] = []
+    for entry in getattr(snapshot, "entries", ()) or ():
+        reason = getattr(entry, "mismatch_reason", None)
+        if not reason:
+            continue
+        subject = getattr(entry, "device", "") or getattr(entry, "entity_id", "")
+        explained = _mismatch_label(str(subject), str(reason))
+        alerts.append(
+            Alert(
+                kind=KIND_DEVICE_MISMATCH,
+                subject=subject,
+                severity=SEVERITY_WARNING,
+                detail=f"{subject}: {explained} (прибор {getattr(entry, 'device_state', None)})",
+                at=None,
+            )
+        )
     return alerts
 
 

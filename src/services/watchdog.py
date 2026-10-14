@@ -33,12 +33,13 @@ import json
 import os
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from core.events.fsm_events import (
     EVENT_PLATFORM_PROBLEM,
+    PROBLEM_DEVICE_MISMATCH,
     PROBLEM_FSM_STUCK,
     PROBLEM_HA_DISCONNECTED,
 )
@@ -66,6 +67,33 @@ _TRUTHY_VALUES = ("1", "true", "yes", "on")
 CHECK_RESULT_OK = "ok"
 CHECK_RESULT_DEGRADED = "degraded"
 CHECK_RESULT_FAILED = "failed"
+
+# --- Расхождение «автомат ↔ прибор» (концепция §7, п. 4) --------------------
+#
+# Виды расхождения. Названы отдельно, потому что утренний разбор обязан
+# отличать «прибор горит, хотя решение — выключено» (команда не применилась)
+# от «решение — включить, а прибор не горит» и от «прибор недоступен».
+MISMATCH_DEVICE_ON_DECISION_OFF = "device_on_decision_off"
+MISMATCH_DEVICE_OFF_DECISION_ON = "device_off_decision_on"
+MISMATCH_DEVICE_UNAVAILABLE = "device_unavailable"
+
+#: Состояния прибора, означающие «включено».
+DEVICE_ON_STATES = frozenset({"on", "open", "opening"})
+
+#: Состояния прибора, означающие «выключено».
+DEVICE_OFF_STATES = frozenset({"off", "closed", "closing"})
+
+#: Состояния прибора, означающие «прибор не отвечает»: молчание — не согласие.
+DEVICE_UNAVAILABLE_STATES = frozenset({"unavailable", "unknown", "none"})
+
+#: Имена состояний автомата, означающие решение «прибор выключен». Нужны, когда
+#: движок не сохранил исход решения (переход без действия): тогда состояние
+#: читается по имени. Остальные известные состояния — «включён».
+IDLE_LIKE_STATES = frozenset({"OFF", "IDLE", "CLOSED", "STANDBY"})
+
+#: Имена состояний автомата, означающие работу прибора: рекуператор и климат
+#: называют работу словом, а не префиксом `ON`.
+ACTIVE_STATES = frozenset({"HEATING", "COOLING", "SUPPLY", "AIRING", "EXHAUST", "DRY", "OPEN"})
 
 # Значение метки, которым помечаются активные зависшие автоматы в показателях.
 STUCK_LABEL_VALUE = "1"
@@ -104,6 +132,10 @@ class FsmSnapshotEntry:
         stuck: Пребывание дольше ожидаемого.
         expected_timeout_sec: Ожидаемое время пребывания; ``None`` — состояние
             не проверяется зависанием.
+        device_state: Фактическое состояние прибора, прочитанное у внешней
+            системы; ``None`` — не читали или прибор не ответил.
+        mismatch_reason: Названное расхождение «автомат ↔ прибор»; ``None`` —
+            расхождения нет.
     """
 
     entity_id: str
@@ -113,6 +145,17 @@ class FsmSnapshotEntry:
     last_transition: str | None
     stuck: bool
     expected_timeout_sec: float | None
+    device_state: str | None = None
+    mismatch_reason: str | None = None
+
+    @property
+    def mismatch(self) -> bool:
+        """Расходится ли прибор с решением автомата.
+
+        Returns:
+            True, если расхождение названо.
+        """
+        return self.mismatch_reason is not None
 
 
 @dataclass(frozen=True)
@@ -169,6 +212,8 @@ class FsmSnapshot:
                         "last_transition": entry.last_transition,
                         "expected_timeout_sec": entry.expected_timeout_sec,
                         "stuck": entry.stuck,
+                        "device_state": entry.device_state,
+                        "mismatch": entry.mismatch_reason,
                     }
                     for entry in self.entries
                 },
@@ -188,12 +233,15 @@ class EngineProtocol(Protocol):
 
     def get_last_transition_time(self, entity_id: str) -> str | None: ...
 
+    def explain(self, entity_id: str) -> Any | None: ...
+
 
 class AdapterProtocol(Protocol):
     """Минимальный контракт внешней системы, нужный сторожу.
 
     Объявлен вместо импорта класса адаптера: сторож спрашивает лишь признак
-    связи и не должен зависеть от конкретной реализации (R-13).
+    связи и состояние прибора, и не должен зависеть от конкретной реализации
+    (R-13).
     """
 
     # Имя именно `is_connected`: так объявляют обе настоящие реализации —
@@ -201,6 +249,8 @@ class AdapterProtocol(Protocol):
     # `connected`, и сторож в контейнере падал каждый цикл с AttributeError.
     @property
     def is_connected(self) -> bool: ...
+
+    async def get_entity_state(self, entity_id: str) -> str | None: ...
 
 
 class MetricsProtocol(Protocol):
@@ -321,6 +371,31 @@ class _TrackedProblem:
     detected_monotonic: float
 
 
+def _device_mismatch_reason(expected: frozenset[str], actual: str | None) -> str | None:
+    """Назвать расхождение «автомат ↔ прибор».
+
+    Args:
+        expected: Допустимые состояния прибора по решению автомата.
+        actual: Фактическое состояние прибора; ``None`` — не прочитано.
+
+    Returns:
+        Вид расхождения либо ``None``, если прибор согласен с решением или
+        ответа не было (молчание — не согласие, но и не приговор: его называют
+        отдельным видом ``device_unavailable`` только по явному состоянию).
+    """
+    if actual is None:
+        return None
+    if actual in DEVICE_UNAVAILABLE_STATES:
+        return MISMATCH_DEVICE_UNAVAILABLE
+    if actual in expected:
+        return None
+    if actual in DEVICE_ON_STATES:
+        return MISMATCH_DEVICE_ON_DECISION_OFF
+    if actual in DEVICE_OFF_STATES:
+        return MISMATCH_DEVICE_OFF_DECISION_ON
+    return None
+
+
 @dataclass
 class WatchdogService:
     """Периодическая проверка состояний автоматов и связи с внешней системой.
@@ -353,6 +428,18 @@ class WatchdogService:
     _publish_tasks: set[asyncio.Task[None]] = field(default_factory=set)
 
     # Жизненный цикл
+
+    @property
+    def last_snapshot(self) -> FsmSnapshot | None:
+        """Последний снимок проверки.
+
+        Нужен читателям (готовность, тревоги интерфейса): без него «сторож
+        молчит» и «сторож не работает» неразличимы.
+
+        Returns:
+            Снимок либо ``None``, если проверок ещё не было.
+        """
+        return self._last_snapshot
 
     def start(self) -> None:
         """Запустить фоновый цикл проверок.
@@ -429,6 +516,7 @@ class WatchdogService:
             self._record_metrics(snapshot)
             return snapshot
 
+        entries = await self._with_device_states(entries)
         snapshot = self._with_connection(entries)
         self._last_snapshot = snapshot
         self._record_metrics(snapshot)
@@ -499,6 +587,106 @@ class WatchdogService:
             return False
         return (now - entered_at) > expected_sec + self.settings.stuck_grace_sec
 
+    async def _with_device_states(
+        self, entries: tuple[FsmSnapshotEntry, ...]
+    ) -> tuple[FsmSnapshotEntry, ...]:
+        """Дополнить снимок фактическим состоянием приборов (концепция §7, п. 4).
+
+        «Автомат ↔ прибор» — отдельное наблюдаемое состояние. Решение может быть
+        «выключено», а прибор гореть: команда не применилась, прибор недоступен,
+        кто-то включил свет мимо платформы. Без сверки такое расхождение невидимо,
+        и утренний разбор не отличает «не мог» от «сделал». Сбой чтения — не
+        расхождение: молчание внешней системы не повод объявлять отказ решения.
+
+        Args:
+            entries: Записи снимка по автоматам.
+
+        Returns:
+            Записи с фактическим состоянием прибора и названным расхождением.
+        """
+        reader = getattr(self.adapter, "get_entity_state", None)
+        if reader is None:
+            return entries
+
+        enriched: list[FsmSnapshotEntry] = []
+        for entry in entries:
+            expected = self._expected_device_state(entry.entity_id, entry.state)
+            if expected is None or not entry.device:
+                enriched.append(entry)
+                continue
+            actual = await self._read_device_state(reader, entry.device)
+            reason = _device_mismatch_reason(expected, actual)
+            if reason is not None:
+                logger.warning(
+                    f"Расхождение «автомат ↔ прибор»: {entry.device} — автомат "
+                    f"{entry.entity_id} в состоянии {entry.state}, прибор {actual!r} "
+                    f"({reason})"
+                )
+            enriched.append(replace(entry, device_state=actual, mismatch_reason=reason))
+        return tuple(enriched)
+
+    async def _read_device_state(self, reader: Any, entity_id: str) -> str | None:
+        """Прочитать состояние прибора, не роняя проверку.
+
+        Args:
+            reader: Асинхронный читатель состояния у адаптера.
+            entity_id: Сущность прибора.
+
+        Returns:
+            Состояние в нижнем регистре либо ``None``, если прибор не ответил.
+        """
+        try:
+            value = await reader(entity_id)
+        except Exception as exc:  # noqa: BLE001 — проверка обязана быть устойчивой
+            logger.warning(f"Сторож: состояние прибора {entity_id} не прочитано: {exc}")
+            return None
+        if value is None:
+            return None
+        return str(value).strip().lower()
+
+    def _expected_device_state(self, entity_id: str, state: str) -> frozenset[str] | None:
+        """Каким должен быть прибор по решению автомата.
+
+        Сначала спрашивается решение движка (``outcome`` — «on»/«off»): оно
+        записано действием перехода, а не выведено из имени состояния. Если
+        решения нет (переход без действия), состояние читается по имени:
+        ``OFF``/``IDLE``/``CLOSED`` — «выключено», ``ON*`` и работа климата и
+        вентиляции — «включено».
+
+        Args:
+            entity_id: Автомат.
+            state: Текущее состояние автомата.
+
+        Returns:
+            Допустимые состояния прибора; ``None`` — сверять нечего (состояние
+            неизвестно движку, и угадывать по нему нельзя).
+        """
+        device = self.fsm_engine.device_id_of(entity_id) or ""
+        is_cover = device.split(".", 1)[0] == "cover"
+
+        explain = getattr(self.fsm_engine, "explain", None)
+        outcome: str | None = None
+        if callable(explain):
+            decision = explain(entity_id)
+            outcome = getattr(decision, "outcome", None) if decision is not None else None
+
+        if outcome == "off":
+            device_on = False
+        elif outcome == "on":
+            device_on = True
+        else:
+            name = state.strip().upper()
+            if name in IDLE_LIKE_STATES:
+                device_on = False
+            elif name.startswith("ON") or name in ACTIVE_STATES:
+                device_on = True
+            else:
+                return None
+
+        if is_cover:
+            return frozenset({"open"}) if device_on else frozenset({"closed"})
+        return frozenset({"on"}) if device_on else frozenset({"off"})
+
     def _with_connection(self, entries: tuple[FsmSnapshotEntry, ...]) -> FsmSnapshot:
         """Дополнить снимок состоянием связи с внешней системой.
 
@@ -516,7 +704,7 @@ class WatchdogService:
         return FsmSnapshot(
             taken_at=_now_timestamp(),
             entries=entries,
-            problem_count=sum(1 for entry in entries if entry.stuck),
+            problem_count=sum(1 for entry in entries if entry.stuck or entry.mismatch),
             ha_checked=checked,
             ha_disconnected=disconnected,
         )
@@ -577,6 +765,24 @@ class WatchdogService:
         """
         self._sync_fsm_problems(snapshot)
         self._sync_connection_problem(snapshot)
+        self._sync_device_problems(snapshot)
+
+    def _sync_device_problems(self, snapshot: FsmSnapshot) -> None:
+        """Согласовать проблемы расхождения «автомат ↔ прибор» со снимком.
+
+        Публикация идёт только при появлении и устранении расхождения: повторная
+        проверка того же прибора новых событий не порождает (FR-016).
+
+        Args:
+            snapshot: Снимок после проверки.
+        """
+        for entry in snapshot.entries:
+            key = (PROBLEM_DEVICE_MISMATCH, entry.entity_id)
+            if entry.mismatch and key not in self._problems:
+                self._problems[key] = self._start_problem(PROBLEM_DEVICE_MISMATCH, entry.entity_id)
+                self._publish(PROBLEM_DEVICE_MISMATCH, entry.entity_id, entry.state, resolved=False)
+            elif not entry.mismatch and key in self._problems:
+                self._resolve_problem(key, state=entry.state)
 
     def _sync_fsm_problems(self, snapshot: FsmSnapshot) -> None:
         """Согласовать активные проблемы зависания со снимком.

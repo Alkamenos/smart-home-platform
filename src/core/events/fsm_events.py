@@ -30,6 +30,10 @@ EVENT_PLATFORM_PROBLEM: Final[str] = "platform.problem"
 # Виды проблем
 PROBLEM_FSM_STUCK: Final[str] = "fsm_stuck"
 PROBLEM_HA_DISCONNECTED: Final[str] = "ha_disconnected"
+# Расхождение «автомат ↔ прибор» (концепция §7, п. 4): решение есть, а прибор
+# его не отражает — команда не применилась либо прибор недоступен. Отдельное
+# наблюдаемое состояние, а не молчаливое согласие.
+PROBLEM_DEVICE_MISMATCH: Final[str] = "device_mismatch"
 
 # Признак выполненного перехода и признак отказа
 OUTCOME_TRANSITIONED: Final[str] = "transitioned"

@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 
 from webui.models import build_all_fsm_state_views
 from webui.routes import _resolve_accessible_device_ids, event_store
-from webui.services.alerts import build_alerts
+from webui.services.alerts import alerts_from_watchdog, build_alerts
 from webui.services.decisions import decision_view
 from webui.services.series import build_series
 
@@ -218,6 +218,14 @@ async def get_overview(request: Request) -> JSONResponse:
         )
 
     alerts = [alert.model_dump() for alert in build_alerts(locations, devices)]
+    # Расхождение «автомат ↔ прибор» считает сторож: он читает прибор у Home
+    # Assistant. Без этой строки «прибор горит, а решение — выключено» не видно
+    # ни в журнале, ни в интерфейсе (концепция §7, п. 4).
+    watchdog = getattr(container, "watchdog", None)
+    alerts.extend(
+        alert.model_dump()
+        for alert in alerts_from_watchdog(getattr(watchdog, "last_snapshot", None))
+    )
 
     return JSONResponse(
         {
