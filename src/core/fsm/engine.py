@@ -432,6 +432,13 @@ def _turns_light_off(action: Any) -> bool:
 #: сюда ещё и обогреватель.
 LIGHT_OFF_ACTIONS: Final[frozenset[str]] = frozenset({"turn_off_light", "turn_off_night_light"})
 
+#: Через сколько секунд повторять в журнале один и тот же отказ (автомат,
+#: событие, причина). Час: утренний разбор видит почасовой ряд повторов, а объём
+#: остаётся в `rejection_counts()`. Без этого ночник, отказывающий днём
+#: (`modifier_off`), и вентилятор, решающий «в санузле комфортно», давали около
+#: 1400 записей в сутки — журнал тонул в повторах (B67).
+REFUSAL_REPEAT_WINDOW_SEC: Final[float] = 3600.0
+
 
 class FSMEngine:
     """
@@ -482,6 +489,12 @@ class FSMEngine:
         # журнале: 389 таких записей за сутки делали утренний разбор дороже, чем
         # он должен быть, хотя каждая из них означает «повода не было» (B65).
         self._published_noops: set[tuple[str, str]] = set()
+        # Повторные отказы по одной и той же причине: журнал хранит **события**, а
+        # не поток. Одинаковый отказ (автомат, событие, причина) пишется раз в
+        # `REFUSAL_REPEAT_WINDOW_SEC`, объём остаётся в `rejection_counts()`.
+        # Иначе ночник, отказывающий днём, и вентилятор, решающий «в санузле
+        # комфортно», давали около 1400 записей в сутки (B67).
+        self._published_refusals: dict[tuple[str, str, str], float] = {}
         # Флаг возвращает прежнее поведение целиком — на случай разбора в доме,
         # где шум полезен. Нераспознанное значение флага шум не включает: тот же
         # принцип, что и в `SHADOW_MODE`.
@@ -663,6 +676,17 @@ class FSMEngine:
             if key in self._published_noops:
                 return
             self._published_noops.add(key)
+        else:
+            # Повтор одного и того же отказа — раз в `REFUSAL_REPEAT_WINDOW_SEC`:
+            # журнал отвечает на вопрос «что случилось», а не «сколько раз одно и
+            # то же не случилось». Объём не теряется — он в `rejection_counts()`,
+            # а ряд повторов виден почасовыми записями (B67).
+            repeat_key = (entity_id, event, reason)
+            seen_at = self._published_refusals.get(repeat_key)
+            moment = time.monotonic()
+            if seen_at is not None and moment - seen_at < REFUSAL_REPEAT_WINDOW_SEC:
+                return
+            self._published_refusals[repeat_key] = moment
 
         definition = self._definitions.get(entity_id)
         device_id = definition.target_device_id if definition else None

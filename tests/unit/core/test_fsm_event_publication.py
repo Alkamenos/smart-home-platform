@@ -287,6 +287,50 @@ class TestRejectedTransitions:
         assert "not_applicable" not in counts, "неприменимый переход попал в счётчик"
         assert "guard_failed" not in counts, f"неприменимый переход назван отказом: {counts}"
 
+    async def test_repeated_refusal_is_published_once_an_hour(
+        self, engine: FSMEngine, published: list[tuple[str, dict[str, Any]]]
+    ) -> None:
+        """Повтор одного отказа не засоряет журнал, но счётчик его помнит (B67).
+
+        Ночник, отказывающий днём (`modifier_off`), и вентилятор, решающий «в
+        санузле комфортно», давали около 1400 записей в сутки. Журнал отвечает на
+        вопрос «что случилось», а не «сколько раз одно и то же не случилось».
+        """
+
+        def deny(state: Any, context: dict[str, Any]) -> bool:
+            """Условие, называющее причину отказа."""
+            return False
+
+        deny.deny_reason = lambda state, context: "daylight"  # type: ignore[attr-defined]
+        engine.register_definition(make_definition(guard=deny))
+
+        await engine.trigger(FSM_ID, "motion_detected")
+        await engine.trigger(FSM_ID, "motion_detected")
+        await flush(engine)
+
+        refusals = [item for item in published if item[0] == EVENT_FSM_REJECTED]
+        assert len(refusals) == 1, f"повторы засорили журнал: {len(refusals)}"
+        assert engine.rejection_counts().get("daylight") == 2
+
+    async def test_another_event_is_published_again(
+        self, engine: FSMEngine, published: list[tuple[str, dict[str, Any]]]
+    ) -> None:
+        """Отказ по другому событию — новый факт, и он виден."""
+
+        def deny(state: Any, context: dict[str, Any]) -> bool:
+            """Условие, называющее причину отказа."""
+            return False
+
+        deny.deny_reason = lambda state, context: "daylight"  # type: ignore[attr-defined]
+        engine.register_definition(make_definition(guard=deny))
+
+        await engine.trigger(FSM_ID, "motion_detected")
+        await engine.trigger(FSM_ID, "manual_switch_on")
+        await flush(engine)
+
+        refusals = [item for item in published if item[0] == EVENT_FSM_REJECTED]
+        assert len(refusals) == 2, f"разные события склеились: {len(refusals)}"
+
     async def test_should_publish_rejected_when_guard_fails(
         self, engine: FSMEngine, published: list[tuple[str, dict[str, Any]]]
     ) -> None:
