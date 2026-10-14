@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -46,6 +47,28 @@ def test_is_night_time_is_opposite_of_day() -> None:
 
     night_at_night = make_is_night_time("07:00-23:00", now=lambda: _at(2))
     assert night_at_night(None, {}) is True
+
+
+@pytest.mark.asyncio
+def test_manual_off_ends_the_hold_in_every_lit_state() -> None:
+    """Ручное выключение принимается и из ON_MOTION, и из ON_HOLD (2026-10-14).
+
+    Боевой случай: владелец погасил фонари, пока шло удержание по движению
+    (ON_MOTION), а перехода «ручное выключение из ON_MOTION» в шаблоне не было —
+    событие человека отвергалось как «нет такого перехода», и автомат продолжал
+    считать свет горящим.
+    """
+    import yaml
+
+    template = yaml.safe_load(Path("src/features/lighting.yaml").read_text(encoding="utf-8"))
+    pairs = {
+        (transition["from_state"], transition["trigger"]): transition.get("to_state")
+        for transition in template["transitions"]
+    }
+
+    assert pairs.get(("ON_MOTION", "manual_switch_off")) == "OFF"
+    assert pairs.get(("ON_HOLD", "manual_switch_off")) == "OFF"
+    assert pairs.get(("ON_MANUAL", "manual_switch_off")) == "OFF"
 
 
 @pytest.mark.asyncio
