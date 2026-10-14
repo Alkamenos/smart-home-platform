@@ -70,6 +70,10 @@ class PlatformContext:
     watchdog: Any = None
     day_cycle: Any = None
     deco_watcher: Any = None
+    #: Защита кондиционера: гасит охлаждение, недопустимое по правилам дома
+    #: (зима, запрет владельца) — требование владельца 2026-10-15. В контексте,
+    #: потому что shutdown() останавливает её до закрытия соединения с HA.
+    ac_protection: Any = None
     deployment: Any = None
     #: Наблюдение за локациями (спека 016): последние показания датчиков и
     #: снимки. Нужно интерфейсу, чтобы отдавать снимок и историю.
@@ -100,6 +104,11 @@ class PlatformContext:
         if self.deco_watcher is not None:
             await self.deco_watcher.stop()
             self.deco_watcher = None
+        # Защита кондиционера тоже шлёт команду (гасит недопустимое охлаждение),
+        # поэтому останавливается до закрытия соединения.
+        if self.ac_protection is not None:
+            await self.ac_protection.stop()
+            self.ac_protection = None
         await self.adapter.stop()
         await self.fsm.shutdown()
         await self.dispatcher.stop()
@@ -711,12 +720,14 @@ class Container:
         self._start_day_cycle()
         self._start_deco_watcher()
         self._start_ventilation_watchdog()
+        self._start_ac_protection()
         self._start_sensor_health()
         self._start_location_state()
 
         return PlatformContext(
             day_cycle=self._day_cycle,
             deco_watcher=self._deco_watcher,
+            ac_protection=self._ac_protection,
             manifest=self.manifest,
             event_bus=self.event_bus,
             fsm=self.fsm,
@@ -895,6 +906,32 @@ class Container:
             return
         self._deco_watcher.start()
         logger.info(f"Сверка вечернего света: {self._deco_watcher.describe()}")
+
+    def _start_ac_protection(self) -> None:
+        """Запустить защиту кондиционера.
+
+        Зимнее охлаждение портит технику, и правило не зависит от автоматики:
+        кондиционер может работать без участия платформы (включён владельцем или
+        автоматизацией Home Assistant). Служба смотрит фактический режим прибора
+        и правила дома — те же, что у автоматов.
+
+        Returns:
+            Ничего.
+        """
+        from core.services.ac_protection import AirConditionerProtection
+
+        climate = getattr(self.manifest.automation_rules, "climate", None)
+        entities = list(getattr(climate, "ac_entities", []) or [])
+        self._ac_protection = AirConditionerProtection(
+            # Именно свойство `adapter`: адаптер создаётся лениво, и приватное
+            # поле на момент сборки ещё пусто — защита молчала бы всегда.
+            adapter=self.adapter,
+            dispatcher=self.dispatcher,
+            entities=entities,
+        )
+        self._ac_protection.subscribe(self.event_bus)
+        if self._ac_protection.start():
+            logger.info(f"Защита кондиционера: под наблюдением {len(entities)} прибор(ов)")
 
     def _start_ventilation_watchdog(self) -> None:
         """Запустить сторожа вентиляции (защита от дрейфа прибора).

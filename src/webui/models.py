@@ -66,6 +66,14 @@ class AutomationDomainRules(BaseModel):
     safety_lockout_enabled: bool = Field(default=False, description="Enable safety lockout")
     away_mode_enabled: bool = Field(default=False, description="Enable away mode")
     humidity_based: bool = Field(default=False, description="Enable humidity-based automation")
+    ac_entities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Кондиционеры под защитой платформы: зимой и без разрешения владельца "
+            "охлаждать нельзя (требование владельца 2026-10-15). Поле объявлено и "
+            "здесь: иначе правка манифеста через интерфейс вычеркнула бы его"
+        ),
+    )
 
     # Поля домена расширяются ядром (ночное окно, комнаты, шторы): без разрешения
     # «лишних» полей правка манифеста через интерфейс вычёркивала бы их.

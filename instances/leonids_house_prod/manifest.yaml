@@ -307,6 +307,8 @@ automation_rules:
     season_entity: input_boolean.zima
     feature_entity: input_boolean.feature_climate
     ac_gate_entity: input_boolean.ispolzovat_konditsioner
+    ac_entities:
+    - climate.esphome_web_0d22a4_ac_name
     setpoint_min: 5.0
     setpoint_max: 30.0
   ventilation:
