@@ -222,17 +222,6 @@ rooms:
       priority: 10
       params:
         closes_when_dogs_only: true
-- id: kuhnya
-  name: Кухня
-  sensors: {}
-  devices:
-  - id: light.table_lights
-    type: light
-    name: Свет над обеденным столом
-    behaviors:
-    - template: lighting
-      priority: 10
-      params: {}
 - id: gostevaia_spalnia
   name: Гостевая спальня
   sensors:
@@ -301,33 +290,37 @@ automation_rules:
   global_manual_lockout_min: 60
   time_zone: Asia/Yekaterinburg
   lighting:
-    motion_enabled: true
-    schedule_enabled: true
-    manual_lockout_min: null
-    safety_lockout_enabled: false
-    away_mode_enabled: false
-    humidity_based: false
+    quiet_from: '23:00'
+    quiet_to: 06:30
+    night_motion_rooms:
+    - sanuzel
+    - konteiner
+    always_on_motion_rooms:
+    - sanuzel
+    - konteiner
+    sleep_modifier: input_boolean.sleep_mode
+    night_off_at: '23:00'
+    morning_at: 07:00
+    battery_watch_entities:
+    - sensor.datchik_temperatury_terassa_battery
   climate:
-    motion_enabled: true
-    schedule_enabled: true
-    manual_lockout_min: null
-    safety_lockout_enabled: false
-    away_mode_enabled: false
-    humidity_based: false
+    setpoint_entity: input_number.temperatura
+    thermostat_entity: climate.termostat_gostinaia
+    comfort_max_entity: input_number.maksimalno_komfortnaia_temperatura
+    season_entity: input_boolean.zima
+    feature_entity: input_boolean.feature_climate
+    ac_gate_entity: input_boolean.ispolzovat_konditsioner
+    setpoint_min: 5.0
+    setpoint_max: 30.0
   ventilation:
-    motion_enabled: true
-    schedule_enabled: true
     manual_lockout_min: 15
-    safety_lockout_enabled: false
-    away_mode_enabled: false
     humidity_based: true
+    feature_entity: input_boolean.feature_ventilation
+    enable_entity: input_boolean.ventiliatsiia
+    airing_entity: input_boolean.provetrivanie
+    exhaust_entity: input_boolean.provetrivanie_vytyazhka
+    outside_temp_entity: sensor.temperatura_na_ulitse_srednee
   cover:
-    motion_enabled: true
-    schedule_enabled: true
-    manual_lockout_min: null
-    safety_lockout_enabled: false
-    away_mode_enabled: false
-    humidity_based: false
     feature_entity: input_boolean.feature_covers
     my_doma_entity: input_boolean.my_doma
     sobaki_doma_entity: input_boolean.sobaki_doma
