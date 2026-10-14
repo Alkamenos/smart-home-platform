@@ -49,6 +49,31 @@ def test_is_night_time_is_opposite_of_day() -> None:
     assert night_at_night(None, {}) is True
 
 
+def test_manual_entry_is_not_blocked_by_the_lockout() -> None:
+    """Ручное состояние включается рукой человека, а не отбивается локаутом.
+
+    Боевой случай 2026-10-14 (17:37:50): платформа записала ручное действие —
+    блокировка оверрайда включилась — и **тем же условием**
+    `is_manual_override_enabled` отвергла ручное состояние:
+    `manual_switch_on: guard_failed`. Ручное состояние не наступало никогда, а
+    человек видел отказ вместо своего действия. Условие «автоматике можно
+    вмешиваться» отвечает на вопрос автоматики, а не человека: на ручных
+    переходах ему места нет.
+    """
+    import yaml
+
+    for name in ("lighting", "deco_light", "night_light"):
+        template = yaml.safe_load(Path(f"src/features/{name}.yaml").read_text(encoding="utf-8"))
+        manual = [
+            transition
+            for transition in template["transitions"]
+            if transition["trigger"] in ("manual_switch_on", "manual_switch_off")
+        ]
+        assert manual, f"{name}: ручных переходов нет вовсе"
+        guarded = [transition for transition in manual if transition.get("guard")]
+        assert not guarded, f"{name}: ручной переход под условием — {guarded}"
+
+
 @pytest.mark.asyncio
 def test_manual_off_ends_the_hold_in_every_lit_state() -> None:
     """Ручное выключение принимается и из ON_MOTION, и из ON_HOLD (2026-10-14).

@@ -316,7 +316,7 @@ templates:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
     actions: [turn_on_night_light, turn_off_night_light]
-    guards: [modifier_is_on, is_manual_override_enabled, is_night_time]
+    guards: [modifier_is_on, is_night_time]
     triggers:
       motion_detected: sensor
       timeout: engine

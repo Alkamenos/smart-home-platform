@@ -158,7 +158,6 @@ transitions:
   - from_state: "OFF"
     to_state: "ON_MANUAL"
     trigger: "manual_switch_on"
-    guard: "is_manual_override_enabled"
     action: "turn_on_light"
 
   - from_state: "ON_DECO"
