@@ -37,7 +37,9 @@ from core.services.location_state import LocationStateService
 from webui.routes.locations import router
 
 
-NOW = datetime(2026, 10, 13, 9, 0, 0, tzinfo=UTC)
+# Время берётся от «сейчас», а не фиксированной датой: история по умолчанию —
+# за последние сутки, и событие с прошедшей датой выпадало из окна через день
+# (тест «протух» сам 2026-10-14).
 
 
 def _manifest() -> Manifest:
@@ -193,7 +195,7 @@ class TestLocationHistory:
                 new_state="22.4",
                 event_type="state_changed",
                 trace_id=None,
-                timestamp=NOW.timestamp() - 60,
+                timestamp=datetime.now(UTC).timestamp() - 60,
             )
         )
         monkeypatch.setattr(locations_module, "event_store", store)
@@ -222,7 +224,7 @@ class TestLocationHistory:
                 new_state="14.4",
                 event_type="state_changed",
                 trace_id=None,
-                timestamp=NOW.timestamp() - 60,
+                timestamp=datetime.now(UTC).timestamp() - 60,
             )
         )
         monkeypatch.setattr(locations_module, "event_store", store)
@@ -245,7 +247,7 @@ class TestLocationHistory:
                 new_state="21.4",
                 event_type="state_changed",
                 trace_id=None,
-                timestamp=NOW.timestamp() - 7200,
+                timestamp=datetime.now(UTC).timestamp() - 7200,
             )
         )
         monkeypatch.setattr(locations_module, "event_store", store)
@@ -256,7 +258,7 @@ class TestLocationHistory:
 
         response = client.get(
             "/api/v1/locations/spalnia/history",
-            params={"from": (NOW - timedelta(hours=1)).isoformat()},
+            params={"from": (datetime.now(UTC) - timedelta(hours=1)).isoformat()},
         )
 
         assert response.json()["count"] == 0
