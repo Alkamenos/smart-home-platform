@@ -406,6 +406,22 @@ def create_app(
         if hydrated:
             logger.info(f"Restored {hydrated} device(s) from persistence")
 
+        # B62: состояние устройства — следствие источника истины, а не снимок из
+        # хранилища. Сверка идёт в фоне: связь с Home Assistant поднимается
+        # асинхронно, и старт она не задерживает. Без неё платформа показывала
+        # состояния на момент последней записи в devices.json (у штор — 5 октября).
+        try:
+            from services.device_state_refresh import DeviceStateRefresher
+
+            refresher = DeviceStateRefresher(
+                device_service=device_service,
+                adapter=_container.adapter if _container is not None else None,
+            )
+            app.state.device_state_refresher = refresher
+            refresher.start()
+        except Exception as e:
+            logger.warning(f"Device state refresh not started: {e}")
+
         # Сервис жизненного цикла: единственная точка, выполняющая операцию
         # «манифест → хранилище → машины состояний → маршрутизация» (spec 006).
         # Работает с ядерным манифестом из контейнера — тем же объектом, на

@@ -1266,6 +1266,46 @@ class DeviceService:
 
     # ============ T049-T052: WebSocket синхронизация состояния ============
 
+    async def apply_source_states(self, states: list[dict[str, Any]]) -> int:
+        """Привести состояния известных устройств к источнику истины (B62).
+
+        Состояние устройства — следствие Home Assistant, а не собственность
+        снимка из хранилища: после перезапуска `devices.json` отдаёт состояние на
+        момент последней записи (у штор — 5 октября), и платформа показывает
+        вчерашний день, пока сущность не сменит состояние сама. Синхронизация по
+        кнопке это лечила, но нажимать её после каждого перезапуска никто не
+        обязан.
+
+        Args:
+            states: Состояния из Home Assistant (`get_states` либо `/api/states`).
+
+        Returns:
+            Сколько устройств изменило состояние.
+        """
+        by_entity = {device.ha_entity_id: device for device in self._devices.values()}
+        updated = 0
+        for raw in states:
+            entity_id = raw.get("entity_id")
+            if not entity_id:
+                continue
+            device = self._index.find_by_ha_entity_id(entity_id) or by_entity.get(entity_id)
+            if device is None:
+                continue
+            new_state = {
+                "state": raw.get("state"),
+                **(raw.get("attributes") or {}),
+            }
+            if device.state != new_state:
+                device.state = new_state
+                updated += 1
+            device.last_state_update = datetime.utcnow()
+            if device.status == "unavailable" and raw.get("state") != "unavailable":
+                device.status = "available"
+                self._cancel_unavailable_timer(device.id)
+        if updated:
+            logger.info(f"Состояния устройств обновлены из Home Assistant: {updated}")
+        return updated
+
     async def handle_state_change(self, event_data: dict[str, Any]) -> None:
         """T050: Обрабатывает изменение состояния устройства из WebSocket.
 

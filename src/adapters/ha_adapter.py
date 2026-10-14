@@ -1974,6 +1974,29 @@ class HAAdapter:
         """
         return await self._read_entity_state(entity_id)
 
+    async def get_all_states(self) -> list[dict[str, Any]]:
+        """Прочитать состояния всех сущностей одним запросом.
+
+        Нужно сверке состояний при старте (B62): состояние устройства —
+        следствие источника истины, а не снимок из хранилища. Читается через
+        WebSocket (`get_states`), потому что REST-перебор 1495 сущностей был бы
+        1495 запросами.
+
+        Returns:
+            Список состояний Home Assistant; пустой, если связи нет.
+        """
+        client = self._ws_client
+        if client is None:
+            return []
+        try:
+            states = await client.get_states()
+        except Exception as exc:  # noqa: BLE001 — сверка не должна ронять старт
+            logger.warning(f"HAAdapter: состояния сущностей не прочитаны: {exc}")
+            return []
+        if not isinstance(states, list):
+            return []
+        return [state for state in states if isinstance(state, dict)]
+
     async def _read_entity_state(self, entity: str) -> str | None:
         """Прочитать состояние одной сущности через REST.
 
