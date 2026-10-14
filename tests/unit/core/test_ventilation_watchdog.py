@@ -276,6 +276,53 @@ class TestStoppedDevice:
         )
 
 
+class TestVentilationContext:
+    """Подтверждение несёт общие признаки дома (B63)."""
+
+    @pytest.mark.asyncio
+    async def test_common_flags_reach_the_automaton(self) -> None:
+        """Уличная температура и сезон доходят до подтверждения."""
+        engine = _Engine(
+            ["fan.base_smart_ventilation_modes_10"],
+            devices={"fan.base_smart_ventilation_modes_10": "fan.base_smart"},
+            states={"fan.base_smart_ventilation_modes_10": "IDLE"},
+        )
+        watchdog = VentilationWatchdog(
+            engine=engine,  # type: ignore[arg-type]
+            adapter=_Adapter("off"),
+            context_supplier=lambda entity_id: {"outside_temperature": 17.5, "is_winter": True},
+        )
+
+        await watchdog.check_once()
+
+        context = engine.contexts[0] or {}
+        assert context["outside_temperature"] == 17.5
+        assert context["is_winter"] is True
+
+    @pytest.mark.asyncio
+    async def test_supplier_failure_does_not_break_confirmation(self) -> None:
+        """Отказ источника признаков не мешает подтвердить решение."""
+        engine = _Engine(
+            ["fan.base_smart_ventilation_modes_10"],
+            devices={"fan.base_smart_ventilation_modes_10": "fan.base_smart"},
+            states={"fan.base_smart_ventilation_modes_10": "IDLE"},
+        )
+
+        def broken(entity_id: str) -> dict[str, Any]:
+            """Источник, который падает."""
+            raise RuntimeError("адаптер недоступен")
+
+        watchdog = VentilationWatchdog(
+            engine=engine,  # type: ignore[arg-type]
+            adapter=_Adapter("off"),
+            context_supplier=broken,
+        )
+
+        await watchdog.check_once()
+
+        assert engine.confirmed == ["fan.base_smart_ventilation_modes_10"]
+
+
 def test_engine_type_is_used() -> None:
     """Заглушка совместима по аннотации с FSMEngine.
 

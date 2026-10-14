@@ -354,6 +354,31 @@ class EventRouter:
     #: показание датчика режим намеренно не пересобирается (research.md D7).
     SETTINGS_CHANGED: str = "settings_changed"
 
+    def settings_context(self, fsm_entity_id: str) -> dict[str, Any]:
+        """Общий контекст пересмотра настроек для одного автомата.
+
+        Последние показания датчиков комнаты и признак работы обогрева. Один
+        источник для маршрутизатора и сторожа вентиляции: два пути, собранные
+        по-разному, расходились — сторож подтверждал решение без уличной
+        температуры и сезона, и условие «приток по погоде» отказывало
+        `guard_data_missing` по 288 раз в сутки (B63).
+
+        Args:
+            fsm_entity_id: Автомат, для которого собирается контекст.
+
+        Returns:
+            Контекст: показания комнаты (роль → значение) и ``heating_active``,
+            если он известен.
+        """
+        context: dict[str, Any] = {}
+        for (fsm_id, role), value in self._last_measurements.items():
+            if fsm_id == fsm_entity_id:
+                context.setdefault(role, value)
+        heating = self._room_heating_active(fsm_entity_id)
+        if heating is not None:
+            context["heating_active"] = heating
+        return context
+
     async def route_settings_change(self, context: dict[str, Any] | None = None) -> None:
         """Пересмотреть автоматы при смене глобального переключателя.
 
@@ -390,12 +415,9 @@ class EventRouter:
             # собственного значения, а условиям вентиляции нужны температура и
             # влажность. Без них пересмотр отказывал `guard_data_missing`, и
             # решение владельца (выключатель, сезон, проветривание) не доходило.
-            for (fsm_id, role), value in self._last_measurements.items():
-                if fsm_id == fsm_entity_id:
-                    external_ctx.setdefault(role, value)
-            heating = self._room_heating_active(fsm_entity_id)
-            if heating is not None:
-                external_ctx["heating_active"] = heating
+            # Тот же контекст спрашивает сторож вентиляции (B63).
+            external_ctx.update(self.settings_context(fsm_entity_id))
+            heating = external_ctx.get("heating_active")
             logger.info(
                 f"Routing: settings_changed → fsm={fsm_entity_id}, heating_active={heating}"
             )

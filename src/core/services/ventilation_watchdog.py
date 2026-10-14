@@ -62,6 +62,10 @@ class VentilationWatchdog:
         adapter: Адаптер Home Assistant для чтения состояния прибора. Без него
             сторож только подтверждает решение (как раньше): остановленный прибор
             он заметить не сможет.
+        context_supplier: Источник общих признаков дома (уличная температура,
+            сезон, флаги вентиляции) для подтверждения. Без него подтверждение
+            шло с пустым контекстом, и условие «приток по погоде» отказывало
+            `guard_data_missing` (B63).
     """
 
     def __init__(
@@ -69,10 +73,12 @@ class VentilationWatchdog:
         engine: FSMEngine,
         interval_minutes: float = 5.0,
         adapter: Any | None = None,
+        context_supplier: Any | None = None,
     ) -> None:
         self.engine = engine
         self.interval_minutes = interval_minutes
         self._adapter = adapter
+        self._context_supplier = context_supplier
         self._task: asyncio.Task[None] | None = None
 
     async def check_once(self) -> None:
@@ -88,7 +94,14 @@ class VentilationWatchdog:
         for entity_id in self.engine.entities_with_trigger("settings_changed"):
             if VENTILATION_MARKER not in entity_id:
                 continue
-            external_ctx = await self._device_state_context(entity_id)
+            device_context = await self._device_state_context(entity_id)
+            # Общие признаки дома — тот же контекст, что у маршрутизатора:
+            # без него подтверждение отказывало `guard_data_missing` по 288 раз
+            # в сутки, а «приток по погоде» на этом пути решить было нельзя (B63).
+            external_ctx = {
+                **(device_context or {}),
+                **self._settings_context(entity_id),
+            } or None
             try:
                 await self.engine.trigger(
                     entity_id,
@@ -98,6 +111,26 @@ class VentilationWatchdog:
                 )
             except Exception:  # noqa: BLE001 — один автомат не мешает остальным
                 logger.warning(f"Сторож вентиляции: {entity_id} не обработал подтверждение")
+
+    def _settings_context(self, entity_id: str) -> dict[str, Any]:
+        """Общие признаки дома для подтверждения решения.
+
+        Args:
+            entity_id: Автомат вентиляции.
+
+        Returns:
+            Словарь признаков; пустой, если источник не передан или отказал —
+            подтверждение всё равно уходит, просто без общих признаков.
+        """
+        supplier = self._context_supplier
+        if supplier is None:
+            return {}
+        try:
+            context = supplier(entity_id)
+        except Exception as exc:  # noqa: BLE001 — подтверждение важнее признаков
+            logger.warning(f"Сторож вентиляции: контекст для {entity_id} не собран: {exc}")
+            return {}
+        return dict(context) if isinstance(context, dict) else {}
 
     async def _device_state_context(self, entity_id: str) -> dict[str, Any] | None:
         """Прочитать состояние прибора и назвать расхождение с решением.

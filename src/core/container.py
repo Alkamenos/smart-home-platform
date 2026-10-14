@@ -582,6 +582,30 @@ class Container:
             logger.warning(f"Проверка ручной блокировки для {device_id} не удалась: {exc}")
             return False
 
+    def _ventilation_context(self, entity_id: str) -> dict[str, Any]:
+        """Общие признаки дома для подтверждения решения вентиляции (B63).
+
+        Собираются из тех же источников, что у маршрутизатора: глобальные
+        значения адаптера (уличная температура, сезон, флаги) и показания
+        комнаты с признаком обогрева из `EventRouter.settings_context`. Один
+        источник контекста на оба пути — иначе подтверждение шло с пустыми
+        признаками, и условие «приток по погоде» отказывало `guard_data_missing`.
+
+        Args:
+            entity_id: Автомат вентиляции.
+
+        Returns:
+            Словарь признаков; пустой, если источники недоступны.
+        """
+        context: dict[str, Any] = {}
+        builder = getattr(self._adapter, "event_context", None)
+        if callable(builder):
+            with contextlib.suppress(Exception):
+                context.update(builder(entity_id))
+        with contextlib.suppress(Exception):
+            context.update(self.event_router.settings_context(entity_id))
+        return context
+
     @property
     def fsm_bridge(self) -> Any:
         """Get or create FSMStateBridge (depends on event_bus, dispatcher).
@@ -890,7 +914,11 @@ class Container:
         """
         from core.services.ventilation_watchdog import VentilationWatchdog
 
-        self._ventilation_watchdog = VentilationWatchdog(engine=self.fsm, adapter=self._adapter)
+        self._ventilation_watchdog = VentilationWatchdog(
+            engine=self.fsm,
+            adapter=self._adapter,
+            context_supplier=self._ventilation_context,
+        )
         try:
             asyncio.get_running_loop()
         except RuntimeError:

@@ -2106,6 +2106,22 @@ class HAAdapter:
         fields = sorted(set(GLOBAL_ENTITY_FIELDS.values()))
         return {name: getattr(client, name, None) for name in fields}
 
+    def event_context(self, entity_id: str | None = None) -> dict[str, Any]:
+        """Общий контекст события: солнце, «мы спим», глобальные значения.
+
+        Открыто наружу: сторож вентиляции подтверждает решение тем же
+        контекстом, что и события датчиков. Иначе подтверждение шло без уличной
+        температуры и сезона, и условие «приток по погоде» отказывало
+        `guard_data_missing` по 288 раз в сутки (B63).
+
+        Args:
+            entity_id: Сущность события; ``None`` — контекст без единиц таймера.
+
+        Returns:
+            Словарь контекста.
+        """
+        return self._event_context(entity_id)
+
     def _event_context(self, entity_id: str | None = None) -> dict[str, Any]:
         """Контекст события: солнце, сон, глобальные значения и единицы таймеров.
 

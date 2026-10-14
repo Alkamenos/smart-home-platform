@@ -129,6 +129,31 @@ async def test_settings_change_should_carry_last_measurements() -> None:
 
 
 @pytest.mark.asyncio
+async def test_settings_context_is_the_same_source_for_the_watchdog() -> None:
+    """Тот же контекст доступен сторожу вентиляции (B63).
+
+    Сторож подтверждает решение раз в 5 минут и раньше собирал контекст сам —
+    без уличной температуры и сезона. Условие «приток по погоде» отказывало
+    `guard_data_missing` по 288 раз в сутки. Теперь источник контекста один.
+    """
+    router, engine = _router()
+    await router.route_state_change("sensor.t", "24.5", "24.0")
+    await router.route_state_change("sensor.h", "55", "54")
+
+    context = router.settings_context(FSM_ID)
+
+    assert context["temperature"] == 24.5
+    assert context["humidity"] == 55.0
+
+
+def test_settings_context_of_unknown_automaton_is_empty() -> None:
+    """Для автомата без измерений контекст пуст, а не выдуман."""
+    router, _engine = _router()
+
+    assert router.settings_context("fan.unknown_ventilation_modes_10") == {}
+
+
+@pytest.mark.asyncio
 async def test_settings_change_should_not_invent_missing_measurements() -> None:
     """Без показаний ничего не выдумывается — ключей просто нет."""
     router, engine = _router()
