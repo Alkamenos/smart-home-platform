@@ -238,6 +238,26 @@ class TestRejectedTransitions:
 
         assert published[0][1]["reason"] == REASON_NO_TRANSITION
 
+    async def test_no_transition_is_published_once_per_event(
+        self, engine: FSMEngine, published: list[tuple[str, dict[str, Any]]]
+    ) -> None:
+        """Повторное «нет подходящего перехода» не засоряет журнал (B65).
+
+        Повтор — это «повода не было» (свет выключен, а датчик прислал
+        `motion_cleared`). За сутки таких записей набегало 389, и утренний разбор
+        читал их наравне с настоящими отказами. Первый факт виден, остальные —
+        в счётчике отказов.
+        """
+        engine.register_definition(make_definition())
+
+        await engine.trigger(FSM_ID, "unknown_event")
+        await engine.trigger(FSM_ID, "unknown_event")
+        await flush(engine)
+
+        noops = [item for item in published if item[1].get("reason") == REASON_NO_TRANSITION]
+        assert len(noops) == 1, f"повторы засорили журнал: {len(noops)}"
+        assert engine.rejection_counts().get(REASON_NO_TRANSITION) == 2
+
     async def test_should_publish_rejected_when_guard_fails(
         self, engine: FSMEngine, published: list[tuple[str, dict[str, Any]]]
     ) -> None:
