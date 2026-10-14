@@ -160,6 +160,12 @@ REASON_COVERS_DISABLED: Final[str] = "covers_disabled"
 #: обогревателю (B66, около 720 записей в сутки).
 REASON_NOT_APPLICABLE: Final[str] = "not_applicable"
 
+#: Движение, пришедшее сразу после нашего же выключения света: датчик (камера)
+#: реагирует на смену освещённости, а не на человека. Если принять это за
+#: движение, свет зажигается снова — и мигает (боевой случай 2026-10-14, фонари
+#: сада: тревога камеры срабатывала через секунду после выключения).
+REASON_MOTION_ECHO: Final[str] = "motion_echo"
+
 #: Причины, которые условие может назвать само (словарь ограничен, чтобы метрика
 #: не расползалась новыми метками). ``guard_data_missing`` здесь потому, что
 #: условие ночника тоже умеет назвать его само: модификатор «мы спим» — булево,
@@ -194,6 +200,7 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
         REASON_COVER_EMERGENCY,
         REASON_COVERS_DISABLED,
         REASON_NOT_APPLICABLE,
+        REASON_MOTION_ECHO,
     }
 )
 
@@ -213,6 +220,7 @@ REASON_TEXT: Final[dict[str, str]] = {
     REASON_SETPOINT_UNAVAILABLE: "уставка недоступна",
     REASON_CLIMATE_DISABLED: "климат отключен",
     REASON_NOT_APPLICABLE: "переход к этому прибору не относится",
+    REASON_MOTION_ECHO: "движение после нашего выключения — эхо датчика",
     REASON_AC_NOT_ALLOWED: "кондиционер запрещен",
     REASON_AC_FORBIDDEN_IN_WINTER: "кондиционер зимой не разрешен",
     REASON_NOT_ABOVE_COMFORT: "в комнате не жарко, выше потолка не поднялась",

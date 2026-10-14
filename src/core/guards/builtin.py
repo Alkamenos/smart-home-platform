@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -158,9 +159,53 @@ def _dark_enough(context: dict[str, Any], current: datetime) -> bool:
     return not (DEFAULT_DAY_START_MINUTES <= minutes < DEFAULT_DAY_END_MINUTES)
 
 
+#: Окно, в котором движение считается эхом нашего же выключения света
+#: (параметр поведения `motion_echo_sec`).
+DEFAULT_MOTION_ECHO_SEC = 5.0
+
+
+def _motion_echo_window(context: dict[str, Any]) -> float:
+    """Окно эха датчика в секундах.
+
+    Args:
+        context: Контекст перехода (параметр поведения `motion_echo_sec`).
+
+    Returns:
+        Окно в секундах; 0 — правило выключено.
+    """
+    raw = context.get("motion_echo_sec", DEFAULT_MOTION_ECHO_SEC)
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return DEFAULT_MOTION_ECHO_SEC
+    return max(0.0, float(raw))
+
+
+def _motion_is_echo(state: Any, context: dict[str, Any], monotonic: Callable[[], float]) -> bool:
+    """Считать ли движение эхом нашего же выключения света.
+
+    Датчик, который видит сам свет (камера), срабатывает на смену освещённости:
+    платформа гасит фонари, камера сообщает «движение», свет зажигается снова —
+    и мигает (боевой случай 2026-10-14). Признак эха — состояние автомата только
+    что вошло в «выключено»: значит, свет погасили мы сами.
+
+    Args:
+        state: Текущее состояние автомата.
+        context: Контекст перехода.
+        monotonic: Источник монотонного времени.
+
+    Returns:
+        True, если движение пришло в окне эха.
+    """
+    window = _motion_echo_window(context)
+    entered = getattr(state, "entered_at", None)
+    if window <= 0 or isinstance(entered, bool) or not isinstance(entered, (int, float)):
+        return False
+    return monotonic() - float(entered) <= window
+
+
 def make_may_turn_on(
     *,
     now: Callable[[Any], datetime] = _now_in,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> Callable[[Any, dict[str, Any]], bool]:
     """Построить guard «сейчас можно включать свет».
 
@@ -199,6 +244,8 @@ def make_may_turn_on(
 
     Args:
         now: Источник времени; подменяется в тестах.
+        monotonic: Источник монотонного времени; по нему считается «сколько
+            секунд назад свет был выключен».
 
     Returns:
         Функция ``(state, context) -> bool``.
@@ -214,7 +261,14 @@ def make_may_turn_on(
         Returns:
             True, если включать можно.
         """
-        del state  # состояние на решение не влияет: решает момент и комната
+        # Эхо датчика первым: движение, пришедшее в первые секунды после НАШЕГО
+        # выключения света, — это реакция датчика (камеры) на смену
+        # освещённости, а не человек. Боевой случай 2026-10-14: общая тревога
+        # камеры сада срабатывала через секунду после того, как платформа гасила
+        # фонари, и они зажигались снова — свет мигал, а «свет по движению»
+        # превращался в «горит всю ночь».
+        if _motion_is_echo(state, context, monotonic):
+            return False
 
         # «Мы спим» — запрет первым и выше прочих: пока владелец держит
         # модификатор включённым, яркий свет не включается ни в одной комнате,
@@ -290,7 +344,9 @@ def make_may_turn_on(
             ночного окна без сущности модификатора, ``daylight``, если светло;
             иначе None.
         """
-        del state
+        if _motion_is_echo(state, context, monotonic):
+            return "motion_echo"
+
         modifier = context.get("sleep_modifier_on")
         if modifier is True:
             return "sleep_modifier"
