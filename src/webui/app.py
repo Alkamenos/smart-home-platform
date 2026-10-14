@@ -419,6 +419,10 @@ def create_app(
             )
             app.state.device_state_refresher = refresher
             refresher.start()
+            # Связь с Home Assistant может оборваться и восстановиться: события
+            # обрыва никто не повторит, поэтому после подключения состояния
+            # устройств приводятся к источнику заново (B62).
+            refresher.subscribe(event_bus)
         except Exception as e:
             logger.warning(f"Device state refresh not started: {e}")
 

@@ -11,11 +11,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from adapters.ha_adapter import HAAdapter
+from core.events.event_bus import EventBus
+from core.events.fsm_events import EVENT_HA_CONNECTED
 
 
 class _Engine:
@@ -64,6 +67,25 @@ def _adapter(engine: _Engine, middleware: _Middleware) -> HAAdapter:
         engine=engine,  # type: ignore[arg-type]
         manual_lockout_middleware=middleware,  # type: ignore[arg-type]
     )
+
+
+@pytest.mark.asyncio
+async def test_connection_event_is_published_after_connect() -> None:
+    """Подключение (в том числе после обрыва) объявляется шине (B62)."""
+    bus = EventBus()
+    seen: list[dict[str, Any]] = []
+
+    async def collector(event_type: str, payload: dict[str, Any], trace_id: str = "") -> None:
+        """Запомнить событие."""
+        seen.append(dict(payload))
+
+    bus.subscribe(EVENT_HA_CONNECTED, collector)
+    adapter = _adapter(_Engine(), _Middleware())
+    adapter._engine = SimpleNamespace(event_bus=bus)  # noqa: SLF001
+
+    await adapter._publish_connection_established()  # noqa: SLF001
+
+    assert seen, "подключение не объявлено шине"
 
 
 @pytest.mark.asyncio

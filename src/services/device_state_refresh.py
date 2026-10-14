@@ -75,6 +75,48 @@ class DeviceStateRefresher:
             self._task = asyncio.create_task(self._run())
         return True
 
+    def subscribe(self, event_bus: Any) -> bool:
+        """Слушать восстановление связи с внешней системой.
+
+        События, пропущенные во время обрыва, никто не повторит: подписка
+        Home Assistant отдаёт только изменения. Поэтому после подключения
+        состояния устройств приводятся к источнику заново (B62).
+
+        Args:
+            event_bus: Шина событий платформы.
+
+        Returns:
+            True, если подписка сделана.
+        """
+        subscribe = getattr(event_bus, "subscribe", None)
+        if not callable(subscribe):
+            return False
+        from core.events.fsm_events import EVENT_HA_CONNECTED
+
+        subscribe(EVENT_HA_CONNECTED, self._on_connected)
+        return True
+
+    async def _on_connected(
+        self, event_type: str, payload: dict[str, Any], trace_id: str | None = None
+    ) -> None:
+        """Привести состояния устройств к источнику после подключения.
+
+        Args:
+            event_type: Имя события (не используется).
+            payload: Полезная нагрузка события (не используется).
+            trace_id: Идентификатор трассы (не используется).
+        """
+        del event_type, payload, trace_id
+        try:
+            updated = await self.run_once()
+        except Exception as exc:  # noqa: BLE001 — сверка не должна ронять шину
+            logger.warning(f"Сверка состояний после подключения не удалась: {exc}")
+            return
+        if updated is None:
+            logger.warning("Сверка состояний после подключения: источник не ответил")
+            return
+        logger.info(f"После подключения состояния устройств обновлены: изменено {updated}")
+
     async def run_once(self) -> int | None:
         """Одна попытка сверки.
 

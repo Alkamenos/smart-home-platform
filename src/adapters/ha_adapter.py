@@ -1906,6 +1906,28 @@ class HAAdapter:
         self._connected_once = True
         self._last_disconnect_reason = None
 
+    async def _publish_connection_established(self) -> None:
+        """Сообщить платформе, что связь есть (в том числе после обрыва).
+
+        Подписка Home Assistant отдаёт только изменения: события, пропущенные во
+        время обрыва, никто не повторит. Поэтому о подключении узнаёт веб-слой и
+        приводит состояния устройств к источнику истины — иначе прибор,
+        изменившийся во время обрыва, оставался бы в платформе старым до
+        следующего изменения (B62).
+
+        Returns:
+            Ничего. Отсутствие шины — не ошибка (тесты, локальный запуск).
+        """
+        from core.events.fsm_events import EVENT_HA_CONNECTED
+
+        bus = getattr(self._engine, "event_bus", None)
+        if bus is None:
+            return
+        try:
+            await bus.publish(EVENT_HA_CONNECTED, {"connected_once": self._connected_once})
+        except Exception as exc:  # noqa: BLE001 — уведомление не важнее связи
+            logger.warning(f"HAAdapter: событие подключения не опубликовано: {exc}")
+
     async def _refresh_sleep_modifier(self) -> None:
         """Прочитать состояние «мы спим» при подключении.
 
@@ -2428,6 +2450,9 @@ class HAAdapter:
                 reconnect_delay = 1.0
                 self._mark_connection_established()
                 logger.info("✅ HAAdapter: WebSocket ready, backoff reset (delay=1.0s)")
+                # О подключении узнаёт веб-слой: состояния устройств могли
+                # отстать, пока связи не было (B62).
+                await self._publish_connection_established()
 
                 # 🆕 Инициализируем timestamp последнего события
                 self._last_event_time = time.time()

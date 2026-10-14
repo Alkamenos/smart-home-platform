@@ -18,6 +18,7 @@ from uuid import uuid4
 import pytest
 
 from core.events.event_bus import EventBus
+from core.events.fsm_events import EVENT_HA_CONNECTED
 from core.models.device import Device
 from services.device_service import DeviceService
 from services.device_state_refresh import DeviceStateRefresher
@@ -184,6 +185,35 @@ async def test_refresher_without_bulk_reader_does_nothing() -> None:
     refresher = DeviceStateRefresher(make_service(), object())
 
     assert await refresher.run_once() is None
+
+
+@pytest.mark.asyncio
+async def test_connection_restored_triggers_refresh() -> None:
+    """После подключения состояния устройств приводятся к источнику (B62).
+
+    События, пропущенные во время обрыва, никто не повторит: подписка Home
+    Assistant отдаёт только изменения. Без сверки прибор, изменившийся в обрыве,
+    оставался бы в платформе старым до следующего изменения.
+    """
+    service = make_service()
+    device = add_device(service, "cover.shtora_v_kabinete", "closed")
+    adapter = FakeAdapter(
+        [[{"entity_id": "cover.shtora_v_kabinete", "state": "open", "attributes": {}}]]
+    )
+    refresher = DeviceStateRefresher(service, adapter)
+    bus = EventBus()
+
+    assert refresher.subscribe(bus) is True
+    await bus.publish(EVENT_HA_CONNECTED, {})
+
+    assert device.state["state"] == "open"
+
+
+def test_subscribe_without_bus_is_not_an_error() -> None:
+    """Шины нет — подписка не делается, и это не ошибка."""
+    refresher = DeviceStateRefresher(make_service(), FakeAdapter())
+
+    assert refresher.subscribe(object()) is False
 
 
 def test_start_without_event_loop_is_not_an_error() -> None:
