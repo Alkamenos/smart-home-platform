@@ -254,10 +254,7 @@ rooms:
   - id: light.vse_fonari
     type: light
     name: Основное освещение сада
-    behaviors:
-    - template: lighting
-      priority: 10
-      params: {}
+    behaviors: []
   - id: light.group_nochnoe_osveshcheni
     type: light
     name: Ночное освещение
