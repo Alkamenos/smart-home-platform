@@ -214,17 +214,6 @@ def log_messages(caplog, level_name):
     ]
 
 
-def cancel_unavailable_timers(service):
-    """Отменить таймеры доступности, созданные сервисом в тесте.
-
-    Args:
-        service: Тестируемый экземпляр DeviceService.
-    """
-    for task in list(service._unavailable_timers.values()):
-        task.cancel()
-    service._unavailable_timers.clear()
-
-
 # ============================================================================
 # Тесты инициализации
 # ============================================================================
@@ -247,7 +236,6 @@ class TestDeviceServiceInitialization:
         assert service._devices == {}
         assert service._sources == {}
         assert service._commands == {}
-        assert service._unavailable_timers == {}
 
     def test_init_with_minimal_dependencies(self, event_bus):
         """Проверяет инициализацию только с обязательной зависимостью."""
@@ -265,7 +253,6 @@ class TestDeviceServiceInitialization:
         assert isinstance(service._devices, dict)
         assert isinstance(service._sources, dict)
         assert isinstance(service._commands, dict)
-        assert isinstance(service._unavailable_timers, dict)
 
 
 # ============================================================================
@@ -1154,30 +1141,26 @@ class TestHandleStateChange:
         attributes_before = sample_device.attributes.copy()
         updated_before = sample_device.last_state_update
 
-        try:
-            event_data = {"data": {}}
+        event_data = {"data": {}}
 
-            # Не должно вызвать исключение
-            await device_service.handle_state_change(event_data)
+        # Не должно вызвать исключение
+        await device_service.handle_state_change(event_data)
 
-            # Защита отработала: предупреждение о пропащем entity_id
-            assert log_messages(service_logs, "WARNING") == ["Event data missing entity_id"]
-            # Выход произошёл до поиска устройства и без исключения
-            assert log_messages(service_logs, "DEBUG") == []
-            assert log_messages(service_logs, "ERROR") == []
-            # Запись для неизвестного устройства не создана
-            assert set(device_service._devices) == {sample_device.id}
-            # Состояние существующего устройства не изменилось
-            assert sample_device.state == state_before
-            assert sample_device.state == {"state": "on", "brightness": 200}
-            assert sample_device.attributes == attributes_before
-            assert sample_device.status == "available"
-            assert sample_device.last_state_update == updated_before
-            # Событие не опубликовано, таймер доступности не создан
-            event_bus.publish.assert_not_awaited()
-            assert set(device_service._unavailable_timers) == set()
-        finally:
-            cancel_unavailable_timers(device_service)
+        # Защита отработала: предупреждение о пропащем entity_id
+        assert log_messages(service_logs, "WARNING") == ["Event data missing entity_id"]
+        # Выход произошёл до поиска устройства и без исключения
+        assert log_messages(service_logs, "DEBUG") == []
+        assert log_messages(service_logs, "ERROR") == []
+        # Запись для неизвестного устройства не создана
+        assert set(device_service._devices) == {sample_device.id}
+        # Состояние существующего устройства не изменилось
+        assert sample_device.state == state_before
+        assert sample_device.state == {"state": "on", "brightness": 200}
+        assert sample_device.attributes == attributes_before
+        assert sample_device.status == "available"
+        assert sample_device.last_state_update == updated_before
+        # Событие не опубликовано: состояние устройства не менялось
+        event_bus.publish.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_handle_state_change_device_not_found(
@@ -1196,43 +1179,39 @@ class TestHandleStateChange:
         attributes_before = sample_device.attributes.copy()
         updated_before = sample_device.last_state_update
 
-        try:
-            event_data = {
-                "data": {
-                    "entity_id": "light.unknown",
-                    "old_state": {"state": "on"},
-                    "new_state": {"state": "off"},
-                }
+        event_data = {
+            "data": {
+                "entity_id": "light.unknown",
+                "old_state": {"state": "on"},
+                "new_state": {"state": "off"},
             }
+        }
 
-            # Не должно вызвать исключение
-            await device_service.handle_state_change(event_data)
+        # Не должно вызвать исключение
+        await device_service.handle_state_change(event_data)
 
-            # Защита отработала: устройство не найдено (поиск ведётся по реестру)
-            assert (
-                log_messages(service_logs, "DEBUG").count(
-                    "Device not found for entity_id: light.unknown"
-                )
-                == 1
+        # Защита отработала: устройство не найдено (поиск ведётся по реестру)
+        assert (
+            log_messages(service_logs, "DEBUG").count(
+                "Device not found for entity_id: light.unknown"
             )
-            # Неизвестное устройство — штатная ситуация, а не ошибка
-            assert log_messages(service_logs, "ERROR") == []
-            # Запись для неизвестного entity_id не появилась
-            assert set(device_service._devices) == {sample_device.id}
-            assert [dev.ha_entity_id for dev in device_service._devices.values()] == [
-                sample_device.ha_entity_id
-            ]
-            # Известное устройство не тронуто: new_state="off" не доехал до него
-            assert sample_device.state == state_before
-            assert sample_device.state["state"] == "on"
-            assert sample_device.attributes == attributes_before
-            assert sample_device.status == "available"
-            assert sample_device.last_state_update == updated_before
-            # Событие не опубликовано, таймер доступности не создан
-            event_bus.publish.assert_not_awaited()
-            assert set(device_service._unavailable_timers) == set()
-        finally:
-            cancel_unavailable_timers(device_service)
+            == 1
+        )
+        # Неизвестное устройство — штатная ситуация, а не ошибка
+        assert log_messages(service_logs, "ERROR") == []
+        # Запись для неизвестного entity_id не появилась
+        assert set(device_service._devices) == {sample_device.id}
+        assert [dev.ha_entity_id for dev in device_service._devices.values()] == [
+            sample_device.ha_entity_id
+        ]
+        # Известное устройство не тронуто: new_state="off" не доехал до него
+        assert sample_device.state == state_before
+        assert sample_device.state["state"] == "on"
+        assert sample_device.attributes == attributes_before
+        assert sample_device.status == "available"
+        assert sample_device.last_state_update == updated_before
+        # Событие не опубликовано: состояние устройства не менялось
+        event_bus.publish.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_handle_state_change_unavailable_to_available(
@@ -1519,36 +1498,32 @@ class TestEdgeCases:
         attributes_before = sample_device.attributes.copy()
         updated_before = sample_device.last_state_update
 
-        try:
-            event_data = {
-                "data": {
-                    "entity_id": sample_device.ha_entity_id,
-                    "new_state": None,  # Malformed
-                }
+        event_data = {
+            "data": {
+                "entity_id": sample_device.ha_entity_id,
+                "new_state": None,  # Malformed
             }
+        }
 
-            # Не должно вызвать исключение
-            await device_service.handle_state_change(event_data)
+        # Не должно вызвать исключение
+        await device_service.handle_state_change(event_data)
 
-            # Ошибка разбора данных залогирована ровно один раз
-            errors = log_messages(service_logs, "ERROR")
-            assert len(errors) == 1
-            assert errors[0].startswith("Error handling state change:")
-            # Обновление состояния не началось: сервис не сообщал об успехе
-            assert log_messages(service_logs, "INFO") == []
-            # Невалидные данные не записаны в состояние устройства
-            assert sample_device.state == state_before
-            assert sample_device.state == {"state": "on", "brightness": 200}
-            assert sample_device.attributes == attributes_before
-            assert sample_device.status == "available"
-            assert sample_device.last_state_update == updated_before
-            # Реестр устройств не изменился
-            assert set(device_service._devices) == {sample_device.id}
-            # Событие о состоянии не опубликовано, таймер не создан
-            event_bus.publish.assert_not_awaited()
-            assert set(device_service._unavailable_timers) == set()
-        finally:
-            cancel_unavailable_timers(device_service)
+        # Ошибка разбора данных залогирована ровно один раз
+        errors = log_messages(service_logs, "ERROR")
+        assert len(errors) == 1
+        assert errors[0].startswith("Error handling state change:")
+        # Обновление состояния не началось: сервис не сообщал об успехе
+        assert log_messages(service_logs, "INFO") == []
+        # Невалидные данные не записаны в состояние устройства
+        assert sample_device.state == state_before
+        assert sample_device.state == {"state": "on", "brightness": 200}
+        assert sample_device.attributes == attributes_before
+        assert sample_device.status == "available"
+        assert sample_device.last_state_update == updated_before
+        # Реестр устройств не изменился
+        assert set(device_service._devices) == {sample_device.id}
+        # Событие о состоянии не опубликовано: состояние не менялось
+        event_bus.publish.assert_not_awaited()
 
     def test_parse_devices_with_special_characters(self, device_service):
         """Проверяет парсинг устройств со специальными символами в имени."""

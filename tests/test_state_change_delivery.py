@@ -45,28 +45,6 @@ from services.device_service import DeviceService
 #: Сущность манифеста: именно на такие подписан адаптер после #82.
 ENTITY = "light.living_room_main"
 
-#: Сервисы, созданные тестами модуля: после теста у них гасятся таймеры
-#: доступности, которые обработка события взводит на каждое устройство.
-_services: list[DeviceService] = []
-
-
-@pytest.fixture(autouse=True)
-def _cancel_availability_timers() -> Any:
-    """Погасить 60-секундные таймеры доступности после каждого теста.
-
-    `handle_state_change` взводит таймер на устройство — это часть его работы,
-    а не побочный эффект теста, но оставленный висеть он держит цикл событий
-    открытым и даёт предупреждение pytest.
-
-    Yields:
-        Ничего: фикстура нужна ради уборки после теста.
-    """
-    yield
-    for service in _services:
-        for task in list(service._unavailable_timers.values()):
-            task.cancel()
-    _services.clear()
-
 
 def _device(entity_id: str = ENTITY) -> Device:
     """Устройство с начальным состоянием ``off``.
@@ -109,7 +87,6 @@ def _service(bus: EventBus) -> DeviceService:
     """
     service = DeviceService(event_bus=bus)
     service.subscribe_state_changes()
-    _services.append(service)
     return service
 
 

@@ -38,6 +38,12 @@ EVENT_DEVICE_STATE_CHANGED = "device.state_changed"
 EVENT_DEVICE_ACCESS_CHANGED = "device.access_changed"
 EVENT_DEVICE_REMOVED = "device.removed"
 
+#: Состояния прибора, означающие «не отвечает». Их ставит сам Home Assistant:
+#: потерянный прибор (`unavailable`) и прибор, значение которого ещё не
+#: прочитано (`unknown`). Молчание прибора сюда не относится: «давно не
+#: менялось» — не недоступность (BACKLOG B70).
+UNAVAILABLE_STATES = frozenset({"unavailable", "unknown"})
+
 #: Переменная окружения, включающая фильтр сущностей при синхронизации.
 SYNC_FILTER_ENV = "SYNC_FILTER_MANIFEST_ONLY"
 
@@ -130,9 +136,6 @@ class DeviceService:
         # (spec 006, FR-025/FR-027).
         self._deleted_devices: set[UUID] = set()
         self._commands: dict[UUID, dict[str, Any]] = {}  # Хранилище статусов команд
-        self._unavailable_timers: dict[
-            UUID, asyncio.Task[None]
-        ] = {}  # Таймеры для отслеживания unavailable
         self._metrics = get_metrics_collector()  # Получить единый экземпляр метрик
 
         # Инициализация кэша и индекса
@@ -1299,9 +1302,7 @@ class DeviceService:
                 device.state = new_state
                 updated += 1
             device.last_state_update = datetime.utcnow()
-            if device.status == "unavailable" and raw.get("state") != "unavailable":
-                device.status = "available"
-                self._cancel_unavailable_timer(device.id)
+            self._apply_availability(device)
         if updated:
             logger.info(f"Состояния устройств обновлены из Home Assistant: {updated}")
         return updated
@@ -1340,10 +1341,13 @@ class DeviceService:
             }
             device.last_state_update = datetime.utcnow()
 
-            # Если устройство было unavailable, переводим его в available
-            if device.status == "unavailable" and device.state.get("state") != "unavailable":
-                device.status = "available"
-                self._cancel_unavailable_timer(device.id)
+            # Доступность — по состоянию прибора, а не по молчанию. Home Assistant
+            # сам помечает потерянный прибор (`unavailable`) и восстановленный
+            # (`unknown` — значение ещё не прочитано); «давно не менялось» — это не
+            # недоступность: лампа, которая просто горит, молчит, и объявлять её
+            # сломанной значит врать в интерфейсе (боевой случай 2026-10-14:
+            # «Свет над столом: прибор недоступен» при включённой лампе).
+            self._apply_availability(device)
 
             logger.info(f"Updated state for device {device.id} ({entity_id})")
 
@@ -1354,43 +1358,23 @@ class DeviceService:
                 new_state=device.state,
             )
 
-            # T060: Обновляем таймер доступности
-            self._reset_unavailable_timer(device.id)
-
         except Exception as e:
             logger.error(f"Error handling state change: {e}")
 
-    def _cancel_unavailable_timer(self, device_id: UUID) -> None:
-        """Отменяет таймер недоступности для устройства."""
-        if device_id in self._unavailable_timers:
-            self._unavailable_timers[device_id].cancel()
-            del self._unavailable_timers[device_id]
+    def _apply_availability(self, device: Any) -> None:
+        """Привести статус доступности устройства к состоянию прибора.
 
-    def _reset_unavailable_timer(self, device_id: UUID) -> None:
-        """T060: Сбрасывает таймер на отслеживание недоступности (60 сек)."""
-        # Отменяем старый таймер если существует
-        self._cancel_unavailable_timer(device_id)
+        Args:
+            device: Устройство сервиса.
 
-        # Создаем новый таймер
-        async def mark_unavailable() -> None:
-            await asyncio.sleep(60)
-            device = await self.get_device(device_id)
-            if device and device.status == "available":
-                device.status = "unavailable"
-                logger.warning(
-                    f"Device {device_id} marked as unavailable after 60 seconds without update"
-                )
-                # Обновляем метрики доступности
-                self._update_device_availability_metrics()
-                # Публикуем событие об изменении статуса
-                await self._publish_state_changed_event(
-                    device_id=device_id,
-                    old_state={"status": "available"},
-                    new_state={"status": "unavailable"},
-                )
-
-        task = asyncio.create_task(mark_unavailable())
-        self._unavailable_timers[device_id] = task
+        Returns:
+            Ничего.
+        """
+        raw = (device.state or {}).get("state")
+        status = "unavailable" if str(raw).lower() in UNAVAILABLE_STATES else "available"
+        if device.status != status:
+            device.status = status
+            self._update_device_availability_metrics()
 
     # ============ T053-T057: Отправка команд и отслеживание статуса ============
 

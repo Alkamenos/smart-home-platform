@@ -109,135 +109,108 @@ class TestStateSyncIntegration:
             assert updated.state.get("state") == "on"
 
     @pytest.mark.asyncio
-    async def test_unavailable_device_status_after_timeout(self):
-        """T060: Устройство переходит в unavailable после 60 сек без обновлений.
+    async def test_silence_is_not_unavailability(self):
+        """Молчание прибора не делает его недоступным (B70).
 
-        Раньше тест создавал устройство с устаревшим `last_state_update` и
-        заканчивался комментарием «здесь мы просто проверяем структуру» — то
-        есть не утверждал ничего и был зелёным при любом состоянии кода.
-
-        Механика установлена чтением кода (`DeviceService._reset_unavailable_timer`,
-        строки 1172–1196): таймер **не** создаётся при регистрации устройства, а
-        запускается при обработке входящего изменения состояния и через 60 секунд
-        переводит устройство в `unavailable`. Поэтому тест обязан сначала
-        вызвать `handle_state_change`, иначе таймера не существует и проверять
-        нечего.
-
-        Ожидание 60 секунд заменено перехватом `asyncio.sleep` в модуле сервиса:
-        это проверяет ту же ветвь кода, но за миллисекунды.
+        Раньше сервис заводил таймер: 60 секунд без обновлений — и прибор
+        объявлялся `unavailable`. Но Home Assistant шлёт событие только при
+        изменении: лампа, которая просто горит, молчит — и платформа объявляла её
+        сломанной (боевой случай 2026-10-14: «Свет над столом: прибор
+        недоступен» при включённой лампе). Теперь доступность берётся из
+        состояния прибора, которое ставит сам Home Assistant.
         """
-        from unittest.mock import patch
-
         from core.events.event_bus import EventBus
         from core.models.device import Device
         from services.device_service import DeviceService
 
-        service = DeviceService(
-            event_bus=EventBus(),
-            persistence_module=None,
-            ha_adapter=None,
-        )
-
+        service = DeviceService(event_bus=EventBus(), persistence_module=None, ha_adapter=None)
         device = Device(
-            ha_entity_id="sensor.temperature",
+            ha_entity_id="light.svet_nad_stolom",
             source_id=UUID(int=0),
-            name="Temperature Sensor",
-            device_type="sensor",
+            name="Свет над столом",
+            device_type="light",
             status="available",
         )
         service._devices[device.id] = device
+        service._index.add_device(device)
 
-        # Форма события та же, что у реального вызова `_on_ha_state_change_event`
-        # (`device_service.py:125-133`): состояние лежит в `data.new_state`.
-        # Плоский словарь приводит к тихому возврату по warning «Event data
-        # missing entity_id» — таймер при этом не создаётся вовсе.
-        state_change = {
-            "data": {
-                "entity_id": "sensor.temperature",
-                "old_state": {"state": "off"},
-                "new_state": {"state": "on", "attributes": {}},
+        await service.handle_state_change(
+            {
+                "data": {
+                    "entity_id": "light.svet_nad_stolom",
+                    "old_state": {"state": "off"},
+                    "new_state": {"state": "on", "attributes": {}},
+                }
             }
-        }
-
-        # Порог зашит в коде; перехватываем его, чтобы не ждать 60 секунд.
-        observed_delays: list[float] = []
-        real_sleep = asyncio.sleep
-
-        async def fast_sleep(delay, *args, **kwargs):
-            observed_delays.append(delay)
-            return await real_sleep(0, *args, **kwargs)
-
-        with patch("services.device_service.asyncio.sleep", new=fast_sleep):
-            await service.handle_state_change(state_change)
-            # Дать созданной задаче выполниться
-            for _ in range(5):
-                await real_sleep(0)
-
-        assert observed_delays == [60], f"ожидался порог 60 секунд, фактически {observed_delays}"
+        )
+        # Уступаем управление: если бы таймер остался, задача успела бы отметиться.
+        for _ in range(5):
+            await asyncio.sleep(0)
 
         resolved = await service.get_device(device.id)
-        assert resolved is not None, "устройство обязано читаться после таймаута"
-        assert resolved.status == "unavailable", (
-            f"ожидался статус unavailable после 60 секунд без обновлений, получен {resolved.status}"
+        assert resolved.status == "available", (
+            f"молчание принято за недоступность: {resolved.status}"
         )
 
     @pytest.mark.asyncio
-    async def test_state_change_resets_unavailable_timer(self):
-        """Новое обновление состояния отменяет отложенный перевод в unavailable.
-
-        Парная проверка к предыдущей: без неё тест проходил бы и при сломанном
-        сбросе таймера — устройство уходило бы в `unavailable` даже при
-        регулярных обновлениях.
-        """
+    async def test_ha_reported_unavailable_marks_device_unavailable(self):
+        """Home Assistant объявил прибор потерянным — платформа соглашается."""
         from core.events.event_bus import EventBus
         from core.models.device import Device
         from services.device_service import DeviceService
 
-        service = DeviceService(
-            event_bus=EventBus(),
-            persistence_module=None,
-            ha_adapter=None,
-        )
-
+        service = DeviceService(event_bus=EventBus(), persistence_module=None, ha_adapter=None)
         device = Device(
-            ha_entity_id="sensor.frequent_updates",
+            ha_entity_id="light.vorota_sever",
             source_id=UUID(int=0),
-            name="Датчик с частыми обновлениями",
-            device_type="sensor",
+            name="Ворота (север)",
+            device_type="light",
             status="available",
         )
         service._devices[device.id] = device
+        service._index.add_device(device)
 
-        state_change = {
-            "data": {
-                "entity_id": "sensor.frequent_updates",
-                "old_state": {"state": "off"},
-                "new_state": {"state": "on", "attributes": {}},
+        await service.handle_state_change(
+            {
+                "data": {
+                    "entity_id": "light.vorota_sever",
+                    "old_state": {"state": "on"},
+                    "new_state": {"state": "unavailable", "attributes": {}},
+                }
             }
-        }
-
-        await service.handle_state_change(state_change)
-        assert device.id in service._unavailable_timers, "таймер обязан появиться"
-        first_task = service._unavailable_timers[device.id]
-
-        await service.handle_state_change(state_change)
-        second_task = service._unavailable_timers[device.id]
-
-        assert second_task is not first_task, "новое обновление обязано завести новый таймер"
-
-        # `Task.cancel()` лишь запрашивает отмену: флаг `cancelled()` становится
-        # True только после того, как цикл событий доставит `CancelledError`.
-        # Поэтому проверять флаг можно лишь уступив управление — иначе тест
-        # утверждал бы промежуточное состояние и падал бы на корректном коде.
-        await asyncio.sleep(0)
-        assert first_task.cancelled(), "предыдущий таймер должен быть отменён при новом обновлении"
-        assert (await service.get_device(device.id)).status == "available"
-
-        # Отменённая задача не должна переводить устройство в unavailable
-        await asyncio.sleep(0)
-        assert (await service.get_device(device.id)).status == "available", (
-            "отменённый таймер не должен переводить устройство в unavailable"
         )
+
+        assert (await service.get_device(device.id)).status == "unavailable"
+
+    @pytest.mark.asyncio
+    async def test_returning_device_becomes_available_again(self):
+        """Прибор вернулся — доступность возвращается вместе с состоянием."""
+        from core.events.event_bus import EventBus
+        from core.models.device import Device
+        from services.device_service import DeviceService
+
+        service = DeviceService(event_bus=EventBus(), persistence_module=None, ha_adapter=None)
+        device = Device(
+            ha_entity_id="light.kalitka_iug",
+            source_id=UUID(int=0),
+            name="Калитка (юг)",
+            device_type="light",
+            status="unavailable",
+        )
+        service._devices[device.id] = device
+        service._index.add_device(device)
+
+        await service.handle_state_change(
+            {
+                "data": {
+                    "entity_id": "light.kalitka_iug",
+                    "old_state": {"state": "unavailable"},
+                    "new_state": {"state": "off", "attributes": {}},
+                }
+            }
+        )
+
+        assert (await service.get_device(device.id)).status == "available"
 
 
 class TestCommandExecutionIntegration:

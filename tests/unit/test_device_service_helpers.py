@@ -140,65 +140,89 @@ class TestAccessHelpers:
         assert await service.get_device_accesses(uuid4()) == []
 
 
-class TestAvailabilityTimers:
-    """Таймеры отслеживания недоступности устройства."""
+class TestAvailabilityFollowsDeviceState:
+    """Доступность — по состоянию прибора, а не по молчанию (B70).
+
+    Раньше сервис заводил таймер: 60 секунд без обновлений — прибор объявлялся
+    недоступным. Home Assistant шлёт событие только при изменении, поэтому
+    объявленная сломанной лампа просто не менялась (боевой случай 2026-10-14).
+    """
 
     @pytest.mark.asyncio
-    async def test_timer_should_be_created_and_replaced(self, service: DeviceService) -> None:
-        """Для устройства создаётся таймер; повторный вызов заменяет его (T060)."""
+    async def test_unavailable_state_marks_device_unavailable(self, service: DeviceService) -> None:
+        """HA объявил прибор потерянным — платформа соглашается."""
+        device = _device("light.gone")
+        await service.add_device(device)
+        device.status = "available"
+
+        await service.handle_state_change(
+            {
+                "data": {
+                    "entity_id": "light.gone",
+                    "old_state": {"state": "on"},
+                    "new_state": {"state": "unavailable", "attributes": {}},
+                }
+            }
+        )
+
+        assert device.status == "unavailable"
+
+    @pytest.mark.asyncio
+    async def test_unknown_state_marks_device_unavailable(self, service: DeviceService) -> None:
+        """`unknown` — значение ещё не прочитано, прибор не отвечает."""
+        device = _device("light.unknown")
+        await service.add_device(device)
+
+        await service.handle_state_change(
+            {
+                "data": {
+                    "entity_id": "light.unknown",
+                    "old_state": {"state": "on"},
+                    "new_state": {"state": "unknown", "attributes": {}},
+                }
+            }
+        )
+
+        assert device.status == "unavailable"
+
+    @pytest.mark.asyncio
+    async def test_working_device_stays_available(self, service: DeviceService) -> None:
+        """Работающий прибор не объявляется недоступным из-за тишины."""
         device = _device("light.silent")
         await service.add_device(device)
 
-        service._reset_unavailable_timer(device.id)  # noqa: SLF001 — внутренний таймер
-        first = service._unavailable_timers[device.id]  # noqa: SLF001
+        await service.handle_state_change(
+            {
+                "data": {
+                    "entity_id": "light.silent",
+                    "old_state": {"state": "off"},
+                    "new_state": {"state": "on", "attributes": {}},
+                }
+            }
+        )
+        for _ in range(5):
+            await asyncio.sleep(0)
 
-        service._reset_unavailable_timer(device.id)  # noqa: SLF001
-        second = service._unavailable_timers[device.id]  # noqa: SLF001
-
-        assert first is not second, "Старый таймер должен заменяться"
-        await asyncio.sleep(0)
-        assert first.cancelled(), "Задача старого таймера должна быть отменена"
-
-        service._cancel_unavailable_timer(device.id)  # noqa: SLF001
-        assert device.id not in service._unavailable_timers  # noqa: SLF001
+        assert device.status == "available"
 
     @pytest.mark.asyncio
-    async def test_timer_should_not_mark_available_device_again(
-        self, service: DeviceService
-    ) -> None:
-        """Устройство, получившее обновление, недоступным не помечается."""
-        device = _device("light.noisy")
+    async def test_returning_device_becomes_available(self, service: DeviceService) -> None:
+        """Прибор ответил снова — доступность вернулась."""
+        device = _device("light.back")
         await service.add_device(device)
+        device.status = "unavailable"
 
-        service._reset_unavailable_timer(device.id)  # noqa: SLF001
-        service._cancel_unavailable_timer(device.id)  # noqa: SLF001
+        await service.handle_state_change(
+            {
+                "data": {
+                    "entity_id": "light.back",
+                    "old_state": {"state": "unavailable"},
+                    "new_state": {"state": "off", "attributes": {}},
+                }
+            }
+        )
 
-        assert device.id not in service._unavailable_timers  # noqa: SLF001
-
-    @pytest.mark.asyncio
-    async def test_cancel_timer_should_tolerate_missing_timer(self, service: DeviceService) -> None:
-        """Отмена несуществующего таймера безопасна и не трогает чужие таймеры."""
-        tracked = _device("light.tracked")
-        await service.add_device(tracked)
-        service._reset_unavailable_timer(tracked.id)  # noqa: SLF001 — внутренний таймер
-        missing = uuid4()
-        before = dict(service._unavailable_timers)  # noqa: SLF001
-
-        service._cancel_unavailable_timer(missing)  # noqa: SLF001
-        service._cancel_unavailable_timer(missing)  # noqa: SLF001
-
-        # Карта таймеров не изменилась: ни фантомной записи, ни потери чужой.
-        assert service._unavailable_timers == before  # noqa: SLF001
-        assert missing not in service._unavailable_timers  # noqa: SLF001
-        assert not before[tracked.id].cancelled(), "таймер другого устройства не отменяется"
-
-        # Контроль: таймер, который есть, метод обязан отменить. Без этой части
-        # проверка выше была бы верна и для кода, который ничего не делает.
-        service._cancel_unavailable_timer(tracked.id)  # noqa: SLF001
-
-        assert tracked.id not in service._unavailable_timers  # noqa: SLF001
-        await asyncio.sleep(0)
-        assert before[tracked.id].cancelled(), "отменённый таймер должен быть отменён"
+        assert device.status == "available"
 
 
 class TestAvailabilityMetrics:
@@ -352,7 +376,6 @@ class TestConfigAndCacheInvalidation:
         assert service.find_device_by_ha_entity_id("light.unknown") is None
         assert known.state == {}, "Состояние известного устройства не должно меняться"
         service.event_bus.publish.assert_not_called()
-        assert service._unavailable_timers == {}  # noqa: SLF001
 
     @pytest.mark.asyncio
     async def test_command_status_should_be_available(self, service: DeviceService) -> None:
