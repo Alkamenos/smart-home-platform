@@ -546,6 +546,10 @@ class Container:
                 adapter=self._external_adapter(),
                 settings=settings,
                 event_bus=self.event_bus,
+                # Расхождение из-за действующего оверрайда — уступка человеку,
+                # а не отказ прибора: сторож спрашивает правило блокировки у
+                # посредника, а не повторяет его у себя (концепция §7, п. 2).
+                manual_override_supplier=self._manual_override_active,
             )
         return self._watchdog
 
@@ -559,6 +563,24 @@ class Container:
 
         adapter = self.adapter
         return adapter if isinstance(adapter, HomeAssistantAdapter) else None
+
+    def _manual_override_active(self, device_id: str) -> bool:
+        """Действует ли для прибора ручная блокировка (концепция §7, п. 2).
+
+        Args:
+            device_id: Сущность прибора.
+
+        Returns:
+            True, если человек вмешался и срок оверрайда ещё не истёк.
+        """
+        middleware = self._middleware
+        if middleware is None:
+            return False
+        try:
+            return bool(middleware.is_lockout_active(device_id))
+        except Exception as exc:  # noqa: BLE001 — наблюдатель не должен падать
+            logger.warning(f"Проверка ручной блокировки для {device_id} не удалась: {exc}")
+            return False
 
     @property
     def fsm_bridge(self) -> Any:

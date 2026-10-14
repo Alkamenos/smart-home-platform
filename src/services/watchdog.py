@@ -77,6 +77,21 @@ MISMATCH_DEVICE_ON_DECISION_OFF = "device_on_decision_off"
 MISMATCH_DEVICE_OFF_DECISION_ON = "device_off_decision_on"
 MISMATCH_DEVICE_UNAVAILABLE = "device_unavailable"
 
+#: Расхождение из-за действующего ручного оверрайда: человек вмешался, и
+#: автоматика **обязана** уступить (концепция §7, п. 2). Это не отказ: тревоги
+#: и счётчика проблем оно не порождает, но в журнале и интерфейсе видно — иначе
+#: «почему прибор не как решила автоматика» остаётся без ответа.
+MISMATCH_MANUAL_OVERRIDE = "manual_override_active"
+
+#: Виды расхождения, которые являются отказом (проблема), а не уступкой человеку.
+MISMATCH_FAULT_REASONS = frozenset(
+    {
+        MISMATCH_DEVICE_ON_DECISION_OFF,
+        MISMATCH_DEVICE_OFF_DECISION_ON,
+        MISMATCH_DEVICE_UNAVAILABLE,
+    }
+)
+
 #: Состояния прибора, означающие «включено».
 DEVICE_ON_STATES = frozenset({"on", "open", "opening"})
 
@@ -156,6 +171,16 @@ class FsmSnapshotEntry:
             True, если расхождение названо.
         """
         return self.mismatch_reason is not None
+
+    @property
+    def mismatch_is_fault(self) -> bool:
+        """Отказ ли это, а не уступка ручному действию человека.
+
+        Returns:
+            True, если расхождение — отказ (команда не применилась, прибор
+            недоступен); False для уступки ручному оверрайду.
+        """
+        return self.mismatch_reason in MISMATCH_FAULT_REASONS
 
 
 @dataclass(frozen=True)
@@ -418,6 +443,11 @@ class WatchdogService:
     event_bus: Any | None = None
     clock: Callable[[], float] = time.monotonic
 
+    #: Признак «для прибора действует ручная блокировка». Нужен, чтобы отличать
+    #: отказ прибора от уступки человеку: расхождение из-за оверрайда — не
+    #: проблема (концепция §7, п. 2).
+    manual_override_supplier: Callable[[str], bool] | None = None
+
     # Последний снимок хранится, чтобы проверка готовности могла судить о
     # свежести: без него «сторож молчит» и «сторож не работает» неразличимы.
     _last_snapshot: FsmSnapshot | None = None
@@ -616,6 +646,10 @@ class WatchdogService:
                 continue
             actual = await self._read_device_state(reader, entry.device)
             reason = _device_mismatch_reason(expected, actual)
+            if reason in MISMATCH_FAULT_REASONS and self._manual_override_active(entry.device):
+                # Человек вмешался: автоматика уступает по правилу оверрайда.
+                # Это расхождение, но не отказ — прибора чинить нечего.
+                reason = MISMATCH_MANUAL_OVERRIDE
             if reason is not None:
                 logger.warning(
                     f"Расхождение «автомат ↔ прибор»: {entry.device} — автомат "
@@ -624,6 +658,25 @@ class WatchdogService:
                 )
             enriched.append(replace(entry, device_state=actual, mismatch_reason=reason))
         return tuple(enriched)
+
+    def _manual_override_active(self, device_id: str) -> bool:
+        """Действует ли для прибора ручная блокировка.
+
+        Args:
+            device_id: Сущность прибора.
+
+        Returns:
+            True, если человек вмешался и срок оверрайда ещё не истёк; сбой
+            проверки считается «нет» — выдумывать уступку нельзя.
+        """
+        supplier = self.manual_override_supplier
+        if supplier is None:
+            return False
+        try:
+            return bool(supplier(device_id))
+        except Exception as exc:  # noqa: BLE001 — проверка не должна ронять сторожа
+            logger.warning(f"Сторож: блокировка для {device_id} не проверена: {exc}")
+            return False
 
     async def _read_device_state(self, reader: Any, entity_id: str) -> str | None:
         """Прочитать состояние прибора, не роняя проверку.
@@ -704,7 +757,7 @@ class WatchdogService:
         return FsmSnapshot(
             taken_at=_now_timestamp(),
             entries=entries,
-            problem_count=sum(1 for entry in entries if entry.stuck or entry.mismatch),
+            problem_count=sum(1 for entry in entries if entry.stuck or entry.mismatch_is_fault),
             ha_checked=checked,
             ha_disconnected=disconnected,
         )
@@ -771,17 +824,19 @@ class WatchdogService:
         """Согласовать проблемы расхождения «автомат ↔ прибор» со снимком.
 
         Публикация идёт только при появлении и устранении расхождения: повторная
-        проверка того же прибора новых событий не порождает (FR-016).
+        проверка того же прибора новых событий не порождает (FR-016). Уступка
+        ручному действию проблемой не считается — она видна в снимке и тревогой
+        уровня «знать», но прибора чинить нечего.
 
         Args:
             snapshot: Снимок после проверки.
         """
         for entry in snapshot.entries:
             key = (PROBLEM_DEVICE_MISMATCH, entry.entity_id)
-            if entry.mismatch and key not in self._problems:
+            if entry.mismatch_is_fault and key not in self._problems:
                 self._problems[key] = self._start_problem(PROBLEM_DEVICE_MISMATCH, entry.entity_id)
                 self._publish(PROBLEM_DEVICE_MISMATCH, entry.entity_id, entry.state, resolved=False)
-            elif not entry.mismatch and key in self._problems:
+            elif not entry.mismatch_is_fault and key in self._problems:
                 self._resolve_problem(key, state=entry.state)
 
     def _sync_fsm_problems(self, snapshot: FsmSnapshot) -> None:

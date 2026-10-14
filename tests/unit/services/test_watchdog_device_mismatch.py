@@ -27,6 +27,7 @@ from services.watchdog import (
     MISMATCH_DEVICE_OFF_DECISION_ON,
     MISMATCH_DEVICE_ON_DECISION_OFF,
     MISMATCH_DEVICE_UNAVAILABLE,
+    MISMATCH_MANUAL_OVERRIDE,
     WatchdogService,
     WatchdogSettings,
 )
@@ -105,6 +106,7 @@ def make_watchdog(
     engine: FakeEngine,
     adapter: Any | None = None,
     event_bus: Any | None = None,
+    manual_override: Any | None = None,
 ) -> WatchdogService:
     """Собрать сторож с подменёнными движком и внешней системой.
 
@@ -112,6 +114,7 @@ def make_watchdog(
         engine: Движок-двойник.
         adapter: Внешняя система-двойник.
         event_bus: Шина событий для проверки публикации проблем.
+        manual_override: Признак действующей ручной блокировки.
 
     Returns:
         Сторож.
@@ -122,6 +125,7 @@ def make_watchdog(
         adapter=adapter,  # type: ignore[arg-type]
         settings=WatchdogSettings(interval_sec=0.01),
         event_bus=event_bus,
+        manual_override_supplier=manual_override,
     )
 
 
@@ -254,6 +258,45 @@ async def test_problem_is_published_once_and_resolved() -> None:
     await watchdog._drain_publish_tasks()
     assert collector.events[-1]["kind"] == PROBLEM_DEVICE_MISMATCH
     assert collector.events[-1]["resolved"] is True
+
+
+@pytest.mark.asyncio
+async def test_manual_override_is_not_a_fault() -> None:
+    """Расхождение из-за ручного вмешательства — уступка, а не отказ."""
+    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
+    adapter = FakeAdapter({DEVICE: "on"})
+    bus = EventBus()
+    collector = Collector()
+    bus.subscribe(EVENT_PLATFORM_PROBLEM, collector)
+
+    snapshot = await make_watchdog(
+        engine, adapter, event_bus=bus, manual_override=lambda device: True
+    ).check_once()
+    await make_watchdog(engine, adapter).check_once()
+
+    entry = snapshot.entries[0]
+    assert entry.mismatch is True
+    assert entry.mismatch_reason == MISMATCH_MANUAL_OVERRIDE
+    assert entry.mismatch_is_fault is False
+    assert snapshot.problem_count == 0
+    assert collector.events == []
+
+
+@pytest.mark.asyncio
+async def test_manual_override_supplier_failure_is_not_a_fault() -> None:
+    """Сбой проверки блокировки не превращается в уступку человеку."""
+
+    def broken(device: str) -> bool:
+        """Проверка блокировки, которая падает."""
+        raise RuntimeError("трекер недоступен")
+
+    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
+    adapter = FakeAdapter({DEVICE: "on"})
+
+    snapshot = await make_watchdog(engine, adapter, manual_override=broken).check_once()
+
+    assert snapshot.entries[0].mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
+    assert snapshot.problem_count == 1
 
 
 @pytest.mark.asyncio

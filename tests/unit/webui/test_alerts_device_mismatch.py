@@ -90,6 +90,25 @@ def test_cover_mismatch_speaks_of_position() -> None:
     assert "закрыта, хотя решение — открыть" in alerts[0].detail
 
 
+def test_manual_override_alert_is_informational() -> None:
+    """Уступка человеку — «знать», а не «вмешаться»."""
+    snapshot = SimpleNamespace(
+        entries=(
+            _entry(
+                device="cover.shtora_v_kabinete",
+                state="OPEN",
+                device_state="closed",
+                mismatch_reason="manual_override_active",
+            ),
+        )
+    )
+
+    alerts = alerts_from_watchdog(snapshot)
+
+    assert alerts[0].severity == "info"
+    assert "человек вмешался" in alerts[0].detail
+
+
 def test_no_snapshot_is_empty() -> None:
     """Сторожа ещё не было — тревог нет, а не ошибка."""
     assert alerts_from_watchdog(None) == []

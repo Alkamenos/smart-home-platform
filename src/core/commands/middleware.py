@@ -171,6 +171,24 @@ class ManualLockoutMiddleware(Middleware):
         # Use ControlTracker to check for recent manual intervention
         return self._control_tracker.was_manual_within(device_id, lockout_minutes)
 
+    def is_lockout_active(self, device_id: str, domain: str | None = None) -> bool:
+        """Действует ли ручная блокировка для прибора.
+
+        Открыто для наблюдателей (сторож, тревоги интерфейса): расхождение
+        «автомат ↔ прибор» из-за действующего оверрайда — уступка человеку, а не
+        отказ, и наблюдатель обязан уметь это отличить, не повторяя правила
+        блокировки у себя.
+
+        Args:
+            device_id: Сущность прибора.
+            domain: Домен прибора; ``None`` — взять из имени сущности.
+
+        Returns:
+            True, если блокировка действует.
+        """
+        resolved = domain or device_id.split(".", 1)[0]
+        return self._is_in_lockout_period(device_id, resolved)
+
     async def process(self, intent: CommandIntent) -> CommandIntent | None:
         """
         Process a command intent, blocking automated commands during manual lockout.

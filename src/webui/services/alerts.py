@@ -16,6 +16,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from services.watchdog import MISMATCH_FAULT_REASONS, MISMATCH_MANUAL_OVERRIDE
+
 
 #: Вид тревоги.
 KIND_STALE_SENSOR = "stale_sensor"
@@ -129,6 +131,8 @@ def _mismatch_label(subject: str, reason: str) -> str:
     Returns:
         Объяснение человеческим языком.
     """
+    if reason == MISMATCH_MANUAL_OVERRIDE:
+        return "человек вмешался: автоматика уступает по правилу оверрайда"
     labels = MISMATCH_LABELS_COVER if subject.startswith("cover.") else MISMATCH_LABELS
     return labels.get(reason, reason)
 
@@ -160,7 +164,11 @@ def alerts_from_watchdog(snapshot: Any) -> list[Alert]:
             Alert(
                 kind=KIND_DEVICE_MISMATCH,
                 subject=subject,
-                severity=SEVERITY_WARNING,
+                # Уступка человеку — «знать», а не «вмешаться»: прибор не сломан,
+                # автоматика сама обязана уступать на срок оверрайда (§7, п. 2).
+                severity=(
+                    SEVERITY_WARNING if str(reason) in MISMATCH_FAULT_REASONS else SEVERITY_INFO
+                ),
                 detail=f"{subject}: {explained} (прибор {getattr(entry, 'device_state', None)})",
                 at=None,
             )
