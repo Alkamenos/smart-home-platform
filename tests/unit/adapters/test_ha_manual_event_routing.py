@@ -103,6 +103,28 @@ async def test_manual_change_from_ha_reaches_fsm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_manual_action_is_logged_with_its_evidence(caplog: Any) -> None:
+    """Ручное действие пишется в журнал с доказательством (разбор 2026-10-14).
+
+    Боевой случай: группа ночного освещения получила «ручное действие» в ту же
+    секунду, когда её лампы выключала наша команда. Без записи с чужого
+    пользователя, контекстом и наличием своей команды причину не разобрать.
+    """
+    engine = _Engine()
+    middleware = _Middleware()
+    adapter = _adapter(engine, middleware)
+
+    with caplog.at_level("WARNING"):
+        await adapter.on_state_change("light.girlianda_terassa", "on", "off", {"user_id": "leonid"})
+
+    assert middleware.recorded == ["light.girlianda_terassa"]
+    assert any(
+        "ручное действие" in record.message and "light.girlianda_terassa" in record.message
+        for record in caplog.records
+    ), "запись о ручном действии не объясняет себя"
+
+
+@pytest.mark.asyncio
 async def test_manual_off_from_ha_reaches_fsm() -> None:
     """Выключение человеком уходит автомату как `manual_switch_off`."""
     engine = _Engine()

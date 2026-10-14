@@ -1456,6 +1456,18 @@ class HAAdapter:
             entity_id
         )
         if user_id and self._manual_lockout_middleware and not own_action:
+            # Диагностика, а не догадка: если команда платформы всё-таки
+            # засчиталась ручным действием, утренний разбор должен видеть, почему
+            # (чей пользователь, какой контекст, командовали ли мы этому прибору
+            # и когда). Боевой случай 2026-10-14: группа ночного освещения
+            # получила «ручное действие» в 17:37:51, хотя в ту же секунду
+            # выключались её лампы нашей командой.
+            logger.warning(
+                f"HAAdapter: ручное действие — {entity_id}, user={user_id}, "
+                f"context={context.get('ha_context_id')}, "
+                f"своя команда этому прибору: "
+                f"{'была' if self._is_recent_command(entity_id) else 'не найдена'}"
+            )
             self._manual_lockout_middleware.record_manual_control(entity_id)
         elif own_action:
             logger.debug(
