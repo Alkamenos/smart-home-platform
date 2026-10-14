@@ -24,6 +24,8 @@ from core.events.event_bus import EventBus
 from core.events.fsm_events import EVENT_PLATFORM_PROBLEM, PROBLEM_DEVICE_MISMATCH
 from core.metrics import MetricsCollector
 from services.watchdog import (
+    DEVICE_DIVERGED_TRIGGER,
+    DIVERGENCE_REASSERT_ATTEMPTS,
     MISMATCH_DEVICE_OFF_DECISION_ON,
     MISMATCH_DEVICE_ON_DECISION_OFF,
     MISMATCH_DEVICE_UNAVAILABLE,
@@ -52,6 +54,31 @@ class FakeEngine:
     states: dict[str, str]
     devices: dict[str, str]
     outcomes: dict[str, str | None] = field(default_factory=dict)
+    #: Записанные повторы решения: (автомат, событие, respect_debounce).
+    triggered: list[tuple[str, str, bool]] = field(default_factory=list)
+
+    async def trigger(
+        self,
+        entity_id: str,
+        event: str,
+        external_ctx: dict[str, Any] | None = None,
+        respect_debounce: bool = True,
+        trace_id: str | None = None,
+    ) -> bool:
+        """Запомнить повтор решения.
+
+        Args:
+            entity_id: Автомат.
+            event: Событие.
+            external_ctx: Внешний контекст (не используется).
+            respect_debounce: Флаг дебаунса.
+            trace_id: Идентификатор трассы (не используется).
+
+        Returns:
+            True — повтор принят.
+        """
+        self.triggered.append((entity_id, event, respect_debounce))
+        return True
 
     def get_all_states(self) -> dict[str, Any]:
         """Состояния всех автоматов."""
@@ -297,6 +324,58 @@ async def test_manual_override_supplier_failure_is_not_a_fault() -> None:
 
     assert snapshot.entries[0].mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
     assert snapshot.problem_count == 1
+
+
+@pytest.mark.asyncio
+async def test_divergence_repeats_the_decision() -> None:
+    """Прибор разошёлся с решением — автомат просит повторить решение (B64)."""
+    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
+    adapter = FakeAdapter({DEVICE: "on"})
+
+    await make_watchdog(engine, adapter).check_once()
+
+    assert engine.triggered == [(FSM_ID, DEVICE_DIVERGED_TRIGGER, False)]
+
+
+@pytest.mark.asyncio
+async def test_divergence_repeats_are_bounded() -> None:
+    """Неотвечающий прибор не получает команду каждый цикл сторожа."""
+    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
+    adapter = FakeAdapter({DEVICE: "on"})
+    watchdog = make_watchdog(engine, adapter)
+
+    for _ in range(DIVERGENCE_REASSERT_ATTEMPTS + 2):
+        await watchdog.check_once()
+
+    assert len(engine.triggered) == DIVERGENCE_REASSERT_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_divergence_counter_resets_when_device_agrees() -> None:
+    """Прибор согласился — следующий отказ снова получает повторы."""
+    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
+    adapter = FakeAdapter({DEVICE: "on"})
+    watchdog = make_watchdog(engine, adapter)
+
+    for _ in range(DIVERGENCE_REASSERT_ATTEMPTS):
+        await watchdog.check_once()
+    adapter.device_states[DEVICE] = "off"
+    await watchdog.check_once()
+    adapter.device_states[DEVICE] = "on"
+    await watchdog.check_once()
+
+    assert len(engine.triggered) == DIVERGENCE_REASSERT_ATTEMPTS + 1
+
+
+@pytest.mark.asyncio
+async def test_manual_override_is_not_reasserted() -> None:
+    """Уступку человеку повторять нельзя: автоматика уступает по правилу."""
+    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
+    adapter = FakeAdapter({DEVICE: "on"})
+
+    await make_watchdog(engine, adapter, manual_override=lambda device: True).check_once()
+
+    assert engine.triggered == []
 
 
 @pytest.mark.asyncio

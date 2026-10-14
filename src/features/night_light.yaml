@@ -135,3 +135,24 @@ transitions:
     to_state: "OFF"
     trigger: "day_started"
     action: "turn_off_night_light"
+
+  # --- Прибор разошёлся с решением: решение повторяется (B64) ---
+  #
+  # Сторож шлёт `device_state_diverged`, когда фактическое состояние прибора
+  # противоречит решению. Ночник повторяет своё решение: включённый по решению —
+  # включается снова, погашенный — гасится снова. Команда идёт общим путём
+  # (посредник и блокировка человека), поэтому ручного владельца не задевает.
+  - from_state: "OFF"
+    to_state: "OFF"
+    trigger: "device_state_diverged"
+    action: "turn_off_night_light"
+
+  - from_state: "ON_NIGHT"
+    to_state: "ON_NIGHT"
+    trigger: "device_state_diverged"
+    action: "turn_on_night_light"
+
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "device_state_diverged"
+    action: "turn_on_night_light"

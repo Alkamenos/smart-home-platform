@@ -110,6 +110,15 @@ IDLE_LIKE_STATES = frozenset({"OFF", "IDLE", "CLOSED", "STANDBY"})
 #: называют работу словом, а не префиксом `ON`.
 ACTIVE_STATES = frozenset({"HEATING", "COOLING", "SUPPLY", "AIRING", "EXHAUST", "DRY", "OPEN"})
 
+#: Событие «прибор разошёлся с решением»: автомат повторяет **своё** решение тем
+#: же действием, что и в обычном переходе. Сторож команду не выдумывает.
+DEVICE_DIVERGED_TRIGGER = "device_state_diverged"
+
+#: Сколько раз повторять решение для одного прибора. Прибор, который не отвечает
+#: (граница радиосвязи, недоступность), иначе получал бы команду каждый цикл
+#: сторожа: после нескольких повторов остаётся тревога, а не поток команд.
+DIVERGENCE_REASSERT_ATTEMPTS = 3
+
 # Значение метки, которым помечаются активные зависшие автоматы в показателях.
 STUCK_LABEL_VALUE = "1"
 
@@ -448,6 +457,10 @@ class WatchdogService:
     #: проблема (концепция §7, п. 2).
     manual_override_supplier: Callable[[str], bool] | None = None
 
+    #: Сколько раз решение уже повторялось для прибора (B64). Сбрасывается, когда
+    #: прибор согласился с решением.
+    _divergence_attempts: dict[str, int] = field(default_factory=dict)
+
     # Последний снимок хранится, чтобы проверка готовности могла судить о
     # свежести: без него «сторож молчит» и «сторож не работает» неразличимы.
     _last_snapshot: FsmSnapshot | None = None
@@ -547,6 +560,7 @@ class WatchdogService:
             return snapshot
 
         entries = await self._with_device_states(entries)
+        await self._reassert_decisions(entries)
         snapshot = self._with_connection(entries)
         self._last_snapshot = snapshot
         self._record_metrics(snapshot)
@@ -658,6 +672,44 @@ class WatchdogService:
                 )
             enriched.append(replace(entry, device_state=actual, mismatch_reason=reason))
         return tuple(enriched)
+
+    async def _reassert_decisions(self, entries: tuple[FsmSnapshotEntry, ...]) -> None:
+        """Повторить решение для приборов, разошедшихся с ним (B64).
+
+        Сторож не выдумывает команду: он говорит автомату «прибор разошёлся с
+        твоим решением», и автомат повторяет **своё** решение тем же действием,
+        что и в обычном переходе. Так у света, штор и вентиляции остаётся один
+        путь команды (посредник, блокировка человека, журнал), а не второй,
+        собранный в сторожe.
+
+        Повторы ограничены: прибор, который не отвечает (граница радиосвязи,
+        недоступность), иначе получал бы команду каждый цикл.
+
+        Args:
+            entries: Записи снимка с фактическим состоянием приборов.
+        """
+        trigger = getattr(self.fsm_engine, "trigger", None)
+        if not callable(trigger):
+            return
+        for entry in entries:
+            if not entry.mismatch_is_fault:
+                # Прибор согласился или уступил человеку — счётчик повторов
+                # начинается заново: следующий отказ снова получит повторы.
+                self._divergence_attempts.pop(entry.entity_id, None)
+                continue
+            attempts = self._divergence_attempts.get(entry.entity_id, 0)
+            if attempts >= DIVERGENCE_REASSERT_ATTEMPTS:
+                continue
+            self._divergence_attempts[entry.entity_id] = attempts + 1
+            logger.warning(
+                f"Повтор решения для {entry.device}: прибор {entry.device_state!r} "
+                f"не совпал с автоматом {entry.entity_id} ({entry.mismatch_reason}), "
+                f"попытка {attempts + 1} из {DIVERGENCE_REASSERT_ATTEMPTS}"
+            )
+            try:
+                await trigger(entry.entity_id, DEVICE_DIVERGED_TRIGGER, respect_debounce=False)
+            except Exception as exc:  # noqa: BLE001 — повтор не должен ронять проверку
+                logger.warning(f"Повтор решения для {entry.entity_id} не удался: {exc}")
 
     def _manual_override_active(self, device_id: str) -> bool:
         """Действует ли для прибора ручная блокировка.

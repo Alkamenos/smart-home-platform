@@ -369,6 +369,9 @@ class TestDecoTemplateIsComplete:
             "manual_switch_on",
             "manual_switch_off",
             "timeout",
+            # Прибор разошёлся с решением — сторож просит автомат повторить
+            # решение (BACKLOG B64).
+            "device_state_diverged",
         }
         assert not (listened - produced), (
             f"шаблон слушает события, которых никто не порождает: {sorted(listened - produced)}"

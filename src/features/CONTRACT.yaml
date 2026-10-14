@@ -178,11 +178,13 @@ templates:
     guards: [covers_should_open, covers_should_close]
     triggers:
       settings_changed: platform
+      device_state_diverged: platform
     unproduced_triggers: []
     gaps:
       - Позицию прибора платформа не отслеживает: она просит открыть или закрыть, а состояние шторы в Home Assistant не читает. Поэтому в CLOSED автомат уверен по собственной команде, а не по прибору; ручное движение человеком автоматику не отменяет (ручного пути в платформе пока нет — тот же пробел, что и у света).
       - Решение принимается только по флагам дома и модификатору «мы спим»: часов платформа не считает, поэтому «ночь» задаёт владелец сущностью sleep_modifier, а не расписание в коде.
-      - Единственный триггер — settings_changed. Смену флагов дома доносит HAAdapter (route_settings_change), а первый пересмотр делается при подключении: без него штора не приняла бы решение до первого переключения флага, которого может не быть часами.
+      - Смену флагов дома доносит HAAdapter (route_settings_change), а первый пересмотр делается при подключении: без него штора не приняла бы решение до первого переключения флага, которого может не быть часами.
+      - Второй триггер — `device_state_diverged`: сторож платформы видит, что положение прибора противоречит решению, и автомат повторяет решение. Команда идёт общим путём (посредник и блокировка человека), поэтому штору, которую человек только что тронул, повтор не тронет.
     params:
       cover_role:
         type: str
@@ -207,6 +209,7 @@ templates:
       manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ
       manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
       timeout: engine
+      device_state_diverged: platform
     unproduced_triggers: [sunset_started, sleep_started, sunrise_started, day_started, manual_switch_on, manual_switch_off]
     gaps:
       - События заката и рассвета порождает адаптер по состоянию sun.sun, а не роутер: солнце не входит в манифест и в подписку, поэтому в карте SENSOR_EVENT_MAP его нет. Шаблон слушает то, чего роутер не публикует, и это нормально ровно до тех пор, пока события доставляет контейнер.
@@ -277,10 +280,12 @@ templates:
       sleep_started: НЕТ ПРОИСХОДИТЕЛЯ
       manual_override: НЕТ ПРОИСХОДИТЕЛЯ
       manual_switch_off: НЕТ ПРОИСХОДИТЕЛЯ
+      device_state_diverged: platform
     unproduced_triggers: [manual_switch_on, quiet_hours_started, day_started, sleep_started, manual_override, manual_switch_off]
     gaps:
       - motion_cleared публикуется платформой, но перехода по нему нет — движение кончилось, свет горит до таймаута. Это сценарий «свет с задержкой», а не дефект; отдельная задача на выбор поведения.
       - manual_switch_on и manual_switch_off нигде не порождаются. Ручной путь управления устройством в платформе отсутствует как класс (пункт 3 веб-плана), поэтому и manual_override не имеет источника.
+      - device_state_diverged порождает сторож платформы: он читает фактическое состояние прибора и, если оно противоречит решению, автомат повторяет решение.
     params:
       brightness:
         type: int
@@ -314,6 +319,7 @@ templates:
       day_started: НЕТ ПРОИСХОДИТЕЛЯ
       manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ
       sunrise_started: НЕТ ПРОИСХОДИТЕЛЯ
+      device_state_diverged: platform
     unproduced_triggers: [manual_switch_off, day_started, manual_switch_on, sunrise_started]
     gaps:
       - schedule_end не порождается — расписание не выключает ночной свет.

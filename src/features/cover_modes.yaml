@@ -54,3 +54,20 @@ transitions:
     trigger: "settings_changed"
     guard: "covers_should_close"
     action: "cover_close"
+
+  # --- Прибор разошёлся с решением: решение повторяется (B64) ---
+  #
+  # Сторож шлёт `device_state_diverged`, когда положение прибора противоречит
+  # решению автомата (штора закрыта, а решение — открыть). Автомат повторяет
+  # своё решение: открытая по решению открывается снова, закрытая — закрывается.
+  # Команда идёт общим путём (посредник и блокировка человека), поэтому штору,
+  # которую человек только что тронул, повтор не тронет.
+  - from_state: "OPEN"
+    to_state: "OPEN"
+    trigger: "device_state_diverged"
+    action: "cover_open"
+
+  - from_state: "CLOSED"
+    to_state: "CLOSED"
+    trigger: "device_state_diverged"
+    action: "cover_close"

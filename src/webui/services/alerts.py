@@ -169,7 +169,10 @@ def alerts_from_watchdog(snapshot: Any) -> list[Alert]:
                 severity=(
                     SEVERITY_WARNING if str(reason) in MISMATCH_FAULT_REASONS else SEVERITY_INFO
                 ),
-                detail=f"{subject}: {explained} (прибор {getattr(entry, 'device_state', None)})",
+                detail=(
+                    f"{subject}: {explained} "
+                    f"(Home Assistant сообщает: {getattr(entry, 'device_state', None)})"
+                ),
                 at=None,
             )
         )

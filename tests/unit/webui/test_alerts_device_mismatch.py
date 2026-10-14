@@ -67,7 +67,7 @@ def test_unavailable_device_is_explained() -> None:
 
     alerts = alerts_from_watchdog(snapshot)
 
-    assert alerts[0].detail.endswith("(прибор unavailable)")
+    assert alerts[0].detail.endswith("(Home Assistant сообщает: unavailable)")
     assert "не отвечает" in alerts[0].detail
 
 
