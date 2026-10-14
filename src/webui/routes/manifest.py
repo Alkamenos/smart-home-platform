@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from loguru import logger
 from pydantic import ValidationError
 
 from core.persistence.manifest_store import ManifestShrinkError
@@ -41,6 +42,64 @@ def _store(request: Request) -> Any:
             status_code=503, detail="Хранилище манифеста недоступно: платформа не собрана"
         )
     return store
+
+
+@router.get("/api/v1/manifest/schema", response_class=JSONResponse)
+async def get_manifest_schema() -> JSONResponse:
+    """JSON Schema манифеста из модели ядра.
+
+    Редактор строит по схеме автокомплит ключей и проверку значений до
+    сохранения: схема не пишется руками, а берётся из той же модели, которой
+    платформа валидирует манифест, — расхождение невозможно.
+
+    Returns:
+        JSON Schema модели ``core.models.manifest.Manifest``.
+    """
+    from core.models.manifest import Manifest
+
+    return JSONResponse(Manifest.model_json_schema())
+
+
+@router.get("/api/v1/manifest/hints", response_class=JSONResponse)
+async def get_manifest_hints(request: Request) -> JSONResponse:
+    """Справочник для автокомплита редактора манифеста.
+
+    Отдаёт то, что нельзя вывести из схемы: роли датчиков, имена шаблонов
+    поведений и сущности Home Assistant. Список сущностей — тонкий (идентификатор
+    и имя), иначе редактор тянул бы полные карточки устройств.
+
+    Args:
+        request: Входящий HTTP-запрос.
+
+    Returns:
+        JSON ``{"roles": [...], "templates": [...], "entities": [{id, name}]}``.
+    """
+    from core.behavior_params import CONTRACT_PATH
+    from core.events.event_router import EventRouter
+
+    features_dir = CONTRACT_PATH.parent
+    templates = sorted(path.stem for path in features_dir.glob("*.yaml") if path.stem != "CONTRACT")
+
+    entities: list[dict[str, str]] = []
+    service = getattr(request.app.state, "device_service", None)
+    if service is not None:
+        try:
+            devices = await service.get_all_devices()
+            entities = [
+                {"id": device.ha_entity_id, "name": device.name or device.ha_entity_id}
+                for device in devices
+                if getattr(device, "ha_entity_id", None)
+            ]
+        except Exception as exc:  # noqa: BLE001 — подсказки не критичны
+            logger.warning(f"Подсказки манифеста: сущности недоступны: {exc}")
+
+    return JSONResponse(
+        {
+            "roles": sorted(EventRouter.SENSOR_EVENT_MAP),
+            "templates": templates,
+            "entities": entities,
+        }
+    )
 
 
 @router.get("/api/v1/manifest", response_class=JSONResponse)

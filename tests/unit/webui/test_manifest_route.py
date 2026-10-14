@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -100,3 +101,37 @@ def test_put_manifest_should_save_valid(tmp_path: Path) -> None:
     assert client.get("/api/v1/manifest").json()["manifest"]["rooms"][0]["name"] == (
         "Спальня (переименована)"
     )
+
+
+def test_schema_should_describe_manifest(tmp_path: Path) -> None:
+    """Схема манифеста отдаётся из модели ядра."""
+    response = _client(tmp_path).get("/api/v1/manifest/schema")
+
+    assert response.status_code == 200
+    schema = response.json()
+    properties = schema.get("properties", {})
+    for key in ("instance", "rooms", "automation_rules"):
+        assert key in properties
+
+
+def test_hints_should_offer_roles_templates_and_entities(tmp_path: Path) -> None:
+    """Справочник даёт роли, шаблоны и сущности для автокомплита."""
+    client = _client(tmp_path)
+    client.app.state.device_service = SimpleNamespace(
+        get_all_devices=_all_devices,
+    )
+
+    body = client.get("/api/v1/manifest/hints").json()
+
+    assert "person" in body["roles"]
+    assert "lighting" in body["templates"]
+    assert {"id": "light.girlianda", "name": "Гирлянда"} in body["entities"]
+
+
+async def _all_devices() -> list[SimpleNamespace]:
+    """Устройства для справочника подсказок.
+
+    Returns:
+        Одно устройство.
+    """
+    return [SimpleNamespace(ha_entity_id="light.girlianda", name="Гирлянда")]
