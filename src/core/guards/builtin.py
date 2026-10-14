@@ -503,6 +503,34 @@ def make_humidity_below() -> Callable[[Any, dict[str, Any]], bool]:
     return humidity_below
 
 
+def make_is_night_time(
+    day_range: str = DEFAULT_DAY_TIME_RANGE,
+    *,
+    now: Callable[[], datetime] | None = None,
+) -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить guard «сейчас ночь» — отрицание ``is_day_time``.
+
+    Нужен возврату к автоматике после ручного вмешательства (BACKLOG B57):
+    декоративный свет по таймауту оверрайда должен вернуться в «горит», если ещё
+    ночь, и погаснуть, если уже день. Диапазон дня тот же, что у ``is_day_time``,
+    поэтому день и ночь не разъедутся.
+
+    Args:
+        day_range: Диапазон дня ``HH:MM-HH:MM``.
+        now: Источник времени; подменяется в тестах.
+
+    Returns:
+        Функцию ``(state, context) -> bool``.
+    """
+    is_day = make_is_day_time(day_range, now=now)
+
+    def is_night_time(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если сейчас не день."""
+        return not is_day(state, context)
+
+    return is_night_time
+
+
 def make_is_manual_override_enabled(
     control_tracker: Any,
     *,
@@ -615,6 +643,7 @@ def build_guards(
     """
     guards: dict[str, Callable[[Any, dict[str, Any]], bool]] = {
         "is_day_time": make_is_day_time(day_range),
+        "is_night_time": make_is_night_time(day_range),
         "is_manual_override_enabled": make_is_manual_override_enabled(
             control_tracker, lockout_minutes=lockout_minutes
         ),
@@ -2416,6 +2445,7 @@ def make_may_stop_heating() -> Callable[[Any, dict[str, Any]], bool]:
 
 REGISTERED_GUARDS = (
     "is_day_time",
+    "is_night_time",
     "is_manual_override_enabled",
     "may_turn_on",
     "modifier_is_on",

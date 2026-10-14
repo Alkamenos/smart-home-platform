@@ -87,6 +87,7 @@ registered_guards:  # реестр после register_all_guards
   - humidity_below_60
   - is_day_time
   - is_manual_override_enabled
+  - is_night_time
   - managed_by_hardware_ok
   - may_cool
   - may_dry
