@@ -254,3 +254,10 @@ data/
 # в pyproject.toml, но неотслеживаемый каталог всё равно не должен попадать
 # в индекс).
 .agents/
+
+# Фронтенд: пути, случайно совпавшие с python-шаблонами (lib/, MANIFEST).
+# На macOS git сравнивает регистронезависимо, поэтому MANIFEST ловит и
+# каталог manifest/; lib/ — любой каталог с таким именем.
+!frontend/src/lib/
+!frontend/tests/unit/lib/
+!frontend/src/app/settings/manifest/
