@@ -430,6 +430,93 @@ def _device_mismatch_reason(expected: frozenset[str], actual: str | None) -> str
     return None
 
 
+def _state_of(states: dict[str, dict[str, Any]], entity_id: str) -> str | None:
+    """Состояние сущности из массового чтения.
+
+    Args:
+        states: Сущность → словарь состояния.
+        entity_id: Сущность прибора.
+
+    Returns:
+        Состояние в нижнем регистре либо ``None``, если сущности нет в ответе.
+    """
+    item = states.get(entity_id)
+    if item is None:
+        return None
+    value = item.get("state")
+    if value is None:
+        return None
+    return str(value).strip().lower()
+
+
+def _group_members(states: dict[str, dict[str, Any]], devices: set[str]) -> dict[str, set[str]]:
+    """Найти связи «группа → участники» среди известных приборов.
+
+    Home Assistant отдаёт участников группы атрибутом ``entity_id`` (так у
+    световых групп и групп вообще). Нужны только связи, затрагивающие приборы
+    платформы: остальные к сверке отношения не имеют.
+
+    Args:
+        states: Сущность → словарь состояния из массового чтения.
+        devices: Сущности приборов платформы.
+
+    Returns:
+        Группа → множество её участников (только те, что относятся к прибору).
+    """
+    members: dict[str, set[str]] = {}
+    for entity_id, item in states.items():
+        attributes = item.get("attributes") or {}
+        listed = attributes.get("entity_id")
+        if not isinstance(listed, list):
+            continue
+        children = {str(child) for child in listed if isinstance(child, str)}
+        if children & devices:
+            members[entity_id] = children
+    return members
+
+
+def _physical_family(device: str, members: dict[str, set[str]]) -> set[str]:
+    """Семья физического прибора: он сам, его участники и его группы.
+
+    Один физический прибор бывает описан дважды — группой и её лампой, — и
+    решение прибора обязано собираться по всей семье, иначе автоматы «ссорятся»
+    и гасят друг другу свет (живой случай 2026-10-14).
+
+    Args:
+        device: Сущность прибора.
+        members: Связи «группа → участники».
+
+    Returns:
+        Множество сущностей семьи, включая сам прибор.
+    """
+    family = {device}
+    family.update(members.get(device, set()))
+    for group, children in members.items():
+        if device in children:
+            family.add(group)
+            family.update(children)
+    return family
+
+
+def _agrees_with_device(own: frozenset[str] | None, aggregate: frozenset[str]) -> bool:
+    """Совпадает ли решение автомата с итоговым решением прибора.
+
+    У прибора бывает несколько автоматов, и повторять решение должен только тот,
+    чьё решение итог и составило: иначе «ночник: выключено» гасил лампу, которую
+    держит горящей основной свет.
+
+    Args:
+        own: Допустимые состояния прибора по решению этого автомата.
+        aggregate: Итоговое решение прибора по всем его автоматам.
+
+    Returns:
+        True, если автомат согласен с итогом.
+    """
+    if own is None:
+        return False
+    return own == aggregate or bool(own & aggregate)
+
+
 @dataclass
 class WatchdogService:
     """Периодическая проверка состояний автоматов и связи с внешней системой.
@@ -652,14 +739,50 @@ class WatchdogService:
         if reader is None:
             return entries
 
-        enriched: list[FsmSnapshotEntry] = []
+        # У прибора может быть несколько автоматов, и один физический прибор
+        # бывает описан дважды: группа света и её единственная лампа — это один и
+        # тот же прибор, и у каждого свой автомат. Поэтому решение прибора
+        # собирается по **всей его семье** (сам прибор, его участники и группы, в
+        # которые он входит): лампа должна гореть, если так решил хотя бы один
+        # автомат семьи. Сверять автоматы по отдельности нельзя: «ночник:
+        # выключено» или «участник группы: выключено» — не расхождение, и попытка
+        # «починить» их гасила свет, который в ту же секунду зажигал автомат
+        # группы (живой случай 2026-10-14: свет мигал).
+        states = await self._read_all_states(reader)
+        devices = {entry.device for entry in entries if entry.device}
+        members = _group_members(states, devices)
+        family = {device: _physical_family(device, members) for device in devices}
+
+        own: dict[str, frozenset[str] | None] = {}
+        intent: dict[str, set[str]] = {}
         for entry in entries:
             expected = self._expected_device_state(entry.entity_id, entry.state)
+            own[entry.entity_id] = expected
             if expected is None or not entry.device:
+                continue
+            for relative in family.get(entry.device, {entry.device}):
+                intent.setdefault(relative, set()).update(expected)
+
+        expected_by_device: dict[str, frozenset[str]] = {}
+        for device, values in intent.items():
+            wanted_on = values & DEVICE_ON_STATES
+            expected_by_device[device] = frozenset(wanted_on or values)
+
+        enriched: list[FsmSnapshotEntry] = []
+        for entry in entries:
+            expected = expected_by_device.get(entry.device)
+            if expected is None:
                 enriched.append(entry)
                 continue
-            actual = await self._read_device_state(reader, entry.device)
+            actual = _state_of(states, entry.device) if states else None
+            if actual is None:
+                actual = await self._read_device_state(reader, entry.device)
             reason = _device_mismatch_reason(expected, actual)
+            # Расхождение называет только тот автомат, чьё решение совпало с
+            # итогом прибора: повторять решение «выключить» лампе, которую
+            # решено держать горящей, нечего.
+            if not _agrees_with_device(own.get(entry.entity_id), expected):
+                reason = None
             if reason in MISMATCH_FAULT_REASONS and self._manual_override_active(entry.device):
                 # Человек вмешался: автоматика уступает по правилу оверрайда.
                 # Это расхождение, но не отказ — прибора чинить нечего.
@@ -672,6 +795,37 @@ class WatchdogService:
                 )
             enriched.append(replace(entry, device_state=actual, mismatch_reason=reason))
         return tuple(enriched)
+
+    async def _read_all_states(self, reader: Any) -> dict[str, dict[str, Any]]:
+        """Прочитать состояния всех сущностей одним запросом.
+
+        Одним запросом — потому что за цикл сторож сверяет больше двадцати
+        приборов, а состояния нужны ещё и для связей «группа ↔ участники»
+        (атрибут ``entity_id`` группы). Если массового чтения нет (автономный
+        режим, тесты), остаются поштучные запросы: без них сверка работает, но
+        связей не видит.
+
+        Args:
+            reader: Читатель состояния одной сущности у адаптера.
+
+        Returns:
+            Сущность → словарь состояния (``state`` и ``attributes``).
+        """
+        del reader
+        bulk = getattr(self.adapter, "get_all_states", None)
+        if not callable(bulk):
+            return {}
+        try:
+            raw = await bulk()
+        except Exception as exc:  # noqa: BLE001 — сверка не должна ронять сторожа
+            logger.warning(f"Сторож: состояния сущностей не прочитаны: {exc}")
+            return {}
+        states: dict[str, dict[str, Any]] = {}
+        for item in raw or []:
+            entity_id = item.get("entity_id")
+            if isinstance(entity_id, str):
+                states[entity_id] = item
+        return states
 
     async def _reassert_decisions(self, entries: tuple[FsmSnapshotEntry, ...]) -> None:
         """Повторить решение для приборов, разошедшихся с ним (B64).

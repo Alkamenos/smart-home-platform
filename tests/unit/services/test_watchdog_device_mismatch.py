@@ -119,8 +119,21 @@ class FakeAdapter:
 
     device_states: dict[str, str | None] = field(default_factory=dict)
     fail: bool = False
+    #: Массовое чтение: сущность → словарь состояния (для связей «группа ↔ участники»).
+    all_states: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     is_connected = True
+
+    async def get_all_states(self) -> list[dict[str, Any]]:
+        """Отдать состояния всех сущностей списком."""
+        return [
+            {
+                "entity_id": entity_id,
+                "state": item.get("state"),
+                "attributes": item.get("attributes", {}),
+            }
+            for entity_id, item in self.all_states.items()
+        ]
 
     async def get_entity_state(self, entity_id: str) -> str | None:
         """Прочитать состояние прибора."""
@@ -376,6 +389,104 @@ async def test_manual_override_is_not_reasserted() -> None:
     await make_watchdog(engine, adapter, manual_override=lambda device: True).check_once()
 
     assert engine.triggered == []
+
+
+NIGHT_FSM = "light.svet_nad_stolom_night_light_20"
+LIGHT_FSM = "light.svet_nad_stolom_lighting_10"
+LIGHT_DEVICE = "light.svet_nad_stolom"
+MEMBER_FSM = "light.table_lights_lighting_10"
+MEMBER_DEVICE = "light.table_lights"
+
+
+@pytest.mark.asyncio
+async def test_second_automaton_of_one_device_does_not_quarrel() -> None:
+    """Лампа горит по решению основного света — ночник её не гасит.
+
+    Боевой случай 2026-10-14: у «света над столом» два автомата (основной свет и
+    ночник), и это одна лампа. Повтор решения «ночник: выключено» гасил свет,
+    который в ту же секунду зажигал основной автомат, — свет мигал.
+    """
+    engine = FakeEngine(
+        {LIGHT_FSM: "ON_HOLD", NIGHT_FSM: "OFF"},
+        {LIGHT_FSM: LIGHT_DEVICE, NIGHT_FSM: LIGHT_DEVICE},
+        {LIGHT_FSM: "on", NIGHT_FSM: "off"},
+    )
+    adapter = FakeAdapter({LIGHT_DEVICE: "on"})
+
+    snapshot = await make_watchdog(engine, adapter).check_once()
+
+    assert all(entry.mismatch is False for entry in snapshot.entries), "автоматы поссорились"
+    assert engine.triggered == [], "повтор погасил бы свет, который решено держать"
+    assert snapshot.problem_count == 0
+
+
+@pytest.mark.asyncio
+async def test_divergence_is_named_only_by_the_agreeing_automaton() -> None:
+    """Лампа не горит, а основной свет решил «включить» — расхождение его."""
+    engine = FakeEngine(
+        {LIGHT_FSM: "ON_HOLD", NIGHT_FSM: "OFF"},
+        {LIGHT_FSM: LIGHT_DEVICE, NIGHT_FSM: LIGHT_DEVICE},
+        {LIGHT_FSM: "on", NIGHT_FSM: "off"},
+    )
+    adapter = FakeAdapter({LIGHT_DEVICE: "off"})
+
+    snapshot = await make_watchdog(engine, adapter).check_once()
+
+    by_fsm = {entry.entity_id: entry for entry in snapshot.entries}
+    assert by_fsm[LIGHT_FSM].mismatch_reason == MISMATCH_DEVICE_OFF_DECISION_ON
+    assert by_fsm[NIGHT_FSM].mismatch is False
+    assert engine.triggered == [(LIGHT_FSM, DEVICE_DIVERGED_TRIGGER, False)]
+
+
+@pytest.mark.asyncio
+async def test_group_and_its_lamp_are_one_device() -> None:
+    """Группа и её лампа — один прибор: автоматы не ссорятся (2026-10-14).
+
+    В манифесте «Основное освещение» (`light.svet_nad_stolom`) и «Свет над
+    столом» (`light.table_lights`) описаны отдельно, хотя это одна лампа: группа
+    содержит один этот участник. Решение собирается по всей семье, иначе автомат
+    участника гасил свет, который зажёг автомат группы.
+    """
+    engine = FakeEngine(
+        {LIGHT_FSM: "ON_HOLD", MEMBER_FSM: "OFF"},
+        {LIGHT_FSM: LIGHT_DEVICE, MEMBER_FSM: MEMBER_DEVICE},
+        {LIGHT_FSM: "on", MEMBER_FSM: "off"},
+    )
+    adapter = FakeAdapter(
+        all_states={
+            LIGHT_DEVICE: {"state": "on", "attributes": {"entity_id": [MEMBER_DEVICE]}},
+            MEMBER_DEVICE: {"state": "on", "attributes": {}},
+        }
+    )
+
+    snapshot = await make_watchdog(engine, adapter).check_once()
+
+    assert all(entry.mismatch is False for entry in snapshot.entries), "семья поссорилась"
+    assert engine.triggered == []
+    assert snapshot.problem_count == 0
+
+
+@pytest.mark.asyncio
+async def test_family_divergence_is_named_by_the_agreeing_automaton() -> None:
+    """Свет не горит, а группа решила «включить» — расхождение её автомата."""
+    engine = FakeEngine(
+        {LIGHT_FSM: "ON_HOLD", MEMBER_FSM: "OFF"},
+        {LIGHT_FSM: LIGHT_DEVICE, MEMBER_FSM: MEMBER_DEVICE},
+        {LIGHT_FSM: "on", MEMBER_FSM: "off"},
+    )
+    adapter = FakeAdapter(
+        all_states={
+            LIGHT_DEVICE: {"state": "off", "attributes": {"entity_id": [MEMBER_DEVICE]}},
+            MEMBER_DEVICE: {"state": "off", "attributes": {}},
+        }
+    )
+
+    snapshot = await make_watchdog(engine, adapter).check_once()
+
+    by_fsm = {entry.entity_id: entry for entry in snapshot.entries}
+    assert by_fsm[LIGHT_FSM].mismatch_reason == MISMATCH_DEVICE_OFF_DECISION_ON
+    assert by_fsm[MEMBER_FSM].mismatch is False
+    assert engine.triggered == [(LIGHT_FSM, DEVICE_DIVERGED_TRIGGER, False)]
 
 
 @pytest.mark.asyncio
