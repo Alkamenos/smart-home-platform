@@ -95,18 +95,22 @@ class DecorativeLightWatcher:
             except Exception:  # noqa: BLE001 — одно устройство не мешает остальным
                 logger.warning(f"Сверка вечернего света: {entity_id} не обработал {event}")
 
-    def _sleeping(self) -> bool:
+    def _sleeping(self) -> bool | None:
         """Спит ли дом по модификатору.
 
         Returns:
-            True, только если модификатор «мы спим» включён; выключенное или
-            неизвестное состояние — «не спим» (по неизвестному гасить нельзя).
+            True — спит; False — не спит; ``None`` — неизвестно (модификатор не
+            прочитан). Неизвестное состояние нельзя выдавать за «не спим»: тогда
+            сверка решает, что вечерний свет пора вернуть, и включает гирлянду во
+            время сна (аудит 2026-10-16, К-8). Молчание честнее догадки.
         """
         value = (
             self._sleeping_supplier()
             if callable(self._sleeping_supplier)
             else self._sleeping_supplier
         )
+        if value is None:
+            return None
         return value is True
 
     def _stops_on_sleep(self, entity_id: str) -> bool:
@@ -121,7 +125,7 @@ class DecorativeLightWatcher:
         params = self.engine.definition_params(entity_id)
         return str(params.get("off_by", "")).strip().lower() == "sleep"
 
-    def _correction(self, entity_id: str, *, daylight: bool, sleeping: bool) -> str | None:
+    def _correction(self, entity_id: str, *, daylight: bool, sleeping: bool | None) -> str | None:
         """Какое событие нужно автомату, чтобы совпасть с решением.
 
         В темноте при включённом «мы спим» свет с `off_by: sleep` должен быть
@@ -133,7 +137,7 @@ class DecorativeLightWatcher:
         Args:
             entity_id: Автомат.
             daylight: Светло ли сейчас.
-            sleeping: Включён ли модификатор «мы спим».
+            sleeping: Включён ли модификатор «мы спим»; ``None`` — неизвестно.
 
         Returns:
             Имя события либо ``None``, если расхождения нет.
@@ -146,6 +150,10 @@ class DecorativeLightWatcher:
         is_on = state.current_state.upper().startswith("ON")
         if daylight:
             return "sunrise_started" if is_on else None
+        if sleeping is None:
+            # Ночь, а «мы спим» неизвестно: решать «вернуть вечерний свет» не на
+            # чём. Включить свет во время сна хуже, чем промолчать (К-8).
+            return None
         if sleeping and self._stops_on_sleep(entity_id):
             return "sleep_started" if is_on else None
         return "sunset_started" if not is_on else None

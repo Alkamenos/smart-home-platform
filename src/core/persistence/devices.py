@@ -121,6 +121,12 @@ class DevicePersistence:
             logger.info(f"Загружено {len(devices)} устройств")
             return devices
 
+        except PersistenceCorruptedError:
+            # Испорченный файл — это не «данных нет»: различие ради этого и
+            # заводили (рядом остаётся копия `.corrupt-<ts>`). Молчаливый пустой
+            # список выглядел как платформа без устройств и прятал поломку
+            # (аудит 2026-10-16, К-6).
+            raise
         except Exception as e:
             logger.error(f"Ошибка загрузки устройств: {e}")
             return []
@@ -379,6 +385,10 @@ class DeviceAccessPersistence:
             logger.info(f"Загружено {len(accesses)} записей доступа")
             return accesses
 
+        except PersistenceCorruptedError:
+            # То же, что у устройств: испорченный файл доступа — не «доступов
+            # нет» (аудит 2026-10-16, К-6).
+            raise
         except Exception as e:
             logger.error(f"Ошибка загрузки записей доступа: {e}")
             return []

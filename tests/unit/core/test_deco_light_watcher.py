@@ -284,3 +284,22 @@ class TestWatcherDescribe:
         assert described["interval_minutes"] == 15.0
         assert described["daylight"] is False
         assert described["running"] is False
+
+    @pytest.mark.asyncio
+    async def test_unknown_sleep_state_does_not_turn_the_light_on(self) -> None:
+        """Неизвестное «мы спим» не повод включать вечерний свет.
+
+        Аудит 2026-10-16 (К-8): непрочитанный модификатор считался «не спим», и
+        сторож в темноте возвращал гирлянду — то есть зажигал свет во время сна.
+        Молчание честнее догадки: решение принять не на чём.
+
+        Returns:
+            Ничего.
+        """
+        _, watcher, dispatcher = _build(daylight=False, sleeping=None)
+
+        await watcher.check_once()
+
+        assert GARLAND not in dispatcher.devices(), (
+            f"свет включён по неизвестному признаку сна: {dispatcher.devices()}"
+        )

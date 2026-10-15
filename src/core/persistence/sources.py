@@ -134,6 +134,10 @@ class HASourcePersistence:
             logger.info(f"Загружено {len(sources)} источников")
             return sources
 
+        except PersistenceCorruptedError:
+            # Испорченный файл источников — не «источников нет»: иначе поломка
+            # выглядит как пустая установка (аудит 2026-10-16, К-6).
+            raise
         except Exception as e:
             logger.error(f"Ошибка загрузки источников: {e}")
             return []
