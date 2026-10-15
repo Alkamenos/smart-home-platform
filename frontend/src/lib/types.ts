@@ -241,6 +241,10 @@ export interface CleanupHelper {
     changed_ago_sec: number | null;
     verdict: "used" | "probably_unused" | "unknown";
     reasons: CleanupReason[];
+    /** Откуда элемент: «ui» — создан через интерфейс дома, «yaml» — описан в YAML. */
+    origin: "ui" | "yaml" | "unknown";
+    /** Можно ли убрать через дом (только созданное через интерфейс и мёртвое). */
+    removable: boolean;
 }
 
 /** Снимок чистки вспомогательных элементов. */
@@ -248,5 +252,10 @@ export interface CleanupReport {
     generated_at: string | null;
     counts: Record<string, number>;
     sources: Record<string, boolean>;
+    plan: {
+        count: number;
+        by_domain: Record<string, string[]>;
+        text: string;
+    };
     helpers: CleanupHelper[];
 }

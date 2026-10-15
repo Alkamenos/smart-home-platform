@@ -86,6 +86,7 @@ function verdictLabel(verdict: CleanupHelper["verdict"]): string {
  */
 export function SystemPanel() {
     const [cleanupRound, setCleanupRound] = useState(0);
+    const [copied, setCopied] = useState(false);
     const readiness = useQuery({ queryKey: ["readiness"], queryFn: fetchReadiness });
     const health = useQuery({
         queryKey: ["health"],
@@ -306,15 +307,35 @@ export function SystemPanel() {
                 ) : (
                     <>
                         <p className="text-muted mb-2 text-xs">
-                            Платформа ничего не удаляет сама: список — это свидетельства, а решение
-                            и удаление остаются за вами в Home Assistant. Проверяются манифест дома,
-                            правила автоматизаций и журнал платформы. Панели, сцены и ручные вызовы
-                            скриптов платформа не видит — «следов нет» значит «здесь их не нашлось»,
-                            а не «точно никому не нужно».
+                            Платформа ничего не удаляет сама: список — это свидетельства. Проверяются
+                            манифест дома, правила автоматизаций, панели и журнал платформы. Удаление —
+                            правка YAML на самом доме: элементы, описанные в YAML, живут не в нашей
+                            программе, а в конфигурации Home Assistant, и дотянуться до неё платформа
+                            не может. Сцены и ручные вызовы скриптов она тоже не видит — «следов нет»
+                            значит «здесь не нашлось», а не «точно никому не нужно».
                             {cleanup.data?.sources?.automations === false
                                 ? " Правила автоматизаций Home Assistant прочитать не удалось, поэтому вердикт «следов нет» не выносится."
                                 : ""}
                         </p>
+                        <div className="mb-2 flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                className="text-accent text-xs hover:underline"
+                                onClick={() => {
+                                    void navigator.clipboard
+                                        ?.writeText(cleanup.data?.plan?.text ?? "")
+                                        .then(() => setCopied(true));
+                                }}
+                            >
+                                {copied ? "список скопирован" : "скопировать список для правки YAML"}
+                            </button>
+                            <span className="text-muted text-xs">
+                                кандидатов по домам:{" "}
+                                {Object.entries(cleanup.data?.plan?.by_domain ?? {})
+                                    .map(([domain, list]) => `${domain} ${list.length}`)
+                                    .join(", ")}
+                            </span>
+                        </div>
                         <div className="border-border max-h-80 overflow-auto rounded-lg border">
                             <table className="w-full border-collapse text-xs">
                                 <thead className="bg-surface-2 sticky top-0 text-left">
@@ -324,6 +345,9 @@ export function SystemPanel() {
                                         </th>
                                         <th className="border-border w-28 border-b px-3 py-1.5 font-semibold">
                                             Состояние
+                                        </th>
+                                        <th className="border-border w-24 border-b px-3 py-1.5 font-semibold">
+                                            Откуда
                                         </th>
                                         <th className="border-border w-32 border-b px-3 py-1.5 font-semibold">
                                             Вердикт
@@ -347,6 +371,13 @@ export function SystemPanel() {
                                             </td>
                                             <td className="text-muted px-3 py-1.5">
                                                 {String(helper.state)}
+                                            </td>
+                                            <td className="text-muted px-3 py-1.5" title={helper.entity_id}>
+                                                {helper.origin === "ui"
+                                                    ? "через интерфейс"
+                                                    : helper.origin === "yaml"
+                                                      ? "описан в YAML"
+                                                      : "неизвестно"}
                                             </td>
                                             <td className="px-3 py-1.5">
                                                 <Badge

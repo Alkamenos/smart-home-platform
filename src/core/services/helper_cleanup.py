@@ -140,17 +140,28 @@ class HelperCleanupService:
         automation_entities, automations_readable = await self._automation_entities(
             declared_automations
         )
+        dashboard_entities, dashboards_readable = await self._dashboard_entities()
         journal_entities = self._journal_entities([h["entity_id"] for h in helpers])
+        origins = await self._origins()
 
         sources = {
             "states": bool(states),
             "manifest": self._manifest is not None,
             "automations": automations_readable,
+            "dashboards": dashboards_readable,
             "journal": self._event_store is not None,
         }
 
         marks = [
-            self._mark(helper, manifest_entities, automation_entities, journal_entities, sources)
+            self._mark(
+                helper,
+                manifest_entities,
+                automation_entities,
+                dashboard_entities,
+                journal_entities,
+                origins,
+                sources,
+            )
             for helper in helpers
         ]
         marks.sort(key=lambda item: (item["verdict"] != PROBABLY_UNUSED, item["entity_id"]))
@@ -163,6 +174,7 @@ class HelperCleanupService:
             "generated_at": self._iso(),
             "counts": counts,
             "sources": sources,
+            "plan": self._plan(marks),
             "helpers": marks,
         }
         self._report = report
@@ -255,6 +267,52 @@ class HelperCleanupService:
         self._collect_entities(list((configs or {}).values()), found)
         return found, readable
 
+    async def _dashboard_entities(self) -> tuple[set[str], bool]:
+        """Сущности, выведенные на панели Home Assistant.
+
+        Returns:
+            Пару «сущности» и «панели прочитаны»: пока это не так, молчание
+            панелей ничего не доказывает.
+        """
+        reader = getattr(self._adapter, "get_dashboard_entities", None)
+        if reader is None:
+            return set(), False
+        try:
+            entities = await reader()
+        except Exception as error:  # noqa: BLE001 - отказ дома не должен ломать страницу
+            logger.warning(f"Чистка: панели не прочитаны: {error}")
+            return set(), False
+        if entities is None:
+            return set(), False
+        return {str(entity) for entity in entities}, True
+
+    async def _origins(self) -> dict[str, bool]:
+        """Откуда взялась сущность: создана через дом или описана в YAML.
+
+        Разница решает, что вообще можно сделать: у созданной через интерфейс
+        дома есть запись конфигурации, у описанной в YAML — нет, и удалить её
+        можно только правкой YAML на самом доме.
+
+        Returns:
+            Сущность → есть ли у неё запись конфигурации.
+        """
+        reader = getattr(self._adapter, "get_entity_registry", None)
+        if reader is None:
+            return {}
+        try:
+            records = await reader()
+        except Exception as error:  # noqa: BLE001 - отказ дома не должен ломать страницу
+            logger.warning(f"Чистка: реестр сущностей не прочитан: {error}")
+            return {}
+        origins: dict[str, bool] = {}
+        for record in records or []:
+            if not isinstance(record, dict):
+                continue
+            entity = record.get("entity_id")
+            if entity:
+                origins[str(entity)] = bool(record.get("config_entry_id"))
+        return origins
+
     def _journal_entities(self, entity_ids: list[str]) -> set[str]:
         """Сущности, встречавшиеся в журнале платформы за срок наблюдения.
 
@@ -292,7 +350,9 @@ class HelperCleanupService:
         helper: dict[str, Any],
         manifest_entities: set[str],
         automation_entities: set[str],
+        dashboard_entities: set[str],
         journal_entities: set[str],
+        origins: dict[str, bool],
         sources: dict[str, bool],
     ) -> dict[str, Any]:
         """Вынести вердикт по одному вспомогательному элементу.
@@ -301,11 +361,13 @@ class HelperCleanupService:
             helper: Описание элемента (сущность, имя, состояние, время).
             manifest_entities: Сущности манифеста.
             automation_entities: Сущности, нужные автоматизациям Home Assistant.
+            dashboard_entities: Сущности, выведенные на панели Home Assistant.
             journal_entities: Сущности, встречавшиеся в журнале.
+            origins: Сущность → создана через интерфейс дома либо описана в YAML.
             sources: Какие источники свидетельств отвечали.
 
         Returns:
-            Описание элемента с вердиктом и причинами.
+            Описание элемента с вердиктом, причинами и происхождением.
         """
         entity_id = helper["entity_id"]
         reasons: list[dict[str, str]] = []
@@ -315,6 +377,8 @@ class HelperCleanupService:
             reasons.append(
                 {"source": "automation", "detail": "нужен автоматизациям Home Assistant"}
             )
+        if entity_id in dashboard_entities:
+            reasons.append({"source": "dashboard", "detail": "выведен на панель Home Assistant"})
         if entity_id in journal_entities:
             reasons.append(
                 {
@@ -325,14 +389,57 @@ class HelperCleanupService:
 
         if reasons:
             verdict = USED
-        elif not sources.get("states", False) or not sources.get("automations", False):
+        elif (
+            not sources.get("states", False)
+            or not sources.get("automations", False)
+            or not sources.get("dashboards", False)
+        ):
             verdict = UNKNOWN
         else:
             verdict = PROBABLY_UNUSED
 
+        origin = origins.get(entity_id)
         helper["verdict"] = verdict
         helper["reasons"] = reasons
+        helper["origin"] = "unknown" if origin is None else ("ui" if origin else "yaml")
+        # Удалить через дом можно только созданное через дом, и только когда есть
+        # свидетельства, что элемент мёртв: остальное — либо YAML, либо «не знаю».
+        helper["removable"] = verdict == PROBABLY_UNUSED and helper["origin"] == "ui"
         return helper
+
+    def _plan(self, marks: list[dict[str, Any]]) -> dict[str, Any]:
+        """Заготовка уборки: что именно убирать и по домам.
+
+        Платформа не правит YAML чужого дома — она готовит список, по которому это
+        делает человек (а в режиме аддона, где каталог дома доступен, сможет и
+        сама). Список сгруппирован по доменам: так его удобно сличить со своим
+        `configuration.yaml`.
+
+        Args:
+            marks: Вердикты по всем элементам.
+
+        Returns:
+            Заготовка: количество, домены и готовый текст списка.
+        """
+        by_domain: dict[str, list[str]] = {}
+        for mark in marks:
+            if mark["verdict"] != PROBABLY_UNUSED:
+                continue
+            domain = mark["entity_id"].split(".", 1)[0]
+            by_domain.setdefault(domain, []).append(mark["entity_id"])
+
+        lines: list[str] = []
+        for domain in sorted(by_domain):
+            lines.append(f"{domain}:")
+            lines.extend(f"  - {entity}" for entity in sorted(by_domain[domain]))
+
+        return {
+            "count": sum(len(v) for v in by_domain.values()),
+            "by_domain": {
+                domain: sorted(entities) for domain, entities in sorted(by_domain.items())
+            },
+            "text": "\n".join(lines),
+        }
 
     def _is_helper(self, item: dict[str, Any]) -> bool:
         """Вспомогательный ли это элемент.

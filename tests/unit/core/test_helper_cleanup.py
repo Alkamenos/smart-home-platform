@@ -50,7 +50,7 @@ def _state(
 
 
 class FakeAdapter:
-    """Адаптер: состояния дома и правила автоматизаций."""
+    """Адаптер: состояния дома, правила автоматизаций, панели и реестр."""
 
     def __init__(
         self,
@@ -58,6 +58,9 @@ class FakeAdapter:
         automations: dict[str, Any] | None = None,
         states_ok: bool = True,
         automations_ok: bool = True,
+        dashboards: set[str] | None = None,
+        dashboards_ok: bool = True,
+        registry: dict[str, bool] | None = None,
     ) -> None:
         """Собрать поддельный адаптер.
 
@@ -66,11 +69,17 @@ class FakeAdapter:
             automations: Правила автоматизаций по идентификатору.
             states_ok: Отвечает ли дом на чтение состояний.
             automations_ok: Удалось ли прочитать автоматизации.
+            dashboards: Сущности, выведенные на панели.
+            dashboards_ok: Удалось ли прочитать панели.
+            registry: Сущность → создана через интерфейс дома (иначе YAML).
         """
         self.states = states or []
         self.automations = automations or {}
         self.states_ok = states_ok
         self.automations_ok = automations_ok
+        self.dashboards = dashboards or set()
+        self.dashboards_ok = dashboards_ok
+        self.registry = registry or {}
         self.state_reads = 0
 
     async def get_all_states(self) -> list[dict[str, Any]]:
@@ -89,6 +98,25 @@ class FakeAdapter:
             Правила по идентификатору (пусто, если прочитать не удалось).
         """
         return self.automations if self.automations_ok else {}
+
+    async def get_dashboard_entities(self) -> set[str] | None:
+        """Сущности, выведенные на панели дома.
+
+        Returns:
+            Множество сущностей; ``None``, если панели не прочитались.
+        """
+        return self.dashboards if self.dashboards_ok else None
+
+    async def get_entity_registry(self) -> list[dict[str, Any]]:
+        """Реестр сущностей дома.
+
+        Returns:
+            Записи с признаком «создана через интерфейс дома».
+        """
+        return [
+            {"entity_id": entity, "config_entry_id": "entry" if from_ui else None}
+            for entity, from_ui in self.registry.items()
+        ]
 
 
 class FakeManifest:
@@ -145,6 +173,9 @@ def _service(
     manifest: Any = None,
     automations: dict[str, Any] | None = None,
     journal: Any = None,
+    dashboards: set[str] | None = None,
+    dashboards_ok: bool = True,
+    registry: dict[str, bool] | None = None,
     states_ok: bool = True,
     automations_ok: bool = True,
 ) -> HelperCleanupService:
@@ -155,6 +186,9 @@ def _service(
         manifest: Манифест.
         automations: Правила автоматизаций.
         journal: Журнал платформы.
+        dashboards: Сущности, выведенные на панели.
+        dashboards_ok: Читаются ли панели.
+        registry: Сущность → создана через интерфейс дома.
         states_ok: Отвечает ли дом.
         automations_ok: Читаются ли автоматизации.
 
@@ -167,6 +201,9 @@ def _service(
             automations=automations,
             states_ok=states_ok,
             automations_ok=automations_ok,
+            dashboards=dashboards,
+            dashboards_ok=dashboards_ok,
+            registry=registry,
         ),
         manifest=manifest,
         event_store=journal,
@@ -305,6 +342,77 @@ async def test_devices_are_not_helpers() -> None:
     report = await service.sweep()
 
     assert [helper["entity_id"] for helper in report["helpers"]] == ["input_boolean.staryi_flag"]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_reference_marks_used() -> None:
+    """Элемент, выведенный на панель дома, — используется."""
+    service = _service(
+        [_state("input_boolean.obogrev_kryshi")],
+        manifest=FakeManifest([]),
+        automations={"1": {"alias": "Что-то", "action": []}},
+        dashboards={"input_boolean.obogrev_kryshi"},
+    )
+
+    report = await service.sweep()
+
+    helper = _verdict(report, "input_boolean.obogrev_kryshi")
+    assert helper["verdict"] == USED, "обогрев крыши выбросили бы, хотя он есть на панели"
+    assert [reason["source"] for reason in helper["reasons"]] == ["dashboard"]
+
+
+@pytest.mark.asyncio
+async def test_unreadable_dashboards_give_unknown() -> None:
+    """Панели не прочитались — вердикт «не знаю», а не «мусор»."""
+    service = _service(
+        [_state("input_boolean.staryi_flag")],
+        manifest=FakeManifest([]),
+        automations={"1": {"alias": "Что-то", "action": []}},
+        dashboards_ok=False,
+    )
+
+    report = await service.sweep()
+
+    assert _verdict(report, "input_boolean.staryi_flag")["verdict"] == UNKNOWN
+    assert report["sources"]["dashboards"] is False
+
+
+@pytest.mark.asyncio
+async def test_origin_tells_where_to_remove() -> None:
+    """Происхождение говорит, можно ли убрать элемент через дом."""
+    service = _service(
+        [_state("input_boolean.svoi"), _state("input_boolean.iz_yaml")],
+        manifest=FakeManifest([]),
+        automations={"1": {"alias": "Что-то", "action": []}},
+        registry={"input_boolean.svoi": True, "input_boolean.iz_yaml": False},
+    )
+
+    report = await service.sweep()
+
+    svoi = _verdict(report, "input_boolean.svoi")
+    iz_yaml = _verdict(report, "input_boolean.iz_yaml")
+    assert svoi["origin"] == "ui"
+    assert svoi["removable"] is True
+    assert iz_yaml["origin"] == "yaml"
+    assert iz_yaml["removable"] is False, "описанное в YAML через дом не удалить"
+
+
+@pytest.mark.asyncio
+async def test_plan_lists_candidates_by_domain() -> None:
+    """Заготовка уборки — список по домам, готовый к сличению со своим YAML."""
+    service = _service(
+        [_state("input_boolean.mertvyi"), _state("input_number.mertvyi_tozhe")],
+        manifest=FakeManifest([]),
+        automations={"1": {"alias": "Что-то", "action": []}},
+    )
+
+    report = await service.sweep()
+
+    plan = report["plan"]
+    assert plan["count"] == 2
+    assert plan["by_domain"]["input_boolean"] == ["input_boolean.mertvyi"]
+    assert "input_boolean.mertvyi" in plan["text"]
+    assert "input_number:" in plan["text"]
 
 
 @pytest.mark.asyncio

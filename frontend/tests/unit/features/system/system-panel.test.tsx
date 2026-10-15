@@ -79,6 +79,11 @@ function mockFetch(ready: boolean) {
                 generated_at: "2026-10-15T12:00:00+00:00",
                 counts: { used: 1, probably_unused: 1, unknown: 0 },
                 sources: { states: true, manifest: true, automations: true, journal: true },
+                plan: {
+                    count: 1,
+                    by_domain: { input_boolean: ["input_boolean.mertvyi_flag"] },
+                    text: "input_boolean:\n  - input_boolean.mertvyi_flag",
+                },
                 helpers: [
                     {
                         entity_id: "input_boolean.mertvyi_flag",
@@ -88,6 +93,8 @@ function mockFetch(ready: boolean) {
                         changed_ago_sec: null,
                         verdict: "probably_unused",
                         reasons: [],
+                        origin: "yaml",
+                        removable: false,
                     },
                     {
                         entity_id: "input_boolean.sleep_mode",
@@ -97,6 +104,8 @@ function mockFetch(ready: boolean) {
                         changed_ago_sec: null,
                         verdict: "used",
                         reasons: [{ source: "manifest", detail: "описан в манифесте дома" }],
+                        origin: "yaml",
+                        removable: false,
                     },
                 ],
             });
@@ -130,6 +139,9 @@ describe("SystemPanel", () => {
         expect(screen.getByText("следов нет")).toBeInTheDocument();
         expect(screen.getByText("описан в манифесте дома")).toBeInTheDocument();
         expect(screen.getByText(/Платформа ничего не удаляет сама/)).toBeInTheDocument();
+        expect(screen.getAllByText("описан в YAML").length).toBeGreaterThan(0);
+        expect(screen.getByText(/скопировать список/)).toBeInTheDocument();
+        expect(screen.getByText(/input_boolean 1/)).toBeInTheDocument();
     });
 
     it("показывает причину неготовности, а не пустой экран", async () => {

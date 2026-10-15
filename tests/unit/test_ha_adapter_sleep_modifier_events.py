@@ -255,3 +255,53 @@ class TestModifierFlipNotifiesPlatform:
             record.levelname == "WARNING" and "включился" in record.message
             for record in caplog.records
         ), "переключение модификатора молчит на INFO: в docker-журнале его не будет"
+
+
+class TestModifierFlipReachesFlagDrivenAutomata:
+    """Смена «мы спим» доходит и до тех, кто решает по флагам дома (2026-10-16).
+
+    Боевой случай: в полночь «мы спим» включился, свет погас — а шторы остались
+    открытыми. Автомат штор слушает не ``sleep_started``, а ``settings_changed``;
+    сущности модификатора нет в подписке, и без отдельного уведомления шторы о
+    смене флага не узнавали вовсе.
+    """
+
+    @pytest.mark.asyncio
+    async def test_turning_on_reaches_flag_driven_automata(self) -> None:
+        """Включение модификатора пересматривает и шторы, а не только свет.
+
+        Returns:
+            Ничего.
+        """
+        client = _client()
+        client.asleep = False
+        seen: list[str] = []
+
+        async def on_sleep_changed() -> None:
+            seen.append("changed")
+
+        client.on_sleep_changed = on_sleep_changed
+        payload = _payload(state_changed_event(MODIFIER, new_state="on", old_state="off"))
+        await client._deliver(payload)  # noqa: SLF001
+
+        assert seen == ["changed"], f"включение «мы спим» не дошло до штор: {seen}"
+
+    @pytest.mark.asyncio
+    async def test_turning_off_reaches_flag_driven_automata(self) -> None:
+        """Выключение модификатора утром тоже пересматривает шторы.
+
+        Returns:
+            Ничего.
+        """
+        client = _client()
+        client.asleep = True
+        seen: list[str] = []
+
+        async def on_sleep_changed() -> None:
+            seen.append("changed")
+
+        client.on_sleep_changed = on_sleep_changed
+        payload = _payload(state_changed_event(MODIFIER, new_state="off", old_state="on"))
+        await client._deliver(payload)  # noqa: SLF001
+
+        assert seen == ["changed"], "утренний пересмотр штор не случился"

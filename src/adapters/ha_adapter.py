@@ -179,6 +179,13 @@ class SimpleHAWebSocketClient:
         self.on_sleep_started: Callable[[], Awaitable[None]] | None = None
         # Запрошено ли уведомление; флаг живёт одно событие.
         self._pending_sleep_started = False
+        # Смена модификатора «мы спим» в любую сторону. Свету хватает одного
+        # ``sleep_started`` (гасить), но шторы и вентиляция решают по смене флагов
+        # дома, а сущности модификатора нет в подписке — без отдельного
+        # уведомления они о ней не узнают (боевой случай 2026-10-16: «мы спим»
+        # включился в полночь, шторы остались открытыми до утра).
+        self.on_sleep_changed: Callable[[], Awaitable[None]] | None = None
+        self._pending_sleep_changed = False
         # Смена суток для декоративного света: закат включает вечернее
         # освещение, рассвет его гасит. Тот же путь, что и у модификатора, —
         # солнце вне подписки, и состояние снимается здесь, в разборе.
@@ -400,6 +407,11 @@ class SimpleHAWebSocketClient:
             if turning_on:
                 self._pending_sleep_started = True
             if turning_on or turning_off:
+                # Смена нужна не только свету: шторы и вентиляция пересматривают
+                # решение по смене флагов дома, а сущности модификатора нет в
+                # подписке — фильтр её отбрасывает, и без отдельного уведомления
+                # они о смене не узнают вовсе.
+                self._pending_sleep_changed = True
                 verb = "включился: запрошено событие sleep_started" if turning_on else "выключился"
                 logger.warning(f"Модификатор «мы спим» {verb} ({entity})")
         # Пустой фильтр — это «манифест недоступен», а не «событие чужое»:
@@ -483,6 +495,17 @@ class SimpleHAWebSocketClient:
                     await notify()
                 except Exception as exc:  # noqa: BLE001 — отказ уведомления не роняет поток событий
                     logger.warning(f"HAAdapter: sleep_started не доставлен: {exc}")
+        # Смена модификатора в любую сторону — тому, кто решает по флагам дома
+        # (шторы и вентиляция): свет получает отдельное `sleep_started` выше, но
+        # ему эта новость не нужна дважды.
+        if self._pending_sleep_changed:
+            self._pending_sleep_changed = False
+            notify_changed = self.on_sleep_changed
+            if notify_changed is not None:
+                try:
+                    await notify_changed()
+                except Exception as exc:  # noqa: BLE001 — отказ уведомления не роняет поток событий
+                    logger.warning(f"HAAdapter: смена «мы спим» не донесена: {exc}")
         # Закат и рассвет — по тому же пути и по той же причине: солнце вне
         # подписки, а вечернему освещению нужно знать о смене суток. Флаг живёт
         # одно событие, поэтому повторная доставка невозможна.
@@ -547,7 +570,14 @@ class SimpleHAWebSocketClient:
         try:
             import websockets
 
-            self.ws = await websockets.connect(self.url)
+            # Предел размера сообщения поднят намеренно. По умолчанию библиотека
+            # рвёт сообщения больше мегабайта, а реестр сущностей дома весит
+            # 1.23 МБ (2107 сущностей, замер 2026-10-16): ответ молча не доходил,
+            # и чистка мусора считала, что все вспомогательные элементы «откуда
+            # бог весть», вместо «описан в YAML» или «создан через интерфейс».
+            # 16 МБ — не «без предела»: безграничное чтение дало бы одному
+            # сообщению съесть память платформы.
+            self.ws = await websockets.connect(self.url, max_size=16 * 1024 * 1024)
             self.connected = True
 
             raw = await asyncio.wait_for(self.ws.recv(), timeout=15)
@@ -803,6 +833,40 @@ class SimpleHAWebSocketClient:
             return response.get("result", [])
         except TimeoutError:
             return []
+
+    async def command(self, command_type: str, **payload: Any) -> dict[str, Any]:
+        """Отправить команду Home Assistant и дождаться ответа.
+
+        Нужна для того, что не покрыто ``get_states`` и ``call_service``: реестр
+        сущностей и панели (BACKLOG B77). Без них чистка мусора была бы гаданием:
+        «выведен на панель» и «описан в YAML» — разные вещи.
+
+        Args:
+            command_type: Тип команды WebSocket Home Assistant.
+            **payload: Дополнительные поля команды.
+
+        Returns:
+            Ответ дома целиком: ``success`` и ``result`` либо ``error``. Ошибку
+            разбирает вызывающий: молчаливый ``None`` не отличить от «пусто».
+        """
+        if not self.ws or not self.connected:
+            return {
+                "success": False,
+                "error": {"code": "not_connected", "message": "нет связи с домом"},
+            }
+
+        self._msg_id += 1
+        msg_id = self._msg_id
+
+        await self.ws.send(json.dumps({"id": msg_id, "type": command_type, **payload}))
+
+        try:
+            return await asyncio.wait_for(self._request_result(msg_id), timeout=15)
+        except TimeoutError:
+            return {
+                "success": False,
+                "error": {"code": "timeout", "message": "дом не ответил вовремя"},
+            }
 
     async def call_service(
         self,
@@ -2021,6 +2085,9 @@ class HAAdapter:
         # И уведомление — вместе с именем: как только клиент знает сущность, он
         # начинает ловить её переключения и шлёт sleep_started платформе.
         client.on_sleep_started = self.on_sleep_started
+        # Плюс пересмотр по флагам дома: шторы и вентиляция слушают
+        # `settings_changed`, а не `sleep_started`.
+        client.on_sleep_changed = self._on_sleep_changed
         http_url = cast(str, self._ws_url)
         base = http_url.replace("wss://", "https://").replace("ws://", "http://")
         url = f"{base.split('/api/websocket')[0].rstrip('/')}/api/states/{entity}"
@@ -2047,6 +2114,27 @@ class HAAdapter:
             # WARNING как в подписке (#70): INFO адаптера в docker-журнале не
             # виден, а прочитанное состояние — основа всех решений «спим».
             logger.warning(f"HAAdapter: «мы спим» = {client.asleep} (модификатор {entity})")
+
+    async def _on_sleep_changed(self) -> None:
+        """Пересмотреть автоматы по смене «мы спим» (боевой дефект 2026-10-16).
+
+        Модификатор — общий флаг дома, но до сих пор его смену получал только
+        свет (событие ``sleep_started``): шторы и вентиляция решают по смене
+        флагов дома (``settings_changed``) и о модификаторе не узнавали вовсе.
+        Боевой случай: 16 октября в полночь «мы спим» включился, свет погас, а
+        шторы остались открытыми — их автомат не получил ни одного повода
+        пересмотреть решение до утра.
+
+        Returns:
+            Ничего. Неудача пересмотра не роняет поток событий.
+        """
+        router = self._event_router
+        if router is None:
+            return
+        try:
+            await router.route_settings_change(self._event_context())
+        except Exception as exc:  # noqa: BLE001 — пересмотр не должен ронять поток
+            logger.warning(f"HAAdapter: пересмотр по смене «мы спим» не удался: {exc}")
 
     async def get_entity_state(self, entity_id: str) -> str | None:
         """Прочитать состояние одной сущности через REST.
@@ -2085,6 +2173,91 @@ class HAAdapter:
         if not isinstance(states, list):
             return []
         return [state for state in states if isinstance(state, dict)]
+
+    async def get_entity_registry(self) -> list[dict[str, Any]]:
+        """Прочитать реестр сущностей Home Assistant (BACKLOG B77).
+
+        Реестр отвечает на вопрос, которого не видно по состояниям: **откуда**
+        сущность взялась. У созданной через интерфейс дома есть запись
+        конфигурации, у описанной в YAML — нет, и удалить их можно по-разному:
+        первую — через дом, вторую — только правкой YAML на самом доме.
+
+        Returns:
+            Записи реестра; пусто, если дом не ответил.
+        """
+        client = self._ws_client
+        if client is None:
+            return []
+        try:
+            answer = await client.command("config/entity_registry/list")
+        except Exception as exc:  # noqa: BLE001 — чистка не должна ронять страницу
+            logger.warning(f"HAAdapter: реестр сущностей не прочитан: {exc}")
+            return []
+        if not isinstance(answer, dict) or not answer.get("success"):
+            # Молчаливый пустой ответ уже один раз спрятал дефект (ответ реестра
+            # больше мегабайта не доходил): отказ обязан быть виден в журнале.
+            logger.warning(f"HAAdapter: реестр сущностей не прочитан: {answer}")
+            return []
+        result = answer.get("result")
+        return [item for item in result or [] if isinstance(item, dict)]
+
+    async def get_dashboard_entities(self) -> set[str] | None:
+        """Сущности, выведенные на панели Home Assistant (BACKLOG B77).
+
+        Панель — это тоже использование: элемент, который владелец видит и
+        щёлкает руками, нельзя называть мусором только потому, что его нет в
+        манифесте и в журнале. Так нашлись обогрев крыши, полив и подсветка леса —
+        элементы совсем не мёртвые.
+
+        Returns:
+            Множество сущностей; ``None``, если панели прочитать не удалось —
+            тогда молчание панелей ничего не доказывает.
+        """
+        client = self._ws_client
+        if client is None:
+            return None
+
+        configs: list[Any] = []
+        default = await client.command("lovelace/config")
+        if not (isinstance(default, dict) and default.get("success")):
+            logger.warning("HAAdapter: панели Home Assistant не прочитаны")
+            return None
+        configs.append(default.get("result"))
+
+        listing = await client.command("lovelace/dashboards/list")
+        panels = listing.get("result") if isinstance(listing, dict) else None
+        for panel in panels or []:
+            if not isinstance(panel, dict) or not panel.get("url_path"):
+                continue
+            answer = await client.command("lovelace/config", url_path=panel["url_path"])
+            if isinstance(answer, dict) and answer.get("success"):
+                configs.append(answer.get("result"))
+
+        found: set[str] = set()
+        for config in configs:
+            self._collect_entity_ids(config, found)
+        return found
+
+    def _collect_entity_ids(self, node: Any, found: set[str]) -> None:
+        """Собрать идентификаторы сущностей из описания панели.
+
+        Args:
+            node: Узел описания (словарь, список, строка).
+            found: Накопитель идентификаторов.
+
+        Returns:
+            Ничего.
+        """
+        if isinstance(node, str):
+            domain, _, rest = node.partition(".")
+            if rest and domain.isidentifier() and domain.islower():
+                found.add(node)
+        elif isinstance(node, dict):
+            for value in node.values():
+                self._collect_entity_ids(value, found)
+        elif isinstance(node, list):
+            for value in node:
+                self._collect_entity_ids(value, found)
 
     async def _read_entity_state(self, entity: str) -> str | None:
         """Прочитать состояние одной сущности через REST.
