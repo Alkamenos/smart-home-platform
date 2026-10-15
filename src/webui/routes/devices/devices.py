@@ -13,23 +13,42 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, model_validator
 
-from core.models.device import Device
-from core.models.device_sync_event import DeviceSyncEvent
 from core.models.manifest import BehaviorConfig
-from webui.models import (
-    AutomationInfo,
-    FSMStateView,
-    build_all_fsm_state_views,
-    build_automation_info,
-)
+from webui.models import build_all_fsm_state_views
 from webui.routes.devices.access_control import require_admin
 from webui.routes.devices.deps import (
     get_device_service,
     get_lifecycle_service,
     get_sync_history,
     record_sync_event,
+)
+from webui.routes.devices.devices_models import (
+    ApplyDevicesRequest as ApplyDevicesRequest,
+    ApplyDevicesResponse as ApplyDevicesResponse,
+    BehaviorSelection as BehaviorSelection,
+    BehaviorsUpdateRequest as BehaviorsUpdateRequest,
+    BehaviorsUpdateResponse as BehaviorsUpdateResponse,
+    CommandRequest as CommandRequest,
+    CommandResponse as CommandResponse,
+    DeviceEventResponse as DeviceEventResponse,
+    DeviceResponse as DeviceResponse,
+    DeviceSelection as DeviceSelection,
+    FailedDevice as FailedDevice,
+    UpdateDeviceConfigRequest as UpdateDeviceConfigRequest,
+)
+from webui.routes.devices.devices_views import (
+    _build_behaviors as _build_behaviors,
+    _build_device_behaviors_map as _build_device_behaviors_map,
+    _build_device_from_selection as _build_device_from_selection,
+    _build_device_fsm_views as _build_device_fsm_views,
+    _current_user_id as _current_user_id,
+    _default_room_id as _default_room_id,
+    _device_behaviors as _device_behaviors,
+    _find_room as _find_room,
+    _room_of_device as _room_of_device,
+    _to_device_response as _to_device_response,
+    _to_event_response as _to_event_response,
 )
 from webui.services.decisions import decision_view
 
@@ -101,45 +120,6 @@ async def _require_access_or_403(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions for this operation",
         )
-
-
-class DeviceResponse(BaseModel):
-    """Ответ с информацией об устройстве."""
-
-    id: str
-    name: str
-    display_name: str | None = None
-    device_type: str
-    status: str
-    state: dict
-    source_id: str
-    ha_entity_id: str
-    ha_area_id: str | None = None
-    description: str | None = None
-    location: str | None = None
-    tags: list[str] | None = None
-    created_at: str
-    updated_at: str
-    fsm: list[FSMStateView] = Field(default_factory=list, description="States of device FSMs")
-    behaviors: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description=(
-            "Поведения устройства из манифеста: шаблон, приоритет и параметры. "
-            "Форма правки предзаполняется из этого поля, поэтому без него "
-            "пользователь увидел бы пустые параметры и стёр бы их"
-        ),
-    )
-    automation: AutomationInfo = Field(
-        default_factory=lambda: AutomationInfo(configured=False, reason="no_automation"),
-        description="Automation availability for the device",
-    )
-    decision: dict[str, Any] | None = Field(
-        default=None,
-        description=(
-            "Последнее решение автоматики: исход, причина человеческим языком и "
-            "время. Нужно интерфейсу, чтобы ответить «почему так» без журнала"
-        ),
-    )
 
 
 # ============ T033-T057: Управление устройствами (полная реализация) ============
@@ -230,124 +210,6 @@ async def get_devices(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ошибка при получении списка устройств",
         ) from e
-
-
-def _build_device_fsm_views(request: Request, devices: list[Any]) -> dict[str, list[FSMStateView]]:
-    """Собрать состояния автоматов устройств из движка (FR-019).
-
-    Args:
-        request: HTTP запрос (для доступа к контейнеру платформы).
-        devices: Устройства, попавшие в ответ.
-
-    Returns:
-        Соответствие идентификатора устройства и его состояний автоматов.
-    """
-    container = getattr(request.app.state, "container", None)
-    fsm_engine = getattr(container, "fsm", None)
-    if fsm_engine is None:
-        logger.debug("FSM engine unavailable: device automation info omitted")
-        return {}
-
-    entity_ids = {device.ha_entity_id for device in devices if device.ha_entity_id}
-    views = build_all_fsm_state_views(fsm_engine, entity_ids)
-
-    grouped: dict[str, list[FSMStateView]] = {}
-    for view in views:
-        grouped.setdefault(view.device_id, []).append(view)
-    return grouped
-
-
-def _build_device_behaviors_map(
-    request: Request, devices: list[Any]
-) -> dict[str, list[dict[str, Any]]]:
-    """Собирает поведения устройств из манифеста по entity_id.
-
-    Args:
-        request: HTTP-запрос (из него берётся сервис жизненного цикла).
-        devices: Устройства выборки.
-
-    Returns:
-        Словарь ``entity_id`` → поведения.
-    """
-    service = getattr(request.app.state, "lifecycle_service", None)
-    if service is None:
-        logger.debug("Lifecycle service unavailable: device behaviors omitted")
-        return {}
-    return {
-        device.ha_entity_id: _device_behaviors(service, device.ha_entity_id) for device in devices
-    }
-
-
-def _device_behaviors(lifecycle: Any, ha_entity_id: str) -> list[dict[str, Any]]:
-    """Возвращает поведения устройства из манифеста.
-
-    Поведения хранятся в манифесте, а не в модели устройства, поэтому запрашиваются
-    отдельно. Устройство, которого нет в манифесте, даёт пустой список, а не ошибку:
-    ответ устройства не должен зависеть от целостности манифеста.
-
-    Args:
-        lifecycle: Сервис жизненного цикла либо None, если он недоступен.
-        ha_entity_id: Идентификатор сущности Home Assistant.
-
-    Returns:
-        Список поведений в виде словарей.
-    """
-    manifest = getattr(lifecycle, "manifest", None)
-    if manifest is None or not ha_entity_id:
-        return []
-    for room in getattr(manifest, "rooms", []):
-        for config in room.devices:
-            if config.id == ha_entity_id:
-                return [behavior.model_dump() for behavior in config.behaviors]
-    return []
-
-
-def _to_device_response(
-    device: Any,
-    fsm_views: list[FSMStateView] | None = None,
-    behaviors: list[dict[str, Any]] | None = None,
-    decision: dict[str, Any] | None = None,
-) -> DeviceResponse:
-    """Собирает ответ API из модели устройства.
-
-    Поля конфигурации (``display_name``, ``description``, ``location``,
-    ``tags``) берутся из ``device.config`` — в модели устройства отдельных
-    полей для них нет (spec 006, contracts/device-lifecycle-api.md).
-
-    Устройство без автоматики получает явную отметку ``no_automation``, а не
-    пустое значение состояния (spec 007, FR-019).
-
-    Args:
-        device: Модель устройства.
-        fsm_views: Состояния автоматов устройства.
-        behaviors: Поведения устройства из манифеста; при отсутствии — пустой список.
-        decision: Последнее решение автоматики (спека 017, US3).
-
-    Returns:
-        Ответ API с устройством.
-    """
-    config = device.config or {}
-    views = fsm_views or []
-    return DeviceResponse(
-        id=str(device.id),
-        name=device.name,
-        display_name=config.get("display_name"),
-        device_type=device.device_type,
-        status=device.status,
-        state=device.state or {},
-        source_id=str(device.source_id),
-        ha_entity_id=device.ha_entity_id,
-        ha_area_id=device.ha_area_id,
-        description=config.get("description"),
-        location=config.get("location"),
-        tags=config.get("tags"),
-        created_at=device.created_at.isoformat(),
-        updated_at=device.updated_at.isoformat(),
-        fsm=views,
-        behaviors=behaviors or [],
-        automation=build_automation_info([view.fsm_id for view in views]),
-        decision=decision,
-    )
 
 
 @router.get("/{device_id}", status_code=status.HTTP_200_OK)
@@ -446,15 +308,6 @@ async def delete_device(request: Request, device_id: UUID) -> Response:
 
     logger.info(f"Устройство удалено через API: {device.ha_entity_id}")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-class UpdateDeviceConfigRequest(BaseModel):
-    """Запрос на обновление конфигурации устройства."""
-
-    display_name: str | None = Field(default=None, min_length=1, max_length=255)
-    description: str | None = Field(default=None, max_length=1000)
-    location: str | None = Field(default=None, max_length=255)
-    tags: list[str] | None = Field(None)
 
 
 @router.put("/{device_id}/config", status_code=status.HTTP_200_OK)
@@ -556,69 +409,6 @@ async def update_device_config(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ошибка при обновлении конфигурации",
         ) from e
-
-
-class CommandRequest(BaseModel):
-    """Единый запрос выполнения команды (T054 + совместимость).
-
-    Принимает три формата (валидатор — хотя бы один идентификатор команды):
-    - T054: ``name`` + обязательные ``parameters``;
-    - name-алиас: ``command_name`` (параметры необязательны);
-    - сервисный: ``service`` + ``data``.
-    """
-
-    name: str | None = Field(
-        default=None, min_length=1, max_length=255, description="Имя команды T054"
-    )
-    command_name: str | None = Field(
-        None, min_length=1, max_length=255, description="Имя команды (алиас)"
-    )
-    parameters: dict | None = Field(
-        default=None, description="Параметры команды (обязательны с name)"
-    )
-    service: str | None = Field(default=None, description="Сервис HA (domain.service)")
-    data: dict | None = Field(default=None, description="Данные сервиса")
-
-    @model_validator(mode="after")
-    def _validate_command_identity(self) -> "CommandRequest":
-        """Требует хотя бы один идентификатор команды (contracts §3).
-
-        Returns:
-            Саму модель при валидном наборе полей.
-
-        Raises:
-            ValueError: если идентификатор не указан или формат неполон.
-        """
-        if self.command_name:
-            return self
-        if self.service:
-            return self
-        if self.name:
-            if self.parameters is None:
-                raise ValueError("Поле 'parameters' обязательно при использовании формата 'name'")
-            return self
-        raise ValueError("Укажите 'command_name', 'name' (с 'parameters') или 'service'")
-
-
-class CommandResponse(BaseModel):
-    """Ответ при выполнении команды."""
-
-    id: str = Field(description="ID выполненной команды")
-    device_id: str = Field(description="ID устройства")
-    command_name: str = Field(description="Имя команды")
-    status: str = Field(description="Статус: pending, executing, success, failed")
-    created_at: str = Field(description="Время создания")
-    completed_at: str | None = None
-    result: dict | None = None
-    error: str | None = None
-    automation_synced: bool = Field(
-        default=False,
-        description=(
-            "Отражена ли команда в состоянии автомата. False означает, что команда "
-            "ушла прямо в Home Assistant: в шаблоне нет ручного перехода, и автомат "
-            "о состоянии устройства не знает (Known Issue #69)."
-        ),
-    )
 
 
 _MANUAL_FSM_EVENTS: dict[str, str] = {
@@ -808,40 +598,6 @@ async def get_command_status(
 # ============ T057: GET /api/v1/devices/{id}/events ============
 
 
-class DeviceEventResponse(BaseModel):
-    """Событие устройства."""
-
-    id: str = Field(description="ID события")
-    device_id: str = Field(description="ID устройства")
-    event_type: str = Field(
-        description="Тип события: state_changed, config_changed, command_executed"
-    )
-    timestamp: str = Field(description="Время события")
-    data: dict = Field(description="Данные события")
-
-
-def _to_event_response(event: DeviceSyncEvent) -> DeviceEventResponse:
-    """Переводит запись истории в формат ответа эндпоинта events (research R5).
-
-    Args:
-        event: Запись истории операций
-
-    Returns:
-        Событие в формате DeviceEventResponse (event_type ← action).
-    """
-    payload = dict(event.data or {})
-    payload["user_id"] = event.user_id
-    payload["before"] = event.before
-    payload["after"] = event.after
-    return DeviceEventResponse(
-        id=str(event.id),
-        device_id=str(event.device_id),
-        event_type=event.action,
-        timestamp=event.timestamp.isoformat(),
-        data=payload,
-    )
-
-
 @router.get("/{device_id}/events", status_code=status.HTTP_200_OK)
 async def get_device_events(
     device_id: UUID,
@@ -892,66 +648,6 @@ async def get_device_events(
 
 
 # ============ Добавление устройств из Home Assistant ============
-
-
-class BehaviorSelection(BaseModel):
-    """Поведение устройства, выбранное пользователем."""
-
-    template: str = Field(description="Шаблон автоматизации")
-    priority: int = Field(default=10, ge=1, description="Приоритет: меньше — выше")
-    params: dict[str, Any] = Field(default_factory=dict, description="Параметры шаблона")
-
-
-class DeviceSelection(BaseModel):
-    """Выбранное устройство для добавления."""
-
-    device_entity_id: str = Field(description="Entity ID в Home Assistant")
-    device_type: str | None = Field(
-        None, description="Тип устройства; по умолчанию — домен из entity_id"
-    )
-    name: str | None = Field(default=None, description="Имя устройства; по умолчанию — entity_id")
-    target_room: str | None = Field(default=None, description="Целевая комната для устройства")
-    behavior_template: str | None = Field(
-        default=None, description="Рекомендуемый шаблон поведения"
-    )
-    ha_area_id: str | None = Field(default=None, description="ID области в HA")
-    behaviors: list[BehaviorSelection] | None = Field(
-        None, description="Поведения устройства; при отсутствии — рекомендованный шаблон"
-    )
-
-
-class ApplyDevicesRequest(BaseModel):
-    """Запрос на добавление выбранных устройств."""
-
-    source_id: UUID = Field(description="ID источника Home Assistant")
-    selections: list[DeviceSelection] = Field(description="Список выбранных устройств")
-    dry_run: bool = Field(default=False, description="Если True, только проверяет, не добавляет")
-
-
-class FailedDevice(BaseModel):
-    """Устройство, которое не удалось применить."""
-
-    ha_entity_id: str = Field(description="Entity ID устройства")
-    reason: str = Field(description="Причина отказа")
-
-
-class ApplyDevicesResponse(BaseModel):
-    """Ответ при добавлении устройств (contracts/device-lifecycle-api.md)."""
-
-    success: bool = Field(description="Ошибок не было")
-    devices_count: int = Field(description="Количество применённых устройств")
-    devices: list[DeviceResponse] = Field(
-        default_factory=list, description="Применённые устройства"
-    )
-    devices_added: int = Field(default=0, description="Добавлено новых устройств")
-    devices_updated: int = Field(default=0, description="Обновлено существующих")
-    failed: int = Field(default=0, description="Количество неудачных применений")
-    failed_devices: list[FailedDevice] = Field(
-        default_factory=list, description="Устройства, которые не удалось применить"
-    )
-    dry_run: bool = Field(default=False, description="Был ли это тестовый запуск")
-    would_add: int | None = Field(default=None, description="Сколько устройств было бы добавлено")
-    errors: list[str] | None = Field(default=None, description="Человекочитаемые ошибки")
 
 
 @router.post("/apply", status_code=status.HTTP_201_CREATED)
@@ -1061,148 +757,7 @@ async def apply_devices(
     )
 
 
-def _current_user_id(request: Request) -> str:
-    """Определяет инициатора операции по идентификации запроса.
-
-    Args:
-        request: HTTP запрос.
-
-    Returns:
-        Идентификатор пользователя или 'system', если идентификация не задана.
-    """
-    user_id = getattr(request.state, "user_id", None) or request.headers.get("X-User-ID")
-    return user_id or "system"
-
-
-def _find_room(manifest: Any, room_id: str) -> Any:
-    """Ищет комнату в манифесте.
-
-    Args:
-        manifest: Модель манифеста.
-        room_id: Идентификатор комнаты.
-
-    Returns:
-        Модель комнаты или None.
-    """
-    return next((room for room in manifest.rooms if room.id == room_id), None)
-
-
-def _default_room_id(manifest: Any, device: Any = None) -> str:
-    """Комната устройства: из его области в Home Assistant — и больше никак.
-
-    Раньше здесь возвращалась **первая комната манифеста**, и устройства без
-    явно выбранной комнаты молча складывались в неё: в боевом манифесте первой
-    была ``kitchen``, и туда попали двадцать светильников, которых в описании
-    дома быть не должно (Known Issue #88). Молчаливое размещение устройства в
-    чужой комнате означает, что им управляет датчик не той комнаты, поэтому
-    источник комнаты теперь один — область устройства в Home Assistant, а если
-    её нет среди комнат манифеста, добавление отказывается.
-
-    Args:
-        manifest: Модель манифеста.
-        device: Устройство, для которого ищется комната.
-
-    Returns:
-        Идентификатор комнаты устройства.
-
-    Raises:
-        ValueError: Если в манифесте нет комнат или область устройства среди них
-            не значится.
-    """
-    if not manifest.rooms:
-        msg = "В манифесте нет комнат: добавьте комнату перед добавлением устройств"
-        raise ValueError(msg)
-
-    area_id = getattr(device, "ha_area_id", None)
-    if area_id:
-        known = {room.id for room in manifest.rooms}
-        if str(area_id) in known:
-            return str(area_id)
-        msg = (
-            f"Устройство из области {area_id!r}: такой комнаты нет в манифесте. "
-            "Укажите комнату вручную — молчаливый выбор другой означил бы, что "
-            "устройством управляет датчик не той комнаты"
-        )
-        raise ValueError(msg)
-
-    msg = (
-        "Устройство без комнаты: выберите комнату или добавьте область "
-        "в Home Assistant. Размещать наугад нельзя — устройство перестаёт "
-        "управляться датчиками своей комнаты"
-    )
-    raise ValueError(msg)
-
-
-def _build_device_from_selection(selection: DeviceSelection, source_id: UUID) -> Any:
-    """Собирает модель устройства из выбора пользователя.
-
-    Args:
-        selection: Выбранное устройство.
-        source_id: Источник устройства.
-
-    Returns:
-        Модель устройства.
-    """
-    domain = selection.device_entity_id.split(".")[0]
-    return Device(
-        ha_entity_id=selection.device_entity_id,
-        source_id=source_id,
-        name=selection.name or selection.device_entity_id,
-        device_type=selection.device_type or domain,
-        ha_area_id=selection.ha_area_id,
-        state={},
-        status="available",
-    )
-
-
-def _build_behaviors(selection: DeviceSelection) -> list[BehaviorConfig]:
-    """Собирает список поведений устройства из выбора пользователя.
-
-    Args:
-        selection: Выбранное устройство.
-
-    Returns:
-        Список поведений (пустой, если шаблон не задан).
-    """
-    if selection.behaviors:
-        return [
-            BehaviorConfig(
-                template=behavior.template, priority=behavior.priority, params=behavior.params
-            )
-            for behavior in selection.behaviors
-        ]
-    if selection.behavior_template:
-        return [BehaviorConfig(template=selection.behavior_template, priority=10)]
-    return []
-
-
 # ============ Пункт 4: правка поведений устройства ============
-
-
-class BehaviorsUpdateRequest(BaseModel):
-    """Запрос замены поведений устройства."""
-
-    behaviors: list[BehaviorSelection] = Field(
-        description="Новый список поведений; пустой список снимает все поведения"
-    )
-    room_id: str | None = Field(
-        None,
-        description=(
-            "Комната устройства. Обычно не нужна: комната берётся из манифеста по "
-            "entity_id. Указывается, когда устройства в манифесте нет"
-        ),
-    )
-
-
-class BehaviorsUpdateResponse(BaseModel):
-    """Ответ на правку поведений."""
-
-    device_id: str = Field(description="ID устройства")
-    behaviors: list[dict] = Field(description="Поведения после сохранения")
-    inert_params: list[str] = Field(
-        default_factory=list,
-        description="Параметры, которые не влияют на поведение (Known Issue #71)",
-    )
 
 
 @router.put("/{device_id}/behaviors", response_class=JSONResponse)  # type: ignore[untyped-decorator]
@@ -1286,20 +841,3 @@ async def update_device_behaviors(
             inert_params=sorted(set(inert)),
         ).model_dump()
     )
-
-
-def _room_of_device(lifecycle: Any, ha_entity_id: str) -> str | None:
-    """Возвращает комнату устройства по его entity_id.
-
-    Args:
-        lifecycle: Сервис жизненного цикла.
-        ha_entity_id: Идентификатор сущности Home Assistant.
-
-    Returns:
-        Идентификатор комнаты либо None, если устройства нет в манифесте.
-    """
-    for room in getattr(lifecycle.manifest, "rooms", []):
-        for config in room.devices:
-            if config.id == ha_entity_id:
-                return room.id
-    return None
