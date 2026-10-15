@@ -296,11 +296,16 @@ async def test_service_entities_are_not_swept() -> None:
 
 @pytest.mark.asyncio
 async def test_read_failure_gives_empty_report() -> None:
-    """Нет связи — пустой снимок, а не падение."""
+    """Нет связи — снимок без показаний, а не падение.
+
+    «Проблем нет» здесь сказать нельзя: обход не состоялся, и это названо
+    отдельной проблемой (аудит 2026-10-16, К-3). Проверка держит обе половины:
+    падения нет, и молчания тоже — причина видна.
+    """
     report = await _service(FakeAdapter(fail=True)).sweep()
 
-    assert report["problems"] == []
     assert report["areas"] == {}
+    assert [problem["kind"] for problem in report["problems"]] == ["house_unreadable"]
 
 
 @pytest.mark.asyncio
@@ -312,4 +317,26 @@ async def test_last_report_is_cached() -> None:
     await service.sweep()
 
     assert service.last_report is not None
-    assert service.last_report["problems"] == []
+    # Пустой дом (ни одного состояния) — это непрочитанный дом, а не порядок:
+    # снимок обязан нести причину (аудит 2026-10-16, К-3).
+    assert [problem["kind"] for problem in service.last_report["problems"]] == ["house_unreadable"]
+
+
+@pytest.mark.asyncio
+async def test_unreadable_house_is_reported_as_problem() -> None:
+    """Дом не прочитался — это проблема, а не «проблем нет» (аудит К-3).
+
+    Инструмент наблюдаемости не имеет права врать «всё хорошо»: пустой отчёт и
+    отчёт «прочитать не удалось» обязаны различаться, иначе владелец утром видит
+    здоровый дом, хотя датчики не читались вовсе.
+
+    Returns:
+        Ничего.
+    """
+    service = HouseHealthService(adapter=FakeAdapter(fail=True), clock=lambda: NOW)
+
+    report = await service.sweep()
+
+    kinds = [problem["kind"] for problem in report["problems"]]
+    assert "house_unreadable" in kinds, "молчание обхода выдано за порядок в доме"
+    assert report["sensor_count"] == 0

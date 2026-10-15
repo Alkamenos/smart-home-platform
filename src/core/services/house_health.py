@@ -91,6 +91,13 @@ PROBLEM_UNAVAILABLE = "unavailable"
 PROBLEM_STALE = "stale"
 PROBLEM_LOW_BATTERY = "low_battery"
 
+#: Дом не прочитался: обход не состоялся.
+#:
+#: Отдельная проблема, а не пустой список. «Проблем нет» и «не смогли прочитать» —
+#: разные вещи, и путать их значит врать в панели тревог: инструмент наблюдаемости
+#: докладывал «всё хорошо», когда датчики не читались вовсе (аудит 2026-10-16, К-3).
+PROBLEM_HOUSE_UNREADABLE = "house_unreadable"
+
 #: Дольше этого показание считается молчащим. Шесть часов: раз в сутки значения
 #: обновляют даже медленные датчики, а суточные пороги террасы не трогаем.
 DEFAULT_STALE_AFTER_SEC = 6 * 3600
@@ -185,6 +192,24 @@ class HouseHealthService:
         now = self._clock()
         problems: list[dict[str, Any]] = []
         areas: dict[str, list[dict[str, Any]]] = {}
+        if not states:
+            # Дом не прочитался — это и есть проблема, и она обязана быть названа.
+            # Прежде отчёт отдавал пустой список проблем, и панель тревог молчала:
+            # «в доме порядок» было неотличимо от «не смогли прочитать» (К-3).
+            problems.append(
+                {
+                    "kind": PROBLEM_HOUSE_UNREADABLE,
+                    "subject": None,
+                    "name": "Дом",
+                    "area": "",
+                    "detail": (
+                        "состояния Home Assistant не прочитаны: обход дома не состоялся, "
+                        "поэтому отсутствие тревог здесь не значит, что всё хорошо"
+                    ),
+                    "value": None,
+                    "at": now.isoformat(),
+                }
+            )
         for item in states:
             entity_id = item.get("entity_id")
             if not isinstance(entity_id, str):

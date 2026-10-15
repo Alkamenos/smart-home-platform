@@ -81,3 +81,28 @@ def test_empty_report_gives_no_alerts() -> None:
     """Обхода не было — тревог нет, и это не ошибка."""
     assert alerts_from_health(None) == []
     assert alerts_from_health({"problems": []}) == []
+
+
+def test_unreadable_house_is_a_warning_not_a_note() -> None:
+    """Непрочитанный дом — «вмешаться», а не «знать» (аудит 2026-10-16, К-3).
+
+    Молчание обхода не должно выглядеть как порядок в доме: панель тревог
+    обязана сказать, что обход не состоялся.
+
+    Returns:
+        Ничего.
+    """
+    alerts = alerts_from_health(
+        _report(
+            {
+                "kind": "house_unreadable",
+                "subject": None,
+                "detail": "состояния Home Assistant не прочитаны",
+                "at": None,
+            }
+        )
+    )
+
+    assert len(alerts) == 1, f"непрочитанный дом не породил тревоги: {alerts}"
+    assert alerts[0].kind == KIND_HEALTH
+    assert alerts[0].severity == "warning", "молчание обхода выдано за порядок в доме"
