@@ -26,6 +26,16 @@ KIND_UNAVAILABLE_DEVICE = "unavailable_device"
 # Расхождение «автомат ↔ прибор» (концепция §7, п. 4): решение есть, а прибор
 # его не отражает — команда не применилась либо прибор недоступен.
 KIND_DEVICE_MISMATCH = "device_mismatch"
+# Проблема из обхода дома (BACKLOG F6): прибор не отвечает, показание устарело,
+# батарейка на исходе. Обход смотрит весь дом, а не только приборы манифеста.
+KIND_HEALTH = "health_problem"
+
+#: Значимость проблем обхода: «вмешаться» против «знать».
+HEALTH_SEVERITY = {
+    "unavailable": "warning",
+    "low_battery": "warning",
+    "stale": "info",
+}
 
 #: Значимость тревоги: ``warning`` — вмешаться, ``info`` — знать.
 SEVERITY_WARNING = "warning"
@@ -211,3 +221,35 @@ def _role_label(role: Any) -> str:
     if not role:
         return "датчик"
     return ROLE_LABELS.get(str(role), str(role))
+
+
+def alerts_from_health(report: Any) -> list[Alert]:
+    """Собрать тревоги из обхода дома (BACKLOG F6).
+
+    Обход отвечает на вопрос, который панель приборов манифеста не видит: что
+    происходит со **всем** домом — не отвечает ли датчик за пределами комнат,
+    не села ли батарейка, не замолчал ли прибор, который обязан шлать показания.
+
+    Args:
+        report: Снимок обхода (``last_report``) либо ``None``.
+
+    Returns:
+        Список тревог.
+    """
+    if not report:
+        return []
+    alerts: list[Alert] = []
+    for problem in report.get("problems") or []:
+        if not isinstance(problem, dict):
+            continue
+        kind = str(problem.get("kind") or "")
+        alerts.append(
+            Alert(
+                kind=KIND_HEALTH,
+                subject=str(problem.get("subject") or ""),
+                severity=HEALTH_SEVERITY.get(kind, SEVERITY_INFO),
+                detail=str(problem.get("detail") or kind),
+                at=problem.get("at"),
+            )
+        )
+    return alerts

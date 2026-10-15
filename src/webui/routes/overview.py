@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 
 from webui.models import build_all_fsm_state_views
 from webui.routes import _resolve_accessible_device_ids, event_store
-from webui.services.alerts import alerts_from_watchdog, build_alerts
+from webui.services.alerts import alerts_from_health, alerts_from_watchdog, build_alerts
 from webui.services.decisions import decision_view
 from webui.services.series import build_series
 
@@ -225,6 +225,12 @@ async def get_overview(request: Request) -> JSONResponse:
     alerts.extend(
         alert.model_dump()
         for alert in alerts_from_watchdog(getattr(watchdog, "last_snapshot", None))
+    )
+    # Обход дома (BACKLOG F6): проблемы за пределами приборов манифеста — датчики
+    # улицы и грядок, батарейки, молчащие приборы.
+    health = getattr(container, "house_health", None)
+    alerts.extend(
+        alert.model_dump() for alert in alerts_from_health(getattr(health, "last_report", None))
     )
 
     return JSONResponse(

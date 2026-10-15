@@ -74,6 +74,8 @@ class PlatformContext:
     #: (зима, запрет владельца) — требование владельца 2026-10-15. В контексте,
     #: потому что shutdown() останавливает её до закрытия соединения с HA.
     ac_protection: Any = None
+    #: Обход дома (BACKLOG F6): проблемы и реестр показаний по локациям и комнатам.
+    house_health: Any = None
     deployment: Any = None
     #: Наблюдение за локациями (спека 016): последние показания датчиков и
     #: снимки. Нужно интерфейсу, чтобы отдавать снимок и историю.
@@ -109,6 +111,9 @@ class PlatformContext:
         if self.ac_protection is not None:
             await self.ac_protection.stop()
             self.ac_protection = None
+        if self.house_health is not None:
+            await self.house_health.stop()
+            self.house_health = None
         await self.adapter.stop()
         await self.fsm.shutdown()
         await self.dispatcher.stop()
@@ -171,6 +176,8 @@ class Container:
         self._day_cycle: DayCycleService | None = None
         self._deco_watcher: DecorativeLightWatcher | None = None
         self._ventilation_watchdog: Any | None = None
+        #: Обход дома (BACKLOG F6): проблемы и реестр показаний.
+        self._house_health: Any | None = None
         # Наблюдение за локациями (спека 016): снимки и история.
         self._location_state: Any | None = None
         #: Фоновая задача первичного чтения показаний локаций.
@@ -721,6 +728,7 @@ class Container:
         self._start_deco_watcher()
         self._start_ventilation_watchdog()
         self._start_ac_protection()
+        _ = self.house_health  # обход дома: собрать и запустить (BACKLOG F6)
         self._start_sensor_health()
         self._start_location_state()
 
@@ -728,6 +736,7 @@ class Container:
             day_cycle=self._day_cycle,
             deco_watcher=self._deco_watcher,
             ac_protection=self._ac_protection,
+            house_health=self._house_health,
             manifest=self.manifest,
             event_bus=self.event_bus,
             fsm=self.fsm,
@@ -906,6 +915,53 @@ class Container:
             return
         self._deco_watcher.start()
         logger.info(f"Сверка вечернего света: {self._deco_watcher.describe()}")
+
+    @property
+    def house_health(self) -> Any:
+        """Обход дома: проблемы и реестр показаний (BACKLOG F6).
+
+        Создаётся при сборке и читается веб-слоем: интерфейсу нужен последний
+        снимок — проблемы всех датчиков дома, а не только приборов манифеста.
+
+        Returns:
+            Служба обхода.
+        """
+        if self._house_health is None:
+            from core.services.house_health import HouseHealthService
+
+            self._house_health = HouseHealthService(
+                adapter=self.adapter,
+                areas=self._health_areas(),
+            )
+            if self._house_health.start():
+                logger.info(
+                    f"Обход дома: мест в реестре {len(self._house_health.areas)}, "
+                    f"каждые {self._house_health.interval_minutes:g} мин"
+                )
+        return self._house_health
+
+    def _health_areas(self) -> dict[str, tuple[str, str]]:
+        """Карта «сущность → вид и имя места» для обхода дома.
+
+        Локации и комнаты — **разные разделы манифеста**, и в реестре они названы
+        разными словами (``локация:Улица`` против ``комната:Гостиная``): путать их
+        нельзя (требование владельца 2026-10-15).
+
+        Returns:
+            Сущность → пара (вид места, имя места).
+        """
+        from core.models.manifest import iter_role_entities
+
+        areas: dict[str, tuple[str, str]] = {}
+        for location in getattr(self.manifest, "locations", []) or []:
+            for _role, entity in iter_role_entities(location.sensors):
+                areas.setdefault(entity, ("локация", location.name))
+        for room in getattr(self.manifest, "rooms", []) or []:
+            for _role, entity in iter_role_entities(room.sensors):
+                areas.setdefault(entity, ("комната", room.name))
+            for device in getattr(room, "devices", []) or []:
+                areas.setdefault(device.id, ("комната", room.name))
+        return areas
 
     def _start_ac_protection(self) -> None:
         """Запустить защиту кондиционера.

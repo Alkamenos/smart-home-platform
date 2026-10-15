@@ -251,6 +251,7 @@ def create_app(
     # живых изменений состояния. Регистрируются до монтирования статики, чтобы
     # маршруты API имели приоритет над раздачей фронтенда.
     from .routes.events import router as events_router
+    from .routes.health import router as health_router
     from .routes.logs import router as logs_router
     from .routes.manifest import router as manifest_router
     from .routes.overview import router as overview_router
@@ -262,6 +263,8 @@ def create_app(
     app.include_router(events_router)
     app.include_router(manifest_router)
     app.include_router(logs_router)
+    # F6: обход дома — проблемы и реестр показаний по локациям и комнатам.
+    app.include_router(health_router)
     app.include_router(ws_events_router)
 
     # US4/T004: регистрация middleware контроля доступа (идентификация на
