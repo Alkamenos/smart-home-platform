@@ -500,7 +500,11 @@ class Container:
         if self._registry is None:
             self._registry = Registry()
             register_all_actions(self._registry)
-            register_all_guards(self._registry, self.control_tracker)
+            register_all_guards(
+                self._registry,
+                self.control_tracker,
+                automation_rules=self._manifest_rules(),
+            )
         return self._registry
 
     @property
@@ -917,6 +921,25 @@ class Container:
             return
         self._deco_watcher.start()
         logger.info(f"Сверка вечернего света: {self._deco_watcher.describe()}")
+
+    def _manifest_rules(self) -> Any:
+        """Правила дома для встроенных условий.
+
+        Реестр условий собирается и без манифеста — в тестах и при экспорте FSM.
+        Требовать манифест здесь нельзя: прежде сборка реестра его не касалась, и
+        обращение к нему сломало бы эти пути (найдено на прогоне). Без правил
+        действуют запасные значения, и об этом пишется предупреждение.
+
+        Returns:
+            Правила дома либо ``None``.
+        """
+        if self._manifest is None and self._manifest_path is None:
+            return None
+        try:
+            return self.manifest.automation_rules
+        except Exception as exc:  # noqa: BLE001 — реестр важнее настроек
+            logger.warning(f"Настройки дома для условий не прочитаны: {exc}")
+            return None
 
     @property
     def house_health(self) -> Any:

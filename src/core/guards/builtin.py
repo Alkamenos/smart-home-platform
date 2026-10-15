@@ -52,6 +52,7 @@ from core.guards.context import (
     DEFAULT_EXHAUST_TEMPERATURE as DEFAULT_EXHAUST_TEMPERATURE,
     DEFAULT_HUMIDITY_THRESHOLD as DEFAULT_HUMIDITY_THRESHOLD,
     DEFAULT_HYSTERESIS as DEFAULT_HYSTERESIS,
+    DEFAULT_LOCKOUT_MINUTES as DEFAULT_LOCKOUT_MINUTES,
     DEFAULT_MOTION_ECHO_SEC as DEFAULT_MOTION_ECHO_SEC,
     DEFAULT_QUIET_FROM as DEFAULT_QUIET_FROM,
     DEFAULT_QUIET_TO as DEFAULT_QUIET_TO,
@@ -285,18 +286,80 @@ def build_guards(
 #: 65 % — тот же порог, что у прежнего шаблона humidity_ventilation.
 
 
-def register_all_guards(registry: Any, control_tracker: Any) -> None:
+def register_all_guards(
+    registry: Any,
+    control_tracker: Any,
+    *,
+    automation_rules: Any = None,
+) -> None:
     """Зарегистрировать встроенные guard'ы в реестре.
 
     Args:
         registry: Реестр движка.
         control_tracker: Трекер ручного вмешательства.
+        automation_rules: Правила дома из манифеста. Нужны потому, что срок ручной
+            блокировки и суточное окно задаёт **дом**, а не код: прежде условия
+            брали зашитые 60 минут и окно 07:00–23:00, и правка манифеста
+            действовала наполовину (аудит 2026-10-16, К-9 и К-11).
     """
 
     guards = build_guards(
         control_tracker,
-        day_range=os.environ.get("DAY_TIME_RANGE", DEFAULT_DAY_TIME_RANGE),
+        day_range=_day_range(automation_rules),
+        lockout_minutes=_lockout_minutes(automation_rules),
     )
     for name, guard in guards.items():
         registry.register_guard(name, guard)
     logger.info(f"Registered {len(guards)} guards: {', '.join(sorted(guards))}")
+
+
+def _lockout_minutes(automation_rules: Any) -> int:
+    """Срок ручной блокировки из правил дома.
+
+    Один источник истины: тот же `global_manual_lockout_min`, который читает
+    посредник ручного вмешательства. Пока условие света брало зашитое значение,
+    правка манифеста рассогласовывала две половины системы (аудит К-9).
+
+    Args:
+        automation_rules: Правила дома либо ``None``.
+
+    Returns:
+        Срок в минутах.
+    """
+    value = getattr(automation_rules, "global_manual_lockout_min", None)
+    if isinstance(value, int) and value > 0:
+        return value
+    return DEFAULT_LOCKOUT_MINUTES
+
+
+def _day_range(automation_rules: Any) -> str:
+    """Суточное окно дня из расписания дома.
+
+    День — то же понятие, что у суточного цикла: часы, по которым дом начинает
+    день (`morning_at`) и его заканчивает (`night_off_at`). Именно эти события
+    получает свет, поэтому условие обязано считать день так же — иначе снова
+    получаются два разных дня. Раньше условие брало зашитое ``07:00–23:00`` и не
+    смотрело в манифест вовсе (аудит К-11).
+
+    Если расписания нет, берётся окно тишины — тоже свойство дома. И только
+    последним — запасное значение.
+
+    Args:
+        automation_rules: Правила дома либо ``None``.
+
+    Returns:
+        Строка «HH:MM-HH:MM».
+    """
+    override = os.environ.get("DAY_TIME_RANGE")
+    if override:
+        return override
+    lighting = getattr(automation_rules, "lighting", None)
+    morning = getattr(lighting, "morning_at", None)
+    night_off = getattr(lighting, "night_off_at", None)
+    if morning and night_off:
+        return f"{morning}-{night_off}"
+    quiet_from = getattr(lighting, "quiet_from", None)
+    quiet_to = getattr(lighting, "quiet_to", None)
+    if quiet_from and quiet_to:
+        return f"{quiet_to}-{quiet_from}"
+    return DEFAULT_DAY_TIME_RANGE

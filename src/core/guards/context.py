@@ -22,6 +22,13 @@ DEFAULT_HUMIDITY_THRESHOLD = 60.0
 
 DEFAULT_DAY_TIME_RANGE = "07:00-23:00"
 
+#: Срок ручной блокировки, если правила дома его не задали.
+#:
+#: Значение по умолчанию, а не «истина»: действует ровно то, что стоит в
+#: манифесте (`global_manual_lockout_min`), — иначе условия и посредник
+#: руководствовались бы разными сроками (аудит 2026-10-16, К-9).
+DEFAULT_LOCKOUT_MINUTES = 60
+
 DEFAULT_QUIET_FROM = "23:00"
 
 DEFAULT_DAY_START_MINUTES = 7 * 60
