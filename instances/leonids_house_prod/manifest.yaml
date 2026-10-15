@@ -250,6 +250,9 @@ rooms:
   name: Сад
   sensors:
     motion: binary_sensor.kalitka_sad_lc_motion_alarm
+    temperature: sensor.datchik_temperatury_sad_temperature
+    humidity: sensor.datchik_temperatury_sad_humidity
+    battery: sensor.datchik_temperatury_sad_battery
   devices:
   - id: light.vse_fonari
     type: light
@@ -300,6 +303,7 @@ automation_rules:
     morning_at: 07:00
     battery_watch_entities:
     - sensor.datchik_temperatury_terassa_battery
+    - sensor.datchik_temperatury_sad_battery
   climate:
     setpoint_entity: input_number.temperatura
     thermostat_entity: climate.termostat_gostinaia
