@@ -67,23 +67,33 @@ class FakeDispatcher:
         return True
 
 
-def _protection(adapter: FakeAdapter, dispatcher: FakeDispatcher) -> AirConditionerProtection:
+def _protection(
+    adapter: FakeAdapter, dispatcher: FakeDispatcher, min_temp: float = 5.0
+) -> AirConditionerProtection:
     """Собрать защиту с одним кондиционером.
 
     Args:
         adapter: Адаптер-двойник.
         dispatcher: Диспетчер-двойник.
+        min_temp: Порог уличной температуры.
 
     Returns:
         Служба защиты.
     """
-    return AirConditionerProtection(adapter=adapter, dispatcher=dispatcher, entities=[AC])
+    return AirConditionerProtection(
+        adapter=adapter,
+        dispatcher=dispatcher,
+        entities=[AC],
+        min_outside_temp=min_temp,
+    )
 
 
 @pytest.mark.asyncio
-async def test_winter_stops_cooling() -> None:
-    """Зима: кондиционер охлаждает — выключаем."""
-    adapter = FakeAdapter(modes={AC: "cool"}, rules={"ac_allowed": True, "is_winter": True})
+async def test_freezing_outside_stops_cooling() -> None:
+    """Главный признак: на улице холоднее порога — дренаж замёрзнет, выключаем."""
+    adapter = FakeAdapter(
+        modes={AC: "cool"}, rules={"outside_temperature": -3.0, "is_winter": False}
+    )
     dispatcher = FakeDispatcher()
 
     stopped = await _protection(adapter, dispatcher).check_once()
@@ -92,33 +102,26 @@ async def test_winter_stops_cooling() -> None:
     assert len(dispatcher.sent) == 1
     intent = dispatcher.sent[0]
     assert intent.domain == "climate" and intent.service == "turn_off"
-    assert intent.device_id == AC
     assert intent.bypass_lockout is True, "правило безопасности не отменяется блокировкой"
 
 
 @pytest.mark.asyncio
-async def test_owner_gate_off_stops_cooling() -> None:
-    """Владелец не разрешил кондиционер — выключаем даже летом."""
-    adapter = FakeAdapter(modes={AC: "cool"}, rules={"ac_allowed": False, "is_winter": False})
-    dispatcher = FakeDispatcher()
-
-    assert await _protection(adapter, dispatcher).check_once() == [AC]
-    assert dispatcher.sent, "команда не отправлена"
-
-
-@pytest.mark.asyncio
-async def test_auto_mode_counts_as_cooling() -> None:
-    """`heat_cool` может охлаждать сам — зимой так же опасен, как `cool`."""
-    adapter = FakeAdapter(modes={AC: "heat_cool"}, rules={"ac_allowed": True, "is_winter": True})
+async def test_winter_flag_stops_cooling() -> None:
+    """Флаг зимы выключает охлаждение и при тёплой улице."""
+    adapter = FakeAdapter(
+        modes={AC: "cool"}, rules={"outside_temperature": 12.0, "is_winter": True}
+    )
     dispatcher = FakeDispatcher()
 
     assert await _protection(adapter, dispatcher).check_once() == [AC]
 
 
 @pytest.mark.asyncio
-async def test_allowed_cooling_is_left_alone() -> None:
-    """Лето и разрешение владельца — кондиционер не трогаем."""
-    adapter = FakeAdapter(modes={AC: "cool"}, rules={"ac_allowed": True, "is_winter": False})
+async def test_warm_summer_is_left_alone() -> None:
+    """Тепло и не зима — кондиционер не трогаем."""
+    adapter = FakeAdapter(
+        modes={AC: "cool"}, rules={"outside_temperature": 25.0, "is_winter": False}
+    )
     dispatcher = FakeDispatcher()
 
     assert await _protection(adapter, dispatcher).check_once() == []
@@ -126,9 +129,50 @@ async def test_allowed_cooling_is_left_alone() -> None:
 
 
 @pytest.mark.asyncio
+async def test_owner_gate_is_not_about_the_air_conditioner() -> None:
+    """Гейт владельца защиту не касается (разъяснение владельца 2026-10-15).
+
+    `ispolzovat_konditsioner` означает не «мёрзнет ли дренаж»: защита смотрит
+    только мороз и зиму, поэтому тёплой улицей и выключенным гейтом охлаждение
+    разрешено.
+    """
+    adapter = FakeAdapter(
+        modes={AC: "cool"}, rules={"outside_temperature": 25.0, "is_winter": False}
+    )
+    dispatcher = FakeDispatcher()
+
+    assert await _protection(adapter, dispatcher).check_once() == []
+    assert dispatcher.sent == []
+
+
+@pytest.mark.asyncio
+async def test_boundary_temperature_is_allowed() -> None:
+    """Ровно на пороге охлаждать можно: запрет начинается ниже порога."""
+    adapter = FakeAdapter(
+        modes={AC: "cool"}, rules={"outside_temperature": 5.0, "is_winter": False}
+    )
+    dispatcher = FakeDispatcher()
+
+    assert await _protection(adapter, dispatcher).check_once() == []
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_counts_as_cooling() -> None:
+    """`heat_cool` может охлаждать сам — в мороз так же опасен, как `cool`."""
+    adapter = FakeAdapter(
+        modes={AC: "heat_cool"}, rules={"outside_temperature": -10.0, "is_winter": False}
+    )
+    dispatcher = FakeDispatcher()
+
+    assert await _protection(adapter, dispatcher).check_once() == [AC]
+
+
+@pytest.mark.asyncio
 async def test_heating_is_not_touched() -> None:
     """Обогрев кондиционера защита не трогает: правило про охлаждение."""
-    adapter = FakeAdapter(modes={AC: "heat"}, rules={"ac_allowed": True, "is_winter": True})
+    adapter = FakeAdapter(
+        modes={AC: "heat"}, rules={"outside_temperature": -10.0, "is_winter": True}
+    )
     dispatcher = FakeDispatcher()
 
     assert await _protection(adapter, dispatcher).check_once() == []
@@ -138,7 +182,9 @@ async def test_heating_is_not_touched() -> None:
 @pytest.mark.asyncio
 async def test_off_state_is_not_touched() -> None:
     """Выключенный кондиционер нечего выключать."""
-    adapter = FakeAdapter(modes={AC: "off"}, rules={"ac_allowed": False, "is_winter": True})
+    adapter = FakeAdapter(
+        modes={AC: "off"}, rules={"outside_temperature": -10.0, "is_winter": True}
+    )
     dispatcher = FakeDispatcher()
 
     assert await _protection(adapter, dispatcher).check_once() == []
@@ -146,9 +192,17 @@ async def test_off_state_is_not_touched() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unknown_state_is_not_guessed() -> None:
-    """Прибор не ответил — защита не гадает и ничего не шлёт."""
-    adapter = FakeAdapter(modes={}, rules={"ac_allowed": False, "is_winter": True})
+async def test_unknown_weather_does_not_stop_cooling() -> None:
+    """Погода не прочитана (старт платформы) — прибор не трогаем.
+
+    Условие автоматики при неизвестном сезоне охлаждать не разрешает (цена
+    ошибки — испорченная техника). Но защита **выключает работающий прибор**,
+    поэтому действует только на известный мороз: иначе после старта, пока
+    значения не прочитаны, законно работающий кондиционер гас бы зря.
+    """
+    adapter = FakeAdapter(
+        modes={AC: "cool"}, rules={"outside_temperature": None, "is_winter": None}
+    )
     dispatcher = FakeDispatcher()
 
     assert await _protection(adapter, dispatcher).check_once() == []
@@ -166,44 +220,11 @@ async def test_read_failure_does_not_raise() -> None:
 
 
 @pytest.mark.asyncio
-async def test_season_unknown_does_not_forbid() -> None:
-    """Сезон не прочитан — защита не гасит прибор наугад.
-
-    Условие автоматики при неизвестном сезоне охлаждать не разрешает (цена ошибки
-    — испорченная техника). Но защита **выключает работающий прибор**, поэтому
-    действует только на известный запрет: иначе после старта, пока правила не
-    прочитаны, законно работающий кондиционер гас бы зря.
-    """
-    adapter = FakeAdapter(modes={AC: "cool"}, rules={"ac_allowed": True, "is_winter": None})
-    dispatcher = FakeDispatcher()
-
-    assert await _protection(adapter, dispatcher).check_once() == []
-    assert dispatcher.sent == []
-
-
-@pytest.mark.asyncio
-async def test_unknown_rules_do_not_stop_cooling_on_startup() -> None:
-    """Правила ещё не прочитаны (старт платформы) — прибор не трогаем."""
-    adapter = FakeAdapter(modes={AC: "cool"}, rules={})
-    dispatcher = FakeDispatcher()
-
-    assert await _protection(adapter, dispatcher).check_once() == []
-    assert dispatcher.sent == []
-
-
-@pytest.mark.asyncio
-async def test_explicit_gate_off_acts_even_without_season() -> None:
-    """Запрет владельца известен точно — выключаем, даже если сезон не прочитан."""
-    adapter = FakeAdapter(modes={AC: "cool"}, rules={"ac_allowed": False, "is_winter": None})
-    dispatcher = FakeDispatcher()
-
-    assert await _protection(adapter, dispatcher).check_once() == [AC]
-
-
-@pytest.mark.asyncio
 async def test_state_change_triggers_check() -> None:
     """Изменение состояния кондиционера проверяется сразу, а не в следующий проход."""
-    adapter = FakeAdapter(modes={AC: "cool"}, rules={"ac_allowed": True, "is_winter": True})
+    adapter = FakeAdapter(
+        modes={AC: "cool"}, rules={"outside_temperature": -5.0, "is_winter": False}
+    )
     dispatcher = FakeDispatcher()
     protection = _protection(adapter, dispatcher)
 
@@ -217,7 +238,9 @@ async def test_state_change_triggers_check() -> None:
 @pytest.mark.asyncio
 async def test_other_entity_does_not_trigger_check() -> None:
     """Чужие состояния защиту не будят."""
-    adapter = FakeAdapter(modes={AC: "cool"}, rules={"ac_allowed": True, "is_winter": True})
+    adapter = FakeAdapter(
+        modes={AC: "cool"}, rules={"outside_temperature": -5.0, "is_winter": False}
+    )
     dispatcher = FakeDispatcher()
     protection = _protection(adapter, dispatcher)
 
@@ -235,3 +258,10 @@ def test_no_entities_means_no_start() -> None:
     )
 
     assert protection.start() is False
+
+
+def test_threshold_comes_from_the_manifest() -> None:
+    """Порог температуры задаётся манифестом, а не зашит в код."""
+    protection = _protection(FakeAdapter(), FakeDispatcher(), min_temp=3.5)
+
+    assert protection.min_outside_temp == 3.5

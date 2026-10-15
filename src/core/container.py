@@ -922,12 +922,14 @@ class Container:
 
         climate = getattr(self.manifest.automation_rules, "climate", None)
         entities = list(getattr(climate, "ac_entities", []) or [])
+        min_temp = float(getattr(climate, "ac_min_outside_temp", 5.0) or 5.0)
         self._ac_protection = AirConditionerProtection(
             # Именно свойство `adapter`: адаптер создаётся лениво, и приватное
             # поле на момент сборки ещё пусто — защита молчала бы всегда.
             adapter=self.adapter,
             dispatcher=self.dispatcher,
             entities=entities,
+            min_outside_temp=min_temp,
         )
         self._ac_protection.subscribe(self.event_bus)
         if self._ac_protection.start():

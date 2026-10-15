@@ -66,6 +66,14 @@ class AutomationDomainRules(BaseModel):
     safety_lockout_enabled: bool = Field(default=False, description="Enable safety lockout")
     away_mode_enabled: bool = Field(default=False, description="Enable away mode")
     humidity_based: bool = Field(default=False, description="Enable humidity-based automation")
+    ac_min_outside_temp: float = Field(
+        default=5.0,
+        description=(
+            "Ниже этой уличной температуры кондиционер включать нельзя: дренаж "
+            "замёрзнет (требование владельца 2026-10-15). Поле объявлено и здесь: "
+            "иначе правка манифеста через интерфейс вычеркнула бы его"
+        ),
+    )
     ac_entities: list[str] = Field(
         default_factory=list,
         description=(
