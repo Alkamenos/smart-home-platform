@@ -115,6 +115,14 @@ class AutomationRules(BaseModel):
     """
 
     global_manual_lockout_min: int = Field(default=60, description="Global manual lockout minutes")
+    manual_command_sources: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Дополнительные источники команд, которые считать ручными (например, "
+            "telegram). Поле объявлено и здесь: иначе правка манифеста через "
+            "интерфейс вычеркнула бы его (аудит 2026-10-16, К-10)"
+        ),
+    )
     time_zone: str | None = Field(default=None, description="Часовой пояс дома")
     lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     climate: AutomationClimateRules = Field(default_factory=AutomationClimateRules)
