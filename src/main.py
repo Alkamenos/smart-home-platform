@@ -12,6 +12,7 @@ from typing import Any
 
 import uvicorn
 from loguru import logger
+from pydantic import ValidationError
 
 from core.container import Container
 from core.logging_setup import configure_library_logging
@@ -173,6 +174,21 @@ async def run_platform():
     # Явная сборка контейнера (как bootstrap_platform): нужен доступ к factory/registry
     # для ConfigWatcher — PlatformContext контейнера не содержит
     container = Container(manifest_path=str(manifest_path))
+    # Ранняя и понятная проверка манифеста: без него платформа не знает дом, а
+    # голый стек pydantic ничего не объясняет тому, кто поднимает платформу
+    # впервые (переносимость, BACKLOG B78).
+    try:
+        _ = container.manifest
+    except FileNotFoundError as exc:
+        logger.error("{}", exc)
+        raise SystemExit(2) from exc
+    except ValidationError as exc:
+        logger.error(
+            "Манифест {} не прошёл проверку — исправьте его и перезапустите:\n{}",
+            manifest_path,
+            exc,
+        )
+        raise SystemExit(2) from exc
     ctx = container.build()
 
     # Hot-reload манифеста/фич под env-флагом HOT_RELOAD (default OFF — Known Issue #8)

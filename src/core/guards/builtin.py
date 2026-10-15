@@ -1282,7 +1282,10 @@ def _drying_denial(context: dict[str, Any]) -> str | None:
     Returns:
         Имя причины либо ``None``, если осушение разрешено.
     """
-    if context.get("ac_allowed") is not True:
+    # Гейт владельца — его **явный** запрет, а не отсутствие поля: когда гейта в
+    # манифесте нет вовсе (убрали 2026-10-15 как «вообще не то»), охлаждение не
+    # запрещается. Технику защищают мороз и сезон — они по-прежнему строги.
+    if context.get("ac_allowed") is False:
         return "ac_not_allowed"
     if context.get("is_winter") is not False:
         return "ac_forbidden_in_winter"
@@ -1353,7 +1356,10 @@ def _cooling_denial(context: dict[str, Any]) -> str | None:
     Returns:
         Имя причины либо ``None``, если охлаждение разрешено.
     """
-    if context.get("ac_allowed") is not True:
+    # Гейт владельца — его **явный** запрет, а не отсутствие поля: когда гейта в
+    # манифесте нет вовсе (убрали 2026-10-15 как «вообще не то»), охлаждение не
+    # запрещается. Технику защищают мороз и сезон — они по-прежнему строги.
+    if context.get("ac_allowed") is False:
         return "ac_not_allowed"
     if context.get("is_winter") is not False:
         return "ac_forbidden_in_winter"

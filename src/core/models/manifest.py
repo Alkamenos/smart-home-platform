@@ -255,23 +255,6 @@ class AutomationDomainRules(BaseModel):
     """Сущность сезона: зимой кондиционер включать нельзя."""
     feature_entity: str | None = None
     """Признак «фича включена»; при выключенном платформа только наблюдает."""
-    ac_gate_entity: str | None = None
-    """Разрешение владельца на кондиционер."""
-    ac_min_outside_temp: float = 5.0
-    """Ниже этой уличной температуры кондиционер включать нельзя.
-
-    Причина — дренаж: при минусе трубка заледенеет (требование владельца
-    2026-10-15). Защита смотрит уличную температуру и флаг зимы; гейт владельца
-    (`ispolzovat_konditsioner`) к кондиционеру отношения не имеет.
-    """
-    ac_entities: list[str] = Field(default_factory=list)
-    """Кондиционеры под защитой платформы (требование владельца 2026-10-15).
-
-    Зимнее охлаждение портит технику, поэтому кондиционер выключается, если
-    охлаждает, а по правилам дома нельзя: выключен гейт владельца или идёт зима.
-    Защита смотрит фактический режим прибора, а не решение автомата: кондиционер
-    может работать и без участия платформы.
-    """
     setpoint_min: float = 5.0
     """Нижняя граница допустимой уставки."""
     setpoint_max: float = 30.0
@@ -323,7 +306,6 @@ class AutomationDomainRules(BaseModel):
         "comfort_max_entity",
         "season_entity",
         "feature_entity",
-        "ac_gate_entity",
         "enable_entity",
         "airing_entity",
         "exhaust_entity",
@@ -411,6 +393,57 @@ class LocationRules(BaseModel):
     """Префикс топиков зеркала (значения и автообнаружение)."""
 
 
+class AutomationClimateRules(AutomationDomainRules):
+    """Правила климата: к общим полям домена добавляются поля кондиционера.
+
+    Отдельный класс, а не поля в общем: иначе поля кондиционера оказывались бы в
+    любом домене — включая освещение (аудит B76, A10).
+    """
+
+    ac_min_outside_temp: float = 5.0
+    """Ниже этой уличной температуры кондиционер включать нельзя.
+
+    Причина — дренаж: при минусе трубка заледенеет (требование владельца
+    2026-10-15). Защита смотрит уличную температуру и флаг зимы. Гейт владельца
+    на защиту не влияет: он выключает автоматику целиком, а мороз опасен и для
+    кондиционера, которым управляет сам владелец.
+    """
+    ac_entities: list[str] = Field(default_factory=list)
+    """Кондиционеры под защитой платформы (требование владельца 2026-10-15).
+
+    Зимнее охлаждение портит технику, поэтому кондиционер выключается, если
+    охлаждает, а по правилам дома нельзя: явный запрет владельца или зима.
+    Защита смотрит фактический режим прибора, а не решение автомата: кондиционер
+    может работать и без участия платформы.
+    """
+    ac_gate_entity: str | None = None
+    """Разрешение владельца на кондиционер: явный ``off`` запрещает охлаждение.
+
+    Поле необязательное: у дома может не быть гейта вовсе — тогда охлаждение им
+    не запрещается, а технику защищают мороз и сезон. Переехало из общего класса
+    домена: гейт — настройка кондиционера, а не освещения (аудит B76, A1/A10).
+    """
+
+    @field_validator("ac_gate_entity")
+    @classmethod
+    def _reject_blank_gate(cls, value: str | None) -> str | None:
+        """Отвергнуть пустую сущность гейта.
+
+        Пустая строка даёт пустую подписку, и отказ выглядит как штатная работа.
+        Та же причина, что и у прочих сущностей домена, но поле объявлено здесь —
+        значит, и проверка живёт здесь.
+
+        Args:
+            value: Значение поля.
+
+        Returns:
+            Значение без изменений либо ``None``.
+        """
+        if value is not None and not value.strip():
+            raise ValueError("имя сущности не может быть пустым")
+        return value
+
+
 class AutomationRules(BaseModel):
     """Global automation rules and domain-specific overrides."""
 
@@ -420,12 +453,34 @@ class AutomationRules(BaseModel):
     в своём поясе, а контейнер — в UTC, и без этого окно дня смещается на
     несколько часов."""
     lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
-    climate: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
+    climate: AutomationClimateRules = Field(default_factory=AutomationClimateRules)
     ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     cover: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     """Шторы дома (спека 015): общие флаги и правила закрытия."""
     locations: LocationRules = Field(default_factory=LocationRules)
     """Наблюдение за локациями (спека 016): порог молчания, окно присутствия."""
+
+    @field_validator("climate", mode="before")
+    @classmethod
+    def _accept_generic_domain(cls, value: Any) -> Any:
+        """Принять и общие правила домена: у климата те же поля плюс поля кондиционера.
+
+        Правила климата — отдельный класс (поля кондиционера не должны появляться в
+        других доменах, аудит B76/A10). Но тот, кто собирает правила из общего класса
+        (тесты, внешние описания), не обязан знать об этом: общие поля у климата те
+        же, поэтому общий объект принимается и превращается в климатический.
+
+        Args:
+            value: Значение поля ``climate``.
+
+        Returns:
+            Правила климата либо исходное значение.
+        """  # noqa: D401 — описание класса, а не функции
+        if isinstance(value, AutomationDomainRules) and not isinstance(
+            value, AutomationClimateRules
+        ):
+            return AutomationClimateRules(**value.model_dump())
+        return value
 
 
 class Dashboard(BaseModel):
@@ -524,7 +579,17 @@ def load_manifest(manifest_path: str | Path) -> Manifest:
     """
     path = Path(manifest_path)
     if not path.exists():
-        raise FileNotFoundError(f"Manifest not found: {path}")
+        raise FileNotFoundError(
+            f"Манифест дома не найден: {path}\n"
+            "Платформа описывает дом манифестом: комнаты, локации, приборы и правила.\n"
+            "Что делать:\n"
+            "  1) укажите свой дом через CONFIG_PATH — каталог, в котором лежит "
+            "manifest.yaml:\n"
+            "       CONFIG_PATH=/путь/к/дому\n"
+            "  2) либо положите manifest.yaml по этому пути.\n"
+            "Образец для нового дома: instances/leonids_house/manifest.yaml\n"
+            "Эталон боевого дома: instances/leonids_house_prod/manifest.yaml"
+        )
 
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)

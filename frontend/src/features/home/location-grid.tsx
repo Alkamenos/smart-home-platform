@@ -378,7 +378,10 @@ function BatteryCell({ snapshot }: { snapshot: LocationSnapshot }) {
     const value = Number(reading.value);
     const low = Number.isFinite(value) && value < 20;
     return (
-        <span className={low ? "text-warning" : "text-muted"} title={reading.battery_type ?? undefined}>
+        <span
+            className={low ? "text-warning" : "text-muted"}
+            title={reading.battery_type ?? undefined}
+        >
             {String(reading.value)}
             {reading.unit ? ` ${reading.unit}` : ""}
             {reading.battery_type ? ` · ${reading.battery_type}` : ""}

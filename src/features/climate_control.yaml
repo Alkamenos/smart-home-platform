@@ -54,7 +54,10 @@
 # ЧТО КЛАДЁТСЯ В КОНТЕКСТ ПЕРЕХОДА:
 #   - temperature: показание датчика комнаты числом (роутер приводит; строкой
 #     остаётся `unavailable`, и условие трактует это как отсутствие данных)
-#   - climate_setpoint, comfort_max, is_winter, ac_allowed, climate_enabled,
+#   - climate_setpoint, comfort_max, is_winter, climate_enabled,
+#     ac_allowed (только если дом объявил гейт `ac_gate_entity`: явный запрет
+#     владельца. Нет гейта — охлаждение им не запрещается: технику защищают мороз
+#     и сезон),
 #     climate_shadow — состояния глобальных правил, кладёт адаптер
 #   - managed_by_hardware: параметр поведения (комната с термостатом)
 #

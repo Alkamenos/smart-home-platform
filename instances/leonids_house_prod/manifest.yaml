@@ -329,7 +329,6 @@ automation_rules:
     comfort_max_entity: input_number.maksimalno_komfortnaia_temperatura
     season_entity: input_boolean.zima
     feature_entity: input_boolean.feature_climate
-    ac_gate_entity: input_boolean.ispolzovat_konditsioner
     ac_min_outside_temp: 5.0
     ac_entities:
     - climate.esphome_web_0d22a4_ac_name

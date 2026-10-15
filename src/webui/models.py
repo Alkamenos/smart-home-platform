@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from core.models.manifest import LocationConfig, LocationRules, SensorMap
 
@@ -66,6 +66,19 @@ class AutomationDomainRules(BaseModel):
     safety_lockout_enabled: bool = Field(default=False, description="Enable safety lockout")
     away_mode_enabled: bool = Field(default=False, description="Enable away mode")
     humidity_based: bool = Field(default=False, description="Enable humidity-based automation")
+    # Поля домена расширяются ядром (ночное окно, комнаты, шторы): без разрешения
+    # «лишних» полей правка манифеста через интерфейс вычёркивала бы их.
+    model_config = {"extra": "allow"}
+
+
+class AutomationClimateRules(AutomationDomainRules):
+    """Правила климата: к общим полям домена добавляются поля кондиционера.
+
+    Отдельный класс, а не поля в общем: иначе «кондиционер» показывался бы в блоке
+    освещения (замечание владельца 2026-10-15), а правка правил света предлагала бы
+    настраивать кондиционер.
+    """
+
     ac_min_outside_temp: float = Field(
         default=5.0,
         description=(
@@ -82,10 +95,14 @@ class AutomationDomainRules(BaseModel):
             "здесь: иначе правка манифеста через интерфейс вычеркнула бы его"
         ),
     )
-
-    # Поля домена расширяются ядром (ночное окно, комнаты, шторы): без разрешения
-    # «лишних» полей правка манифеста через интерфейс вычёркивала бы их.
-    model_config = {"extra": "allow"}
+    ac_gate_entity: str | None = Field(
+        default=None,
+        description=(
+            "Необязательный явный запрет владельца на кондиционер. Нет гейта — "
+            "охлаждение им не запрещается. Поле объявлено и здесь: иначе правка "
+            "манифеста через интерфейс вычеркнула бы его"
+        ),
+    )
 
 
 class AutomationRules(BaseModel):
@@ -100,12 +117,29 @@ class AutomationRules(BaseModel):
     global_manual_lockout_min: int = Field(default=60, description="Global manual lockout minutes")
     time_zone: str | None = Field(default=None, description="Часовой пояс дома")
     lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
-    climate: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
+    climate: AutomationClimateRules = Field(default_factory=AutomationClimateRules)
     ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     cover: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     locations: LocationRules = Field(
         default_factory=LocationRules, description="Правила наблюдения за локациями (спека 016)"
     )
+
+    @field_validator("climate", mode="before")
+    @classmethod
+    def _accept_generic_domain(cls, value: Any) -> Any:
+        """Принять и общие правила домена: поля кондиционера добавляются к ним.
+
+        Args:
+            value: Значение поля ``climate``.
+
+        Returns:
+            Правила климата либо исходное значение.
+        """
+        if isinstance(value, AutomationDomainRules) and not isinstance(
+            value, AutomationClimateRules
+        ):
+            return AutomationClimateRules(**value.model_dump())
+        return value
 
     model_config = {"extra": "allow"}
 

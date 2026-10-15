@@ -121,11 +121,15 @@ class TestStaleParamsAreCleaned:
 
 
 def test_known_set_covers_manifest_params() -> None:
-    """Известный набор покрывает все параметры боевого манифеста.
+    """Известный набор покрывает все параметры доступных манифестов.
 
     Если владелец добавит новый параметр и забудет внести его в набор, чистка
     не найдёт его же старую версию — проверка обязана падать на таком шаге,
     а не ловить в доме уже кривой откат.
+
+    Проверяются все манифесты репозитория плюс боевой, если он есть на этой
+    машине (боевой том в git не хранится). Раньше проверка требовала боевой том
+    и падала у того, кто поднимал платформу впервые (переносимость, BACKLOG B78).
 
     Returns:
         Ничего.
@@ -134,15 +138,21 @@ def test_known_set_covers_manifest_params() -> None:
 
     import yaml
 
-    manifest = yaml.safe_load(
-        pathlib.Path("deploy/docker/config/manifest.yaml").read_text(encoding="utf-8")
-    )
-    for room in manifest.get("rooms", []):
-        for device in room.get("devices", []):
-            for behavior in device.get("behaviors", []):
-                for key in behavior.get("params", {}):
-                    assert key in KNOWN_BEHAVIOR_PARAM_KEYS, (
-                        f"параметр {key!r} есть в боевом манифесте, но нет в "
-                        "KNOWN_BEHAVIOR_PARAM_KEYS: его старая версия не будет "
-                        "вычищена из состояния — тот же баг, что с гостиной"
-                    )
+    candidates = sorted(pathlib.Path("instances").glob("*/manifest.yaml"))
+    live = pathlib.Path("deploy/docker/config/manifest.yaml")
+    if live.exists():
+        candidates.append(live)
+
+    assert candidates, "не найдено ни одного манифеста для проверки"
+
+    for manifest_path in candidates:
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        for room in manifest.get("rooms", []):
+            for device in room.get("devices", []):
+                for behavior in device.get("behaviors", []):
+                    for key in behavior.get("params", {}):
+                        assert key in KNOWN_BEHAVIOR_PARAM_KEYS, (
+                            f"параметр {key!r} из {manifest_path} есть в манифесте, "
+                            "но нет в KNOWN_BEHAVIOR_PARAM_KEYS: его старая версия "
+                            "не будет вычищена из состояния — тот же баг, что с гостиной"
+                        )
