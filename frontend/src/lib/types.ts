@@ -247,6 +247,14 @@ export interface CleanupHelper {
     removable: boolean;
 }
 
+/** Дашборд Home Assistant, собранный из дома. */
+export interface DashboardPayload {
+    title: string;
+    views: { title?: string; path?: string; cards?: unknown[] }[];
+    counts: Record<string, number>;
+    yaml: string;
+}
+
 /** Снимок чистки вспомогательных элементов. */
 export interface CleanupReport {
     generated_at: string | null;

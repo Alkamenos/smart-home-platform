@@ -74,6 +74,14 @@ function mockFetch(ready: boolean) {
                 logs: [{ timestamp: "2026-10-13T09:00:00Z", level: "ERROR", message: "Сбой" }],
             });
         }
+        if (url.includes("/api/v1/system/dashboard")) {
+            return json({
+                title: "Дом",
+                views: [{ title: "Гостиная", path: "gostinaia", cards: [{ type: "entity" }] }],
+                counts: { views: 1, cards: 1 },
+                yaml: "title: Дом\nviews:\n  - title: Гостиная",
+            });
+        }
         if (url.includes("/api/v1/system/cleanup")) {
             return json({
                 generated_at: "2026-10-15T12:00:00+00:00",
@@ -142,6 +150,9 @@ describe("SystemPanel", () => {
         expect(screen.getAllByText("описан в YAML").length).toBeGreaterThan(0);
         expect(screen.getByText(/скопировать список/)).toBeInTheDocument();
         expect(screen.getByText(/input_boolean 1/)).toBeInTheDocument();
+        // Дашборд дома (B79): собран из комнат, забрать можно текстом.
+        expect(screen.getByText(/комнат: 1 · карточек: 1/)).toBeInTheDocument();
+        expect(screen.getByText(/скопировать конфигурацию/)).toBeInTheDocument();
     });
 
     it("показывает причину неготовности, а не пустой экран", async () => {

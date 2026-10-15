@@ -12,6 +12,7 @@ import { clockTime } from "@/lib/time";
 import type {
     CleanupHelper,
     CleanupReport,
+    DashboardPayload,
     PlatformLog,
     Readiness,
     ReadinessCheck,
@@ -87,6 +88,7 @@ function verdictLabel(verdict: CleanupHelper["verdict"]): string {
 export function SystemPanel() {
     const [cleanupRound, setCleanupRound] = useState(0);
     const [copied, setCopied] = useState(false);
+    const [copiedDashboard, setCopiedDashboard] = useState(false);
     const readiness = useQuery({ queryKey: ["readiness"], queryFn: fetchReadiness });
     const health = useQuery({
         queryKey: ["health"],
@@ -100,6 +102,10 @@ export function SystemPanel() {
     const logs = useQuery({
         queryKey: ["logs"],
         queryFn: () => apiFetch<{ count: number; logs: PlatformLog[] }>("/api/v1/logs"),
+    });
+    const dashboard = useQuery({
+        queryKey: ["dashboard"],
+        queryFn: () => apiFetch<DashboardPayload>("/api/v1/system/dashboard"),
     });
     const cleanup = useQuery({
         queryKey: ["cleanup", cleanupRound],
@@ -408,6 +414,53 @@ export function SystemPanel() {
                                 </tbody>
                             </table>
                         </div>
+                    </>
+                )}
+            </Card>
+
+            <Card>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle>Дашборд для Home Assistant</CardTitle>
+                    {dashboard.data ? (
+                        <Badge variant="neutral">
+                            комнат: {dashboard.data.counts.views ?? 0} · карточек:{" "}
+                            {dashboard.data.counts.cards ?? 0}
+                        </Badge>
+                    ) : null}
+                </div>
+
+                {dashboard.error ? (
+                    <p className="text-muted text-sm">Дашборд недоступен.</p>
+                ) : dashboard.isLoading ? (
+                    <Skeleton className="h-5 w-40" />
+                ) : (
+                    <>
+                        <p className="text-muted mb-2 text-xs">
+                            Дашборд собирается из дома: комнаты, приборы и датчики манифеста. В
+                            Home Assistant: «Настройки» → «Панели» → «Добавить панель» → режим
+                            правки → «Необработанный редактор конфигурации» — и вставить текст ниже.
+                            Новых сущностей платформа не создаёт.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                className="text-accent text-xs hover:underline"
+                                onClick={() => {
+                                    void navigator.clipboard
+                                        ?.writeText(dashboard.data?.yaml ?? "")
+                                        .then(() => setCopiedDashboard(true));
+                                }}
+                            >
+                                {copiedDashboard ? "конфигурация скопирована" : "скопировать конфигурацию"}
+                            </button>
+                            <span className="text-muted text-xs">{dashboard.data?.title ?? ""}</span>
+                        </div>
+                        <details className="mt-2">
+                            <summary className="cursor-pointer text-sm">Показать конфигурацию</summary>
+                            <pre className="border-border bg-surface-2 mt-2 max-h-72 overflow-auto rounded-md border p-3 text-xs">
+                                {dashboard.data?.yaml ?? ""}
+                            </pre>
+                        </details>
                     </>
                 )}
             </Card>
