@@ -2,13 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, identityHeaders, ApiError } from "@/lib/api";
 import { clockTime } from "@/lib/time";
-import type { PlatformLog, Readiness, ReadinessCheck, Source } from "@/lib/types";
+import type {
+    CleanupHelper,
+    CleanupReport,
+    PlatformLog,
+    Readiness,
+    ReadinessCheck,
+    Source,
+} from "@/lib/types";
 
 /** Русские названия проверок готовности. */
 const CHECK_LABELS: Record<string, string> = {
@@ -59,11 +67,25 @@ async function fetchMetrics(): Promise<{ text: string; reason?: string }> {
 }
 
 /**
+ * Назвать вердикт чистки по-русски.
+ *
+ * @param verdict Вердикт платформы.
+ * @returns Человекочитаемое название.
+ */
+function verdictLabel(verdict: CleanupHelper["verdict"]): string {
+    if (verdict === "probably_unused") {
+        return "следов нет";
+    }
+    return verdict === "unknown" ? "не знаю" : "используется";
+}
+
+/**
  * Раздел «Система»: готовность, источники, метрики и технические логи (US6).
  *
  * @returns Страница диагностики.
  */
 export function SystemPanel() {
+    const [cleanupRound, setCleanupRound] = useState(0);
     const readiness = useQuery({ queryKey: ["readiness"], queryFn: fetchReadiness });
     const health = useQuery({
         queryKey: ["health"],
@@ -77,6 +99,13 @@ export function SystemPanel() {
     const logs = useQuery({
         queryKey: ["logs"],
         queryFn: () => apiFetch<{ count: number; logs: PlatformLog[] }>("/api/v1/logs"),
+    });
+    const cleanup = useQuery({
+        queryKey: ["cleanup", cleanupRound],
+        queryFn: () =>
+            apiFetch<CleanupReport>(
+                `/api/v1/system/cleanup${cleanupRound > 0 ? "?refresh=true" : ""}`,
+            ),
     });
 
     return (
@@ -241,6 +270,109 @@ export function SystemPanel() {
                 >
                     Журнал событий и переходов
                 </Link>
+            </Card>
+
+            <Card>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle>Чистка</CardTitle>
+                    {cleanup.data ? (
+                        <div className="flex items-center gap-3">
+                            <Badge
+                                variant={
+                                    (cleanup.data?.counts?.probably_unused ?? 0) > 0
+                                        ? "warning"
+                                        : "success"
+                                }
+                            >
+                                кандидатов: {cleanup.data?.counts?.probably_unused ?? 0}
+                            </Badge>
+                            <button
+                                type="button"
+                                className="text-accent text-xs hover:underline"
+                                onClick={() => setCleanupRound((round) => round + 1)}
+                            >
+                                пересобрать
+                            </button>
+                        </div>
+                    ) : null}
+                </div>
+
+                {cleanup.error ? (
+                    <p className="text-muted text-sm">Список недоступен.</p>
+                ) : cleanup.isLoading ? (
+                    <Skeleton className="h-5 w-40" />
+                ) : (cleanup.data?.helpers ?? []).length === 0 ? (
+                    <p className="text-muted text-sm">Вспомогательных элементов не найдено.</p>
+                ) : (
+                    <>
+                        <p className="text-muted mb-2 text-xs">
+                            Платформа ничего не удаляет сама: список — это свидетельства, а
+                            решение и удаление остаются за вами в Home Assistant. Проверяются
+                            манифест дома, правила автоматизаций и журнал платформы. Панели,
+                            сцены и ручные вызовы скриптов платформа не видит — «следов нет»
+                            значит «здесь их не нашлось», а не «точно никому не нужно».
+                            {cleanup.data?.sources?.automations === false
+                                ? " Правила автоматизаций Home Assistant прочитать не удалось, поэтому вердикт «следов нет» не выносится."
+                                : ""}
+                        </p>
+                        <div className="border-border max-h-80 overflow-auto rounded-lg border">
+                            <table className="w-full border-collapse text-xs">
+                                <thead className="bg-surface-2 sticky top-0 text-left">
+                                    <tr>
+                                        <th className="border-border border-b px-3 py-1.5 font-semibold">
+                                            Элемент
+                                        </th>
+                                        <th className="border-border w-28 border-b px-3 py-1.5 font-semibold">
+                                            Состояние
+                                        </th>
+                                        <th className="border-border w-32 border-b px-3 py-1.5 font-semibold">
+                                            Вердикт
+                                        </th>
+                                        <th className="border-border border-b px-3 py-1.5 font-semibold">
+                                            Почему
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(cleanup.data?.helpers ?? []).map((helper) => (
+                                        <tr
+                                            key={helper.entity_id}
+                                            className="border-border border-b last:border-0"
+                                        >
+                                            <td className="px-3 py-1.5">
+                                                <span className="block">{helper.name}</span>
+                                                <span className="text-muted block font-mono text-[11px]">
+                                                    {helper.entity_id}
+                                                </span>
+                                            </td>
+                                            <td className="text-muted px-3 py-1.5">
+                                                {String(helper.state)}
+                                            </td>
+                                            <td className="px-3 py-1.5">
+                                                <Badge
+                                                    variant={
+                                                        helper.verdict === "probably_unused"
+                                                            ? "warning"
+                                                            : "neutral"
+                                                    }
+                                                >
+                                                    {verdictLabel(helper.verdict)}
+                                                </Badge>
+                                            </td>
+                                            <td className="text-muted px-3 py-1.5">
+                                                {helper.reasons.length > 0
+                                                    ? helper.reasons
+                                                          .map((reason) => reason.detail)
+                                                          .join("; ")
+                                                    : "свидетельств нет"}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )}
             </Card>
         </div>
     );

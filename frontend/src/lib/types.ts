@@ -225,3 +225,28 @@ export interface PlatformLog {
     level: string;
     message: string;
 }
+
+/** Почему элемент считают используемым. */
+export interface CleanupReason {
+    source: string;
+    detail: string;
+}
+
+/** Вспомогательный элемент дома и вердикт платформы. */
+export interface CleanupHelper {
+    entity_id: string;
+    name: string;
+    state: unknown;
+    last_changed: string | null;
+    changed_ago_sec: number | null;
+    verdict: "used" | "probably_unused" | "unknown";
+    reasons: CleanupReason[];
+}
+
+/** Снимок чистки вспомогательных элементов. */
+export interface CleanupReport {
+    generated_at: string | null;
+    counts: Record<string, number>;
+    sources: Record<string, boolean>;
+    helpers: CleanupHelper[];
+}

@@ -1195,6 +1195,61 @@ class HAAdapter:
         attributes = payload.get("attributes")
         return attributes.get(attribute) if isinstance(attributes, dict) else None
 
+    async def get_automation_configs(self) -> dict[str, Any]:
+        """Прочитать правила автоматизаций Home Assistant.
+
+        Списком этот API автоматизации не отдаёт (``config/automation/list``
+        отвечает ``unknown_command``), но каждую конфигурацию видно по
+        идентификатору из состояния автоматизации. Без неё чистка мусора
+        (BACKLOG B77) не отличает «никому не нужен» от «нужен чужому правилу», а
+        цена такой ошибки — тихо сломавшаяся автоматизация.
+
+        Returns:
+            Словарь ``{идентификатор: правило}``; пусто, если прочитать не удалось
+            или автоматизаций в доме нет.
+        """
+        session = self._session
+        if session is None or not self._token:
+            return {}
+
+        states = await self.get_all_states()
+        config_ids = sorted(
+            {
+                str(item["attributes"]["id"])
+                for item in states
+                if isinstance(item, dict)
+                and str(item.get("entity_id", "")).startswith("automation.")
+                and isinstance(item.get("attributes"), dict)
+                and item["attributes"].get("id")
+            }
+        )
+        if not config_ids:
+            return {}
+
+        http_url = cast(str, self._ws_url)
+        base = http_url.replace("wss://", "https://").replace("ws://", "http://")
+        base = base.split("/api/websocket")[0].rstrip("/")
+        headers = {"Authorization": f"Bearer {self._token}"}
+        gate = asyncio.Semaphore(8)
+
+        async def read_one(config_id: str) -> tuple[str, Any]:
+            async with gate:
+                try:
+                    async with session.get(
+                        f"{base}/api/config/automation/config/{config_id}",
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status != 200:
+                            return config_id, None
+                        return config_id, await response.json()
+                except (TimeoutError, aiohttp.ClientError, ValueError) as error:
+                    logger.warning(f"HAAdapter: автоматизация {config_id} не прочитана: {error}")
+                    return config_id, None
+
+        pairs = await asyncio.gather(*(read_one(config_id) for config_id in config_ids))
+        return {config_id: config for config_id, config in pairs if config is not None}
+
     async def refresh_units(self, entity_ids: Iterable[str]) -> int:
         """Запомнить единицы измерения сущностей наблюдения (спека 016).
 

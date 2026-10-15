@@ -250,6 +250,7 @@ def create_app(
     # Спека 017: идентичность интерфейса, агрегат первого экрана «Дом» и канал
     # живых изменений состояния. Регистрируются до монтирования статики, чтобы
     # маршруты API имели приоритет над раздачей фронтенда.
+    from .routes.cleanup import router as cleanup_router
     from .routes.events import router as events_router
     from .routes.health import router as health_router
     from .routes.logs import router as logs_router
@@ -265,6 +266,8 @@ def create_app(
     app.include_router(logs_router)
     # F6: обход дома — проблемы и реестр показаний по локациям и комнатам.
     app.include_router(health_router)
+    # B77: чистка мусора во вспомогательных элементах — признак использования.
+    app.include_router(cleanup_router)
     app.include_router(ws_events_router)
 
     # US4/T004: регистрация middleware контроля доступа (идентификация на

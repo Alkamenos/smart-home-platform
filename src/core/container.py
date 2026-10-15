@@ -178,6 +178,8 @@ class Container:
         self._ventilation_watchdog: Any | None = None
         #: Обход дома (BACKLOG F6): проблемы и реестр показаний.
         self._house_health: Any | None = None
+        #: Чистка мусора во вспомогательных элементах (BACKLOG B77).
+        self._helper_cleanup: Any | None = None
         # Наблюдение за локациями (спека 016): снимки и история.
         self._location_state: Any | None = None
         #: Фоновая задача первичного чтения показаний локаций.
@@ -940,6 +942,28 @@ class Container:
                     f"каждые {self._house_health.interval_minutes:g} мин"
                 )
         return self._house_health
+
+    @property
+    def helper_cleanup(self) -> Any:
+        """Чистка мусора во вспомогательных элементах (BACKLOG B77).
+
+        Служба считает признак использования по фактам: манифест, правила
+        автоматизаций Home Assistant, журнал платформы. Она **ничего не удаляет** —
+        удаление вспомогательного элемента необратимо, а цена ошибки («сломалось
+        тихо, заметили вечером») выше выгоды от автоматики.
+
+        Returns:
+            Служба чистки.
+        """
+        if self._helper_cleanup is None:
+            from core.services.helper_cleanup import HelperCleanupService
+
+            self._helper_cleanup = HelperCleanupService(
+                adapter=self.adapter,
+                manifest=self.manifest,
+                event_store=self._create_event_store(),
+            )
+        return self._helper_cleanup
 
     def _health_areas(self) -> dict[str, tuple[str, str]]:
         """Карта «сущность → вид и имя места» для обхода дома.

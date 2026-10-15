@@ -74,6 +74,33 @@ function mockFetch(ready: boolean) {
                 logs: [{ timestamp: "2026-10-13T09:00:00Z", level: "ERROR", message: "Сбой" }],
             });
         }
+        if (url.includes("/api/v1/system/cleanup")) {
+            return json({
+                generated_at: "2026-10-15T12:00:00+00:00",
+                counts: { used: 1, probably_unused: 1, unknown: 0 },
+                sources: { states: true, manifest: true, automations: true, journal: true },
+                helpers: [
+                    {
+                        entity_id: "input_boolean.mertvyi_flag",
+                        name: "Старый флаг",
+                        state: "off",
+                        last_changed: null,
+                        changed_ago_sec: null,
+                        verdict: "probably_unused",
+                        reasons: [],
+                    },
+                    {
+                        entity_id: "input_boolean.sleep_mode",
+                        name: "Мы спим",
+                        state: "off",
+                        last_changed: null,
+                        changed_ago_sec: null,
+                        verdict: "used",
+                        reasons: [{ source: "manifest", detail: "описан в манифесте дома" }],
+                    },
+                ],
+            });
+        }
         return json({});
     });
 }
@@ -92,6 +119,17 @@ describe("SystemPanel", () => {
         expect(screen.getByText("Все проверки пройдены.")).toBeInTheDocument();
         expect(screen.getByText("Home Assistant")).toBeInTheDocument();
         expect(screen.getByText("Сбой")).toBeInTheDocument();
+    });
+
+    it("показывает кандидатов на удаление и почему элемент считают живым", async () => {
+        mockFetch(true);
+        render(<SystemPanel />, { wrapper });
+
+        await waitFor(() => expect(screen.getByText("Старый флаг")).toBeInTheDocument());
+        expect(screen.getByText("кандидатов: 1")).toBeInTheDocument();
+        expect(screen.getByText("следов нет")).toBeInTheDocument();
+        expect(screen.getByText("описан в манифесте дома")).toBeInTheDocument();
+        expect(screen.getByText(/Платформа ничего не удаляет сама/)).toBeInTheDocument();
     });
 
     it("показывает причину неготовности, а не пустой экран", async () => {
