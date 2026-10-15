@@ -254,9 +254,7 @@ class AirConditionerProtection:
         from core.commands.dispatcher import CommandIntent
 
         explained = {
-            REASON_FREEZE_RISK: (
-                f"на улице ниже {self.min_outside_temp:g} °C — дренаж замёрзнет"
-            ),
+            REASON_FREEZE_RISK: (f"на улице ниже {self.min_outside_temp:g} °C — дренаж замёрзнет"),
             REASON_WINTER: "зима: охлаждение портит технику",
         }.get(reason, reason)
         logger.warning(

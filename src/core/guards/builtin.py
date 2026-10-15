@@ -25,6 +25,8 @@ from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from core.events.fsm_events import REASON_NOT_APPLICABLE
+
 
 logger = logging.getLogger(__name__)
 
@@ -2052,6 +2054,28 @@ def make_startup_reapply() -> Callable[[Any, dict[str, Any]], bool]:
             return False
         return _ventilation_role(context) == "supply"
 
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину: признак разовый — без него переход не к этому случаю.
+
+        Признак ``_startup_reapply`` ставит адаптер на одном пересмотре при
+        подключении. На обычном событии его нет, и переход не относится к этому
+        случаю вовсе — это не отказ решения: движок пропускает такие переходы
+        молча (BACKLOG B66/B74), иначе журнал наполнялся бы «условие не прошло»
+        на каждом событии.
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо ``None``, когда переход к случаю относится.
+        """
+        del state
+        if not context.get("_startup_reapply"):
+            return REASON_NOT_APPLICABLE
+        return None if _ventilation_role(context) == "supply" else REASON_NOT_APPLICABLE
+
+    startup_reapply.deny_reason = deny_reason  # type: ignore[attr-defined]
     return startup_reapply
 
 
@@ -2086,6 +2110,20 @@ def make_device_is_off() -> Callable[[Any, dict[str, Any]], bool]:
         del state
         return bool(context.get("_device_is_off"))
 
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Признак одноразовый: без него переход не к этому случаю (B74).
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            ``not_applicable``, когда сторож не сообщал об остановленном приборе.
+        """
+        del state
+        return None if context.get("_device_is_off") else REASON_NOT_APPLICABLE
+
+    device_is_off.deny_reason = deny_reason  # type: ignore[attr-defined]
     return device_is_off
 
 
@@ -2117,6 +2155,20 @@ def make_device_is_on() -> Callable[[Any, dict[str, Any]], bool]:
         del state
         return bool(context.get("_device_is_on"))
 
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Признак одноразовый: без него переход не к этому случаю (B74).
+
+        Args:
+            state: Состояние автомата (не используется).
+            context: Контекст перехода.
+
+        Returns:
+            ``not_applicable``, когда сторож не сообщал о работающем приборе.
+        """
+        del state
+        return None if context.get("_device_is_on") else REASON_NOT_APPLICABLE
+
+    device_is_on.deny_reason = deny_reason  # type: ignore[attr-defined]
     return device_is_on
 
 
