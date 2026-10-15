@@ -438,6 +438,13 @@ class Dashboard(BaseModel):
 
 
 class Manifest(BaseModel):
+    battery_types: dict[str, str] = Field(default_factory=dict)
+    """Тип батарейки по сущности: ``sensor.…_battery`` → ``CR2032``.
+
+    Требование владельца 2026-10-15: в тревоге о севшей батарейке и в сведениях о
+    датчике должно быть видно, **какую** батарейку покупать. Тип знает только
+    владелец: Home Assistant его не отдаёт, а угадывание по модели ошибается.
+    """
     """Root manifest model for room-based architecture."""
 
     instance: InstanceConfig

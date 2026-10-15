@@ -46,12 +46,17 @@ class SensorReading(BaseModel):
         last_on_at: Когда датчик в последний раз был «включён». Нужно движению:
             «сейчас off» — обычное состояние датчика движения, а «человек ушёл
             пять минут назад» считается по последнему ``on``.
+        battery_type: Какую батарейку покупать, когда эта сядет (``CR2032``).
+            Требование владельца 2026-10-15: тип виден и в сведениях о датчике, и
+            в тревоге. Приходит из манифеста (``battery_types``): Home Assistant
+            тип не отдаёт.
     """
 
     entity_id: str
     role: str
     value: Any
     unit: str | None = None
+    battery_type: str | None = None
     at: datetime
     available: bool = True
     last_on_at: datetime | None = None

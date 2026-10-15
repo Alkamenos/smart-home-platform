@@ -932,6 +932,7 @@ class Container:
             self._house_health = HouseHealthService(
                 adapter=self.adapter,
                 areas=self._health_areas(),
+                battery_types=dict(getattr(self.manifest, "battery_types", {}) or {}),
             )
             if self._house_health.start():
                 logger.info(

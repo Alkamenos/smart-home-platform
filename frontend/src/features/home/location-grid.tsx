@@ -250,6 +250,9 @@ function LocationRow({ snapshot }: { snapshot: LocationSnapshot }) {
                 <ReadingCell snapshot={snapshot} role="humidity" />
             </td>
             <td className="px-3 py-2 whitespace-nowrap">
+                <BatteryCell snapshot={snapshot} />
+            </td>
+            <td className="px-3 py-2 whitespace-nowrap">
                 <span className="text-muted">{lastMotion ? relativeTime(lastMotion) : "—"}</span>
                 {activeDetections(snapshot).length > 0 ? (
                     <span className="ml-2 inline-flex gap-1">
@@ -357,6 +360,32 @@ function Header({
  * @param role Роль датчика.
  * @returns Показание либо ``undefined``.
  */
+/**
+ * Ячейка батарейки локации: заряд и тип («какую покупать»).
+ *
+ * Требование владельца 2026-10-15: тип батарейки должен быть виден рядом с
+ * зарядом — тогда тревога сразу говорит, что купить. Тип приходит из манифеста,
+ * Home Assistant его не отдаёт. Пусто — если у локации батарейки нет.
+ *
+ * @param props Снимок локации.
+ * @returns Ячейка таблицы.
+ */
+function BatteryCell({ snapshot }: { snapshot: LocationSnapshot }) {
+    const reading = firstReading(snapshot, "battery");
+    if (!reading || !reading.available) {
+        return <span className="text-muted">—</span>;
+    }
+    const value = Number(reading.value);
+    const low = Number.isFinite(value) && value < 20;
+    return (
+        <span className={low ? "text-warning" : "text-muted"} title={reading.battery_type ?? undefined}>
+            {String(reading.value)}
+            {reading.unit ? ` ${reading.unit}` : ""}
+            {reading.battery_type ? ` · ${reading.battery_type}` : ""}
+        </span>
+    );
+}
+
 function firstReading(snapshot: LocationSnapshot, role: string): Reading | undefined {
     return snapshot.readings?.[role]?.[0];
 }

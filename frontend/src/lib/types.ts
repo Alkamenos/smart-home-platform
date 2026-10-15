@@ -19,6 +19,8 @@ export interface Reading {
     stale: boolean;
     available: boolean;
     entity_id: string;
+    /** Какую батарейку покупать, когда эта сядет (из манифеста). */
+    battery_type?: string | null;
 }
 
 export interface SeriesPoint {

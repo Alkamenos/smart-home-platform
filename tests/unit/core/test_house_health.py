@@ -221,6 +221,30 @@ async def test_silent_battery_is_not_a_problem() -> None:
 
 
 @pytest.mark.asyncio
+async def test_battery_type_is_named_when_low() -> None:
+    """В тревоге видно, какую батарейку покупать (требование владельца 2026-10-15)."""
+    adapter = FakeAdapter(
+        [_state("sensor.datchik_temperatury_sad_battery", "3", device_class="battery", unit="%")]
+    )
+    areas = {"sensor.datchik_temperatury_sad_battery": ("комната", "Сад")}
+    service = HouseHealthService(
+        adapter=adapter,
+        areas=areas,
+        battery_types={"sensor.datchik_temperatury_sad_battery": "CR2032"},
+        clock=lambda: NOW,
+    )
+
+    report = await service.sweep()
+
+    assert report["problems"][0]["kind"] == "low_battery"
+    assert "нужна CR2032" in report["problems"][0]["detail"], report["problems"][0]["detail"]
+
+    # Реестр показаний тоже несёт тип: сведения о датчике.
+    reading = report["areas"]["комната:Сад"][0]
+    assert reading["battery_type"] == "CR2032"
+
+
+@pytest.mark.asyncio
 async def test_healthy_sensor_has_no_problem() -> None:
     """Живой датчик с нормальным зарядом проблем не рождает."""
     adapter = FakeAdapter(

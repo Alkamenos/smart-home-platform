@@ -119,6 +119,7 @@ class HouseHealthService:
         self,
         adapter: Any,
         areas: dict[str, tuple[str, str]] | None = None,
+        battery_types: dict[str, str] | None = None,
         stale_after_sec: float = DEFAULT_STALE_AFTER_SEC,
         low_battery_percent: float = DEFAULT_LOW_BATTERY_PERCENT,
         interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
@@ -126,6 +127,7 @@ class HouseHealthService:
     ) -> None:
         self._adapter = adapter
         self.areas = dict(areas or {})
+        self.battery_types = dict(battery_types or {})
         self.stale_after_sec = stale_after_sec
         self.low_battery_percent = low_battery_percent
         self.interval_minutes = interval_minutes
@@ -258,6 +260,7 @@ class HouseHealthService:
             "device_class": attributes.get("device_class"),
             "area_kind": kind,
             "area": name,
+            "battery_type": self.battery_types.get(entity_id),
             "at": updated.isoformat() if updated else None,
             "age_sec": round(age, 1) if age is not None else None,
             "stale": age is not None and age > self.stale_after_sec,
@@ -287,7 +290,9 @@ class HouseHealthService:
             return self._named(PROBLEM_STALE, reading, f"молчит {hours} ч")
         battery = self._battery_percent(reading)
         if battery is not None and battery < self.low_battery_percent:
-            return self._named(PROBLEM_LOW_BATTERY, reading, f"заряд {battery:g} %")
+            kind = self.battery_types.get(str(reading.get("entity_id") or ""))
+            need = f" — нужна {kind}" if kind else ""
+            return self._named(PROBLEM_LOW_BATTERY, reading, f"заряд {battery:g} %{need}")
         return None
 
     def _reports_by_itself(self, reading: dict[str, Any]) -> bool:

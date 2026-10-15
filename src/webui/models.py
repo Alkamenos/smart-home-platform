@@ -129,6 +129,13 @@ class ManifestModel(BaseModel):
         default_factory=list,
         description="Особые зоны наблюдения (улица, грядки) — спека 016",
     )
+    battery_types: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Тип батарейки по сущности (sensor.…_battery → CR2032). Поле объявлено и "
+            "здесь: иначе правка манифеста через интерфейс вычеркнула бы его"
+        ),
+    )
     automation_rules: AutomationRules = Field(
         default_factory=AutomationRules, description="Automation rules"
     )

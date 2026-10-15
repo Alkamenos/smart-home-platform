@@ -286,6 +286,25 @@ locations:
     battery: sensor.0xa4c138ef3971344e_battery
     soil_temperature: sensor.0xa4c138ef3971344e_temperature
   stale_after_sec: 86400
+# Тип батарейки по сущности: в тревоге о севшей батарейке и в сведениях о датчике
+# видно, какую покупать (требование владельца 2026-10-15). Home Assistant тип не
+# отдаёт — его знает владелец. Значения проставлены по модели прибора из реестра HA
+# и ждут подтверждения владельца там, где модель неоднозначна.
+battery_types:
+  sensor.datchik_temperatury_gostinnaia_battery: CR2032
+  sensor.datchik_temperatury_sanuzel_battery: CR2032
+  sensor.datchik_temperatury_spalnia_battery: CR2032
+  sensor.datchik_temperatury_kabinet_battery: CR2032
+  sensor.datchik_temperatury_gostevaia_spalnia_battery: CR2032
+  sensor.datchik_temperatury_terassa_battery: CR2032
+  sensor.datchik_temperatury_sad_battery: CR2032
+  sensor.datchik_dvizheniia_gostinnaia_battery: CR2450
+  sensor.datchik_dvizheniia_konteiner_battery: CR2450
+  sensor.datchik_osveshchennosti_battery: CR2450
+  sensor.svet_v_kabinete_knopka_battery: CR1632
+  sensor.datchik_otkrytiia_vorota_battery: CR1632
+  sensor.knopka_zvonka_vorota_battery: CR2032
+  sensor.my_doma_knopka_battery: CR2032
 automation_rules:
   global_manual_lockout_min: 60
   time_zone: Asia/Yekaterinburg

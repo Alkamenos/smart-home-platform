@@ -240,6 +240,9 @@ class LocationStateService:
                 at=moment,
                 available=text.lower() not in ("unavailable", "unknown", ""),
                 last_on_at=last_on_at,
+                # Тип батарейки знает только владелец (манифест): в тревоге и в
+                # сведениях о датчике должно быть видно, какую покупать.
+                battery_type=(getattr(self._manifest, "battery_types", None) or {}).get(entity_id),
             )
 
     # ------------------------------------------------------------------
