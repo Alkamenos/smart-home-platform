@@ -487,7 +487,7 @@ async def _fetch_discovery_data(source: HASource) -> DiscoveryData:
     Returns:
         Данные для мастера; при недоступном источнике — с заполненной причиной.
     """
-    from adapters.home_assistant.rest_client import HARestClient
+    from adapters.home_assistant.rest_client import HARestClient, HAStatesUnavailableError
 
     async with HARestClient(source.url, source.token) as rest_client:
         if not await rest_client.connect_to_ha():
@@ -499,7 +499,18 @@ async def _fetch_discovery_data(source: HASource) -> DiscoveryData:
                 error=f"Не удалось подключиться к источнику: {source.url}",
             )
 
-        states = await rest_client.fetch_devices()
+        try:
+            states = await rest_client.fetch_devices()
+        except HAStatesUnavailableError as exc:
+            # Отказ чтения показывается причиной, а не пустым списком: «устройств
+            # нет» и «прочитать не удалось» — разные вещи (FR-013, аудит К-1).
+            return DiscoveryData(
+                source_id=str(source.id),
+                areas=[],
+                available_devices=[],
+                available_device_count=0,
+                error=str(exc),
+            )
         areas_raw = await _safe_fetch_areas(rest_client, source)
 
     areas = [

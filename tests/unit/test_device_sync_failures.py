@@ -16,10 +16,27 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from adapters.home_assistant.rest_client import HAStatesUnavailableError
 from core.discovery.discovery_service import DeviceDiscoveryService
 from core.models.device import Device
 from core.models.ha_source import HASource
 from services.device_service import DeviceService
+
+
+def _ha_state(entity_id: str) -> dict[str, object]:
+    """Состояние прибора в том виде, в каком его отдаёт Home Assistant.
+
+    Args:
+        entity_id: Сущность.
+
+    Returns:
+        Словарь состояния.
+    """
+    return {
+        "entity_id": entity_id,
+        "state": "on",
+        "attributes": {"friendly_name": entity_id},
+    }
 
 
 def _device(entity_id: str = "light.sync_a", source_id: UUID | None = None) -> Device:
@@ -162,7 +179,12 @@ class TestSyncFailurePaths:
 
     @pytest.mark.asyncio
     async def test_removed_devices_without_engine_should_stay_marked(self) -> None:
-        """Без движка машин состояний устройство всё равно помечается."""
+        """Без движка машин состояний устройство всё равно помечается.
+
+        Прибор **пропал из ответа дома по-настоящему**: в ответе есть другой
+        прибор, а этого нет. Пустой ответ проверяется отдельно — он означает
+        отказ чтения, а не исчезновение всех приборов (аудит 2026-10-16, К-1).
+        """
         source_id = uuid4()
         service = _service_with_source(source_id)
         known = _device("light.gone", source_id)
@@ -172,7 +194,7 @@ class TestSyncFailurePaths:
         with patch("adapters.home_assistant.rest_client.HARestClient") as client_class:
             client = AsyncMock()
             client.connect_to_ha = AsyncMock(return_value=True)
-            client.fetch_devices = AsyncMock(return_value=[])
+            client.fetch_devices = AsyncMock(return_value=[_ha_state("light.ostalsia")])
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=None)
             client_class.return_value = client
@@ -181,6 +203,45 @@ class TestSyncFailurePaths:
 
         devices = await service.get_all_devices()
         assert devices[0].status == "removed_from_ha"
+
+    @pytest.mark.asyncio
+    async def test_failed_read_must_not_take_automation_away(self) -> None:
+        """Отказ чтения дома не помечает приборы исчезнувшими.
+
+        Аудит 2026-10-16, К-1: прежде ответ Home Assistant с кодом ошибки (500)
+        превращался в пустой список состояний, сведение помечало каждый известный
+        прибор исчезнувшим и снимало с него автоматику — дом терял управление, а
+        источник показывался «подключён». Пустой список при законном ответе 200
+        остаётся «в источнике нет приборов»: это отдельное поведение, и оно
+        сохранено (см. соседние тесты).
+        """
+        source_id = uuid4()
+        service = _service_with_source(source_id)
+        known = _device("light.zhivoi", source_id)
+        service.persistence.devices.load_devices_by_source = AsyncMock(return_value=[known])
+        await service.add_device(known)
+
+        engine = MagicMock()
+        service._engine = engine  # noqa: SLF001 — проверяем, что автоматику не снимают
+
+        with patch("adapters.home_assistant.rest_client.HARestClient") as client_class:
+            client = AsyncMock()
+            client.connect_to_ha = AsyncMock(return_value=True)
+            client.fetch_devices = AsyncMock(
+                side_effect=HAStatesUnavailableError("Home Assistant ответил 500")
+            )
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=None)
+            client_class.return_value = client
+
+            with pytest.raises(HAStatesUnavailableError):
+                await service.sync_devices_from_source(source_id)
+
+        devices = await service.get_all_devices()
+        assert devices[0].status != "removed_from_ha", (
+            "отказ чтения снял прибор с учёта: дом потерял бы управление целиком"
+        )
+        assert not engine.unregister.called, "отказ чтения снял автоматику"
 
     @pytest.mark.asyncio
     async def test_engine_failure_should_not_abort_removal(self) -> None:
@@ -198,7 +259,7 @@ class TestSyncFailurePaths:
         with patch("adapters.home_assistant.rest_client.HARestClient") as client_class:
             client = AsyncMock()
             client.connect_to_ha = AsyncMock(return_value=True)
-            client.fetch_devices = AsyncMock(return_value=[])
+            client.fetch_devices = AsyncMock(return_value=[_ha_state("light.ostalsia_dva")])
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=None)
             client_class.return_value = client

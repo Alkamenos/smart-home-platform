@@ -14,6 +14,17 @@ from pydantic import HttpUrl
 logger = logging.getLogger(__name__)
 
 
+class HAStatesUnavailableError(RuntimeError):
+    """Состояния дома прочитать не удалось.
+
+    Отделено от «состояний нет» намеренно (аудит 2026-10-16, К-1): пустой ответ
+    Home Assistant — это **отказ чтения**, а не дом без приборов. Разница
+    решающая: сведение синхронизации помечает всё, чего нет в ответе, как
+    «исчезло из дома» и снимает с него автоматику. Один ответ 500 снимал
+    управление со всего дома, а источник показывался «подключён».
+    """
+
+
 class HARestClient:
     """Клиент для работы с REST API Home Assistant."""
 
@@ -94,6 +105,7 @@ class HARestClient:
 
         Raises:
             ConnectionError: Если не подключен к HA
+            HAStatesUnavailableError: Если дом ответил кодом ошибки
             aiohttp.ClientError: При ошибке HTTP запроса
         """
         if not self._connected:
@@ -112,11 +124,29 @@ class HARestClient:
             ) as resp:
                 if resp.status == 200:
                     states: list[dict[str, Any]] = await resp.json()
+                    if not isinstance(states, list):
+                        # Ответ 200, но не список состояний — это не «в доме нет
+                        # приборов», а испорченный ответ. Отличать обязан именно
+                        # здесь: ниже пустой результат означает законное «в
+                        # источнике ничего нет» (аудит 2026-10-16, К-1).
+                        raise HAStatesUnavailableError(
+                            f"Home Assistant ответил {type(states).__name__} вместо списка состояний"
+                        )
                     logger.info(f"Получено {len(states)} состояний из Home Assistant")
                     return states
                 else:
+                    # Прежде здесь возвращался пустой список — и это было самое
+                    # дорогое место в платформе (аудит 2026-10-16, К-1): пустой
+                    # ответ уходил в сведение как «в доме нет этих приборов»,
+                    # каждый известный прибор помечался исчезнувшим, и его
+                    # автоматика снималась. Один ответ 500 — и дом терял
+                    # управление светом, климатом и шторами, показывая при этом
+                    # «источник подключён, синхронизация успешна».
                     logger.error(f"Ошибка получения состояний (статус {resp.status})")
-                    return []
+                    raise HAStatesUnavailableError(
+                        f"Home Assistant ответил {resp.status} на запрос состояний: "
+                        "это отказ чтения, а не дом без приборов"
+                    )
         except Exception as e:
             logger.error(f"Ошибка при получении состояний из HA: {e}")
             raise

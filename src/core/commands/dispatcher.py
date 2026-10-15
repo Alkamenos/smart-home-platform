@@ -260,12 +260,26 @@ class CommandDispatcher:
             )
 
             # Call the service via HAAdapter
-            await self._ha_adapter.call_service(
+            sent = await self._ha_adapter.call_service(
                 domain=processed_intent.domain,
                 service=processed_intent.service,
                 entity_id=device_id,
                 data=processed_intent.data,
             )
+
+            if sent is False:
+                # Прибор команду не получил. Считать её выполненной нельзя: автомат
+                # войдёт в «грею»/«включено», журнал покажет выполнение, а прибор
+                # промолчит — и сторож не вмешается, потому что автомат не завис
+                # (аудит 2026-10-16, К-2). Намерение отпускается, иначе диспетчер
+                # продолжал бы считать, что держит прибор, и мешал бы повторить.
+                logger.error(
+                    f"Команда не дошла до {device_id}: "
+                    f"{processed_intent.domain}.{processed_intent.service} "
+                    f"(источник {processed_intent.source}) — Home Assistant не подтвердил вызов"
+                )
+                self.release(device_id, processed_intent.source)
+                return False
 
             return True
         except Exception as e:
