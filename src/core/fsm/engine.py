@@ -129,6 +129,11 @@ SAFETY_EVENTS: frozenset[str] = frozenset(
     {"quiet_hours_started", "sleep_started", "sunset_started", "sunrise_started", "day_started"}
 )
 
+#: Движение: в комнатах без окон (`always_on_motion_rooms`) включение по нему не
+#: отменяется ручной блокировкой — это тоже правило безопасности, а не удобство
+#: (`.ai/04_RULES.md`, требование владельца 2026-10-15).
+MOTION_EVENTS: frozenset[str] = frozenset({"motion_detected"})
+
 
 # @dataclass (frozen=True)
 @dataclass
@@ -1414,6 +1419,18 @@ class FSMEngine:
         # Иначе «не горит всю ночь» нарушается ровно в те вечера, когда человек
         # вмешивался в свет (проверено в боре 2026-10-09).
         if event in SAFETY_EVENTS:
+            merged_context["bypass_lockout"] = True
+        # Комнаты без окон (`always_on_motion_rooms`: санузел, контейнер) — там
+        # свет по движению включается всегда: днём там так же темно, и другого
+        # света нет. Поэтому ручная блокировка не отменяет включение по движению:
+        # человек погасил свет и ушёл, а следующему он нужен. Иначе комната
+        # молчит час после каждого ручного выключения (боевой разбор 2026-10-15:
+        # свет в санузле не зажёгся по движению, потому что утром его погасили
+        # сами).
+        windowless_rooms = {
+            str(item) for item in merged_context.get("always_on_motion_rooms") or ()
+        }
+        if event in MOTION_EVENTS and str(merged_context.get("room") or "") in windowless_rooms:
             merged_context["bypass_lockout"] = True
         if external_ctx:
             merged_context.update(external_ctx)
