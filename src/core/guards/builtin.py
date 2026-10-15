@@ -1762,7 +1762,8 @@ def make_mode_for_weather() -> Callable[[Any, dict[str, Any]], bool]:
         if not allowed:
             return reason
         if _ventilation_role(context) != "supply":
-            return None
+            # Ветка притока у вытяжки: переход не к этому прибору (BACKLOG B74).
+            return REASON_NOT_APPLICABLE
         if _number(context, "outside_temperature") is None:
             return "outside_temp_missing"
         return None
@@ -1824,7 +1825,7 @@ def make_should_run_max_supply() -> Callable[[Any, dict[str, Any]], bool]:
         if not allowed:
             return reason
         if _ventilation_role(context) != "supply":
-            return None
+            return REASON_NOT_APPLICABLE
         if _comfort_max_value(context) is None:
             return "guard_data_missing"
         if _room_temperature(context) is None:
@@ -2229,7 +2230,8 @@ def make_speed_within_limits() -> Callable[[Any, dict[str, Any]], bool]:
         if not allowed:
             return reason
         if _ventilation_role(context) != "supply":
-            return None
+            # Ветка притока у вытяжки: переход не к этому прибору (BACKLOG B74).
+            return REASON_NOT_APPLICABLE
         if _number(context, "outside_temperature") is None:
             return "outside_temp_missing"
         return None
@@ -2284,6 +2286,9 @@ def make_owner_wants_airing() -> Callable[[Any, dict[str, Any]], bool]:
             просили — это не поломка).
         """
         del state
+        if _ventilation_role(context) != "supply":
+            # Проветривание — режим притока: у вытяжки его нет (BACKLOG B74).
+            return REASON_NOT_APPLICABLE
         allowed, reason = _ventilation_allowed(context)
         return reason if not allowed else None
 
@@ -2389,7 +2394,7 @@ def make_should_run_exhaust() -> Callable[[Any, dict[str, Any]], bool]:
         if not allowed:
             return reason
         if _ventilation_role(context) != "exhaust":
-            return None
+            return REASON_NOT_APPLICABLE
         if _bathroom_is_uncomfortable(context) is False:
             return "bathroom_comfortable"
         return None

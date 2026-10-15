@@ -25,6 +25,10 @@ from core.fsm.engine import FSMDefinition, FSMEngine, Transition
 from core.guards.builtin import (
     make_device_is_off,
     make_device_is_on,
+    make_mode_for_weather,
+    make_owner_wants_airing,
+    make_should_run_exhaust,
+    make_should_run_max_supply,
     make_startup_reapply,
 )
 
@@ -113,3 +117,34 @@ async def test_transient_guard_does_not_fill_the_journal() -> None:
     assert "not_applicable" not in reasons, "служебная причина утекла в журнал"
     counts = engine.rejection_counts()
     assert "guard_failed" not in counts, f"разовый признак попал в счётчик отказов: {counts}"
+
+
+class TestRoleBranches:
+    """Ветки режимов: не тот прибор — переход не относится (BACKLOG B74).
+
+    Один шаблон обслуживает и рекуператор (приток), и вытяжку санузла. Ветки
+    притока у вытяжки не к случаю — раньше они давали `guard_failed` на каждом
+    показании датчика (около 290 записей в сутки).
+    """
+
+    def test_supply_branches_are_not_applicable_for_exhaust(self) -> None:
+        """Ветки притока у вытяжки — не к этому прибору."""
+        exhaust = {"ventilation_role": "exhaust", "ventilation_enabled": True}
+
+        assert make_should_run_max_supply().deny_reason(None, exhaust) == "not_applicable"
+        assert make_owner_wants_airing().deny_reason(None, exhaust) == "not_applicable"
+        assert make_mode_for_weather().deny_reason(None, exhaust) == "not_applicable"
+
+    def test_exhaust_branch_is_not_applicable_for_supply(self) -> None:
+        """Ветка вытяжки у рекуператора — не к этому прибору."""
+        supply = {"ventilation_role": "supply", "ventilation_enabled": True}
+
+        assert make_should_run_exhaust().deny_reason(None, supply) == "not_applicable"
+
+    def test_house_flag_still_named_on_own_branch(self) -> None:
+        """На своей ветке отказ владельца по-прежнему назван своим именем."""
+        supply = {"ventilation_role": "supply", "ventilation_enabled": False}
+
+        reason = make_should_run_max_supply().deny_reason(None, supply)
+
+        assert reason not in (None, "not_applicable"), f"причина не названа: {reason!r}"
