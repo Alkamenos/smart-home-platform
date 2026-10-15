@@ -54,8 +54,6 @@ class RoomConfig(BaseModel):
 class AutomationDomainRules(BaseModel):
     """Automation rules for a specific domain."""
 
-    motion_enabled: bool = Field(default=True, description="Enable motion-based automation")
-    schedule_enabled: bool = Field(default=True, description="Enable schedule-based automation")
     manual_lockout_min: int | None = Field(
         default=None,
         description=(
@@ -63,11 +61,6 @@ class AutomationDomainRules(BaseModel):
             "Совпадает с ядерной моделью: None означает «настройка не задана»"
         ),
     )
-    safety_lockout_enabled: bool = Field(default=False, description="Enable safety lockout")
-    away_mode_enabled: bool = Field(default=False, description="Enable away mode")
-    humidity_based: bool = Field(default=False, description="Enable humidity-based automation")
-    # Поля домена расширяются ядром (ночное окно, комнаты, шторы): без разрешения
-    # «лишних» полей правка манифеста через интерфейс вычёркивала бы их.
     model_config = {"extra": "allow"}
 
 

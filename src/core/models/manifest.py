@@ -187,12 +187,7 @@ class AutomationDomainRules(BaseModel):
     условием ``may_turn_on``.
     """
 
-    motion_enabled: bool = True
-    schedule_enabled: bool = True
     manual_lockout_min: int | None = None
-    safety_lockout_enabled: bool = False
-    away_mode_enabled: bool = False
-    humidity_based: bool = False
     quiet_from: str | None = None
     """С часа ночью движение не включает свет (``HH:MM``)."""
     quiet_to: str | None = None
@@ -222,10 +217,6 @@ class AutomationDomainRules(BaseModel):
     нет, и решает солнце/окно тишины, а не «спим»."""
     morning_at: str | None = None
     """Час снятия ночного режима."""
-    hold_sec: int | None = None
-    """Сколько горит свет после последнего движения."""
-    max_on_sec: int | None = None
-    """Потолок горения без свежих триггеров."""
     battery_watch_entities: list[str] | None = None
     """Батарейки, за которыми платформа следит.
 
