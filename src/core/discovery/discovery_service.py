@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from loguru import logger
 
@@ -21,8 +21,28 @@ from .models import BulkApplyRequest, DiscoveredDevice
 
 
 if TYPE_CHECKING:
-    from adapters.ha_adapter import HAAdapter
     from core.persistence.manifest_store import ManifestStore
+
+
+@runtime_checkable
+class DiscoveryAdapter(Protocol):
+    """Узкий порт адаптера: что службе обнаружения нужно от дома (ADR-001).
+
+    Раньше здесь стоял импорт ``HAAdapter`` под ``TYPE_CHECKING``. Проверка типов
+    не мешала зависимости: ядро знало про слой адаптеров, ради чего ADR-001 и
+    заведён. Службе нужны признак подключения и WebSocket-клиент со списком
+    состояний — этого достаточно, и порт описывает ровно это.
+    """
+
+    @property
+    def is_connected(self) -> bool:
+        """Подключён ли адаптер к Home Assistant."""
+        ...
+
+    @property
+    def _ws_client(self) -> Any:
+        """Клиент WebSocket дома со списком состояний."""
+        ...
 
 
 SYSTEM_DOMAINS = {
@@ -53,7 +73,9 @@ PAGE_SIZE = 25
 class DeviceDiscoveryService:
     """Сканирует 200+ устройств с пагинацией и автоприменением шаблонов."""
 
-    def __init__(self, ha_adapter: HAAdapter, manifest_store: ManifestStore | None = None) -> None:
+    def __init__(
+        self, ha_adapter: DiscoveryAdapter, manifest_store: ManifestStore | None = None
+    ) -> None:
         """Создаёт сервис обнаружения.
 
         Args:
