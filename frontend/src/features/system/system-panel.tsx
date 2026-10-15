@@ -485,7 +485,9 @@ export function SystemPanel() {
                             </span>
                         </div>
                         {publishDashboard.data ? (
-                            <p className="text-muted mt-2 text-xs">{publishDashboard.data.detail}</p>
+                            <p className="text-muted mt-2 text-xs">
+                                {publishDashboard.data.detail}
+                            </p>
                         ) : null}
                         {publishDashboard.error ? (
                             <p className="text-warning mt-2 text-xs">

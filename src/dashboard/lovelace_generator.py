@@ -1,15 +1,20 @@
-"""Генератор дашбордов для Home Assistant Lovelace.
+"""Генератор дашборда Home Assistant из дома (BACKLOG B79).
 
-⚠️ **Мёртвый код.** Генератор недостижим из production-пути: его создаёт
-только ``tests/test_lovelace_generator.py``, платформа его не вызывает.
-Удаление не санкционировано решением D-3 фичи наблюдаемости (оно называло
-модуль ``DashboardIntegration``, а не генератор), поэтому FR-025 закрывается
-явной пометкой. Кандидат на удаление — см. Known Issues в
-``.ai/01_PROJECT_STATE.md``.
+Дашборд собирается из манифеста: комнаты, локации, их датчики и приборы. Здесь
+ничего не выдумывается — в карточках только те сущности, которые есть в доме, и
+только те типы карточек, которые Home Assistant знает.
 
-Зеркалирование состояний автоматов в Home Assistant выполняется отдельно, в
-``services/fsm_state_bridge.py`` (specs/007); этот генератор к состояниям
-автоматов отношения не имеет.
+Прежний генератор этого не делал, и владелец увидел «ошибка конфигурации» почти в
+каждой второй карточке (жалоба 2026-10-16):
+
+* карточки автоматов ссылались на придуманные сущности вида
+  ``binary_sensor.<русское имя>_active`` — их не существует по определению;
+* использовался тип ``entity-button``, которого в современном Home Assistant нет;
+* обогреватель-выключатель клался в карточку ``thermostat``, а она требует
+  ``climate.*``.
+
+Отсюда правило генератора: **сначала дом, потом карточка**. Не «сделаем красивую
+карточку автомата», а «покажем то, что в доме действительно есть».
 
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
@@ -17,232 +22,164 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from core.models.manifest import (
-    BehaviorConfig,
-    DeviceConfig,
     Manifest,
-    RoomConfig,
     iter_role_entities,
 )
 
 
+#: Подпись и значок роли датчика.
+#:
+#: Роль — слово из манифеста (`temperature`, `soil_moisture`), и показывать её
+#: владельцу как есть нельзя. Незнакомая роль не выдумывается: она называется
+#: собой, но по-человечески — с пробелами вместо подчёркиваний.
+SENSOR_LABELS: dict[str, tuple[str, str]] = {
+    "temperature": ("Температура", "mdi:thermometer"),
+    "humidity": ("Влажность", "mdi:water-percent"),
+    "motion": ("Движение", "mdi:motion-sensor"),
+    "occupancy": ("Присутствие", "mdi:motion-sensor"),
+    "person": ("Присутствие", "mdi:account"),
+    "illuminance": ("Освещённость", "mdi:brightness-5"),
+    "lux": ("Освещённость", "mdi:brightness-5"),
+    "battery": ("Батарейка", "mdi:battery"),
+    "contact": ("Открытие", "mdi:door"),
+    "rain": ("Дождь", "mdi:weather-rainy"),
+    "pressure": ("Давление", "mdi:gauge"),
+    "wind_speed": ("Ветер", "mdi:weather-windy"),
+    "wind_gust": ("Порывы ветра", "mdi:weather-windy-variant"),
+    "uv_index": ("УФ-индекс", "mdi:sun-wireless"),
+    "co2": ("Углекислый газ", "mdi:molecule-co2"),
+    "soil_moisture": ("Влажность почвы", "mdi:water-percent"),
+    "soil_temperature": ("Температура почвы", "mdi:thermometer"),
+    "soil_ec": ("Плодородие почвы", "mdi:sprout"),
+    "animal": ("Животное", "mdi:paw"),
+    "vehicle": ("Машина", "mdi:car"),
+}
+
+#: Значок прибора по его типу.
+DEVICE_ICONS: dict[str, str] = {
+    "light": "mdi:lightbulb",
+    "light_motion": "mdi:lightbulb",
+    "climate": "mdi:radiator",
+    "climate_hysteresis": "mdi:radiator",
+    "ventilation": "mdi:fan",
+    "ventilation_humidity": "mdi:fan",
+    "fan": "mdi:fan",
+    "cover": "mdi:window-shutter",
+}
+
+
 class LovelaceGenerator:
-    """Генератор YAML-конфигурации для Home Assistant Lovelace."""
+    """Генератор конфигурации дашборда Home Assistant."""
 
-    def generate(self, manifest: Manifest) -> dict:
-        """
-        Сгенерировать конфигурацию дашборда Lovelace из манифеста.
+    def generate(self, manifest: Manifest) -> dict[str, Any]:
+        """Собрать дашборд из дома.
 
-        Args:
-            manifest: Объект Manifest с комнатами и устройствами.
-
-        Returns:
-            dict: Словарь с конфигурацией Lovelace Dashboard.
-        """
-        dashboard = {
-            "title": manifest.dashboard.title,
-            "views": self._generate_views(manifest.rooms),
-        }
-        return dashboard
-
-    def _generate_views(self, rooms: list[RoomConfig]) -> list[dict]:
-        """
-        Создать вкладки дашборда по комнатам.
+        Комнаты и локации — **разные разделы манифеста**, и в дашборде они идут
+        отдельными представлениями: путать их нельзя (требование владельца
+        2026-10-15).
 
         Args:
-            rooms: Список комнат из манифеста.
+            manifest: Манифест дома.
 
         Returns:
-            list[dict]: Список вкладок Lovelace.
+            Конфигурация Lovelace: название и представления.
         """
-        views = []
-        for room in rooms:
-            view = self._create_room_view(room)
-            views.append(view)
-        return views
+        views = [self._place_view(room) for room in manifest.rooms]
+        views += [self._place_view(location) for location in manifest.locations]
+        title = str(getattr(manifest.dashboard, "title", "") or "").strip()
+        return {"title": title, "views": views}
 
-    def _create_room_view(self, room: RoomConfig) -> dict:
-        """
-        Создать вкладку для одной комнаты.
+    def _place_view(self, place: Any) -> dict[str, Any]:
+        """Собрать представление одного места: комнаты или локации.
 
         Args:
-            room: Объект комнаты.
+            place: Комната либо локация манифеста.
 
         Returns:
-            dict: Конфигурация вкладки Lovelace.
+            Представление Lovelace.
         """
-        cards = []
-
-        # Карточки сенсоров комнаты
-        if room.sensors:
-            sensor_cards = self._create_sensor_cards(room)
-            cards.extend(sensor_cards)
-
-        # Карточки устройств
-        for device in room.devices:
-            device_cards = self._create_device_cards(device)
-            cards.extend(device_cards)
-
-        # Если нет устройств, добавим пустую карточку
+        cards: list[dict[str, Any]] = []
+        sensors = self._sensor_card(place)
+        if sensors is not None:
+            cards.append(sensors)
+        devices = self._device_card(place)
+        if devices is not None:
+            cards.append(devices)
         if not cards:
             cards.append(
                 {
                     "type": "markdown",
-                    "content": f"В комнате '{room.name}' нет устройств.",
+                    "content": f"В месте «{place.name}» пока нечего показать: "
+                    "ни датчиков, ни приборов.",
                 }
             )
+        return {"title": place.name, "path": self._path(place.id), "cards": cards}
 
-        return {
-            "title": room.name,
-            "path": room.id,
-            "cards": cards,
-        }
-
-    def _create_sensor_cards(self, room: RoomConfig) -> list[dict]:
-        """
-        Создать карточки для сенсоров комнаты.
+    def _sensor_card(self, place: Any) -> dict[str, Any] | None:
+        """Собрать карточку датчиков места.
 
         Args:
-            room: Комната с сенсорами.
+            place: Комната либо локация манифеста.
 
         Returns:
-            list[dict]: Список карточек сенсоров.
+            Карточка `entities` либо ``None``, если датчиков нет.
         """
-        cards = []
-        sensor_type_config = {
-            "motion": {"icon": "mdi:motion-sensor", "name": "Движение"},
-            "temperature": {"icon": "mdi:thermometer", "name": "Температура"},
-            "humidity": {"icon": "mdi:water-percent", "name": "Влажность"},
-            "lux": {"icon": "mdi:brightness-5", "name": "Освещённость"},
-            "contact": {"icon": "mdi:door", "name": "Контакт"},
-        }
+        entities: list[dict[str, Any]] = []
+        for role, entity in iter_role_entities(place.sensors):
+            label, icon = SENSOR_LABELS.get(
+                role, (role.replace("_", " ").capitalize(), "mdi:help-circle")
+            )
+            entities.append({"entity": entity, "name": label, "icon": icon})
+        if not entities:
+            return None
+        return {"type": "entities", "title": "Датчики", "entities": entities}
 
-        for sensor_type, entity_id in iter_role_entities(room.sensors):
-            config = sensor_type_config.get(sensor_type, {})
-            cards.append(
+    def _device_card(self, place: Any) -> dict[str, Any] | None:
+        """Собрать карточку приборов места.
+
+        Прибор описан в манифесте своим идентификатором Home Assistant, поэтому
+        карточка ссылается на существующую сущность, а не на придуманное имя.
+
+        Args:
+            place: Комната либо локация манифеста.
+
+        Returns:
+            Карточка `entities` либо ``None``, если приборов нет.
+        """
+        entities: list[dict[str, Any]] = []
+        for device in getattr(place, "devices", []) or []:
+            if "." not in str(device.id):
+                # Идентификатор без домена — не сущность дома: показать её нельзя.
+                continue
+            entities.append(
                 {
-                    "type": "entity",
-                    "entity": entity_id,
-                    "name": config.get("name", sensor_type),
-                    "icon": config.get("icon", "mdi:help-circle"),
+                    "entity": device.id,
+                    "name": device.name or device.id,
+                    "icon": DEVICE_ICONS.get(str(device.type), "mdi:help-circle"),
                 }
             )
+        if not entities:
+            return None
+        return {"type": "entities", "title": "Управление", "entities": entities}
 
-        return cards
+    def _path(self, place_id: str) -> str:
+        """Путь представления по идентификатору места.
 
-    def _create_device_cards(self, device: DeviceConfig) -> list[dict]:
-        """
-        Создать карточки для устройства.
-
-        Args:
-            device: Устройство из манифеста.
-
-        Returns:
-            list[dict]: Список карточек Lovelace для устройства.
-        """
-        cards = []
-
-        # Основная карточка устройства
-        entity_id = self._get_entity_id(device)
-        control_card = self._create_control_card(device, entity_id)
-        cards.append(control_card)
-
-        # Карточки с индикаторами активности для каждого behavior
-        for behavior in device.behaviors:
-            indicator_card = self._create_behavior_indicator(device, behavior)
-            cards.append(indicator_card)
-
-        return cards
-
-    def _get_entity_id(self, device: DeviceConfig) -> str:
-        """
-        Получить entity_id для устройства.
-
-        Если device.id уже содержит точку (например, light.kitchen),
-        используем его как есть. Иначе генерируем из типа и имени.
+        Home Assistant принимает в пути только латиницу, цифры и дефис: имя
+        места в пути недопустимо.
 
         Args:
-            device: Устройство из манифеста.
+            place_id: Идентификатор места.
 
         Returns:
-            str: Entity ID в формате Home Assistant.
+            Путь представления.
         """
-        if "." in device.id:
-            return device.id
-
-        type_mapping = {
-            "light": "light",
-            "light_motion": "light",
-            "climate": "climate",
-            "climate_hysteresis": "climate",
-            "ventilation": "fan",
-            "ventilation_humidity": "fan",
-        }
-        ha_type = type_mapping.get(device.type, "switch")
-        name_slug = device.id.lower().replace(" ", "_").replace("-", "_")
-        return f"{ha_type}.{name_slug}"
-
-    def _create_control_card(self, device: DeviceConfig, entity_id: str) -> dict:
-        """
-        Создать карточку управления устройством.
-
-        Args:
-            device: Устройство из манифеста.
-            entity_id: Entity ID устройства в Home Assistant.
-
-        Returns:
-            dict: Конфигурация карточки управления.
-        """
-        display_name = device.name or device.id
-
-        if device.type in ("light", "light_motion"):
-            return {
-                "type": "entities",
-                "title": display_name,
-                "entities": [{"entity": entity_id, "name": display_name}],
-                "show_header_toggle": True,
-            }
-        elif device.type in ("climate", "climate_hysteresis"):
-            return {
-                "type": "thermostat",
-                "entity": entity_id,
-                "name": display_name,
-            }
-        elif device.type in ("ventilation", "ventilation_humidity"):
-            return {
-                "type": "entities",
-                "title": display_name,
-                "entities": [{"entity": entity_id, "name": display_name}],
-                "show_header_toggle": True,
-            }
-        else:
-            return {
-                "type": "entities",
-                "title": display_name,
-                "entities": [{"entity": entity_id, "name": display_name}],
-            }
-
-    def _create_behavior_indicator(self, device: DeviceConfig, behavior: BehaviorConfig) -> dict:
-        """
-        Создать карточку-индикатор активности поведения.
-
-        Args:
-            device: Устройство, к которому относится поведение.
-            behavior: Конфигурация поведения.
-
-        Returns:
-            dict: Конфигурация карточки-индикатора.
-        """
-        display_name = device.name or device.id
-        behavior_name = behavior.template.replace(".yaml", "").replace(".yml", "")
-        sensor_slug = f"{display_name.lower().replace(' ', '_')}_{behavior_name}"
-        sensor_entity_id = f"binary_sensor.{sensor_slug}_active"
-
-        return {
-            "type": "entity-button",
-            "entity": sensor_entity_id,
-            "name": f"{behavior_name} (приоритет {behavior.priority})",
-            "icon": "mdi:automation",
-            "tap_action": {"action": "more-info"},
-            "hold_action": {"action": "none"},
-        }
+        cleaned = "".join(
+            char if char.isalnum() and char.isascii() else "-" for char in place_id.lower()
+        )
+        while "--" in cleaned:
+            cleaned = cleaned.replace("--", "-")
+        return cleaned.strip("-") or "place"

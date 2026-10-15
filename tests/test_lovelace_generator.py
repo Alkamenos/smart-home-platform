@@ -1,314 +1,229 @@
-"""Тесты для генератора дашбордов Lovelace."""
+"""Дашборд собирается из дома, а не из фантазии (BACKLOG B79).
+
+Проверки держат то, на чём обожглись 2026-10-16: владелец опубликовал дашборд и
+увидел «ошибка конфигурации» почти в каждой второй карточке. Причины были три, и
+каждой здесь поставлен заслон:
+
+* карточки автоматов ссылались на придуманные сущности вида
+  ``binary_sensor.<русское имя>_active`` — их нет в доме;
+* использовался тип ``entity-button``, которого в современном Home Assistant нет;
+* обогреватель-выключатель попадал в карточку ``thermostat``, а ей нужен ``climate.*``.
+
+Правило генератора: **сначала дом, потом карточка**.
+"""
 
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
 
-import pytest
-import yaml
+from __future__ import annotations
 
-from core import (
-    BehaviorConfig,
-    Dashboard,
-    DeviceConfig,
-    InstanceConfig,
-    Manifest,
-    RoomConfig,
-    load_manifest,
-)
-from dashboard import LovelaceGenerator
+from typing import Any
+
+from core.models.manifest import load_manifest
+from dashboard.lovelace_generator import LovelaceGenerator
 
 
-@pytest.fixture
-def manifest_with_behaviors(tmp_path):
-    """Создать тестовый манифест с устройствами и поведениями."""
-    manifest_content = """
-version: 1
-instance:
-  id: test_house
-  name: "Test House"
-  owner: Test User
-  created_at: '2024-01-01'
-rooms:
-  - id: kitchen
-    name: Kitchen
-    sensors:
-      motion: binary_sensor.kitchen_motion
-    devices:
-      - id: light.kitchen
-        name: Kitchen Light
-        type: light
-        behaviors:
-          - template: motion_detection
-            priority: 1
-            params:
-              timeout: 300
-          - template: night_mode
-            priority: 2
-            params:
-              brightness: 10
-  - id: living_room
-    name: Living Room
-    sensors:
-      temperature: sensor.living_room_temperature
-    devices:
-      - id: climate.living_room
-        type: climate
-        name: Living Room Climate
-        behaviors:
-          - template: eco_mode
-            priority: 1
-            params:
-              eco_temp: 18
-  - id: bathroom
-    name: Bathroom
-    sensors:
-      humidity: sensor.bathroom_humidity
-    devices:
-      - id: fan.bathroom
-        type: ventilation
-        name: Bathroom Fan
-        behaviors:
-          - template: humidity_control
-            priority: 1
-            params:
-              threshold: 65
-automation_rules:
-  lighting:
-    motion_enabled: true
-    schedule_enabled: true
-    manual_lockout_min: 60
-  climate:
-    safety_lockout_enabled: true
-    manual_lockout_min: 90
-  ventilation:
-    humidity_based: true
-    manual_lockout_min: 15
-dashboard:
-  title: Test Dashboard
-"""
-    manifest_path = tmp_path / "manifest.yaml"
-    manifest_path.write_text(manifest_content)
-    return load_manifest(str(manifest_path))
+#: Типы карточек, которые Home Assistant знает и рисует.
+VALID_CARD_TYPES = {"entities", "entity", "markdown", "button", "grid", "vertical-stack"}
 
 
-@pytest.fixture
-def sample_manifest():
-    return Manifest(
-        instance=InstanceConfig(id="test", name="Test House"),
-        rooms=[
-            RoomConfig(
-                id="kitchen",
-                name="Kitchen",
-                sensors={"motion": "binary_sensor.kitchen_motion"},
-                devices=[
-                    DeviceConfig(
-                        id="light.kitchen",
-                        type="light_motion",
-                        behaviors=[
-                            BehaviorConfig(template="lighting", priority=10),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-        dashboard=Dashboard(title="Test Dashboard", rooms=["kitchen"]),
-    )
+def _house() -> Any:
+    """Загрузить дом для проверок.
 
-
-@pytest.fixture
-def generator():
-    """Создать экземпляр генератора."""
-    return LovelaceGenerator()
-
-
-class TestLovelaceGenerator:
-    """Тесты для LovelaceGenerator."""
-
-    def test_generate_returns_dict(self, generator, manifest_with_behaviors):
-        """Проверка, что generate возвращает dict."""
-        result = generator.generate(manifest_with_behaviors)
-        assert isinstance(result, dict)
-
-    def test_generate_has_title(self, generator, manifest_with_behaviors):
-        """Проверка, что дашборд имеет заголовок из манифеста."""
-        result = generator.generate(manifest_with_behaviors)
-        assert result["title"] == "Test Dashboard"
-
-    def test_generate_has_views(self, generator, manifest_with_behaviors):
-        """Проверка, что дашборд имеет вкладки."""
-        result = generator.generate(manifest_with_behaviors)
-        assert "views" in result
-        assert isinstance(result["views"], list)
-        # Должно быть 3 вкладки (по количеству зон)
-        assert len(result["views"]) == 3
-
-    def test_views_have_zone_titles(self, generator, manifest_with_behaviors):
-        """Проверка, что вкладки имеют названия зон."""
-        result = generator.generate(manifest_with_behaviors)
-        view_titles = [view["title"] for view in result["views"]]
-        assert "Kitchen" in view_titles
-        assert "Living Room" in view_titles
-        assert "Bathroom" in view_titles
-
-    def test_views_have_zone_paths(self, generator, manifest_with_behaviors):
-        """Проверка, что вкладки имеют пути zone.id."""
-        result = generator.generate(manifest_with_behaviors)
-        view_paths = [view["path"] for view in result["views"]]
-        assert "kitchen" in view_paths
-        assert "living_room" in view_paths
-        assert "bathroom" in view_paths
-
-        view_titles = [v["title"] for v in result["views"]]
-        assert "Kitchen" in view_titles
-        assert "Living Room" in view_titles
-        assert "Bathroom" in view_titles  # комната называется "Bathroom"
-
-    def test_kitchen_view_has_device_cards(self, generator, manifest_with_behaviors):
-        """Проверка, что вкладка кухни имеет карточку устройства."""
-        result = generator.generate(manifest_with_behaviors)
-        kitchen_view = next(v for v in result["views"] if v["path"] == "kitchen")
-        assert len(kitchen_view["cards"]) > 0
-
-    def test_device_control_card_exists(self, generator, manifest_with_behaviors):
-        """Проверка, что для каждого устройства создана карточка управления."""
-        result = generator.generate(manifest_with_behaviors)
-
-        # Проверяем каждую зону
-        for view in result["views"]:
-            if view["path"] == "kitchen":
-                # Kitchen Light должен иметь карточку управления
-                control_cards = [c for c in view["cards"] if c.get("type") == "entities"]
-                assert len(control_cards) >= 1
-
-        # Проверяем living_room с climate устройством
-        living_room_view = next(v for v in result["views"] if v["path"] == "living_room")
-        thermostat_cards = [c for c in living_room_view["cards"] if c.get("type") == "thermostat"]
-        assert len(thermostat_cards) >= 1
-
-    def test_behavior_indicators_exist(self, generator, manifest_with_behaviors):
-        """Проверка, что для каждого behavior создан индикатор активности."""
-        result = generator.generate(manifest_with_behaviors)
-
-        # Считаем количество behavior indicator карточек
-        behavior_indicators = []
-        for view in result["views"]:
-            for card in view["cards"]:
-                if card.get("type") == "entity-button":
-                    behavior_indicators.append(card)
-
-        # У нас 4 behavior в манифесте:
-        # - Kitchen Light: motion_detection, night_mode (2)
-        # - Living Room Climate: eco_mode (1)
-        # - Bathroom Fan: humidity_control (1)
-        assert len(behavior_indicators) == 4
-
-    def test_behavior_indicator_has_priority(self, generator, manifest_with_behaviors):
-        """Проверка, что индикатор поведения содержит информацию о приоритете."""
-        result = generator.generate(manifest_with_behaviors)
-
-        for view in result["views"]:
-            for card in view["cards"]:
-                if card.get("type") == "entity-button":
-                    name = card.get("name", "")
-                    assert "приоритет" in name or "priority" in name.lower()
-
-    def test_yaml_serializable(self, generator, manifest_with_behaviors):
-        """Проверка, что результат может быть сериализован в YAML."""
-        result = generator.generate(manifest_with_behaviors)
-        yaml_output = yaml.dump(result, default_flow_style=False, allow_unicode=True)
-        assert yaml_output is not None
-        assert len(yaml_output) > 0
-
-        # Проверяем, что YAML валидный
-        parsed = yaml.safe_load(yaml_output)
-        assert parsed == result
-
-    def test_all_devices_have_cards(self, generator, manifest_with_behaviors):
-        """Проверка, что все устройства из манифеста имеют карточки."""
-        result = generator.generate(manifest_with_behaviors)
-
-        # Собираем все названия устройств из карточек
-        device_names_in_cards = set()
-        for view in result["views"]:
-            for card in view["cards"]:
-                if card.get("type") == "entities" and card.get("title"):
-                    device_names_in_cards.add(card["title"])
-                elif card.get("type") == "thermostat" and card.get("name"):
-                    device_names_in_cards.add(card["name"])
-
-        # Проверяем, что все устройства представлены
-        expected_devices = {"Kitchen Light", "Living Room Climate", "Bathroom Fan"}
-        assert expected_devices.issubset(device_names_in_cards)
-
-    def test_empty_zone_handling(self, tmp_path, generator):
-        """Проверка обработки зоны без устройств."""
-        manifest_content = """
-    version: 1
-    instance:
-      id: test_house
-      name: "Test House"
-      owner: Test User
-      created_at: '2024-01-01'
-    rooms:
-      - id: empty_room
-        name: Empty Room
-        sensors: {}
-        devices: []
-    automation_rules:
-      lighting:
-        motion_enabled: true
-        schedule_enabled: true
-        manual_lockout_min: 60
-      climate:
-        safety_lockout_enabled: true
-        away_mode_enabled: true
-        manual_lockout_min: 30
-      ventilation:
-        humidity_based: true
-        manual_lockout_min: 15
-    dashboard:
-      title: "Test House Dashboard"
+    Returns:
+        Манифест боевого дома из репозитория.
     """
-        manifest_path = tmp_path / "empty_manifest.yaml"
-        manifest_path.write_text(manifest_content)
-        manifest = load_manifest(str(manifest_path))
+    return load_manifest("instances/leonids_house_prod/manifest.yaml")
 
-        result = generator.generate(manifest)
-        empty_view = next(v for v in result["views"] if v["path"] == "empty_room")
-        # В пустой зоне должна быть markdown карточка
-        assert any(c.get("type") == "markdown" for c in empty_view["cards"])
 
-    def test_entity_id_generation(self, generator, manifest_with_behaviors):
-        """Проверка корректной генерации entity_id."""
-        result = generator.generate(manifest_with_behaviors)
+def _views(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Все представления дашборда.
 
-        # Проверяем, что entity_id имеют правильный формат
-        for view in result["views"]:
-            for card in view["cards"]:
-                if card.get("type") == "entities" and card.get("entities"):
-                    for entity in card["entities"]:
-                        entity_id = entity.get("entity", "")
-                        assert "." in entity_id  # domain.entity_id format
+    Args:
+        config: Конфигурация дашборда.
 
-                if card.get("type") == "thermostat":
-                    entity_id = card.get("entity", "")
-                    assert "." in entity_id
+    Returns:
+        Список представлений.
+    """
+    return list(config.get("views") or [])
 
-    def test_complete_dashboard_structure(self, generator, manifest_with_behaviors):
-        """Проверка полной структуры дашборда."""
-        result = generator.generate(manifest_with_behaviors)
 
-        # Проверка верхнеуровневой структуры
-        assert "title" in result
-        assert "views" in result
+def _cards(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Все карточки всех представлений.
 
-        # Проверка структуры каждой вкладки
-        for view in result["views"]:
-            assert "title" in view
-            assert "path" in view
-            assert "cards" in view
-            assert isinstance(view["cards"], list)
+    Args:
+        config: Конфигурация дашборда.
 
-            # Проверка структуры каждой карточки
-            for card in view["cards"]:
-                assert "type" in card
+    Returns:
+        Плоский список карточек.
+    """
+    return [card for view in _views(config) for card in (view.get("cards") or [])]
+
+
+class TestOnlyRealEntities:
+    """В карточках только то, что есть в доме."""
+
+    def test_no_fabricated_automation_cards(self) -> None:
+        """Придуманных сущностей автоматов нет.
+
+        Прежде генератор строил ``binary_sensor.<имя>_active`` из русского имени
+        прибора — таких сущностей в доме не бывает.
+
+        Returns:
+            Ничего.
+        """
+        config = LovelaceGenerator().generate(_house())
+
+        mentioned = [entity for card in _cards(config) for entity in _entities_of(card)]
+
+        assert mentioned, "дашборд не ссылается ни на одну сущность"
+        assert not [e for e in mentioned if e.endswith("_active")], (
+            f"в дашборде придуманные сущности автоматов: {[e for e in mentioned if e.endswith('_active')][:3]}"
+        )
+        assert not [e for e in mentioned if any(ord(ch) > 127 for ch in e)], (
+            "в идентификаторах сущностей кириллица: таких сущностей в доме нет"
+        )
+
+    def test_entities_come_from_the_house(self) -> None:
+        """Каждая упомянутая сущность описана в доме.
+
+        Returns:
+            Ничего.
+        """
+        manifest = _house()
+        known = {device.id for room in manifest.rooms for device in room.devices}
+        for room in manifest.rooms:
+            known.update(entity for _, entity in _roles(room.sensors))
+        for location in manifest.locations:
+            known.update(entity for _, entity in _roles(location.sensors))
+            known.update(device.id for device in (getattr(location, "devices", None) or []))
+
+        config = LovelaceGenerator().generate(manifest)
+
+        unknown = [
+            entity
+            for card in _cards(config)
+            for entity in _entities_of(card)
+            if entity not in known
+        ]
+        assert not unknown, f"дашборд ссылается на чужие сущности: {unknown[:3]}"
+
+
+class TestOnlyKnownCardTypes:
+    """В дашборде только те типы карточек, которые Home Assistant знает."""
+
+    def test_card_types_are_valid(self) -> None:
+        """Удалённых и незнакомых типов карточек нет.
+
+        Returns:
+            Ничего.
+        """
+        config = LovelaceGenerator().generate(_house())
+
+        kinds = {str(card.get("type")) for card in _cards(config)}
+
+        assert kinds <= VALID_CARD_TYPES, f"незнакомые типы карточек: {kinds - VALID_CARD_TYPES}"
+
+    def test_no_thermostat_card_for_a_switch(self) -> None:
+        """Обогреватель-выключатель не попадает в карточку термостата.
+
+        Карточка ``thermostat`` требует ``climate.*``: у выключателя она даёт
+        «ошибка конфигурации».
+
+        Returns:
+            Ничего.
+        """
+        config = LovelaceGenerator().generate(_house())
+
+        for card in _cards(config):
+            if card.get("type") == "thermostat":
+                assert str(card.get("entity", "")).startswith("climate."), (
+                    f"термостат-карточка на не-климате: {card.get('entity')}"
+                )
+
+
+class TestDashboardShape:
+    """Дашборд состоит из мест дома."""
+
+    def test_rooms_and_locations_are_separate_views(self) -> None:
+        """Комнаты и локации — разные представления.
+
+        Returns:
+            Ничего.
+        """
+        manifest = _house()
+
+        config = LovelaceGenerator().generate(manifest)
+
+        titles = [view["title"] for view in _views(config)]
+        assert [room.name for room in manifest.rooms] == titles[: len(manifest.rooms)]
+        assert [location.name for location in manifest.locations] == titles[len(manifest.rooms) :]
+
+    def test_paths_are_usable_by_home_assistant(self) -> None:
+        """Пути представлений — латиница, цифры и дефис.
+
+        Returns:
+            Ничего.
+        """
+        config = LovelaceGenerator().generate(_house())
+
+        for view in _views(config):
+            path = str(view.get("path") or "")
+            assert path, "представление без пути"
+            assert all(char.isalnum() and char.isascii() or char == "-" for char in path), (
+                f"путь представления недопустим для Home Assistant: {path!r}"
+            )
+
+    def test_sensor_labels_are_human(self) -> None:
+        """Роли датчиков названы по-русски, а не кодом.
+
+        Returns:
+            Ничего.
+        """
+        config = LovelaceGenerator().generate(_house())
+
+        names = [
+            str(entry.get("name"))
+            for card in _cards(config)
+            for entry in (card.get("entities") or [])
+            if isinstance(entry, dict)
+        ]
+
+        assert "Температура" in names, f"датчики названы кодом: {sorted(set(names))[:8]}"
+        assert not [name for name in names if name.islower() and "_" in name], (
+            "роль показана владельцу как есть"
+        )
+
+
+def _entities_of(card: dict[str, Any]) -> list[str]:
+    """Сущности, на которые ссылается карточка.
+
+    Args:
+        card: Карточка Lovelace.
+
+    Returns:
+        Список идентификаторов сущностей.
+    """
+    found: list[str] = []
+    if isinstance(card.get("entity"), str):
+        found.append(card["entity"])
+    for entry in card.get("entities") or []:
+        if isinstance(entry, str):
+            found.append(entry)
+        elif isinstance(entry, dict) and isinstance(entry.get("entity"), str):
+            found.append(entry["entity"])
+    return found
+
+
+def _roles(sensors: Any) -> list[tuple[str, str]]:
+    """Пара «роль — сущность» из карты датчиков места.
+
+    Args:
+        sensors: Карта датчиков комнаты или локации.
+
+    Returns:
+        Список пар.
+    """
+    from core.models.manifest import iter_role_entities
+
+    return list(iter_role_entities(sensors))
