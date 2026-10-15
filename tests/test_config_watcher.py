@@ -167,3 +167,29 @@ class TestWiring:
         )
         assert isinstance(watcher, ConfigWatcher)
         assert not watcher.is_running
+
+
+def test_failed_creation_keeps_the_existing_automation(tmp_path):
+    """Сбой сборки при перезагрузке не снимает автоматику (аудит 2026-10-16, К-7).
+
+    Прежде автоматы снимались **до** сборки новых: сломанный шаблон или неполный
+    манифест оставляли устройство без автоматики, и для владельца это неотличимо
+    от «работает, просто ничего не происходит». Теперь сборка идёт первой, и
+    падение случается, когда в движке ещё всё по-старому.
+
+    Args:
+        tmp_path: Временный каталог.
+
+    Returns:
+        Ничего.
+    """
+    watcher, paths = _make_watcher(tmp_path)
+    watcher._engine.get_all_states.return_value = {"light.zhivoi_lighting_10": MagicMock()}
+    watcher._factory.create_from_manifest.side_effect = RuntimeError("сломанный шаблон")
+
+    with pytest.raises(RuntimeError):
+        watcher._reload_manifest(Path(paths["manifest"]))
+
+    assert not watcher._engine.unregister.called, (
+        "сбой сборки снял автоматику: устройство осталось без управления"
+    )

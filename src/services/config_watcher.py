@@ -332,22 +332,23 @@ class ConfigWatcher:
                 if not belongs_to_valid_device:
                     fsm_defs_to_remove.append(fsm_id)
 
-            # Remove old FSMs that are no longer needed
+            # Создание — **до** изменений. Прежде снятие шло первым, и сбой
+            # создания (сломанный шаблон, неполный манифест) оставлял устройство
+            # без автоматики: для владельца это неотличимо от «работает, просто
+            # ничего не происходит» (аудит 2026-10-16, К-7). Теперь падение
+            # случается раньше — в движке ещё всё по-старому.
+            #
+            # Кэш шаблонов сбрасывается перед сборкой: иначе правка шаблона не
+            # доехала бы до новых автоматов.
+            self._factory._template_cache.clear()
+            new_definitions = self._factory.create_from_manifest(new_manifest)
+
+            # Снять автоматы приборов, которых больше нет в манифесте.
             for fsm_id in fsm_defs_to_remove:
                 logger.info(f"Unregistering FSM: {fsm_id}")
                 self._engine.unregister(fsm_id)
 
-            # Recreate all FSMs from the new manifest
-            # In production, you'd want to be more selective about which FSMs to recreate
-            logger.info("Recreating FSMs from updated manifest...")
-
-            # Clear template cache to force reload
-            self._factory._template_cache.clear()
-
-            # Create new FSM definitions
-            new_definitions = self._factory.create_from_manifest(new_manifest)
-
-            # Register new FSMs
+            # Поставить новые.
             for definition in new_definitions:
                 logger.info(f"Registering FSM: {definition.entity_id}")
                 self._engine.register_definition(definition, restore_state=False)

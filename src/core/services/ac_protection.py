@@ -77,6 +77,14 @@ class AirConditionerProtection:
         self.interval_minutes = interval_minutes
         self.min_outside_temp = min_outside_temp
         self._task: asyncio.Task[None] | None = None
+        #: Почему защита не видит режимы приборов. ``None`` — видит.
+        #:
+        #: Слепота — не «в доме нет приборов», а «прочитать не удалось», и об этом
+        #: обязан сказать журнал: иначе защита кондиционера числится работающей,
+        #: ничего не проверяя (аудит 2026-10-16, К-4).
+        self._blind_reason: str | None = None
+        #: Сколько проходов защита была слепой — видно снаружи.
+        self.blind_count = 0
 
     def start(self) -> bool:
         """Запустить периодическую проверку.
@@ -167,18 +175,67 @@ class AirConditionerProtection:
         """
         reader = getattr(self._adapter, "get_all_states", None)
         if not callable(reader):
+            self._note_blind("адаптер не умеет читать состояния")
             return {}
         try:
             raw = await reader()
         except Exception as exc:  # noqa: BLE001 — без режимов защита молчит
-            logger.warning(f"Защита кондиционера: режимы не прочитаны: {exc}")
+            self._note_blind(f"режимы не прочитаны: {exc}")
             return {}
+        if not raw and self.entities:
+            # Пустой ответ при живых кондиционерах — это слепота, а не «в доме
+            # нет приборов»: за проход не проверено ничего (аудит К-4).
+            self._note_blind("дом не отдал ни одного состояния: режимы неизвестны")
         modes: dict[str, str] = {}
         for item in raw or []:
             entity_id = item.get("entity_id")
             if entity_id in self.entities:
                 modes[str(entity_id)] = str(item.get("state") or "").strip().lower()
+        if modes:
+            self._see_again()
         return modes
+
+    def _note_blind(self, reason: str) -> None:
+        """Назвать слепоту защиты и запомнить её.
+
+        Молчание кондиционера и молчание защиты выглядят одинаково, а значат
+        разное: первое — «нечего делать», второе — «не могу проверить» (аудит К-4).
+        Повтор не пишется в журнал: слепота, длящаяся часами, дала бы строку на
+        каждый проход, а журнал отвечает на вопрос «что случилось», а не «сколько
+        раз одно и то же» (то же правило, что у повторов отказов, B67).
+
+        Args:
+            reason: Почему защита не видит режимы.
+
+        Returns:
+            Ничего.
+        """
+        first = self._blind_reason is None
+        self._blind_reason = reason
+        self.blind_count += 1
+        if first:
+            logger.warning(f"Защита кондиционера слепа: {reason}")
+        else:
+            logger.debug(f"Защита кондиционера всё ещё слепа: {reason}")
+
+    def _see_again(self) -> None:
+        """Отметить, что защита снова видит приборы.
+
+        Returns:
+            Ничего.
+        """
+        if self._blind_reason is not None:
+            logger.warning("Защита кондиционера снова видит приборы")
+        self._blind_reason = None
+
+    @property
+    def blind_reason(self) -> str | None:
+        """Почему защита не видит приборы.
+
+        Returns:
+            Причину слепоты либо ``None``, если защита работает.
+        """
+        return self._blind_reason
 
     async def _forbidden_reason(self, entity_id: str) -> str | None:
         """Почему этому кондиционеру охлаждать нельзя.

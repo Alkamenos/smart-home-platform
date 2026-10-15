@@ -265,3 +265,87 @@ def test_threshold_comes_from_the_manifest() -> None:
     protection = _protection(FakeAdapter(), FakeDispatcher(), min_temp=3.5)
 
     assert protection.min_outside_temp == 3.5
+
+
+@pytest.mark.asyncio
+async def test_read_failure_is_named_as_blindness() -> None:
+    """Сбой чтения — слепота защиты, и она названа (аудит 2026-10-16, К-4).
+
+    Прежде защита молча пропускала проход: журнал видел строку WARNING, а снаружи
+    служба выглядела работающей. Молчание кондиционера и молчание защиты значат
+    разное — «нечего делать» против «не могу проверить».
+
+    Returns:
+        Ничего.
+    """
+    protection = AirConditionerProtection(
+        adapter=FakeAdapter(fail=True), dispatcher=FakeDispatcher(), entities=[AC]
+    )
+
+    turned_off = await protection.check_once()
+
+    assert turned_off == []
+    assert protection.blind_reason is not None, "слепота защиты осталась незамеченной"
+    assert protection.blind_count == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_response_with_live_devices_is_blindness() -> None:
+    """Пустой ответ дома при живых приборах — тоже слепота, а не тишина.
+
+    Returns:
+        Ничего.
+    """
+    protection = AirConditionerProtection(
+        adapter=FakeAdapter(modes={}), dispatcher=FakeDispatcher(), entities=[AC]
+    )
+
+    await protection.check_once()
+
+    assert protection.blind_reason is not None, "пустой ответ выдан за отсутствие приборов"
+
+
+@pytest.mark.asyncio
+async def test_sight_returns_after_a_failed_read() -> None:
+    """После удачного чтения защита снова видит приборы.
+
+    Returns:
+        Ничего.
+    """
+    adapter = FakeAdapter(fail=True, modes={AC: "off"})
+    protection = AirConditionerProtection(
+        adapter=adapter, dispatcher=FakeDispatcher(), entities=[AC]
+    )
+    await protection.check_once()
+    assert protection.blind_reason is not None
+
+    adapter.fail = False
+    await protection.check_once()
+
+    assert protection.blind_reason is None, "защита осталась слепой после удачного чтения"
+
+
+@pytest.mark.asyncio
+async def test_blindness_is_not_repeated_in_the_journal(caplog: Any) -> None:
+    """Долгая слепота не даёт строку на каждый проход (правило B67).
+
+    Args:
+        caplog: Захват записей журнала.
+
+    Returns:
+        Ничего.
+    """
+    import logging
+
+    protection = AirConditionerProtection(
+        adapter=FakeAdapter(fail=True), dispatcher=FakeDispatcher(), entities=[AC]
+    )
+
+    with caplog.at_level(logging.WARNING, logger="core.services.ac_protection"):
+        await protection.check_once()
+        await protection.check_once()
+        await protection.check_once()
+
+    warnings = [r for r in caplog.records if "слепа" in r.message]
+    assert len(warnings) == 1, f"слепота повторилась в журнале {len(warnings)} раз"
+    assert protection.blind_count == 3, "счётчик обязан видеть все проходы вслепую"
