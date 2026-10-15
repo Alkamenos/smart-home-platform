@@ -35,7 +35,6 @@ CONTRACT_PATH = ROOT / "src" / "features" / "CONTRACT.yaml"
 HOT_PATH_FILES = (
     "src/core/fsm/factory.py",
     "src/core/action_handlers.py",
-    "src/core/guards/builtin.py",
     "src/core/guards/schedule_guard.py",
 )
 """Файлы исполняемого пути.
@@ -44,6 +43,26 @@ HOT_PATH_FILES = (
 чтобы **проверить его форму**, а чтобы он влиял на поведение. Именно на этом
 ошиблась первая редакция записи #71, объявив `schedule` инертным.
 """
+
+HOT_PATH_DIRS = ("src/core/guards",)
+"""Каталоги исполняемого пути.
+
+Условия разрезаны по домам (BACKLOG B80), поэтому перечислять модули списком
+нельзя: забытый модуль молча выключил бы проверку, и «действующий» параметр,
+которого никто не читает, прошёл бы мимо неё.
+"""
+
+
+def _hot_path_files() -> list[Path]:
+    """Все файлы исполняемого пути — по одному списку.
+
+    Returns:
+        Пути к файлам: перечисленные прямо и все модули каталогов.
+    """
+    files = [ROOT / rel for rel in HOT_PATH_FILES]
+    for folder in HOT_PATH_DIRS:
+        files.extend(sorted((ROOT / folder).glob("*.py")))
+    return files
 
 
 def _hot_path_mentions(param: str) -> bool:
@@ -56,7 +75,7 @@ def _hot_path_mentions(param: str) -> bool:
         True, если параметр есть хотя бы в одном файле горячего пути.
     """
     needle = f'"{param}"'
-    return any(needle in (ROOT / rel).read_text(encoding="utf-8") for rel in HOT_PATH_FILES)
+    return any(needle in path.read_text(encoding="utf-8") for path in _hot_path_files())
 
 
 @pytest.fixture(scope="module")
