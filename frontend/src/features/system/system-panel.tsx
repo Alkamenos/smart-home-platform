@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -106,6 +106,12 @@ export function SystemPanel() {
     const dashboard = useQuery({
         queryKey: ["dashboard"],
         queryFn: () => apiFetch<DashboardPayload>("/api/v1/system/dashboard"),
+    });
+    const publishDashboard = useMutation({
+        mutationFn: () =>
+            apiFetch<{ published: boolean; detail: string }>("/api/v1/system/dashboard/publish", {
+                method: "POST",
+            }),
     });
     const cleanup = useQuery({
         queryKey: ["cleanup", cleanupRound],
@@ -436,10 +442,10 @@ export function SystemPanel() {
                 ) : (
                     <>
                         <p className="text-muted mb-2 text-xs">
-                            Дашборд собирается из дома: комнаты, приборы и датчики манифеста. В
-                            Home Assistant: «Настройки» → «Панели» → «Добавить панель» → режим
-                            правки → «Необработанный редактор конфигурации» — и вставить текст ниже.
-                            Новых сущностей платформа не создаёт.
+                            Дашборд собирается из дома: комнаты, приборы и датчики манифеста. В Home
+                            Assistant: «Настройки» → «Панели» → «Добавить панель» → режим правки →
+                            «Необработанный редактор конфигурации» — и вставить текст ниже. Новых
+                            сущностей платформа не создаёт.
                         </p>
                         <div className="flex flex-wrap items-center gap-3">
                             <button
@@ -451,12 +457,45 @@ export function SystemPanel() {
                                         .then(() => setCopiedDashboard(true));
                                 }}
                             >
-                                {copiedDashboard ? "конфигурация скопирована" : "скопировать конфигурацию"}
+                                {copiedDashboard
+                                    ? "конфигурация скопирована"
+                                    : "скопировать конфигурацию"}
                             </button>
-                            <span className="text-muted text-xs">{dashboard.data?.title ?? ""}</span>
+                            <button
+                                type="button"
+                                className="text-accent text-xs hover:underline"
+                                disabled={publishDashboard.isPending}
+                                onClick={() => {
+                                    if (
+                                        !window.confirm(
+                                            "Создать панель платформы в Home Assistant? Свои панели она не трогает: у неё отдельная, «behavioral-platform».",
+                                        )
+                                    ) {
+                                        return;
+                                    }
+                                    publishDashboard.mutate();
+                                }}
+                            >
+                                {publishDashboard.isPending
+                                    ? "публикую…"
+                                    : "создать панель в Home Assistant"}
+                            </button>
+                            <span className="text-muted text-xs">
+                                {dashboard.data?.title ?? ""}
+                            </span>
                         </div>
+                        {publishDashboard.data ? (
+                            <p className="text-muted mt-2 text-xs">{publishDashboard.data.detail}</p>
+                        ) : null}
+                        {publishDashboard.error ? (
+                            <p className="text-warning mt-2 text-xs">
+                                Панель не опубликована: проверьте права токена и связь с домом.
+                            </p>
+                        ) : null}
                         <details className="mt-2">
-                            <summary className="cursor-pointer text-sm">Показать конфигурацию</summary>
+                            <summary className="cursor-pointer text-sm">
+                                Показать конфигурацию
+                            </summary>
                             <pre className="border-border bg-surface-2 mt-2 max-h-72 overflow-auto rounded-md border p-3 text-xs">
                                 {dashboard.data?.yaml ?? ""}
                             </pre>

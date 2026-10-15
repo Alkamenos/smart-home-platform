@@ -2174,6 +2174,70 @@ class HAAdapter:
             return []
         return [state for state in states if isinstance(state, dict)]
 
+    async def find_dashboard(self, url_path: str) -> dict[str, Any] | None:
+        """Найти панель по её пути.
+
+        Args:
+            url_path: Путь панели (`behavioral` и подобные).
+
+        Returns:
+            Описание панели либо ``None``: панели нет или дом не ответил.
+        """
+        client = self._ws_client
+        if client is None:
+            return None
+        answer = await client.command("lovelace/dashboards/list")
+        panels = answer.get("result") if isinstance(answer, dict) else None
+        for panel in panels or []:
+            if isinstance(panel, dict) and panel.get("url_path") == url_path:
+                return panel
+        return None
+
+    async def create_dashboard(
+        self, url_path: str, title: str, icon: str = "mdi:home-automation"
+    ) -> bool:
+        """Создать панель в Home Assistant (BACKLOG B79).
+
+        Панель создаётся **отдельная**, со своим путём: чужие панели владельца
+        платформа не трогает.
+
+        Args:
+            url_path: Путь новой панели.
+            title: Название панели.
+            icon: Значок в списке панелей.
+
+        Returns:
+            True, если панель создана (или уже была).
+        """
+        client = self._ws_client
+        if client is None:
+            return False
+        answer = await client.command(
+            "lovelace/dashboards/create",
+            url_path=url_path,
+            title=title,
+            icon=icon,
+            show_in_sidebar=True,
+            require_admin=False,
+        )
+        return bool(isinstance(answer, dict) and answer.get("success"))
+
+    async def save_dashboard_config(self, url_path: str, config: dict[str, Any]) -> bool:
+        """Записать конфигурацию панели.
+
+        Args:
+            url_path: Путь панели.
+            config: Конфигурация Lovelace.
+
+        Returns:
+            True, если дом принял конфигурацию.
+        """
+        client = self._ws_client
+        if client is None:
+            return False
+        answer = await client.command("lovelace/config/save", url_path=url_path, config=config)
+        return bool(isinstance(answer, dict) and answer.get("success"))
+
     async def get_entity_registry(self) -> list[dict[str, Any]]:
         """Прочитать реестр сущностей Home Assistant (BACKLOG B77).
 
