@@ -229,8 +229,13 @@ async def get_overview(request: Request) -> JSONResponse:
     # Обход дома (BACKLOG F6): проблемы за пределами приборов манифеста — датчики
     # улицы и грядок, батарейки, молчащие приборы.
     health = getattr(container, "house_health", None)
+    # Повторов не заводим: о недоступном датчике комнаты уже сказал снимок
+    # локации, и вторая строка о том же приборе только зашумила бы панель.
+    reported = {str(alert.get("subject") or "") for alert in alerts}
     alerts.extend(
-        alert.model_dump() for alert in alerts_from_health(getattr(health, "last_report", None))
+        alert.model_dump()
+        for alert in alerts_from_health(getattr(health, "last_report", None))
+        if alert.subject and alert.subject not in reported
     )
 
     return JSONResponse(
