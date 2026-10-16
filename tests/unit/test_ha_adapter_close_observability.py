@@ -23,15 +23,22 @@ from pathlib import Path
 
 
 SOURCE = Path(__file__).resolve().parents[2] / "src" / "adapters" / "ha_adapter.py"
+#: Транспорт WebSocket живёт отдельным модулем (BACKLOG B80): записи о закрытии
+#: сокета и задачи чтения — там. Проверка читает оба модуля: важно, что запись
+#: есть в коде адаптера, а не в каком именно файле она лежит.
+TRANSPORT = Path(__file__).resolve().parents[2] / "src" / "adapters" / "ha_websocket.py"
 
 
 def _lines() -> list[str]:
-    """Читает исходник клиента.
+    """Читает исходники адаптера и его транспорта.
 
     Returns:
-        Строки файла.
+        Строки файлов.
     """
-    return SOURCE.read_text(encoding="utf-8").splitlines()
+    return (
+        SOURCE.read_text(encoding="utf-8").splitlines()
+        + TRANSPORT.read_text(encoding="utf-8").splitlines()
+    )
 
 
 class TestCloseIsObservable:
