@@ -181,8 +181,16 @@ class Collector:
 
 
 @pytest.mark.asyncio
-async def test_decision_off_device_on_is_a_mismatch() -> None:
-    """Решение «выключено», прибор горит — расхождение названо."""
+async def test_decision_off_device_on_is_a_yield_not_a_problem() -> None:
+    """Решение «выключено», прибор горит — уступка человеку, а не проблема.
+
+    Такого мы не просили: включить прибор мог только кто-то другой. Считать это
+    отказом и повторять своё «выключить» значит гасить свет за человеком — боевая
+    жалоба владельца 2026-10-16 (включил свет в спальне, через полминуты погас).
+
+    Returns:
+        Ничего.
+    """
     engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
     adapter = FakeAdapter({DEVICE: "on"})
 
@@ -192,7 +200,24 @@ async def test_decision_off_device_on_is_a_mismatch() -> None:
     assert entry.device_state == "on"
     assert entry.mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
     assert entry.mismatch is True
-    assert snapshot.problem_count == 1
+    assert entry.mismatch_is_fault is False, "включённое не нами названо отказом"
+    assert snapshot.problem_count == 0, "уступка человеку попала в проблемы дома"
+
+
+@pytest.mark.asyncio
+async def test_light_turned_on_by_hand_is_not_turned_off() -> None:
+    """Свет, включённый человеком, сторож не гасит повтором решения.
+
+    Returns:
+        Ничего.
+    """
+    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
+    adapter = FakeAdapter({DEVICE: "on"})
+    watchdog = make_watchdog(engine, adapter)
+
+    await watchdog.check_once()
+
+    assert engine.triggered == [], "сторож повторил «выключить» прибору, который включил человек"
 
 
 @pytest.mark.asyncio
@@ -278,9 +303,15 @@ async def test_unknown_state_is_not_guessed() -> None:
 
 @pytest.mark.asyncio
 async def test_problem_is_published_once_and_resolved() -> None:
-    """Проблема публикуется при появлении и устранении, а не каждый цикл."""
-    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
-    adapter = FakeAdapter({DEVICE: "on"})
+    """Проблема публикуется при появлении и устранении, а не каждый цикл.
+
+    Проверяется на **настоящем отказе**: автомат решил включить, а прибор не
+    включился — команда не дошла. Обратный случай («включено не нами») отказом не
+    считается: это чьё-то действие, и повторять своё «выключить» в ответ значит
+    гасить свет за человеком (жалоба владельца 2026-10-16).
+    """
+    engine = FakeEngine({FSM_ID: "ON_MOTION"}, {FSM_ID: DEVICE}, {FSM_ID: "on"})
+    adapter = FakeAdapter({DEVICE: "off"})
     bus = EventBus()
     collector = Collector()
     bus.subscribe(EVENT_PLATFORM_PROBLEM, collector)
@@ -293,7 +324,7 @@ async def test_problem_is_published_once_and_resolved() -> None:
     assert [event["kind"] for event in collector.events] == [PROBLEM_DEVICE_MISMATCH]
     assert collector.events[0]["resolved"] is False
 
-    adapter.device_states[DEVICE] = "off"
+    adapter.device_states[DEVICE] = "on"
     await watchdog.check_once()
     await watchdog._drain_publish_tasks()
     assert collector.events[-1]["kind"] == PROBLEM_DEVICE_MISMATCH
@@ -330,20 +361,20 @@ async def test_manual_override_supplier_failure_is_not_a_fault() -> None:
         """Проверка блокировки, которая падает."""
         raise RuntimeError("трекер недоступен")
 
-    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
-    adapter = FakeAdapter({DEVICE: "on"})
+    engine = FakeEngine({FSM_ID: "ON_MOTION"}, {FSM_ID: DEVICE}, {FSM_ID: "on"})
+    adapter = FakeAdapter({DEVICE: "off"})
 
     snapshot = await make_watchdog(engine, adapter, manual_override=broken).check_once()
 
-    assert snapshot.entries[0].mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
+    assert snapshot.entries[0].mismatch_reason == MISMATCH_DEVICE_OFF_DECISION_ON
     assert snapshot.problem_count == 1
 
 
 @pytest.mark.asyncio
 async def test_divergence_repeats_the_decision() -> None:
     """Прибор разошёлся с решением — автомат просит повторить решение (B64)."""
-    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
-    adapter = FakeAdapter({DEVICE: "on"})
+    engine = FakeEngine({FSM_ID: "ON_MOTION"}, {FSM_ID: DEVICE}, {FSM_ID: "on"})
+    adapter = FakeAdapter({DEVICE: "off"})
 
     await make_watchdog(engine, adapter).check_once()
 
@@ -353,8 +384,8 @@ async def test_divergence_repeats_the_decision() -> None:
 @pytest.mark.asyncio
 async def test_divergence_repeats_are_bounded() -> None:
     """Неотвечающий прибор не получает команду каждый цикл сторожа."""
-    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
-    adapter = FakeAdapter({DEVICE: "on"})
+    engine = FakeEngine({FSM_ID: "ON_MOTION"}, {FSM_ID: DEVICE}, {FSM_ID: "on"})
+    adapter = FakeAdapter({DEVICE: "off"})
     watchdog = make_watchdog(engine, adapter)
 
     for _ in range(DIVERGENCE_REASSERT_ATTEMPTS + 2):
@@ -366,15 +397,15 @@ async def test_divergence_repeats_are_bounded() -> None:
 @pytest.mark.asyncio
 async def test_divergence_counter_resets_when_device_agrees() -> None:
     """Прибор согласился — следующий отказ снова получает повторы."""
-    engine = FakeEngine({FSM_ID: "OFF"}, {FSM_ID: DEVICE}, {FSM_ID: "off"})
-    adapter = FakeAdapter({DEVICE: "on"})
+    engine = FakeEngine({FSM_ID: "ON_MOTION"}, {FSM_ID: DEVICE}, {FSM_ID: "on"})
+    adapter = FakeAdapter({DEVICE: "off"})
     watchdog = make_watchdog(engine, adapter)
 
     for _ in range(DIVERGENCE_REASSERT_ATTEMPTS):
         await watchdog.check_once()
-    adapter.device_states[DEVICE] = "off"
-    await watchdog.check_once()
     adapter.device_states[DEVICE] = "on"
+    await watchdog.check_once()
+    adapter.device_states[DEVICE] = "off"
     await watchdog.check_once()
 
     assert len(engine.triggered) == DIVERGENCE_REASSERT_ATTEMPTS + 1

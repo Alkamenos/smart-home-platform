@@ -15,6 +15,7 @@ from typing import Any
 
 from webui.services.alerts import (
     KIND_DEVICE_MISMATCH,
+    SEVERITY_INFO,
     SEVERITY_WARNING,
     alerts_from_watchdog,
 )
@@ -37,19 +38,42 @@ def _entry(**fields: Any) -> Any:
     return SimpleNamespace(**base)
 
 
-def test_mismatch_becomes_alert() -> None:
-    """«Горит, хотя решение — выключено» становится тревогой с объяснением."""
+def test_turned_on_by_someone_is_only_information() -> None:
+    """«Горит, хотя решение — выключено» — знать, но не вмешиваться.
+
+    Такого мы не просили: прибор включил кто-то другой. Это объяснимое расхождение,
+    а не отказ (жалоба владельца 2026-10-16: свет в спальне гасили за человеком).
+
+    Returns:
+        Ничего.
+    """
     snapshot = SimpleNamespace(
         entries=(_entry(device_state="on", mismatch_reason="device_on_decision_off"),)
     )
 
     alerts = alerts_from_watchdog(snapshot)
 
-    assert len(alerts) == 1
+    assert len(alerts) == 1, "о включённом не нами стоит сказать"
     assert alerts[0].kind == KIND_DEVICE_MISMATCH
     assert alerts[0].subject == DEVICE
-    assert alerts[0].severity == SEVERITY_WARNING
+    assert alerts[0].severity == SEVERITY_INFO, "уступка человеку названа вмешательством"
     assert "выключено" in alerts[0].detail
+
+
+def test_real_fault_becomes_a_warning() -> None:
+    """Настоящий отказ — «решили включить, а прибор не включился» — тревога.
+
+    Returns:
+        Ничего.
+    """
+    snapshot = SimpleNamespace(
+        entries=(_entry(device_state="off", mismatch_reason="device_off_decision_on"),)
+    )
+
+    alerts = alerts_from_watchdog(snapshot)
+
+    assert len(alerts) == 1
+    assert alerts[0].severity == SEVERITY_WARNING
 
 
 def test_matching_entries_are_ignored() -> None:

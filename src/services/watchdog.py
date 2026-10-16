@@ -84,9 +84,17 @@ MISMATCH_DEVICE_UNAVAILABLE = "device_unavailable"
 MISMATCH_MANUAL_OVERRIDE = "manual_override_active"
 
 #: Виды расхождения, которые являются отказом (проблема), а не уступкой человеку.
+#:
+#: «Прибор включён, а решение — выключить» здесь **намеренно нет**: такого мы не
+#: просили. Включить прибор мог только кто-то другой — человек у выключателя,
+#: кнопка, сценарий Home Assistant. Повторять в ответ своё «выключить» значит
+#: гасить свет за человеком (боевая жалоба владельца 2026-10-16: включил свет в
+#: спальне, через полминуты он погас — и так трижды).
+#:
+#: Отказ — это обратное: мы решили включить, а прибор не включился (наша команда
+#: не дошла). Только такие расхождения и повторяются.
 MISMATCH_FAULT_REASONS = frozenset(
     {
-        MISMATCH_DEVICE_ON_DECISION_OFF,
         MISMATCH_DEVICE_OFF_DECISION_ON,
         MISMATCH_DEVICE_UNAVAILABLE,
     }
@@ -783,9 +791,15 @@ class WatchdogService:
             # решено держать горящей, нечего.
             if not _agrees_with_device(own.get(entry.entity_id), expected):
                 reason = None
-            if reason in MISMATCH_FAULT_REASONS and self._manual_override_active(entry.device):
+            if (
+                reason is not None
+                and reason != MISMATCH_DEVICE_UNAVAILABLE
+                and self._manual_override_active(entry.device)
+            ):
                 # Человек вмешался: автоматика уступает по правилу оверрайда.
-                # Это расхождение, но не отказ — прибора чинить нечего.
+                # Это расхождение, но не отказ — прибора чинить нечего. Так
+                # называется и «включено не нами», когда о вмешательстве известно
+                # (правило владельца: уступка объяснима и временна).
                 reason = MISMATCH_MANUAL_OVERRIDE
             if reason is not None:
                 logger.warning(
