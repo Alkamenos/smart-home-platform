@@ -175,17 +175,7 @@ class LocationMirror:
             ok = (
                 await self._send(
                     f"{self._prefix}/location/{location_id}/{role}/attributes",
-                    json.dumps(
-                        {
-                            "value": reading.value,
-                            "unit": reading.unit,
-                            "at": reading.at,
-                            "stale": reading.stale,
-                            "available": reading.available,
-                            "entity_id": reading.entity_id,
-                        },
-                        ensure_ascii=False,
-                    ),
+                    json.dumps(_attributes_payload(reading), ensure_ascii=False),
                 )
                 and ok
             )
@@ -309,8 +299,39 @@ class LocationMirror:
         }
 
 
+def _attributes_payload(reading: Any) -> dict[str, Any]:
+    """Показание для топика атрибутов.
+
+    Недоступное показание едет как ``null``, а не словом `unavailable`: дом
+    разбирает этот словарь и ругается на слово в числовом значении — «Value error
+    while updating state of sensor.griadki_batareika, topic:
+    'behavioral/location/gryadki/battery/attributes'». За месяцы это дало 507
+    повторов в журнале Home Assistant (живая находка 2026-10-16).
+
+    Args:
+        reading: Показание снимка.
+
+    Returns:
+        Словарь атрибутов для публикации.
+    """
+    return {
+        "value": reading.value if reading.available else None,
+        "unit": reading.unit,
+        "at": reading.at,
+        "stale": reading.stale,
+        "available": reading.available,
+        "entity_id": reading.entity_id,
+    }
+
+
 def _state_payload(reading: Any) -> str:
     """Значение показания для топика состояния.
+
+    Недоступное показание публикуется **пустым** значением, а не словом
+    `unavailable`: числовой датчик в Home Assistant такое значение не принимает и
+    пишет ошибку в свой журнал — «Value error while updating state of
+    sensor.griadki_batareika» (живая находка 2026-10-16). Пустая строка означает
+    «неизвестно» и не считается ошибкой.
 
     Args:
         reading: Показание снимка.
@@ -318,6 +339,8 @@ def _state_payload(reading: Any) -> str:
     Returns:
         Строка значения (число без лишних нулей, иначе как есть).
     """
+    if not getattr(reading, "available", True):
+        return ""
     value = reading.value
     if isinstance(value, float) and value.is_integer():
         return str(int(value))

@@ -324,3 +324,65 @@ class TestFailureAndSwitch:
         )
 
         assert publisher.sent == []
+
+
+def test_unavailable_reading_is_published_as_empty_value() -> None:
+    """Недоступное показание уходит пустым, а не словом «unavailable».
+
+    Числовой датчик в Home Assistant слово не принимает и пишет ошибку в свой
+    журнал — живая находка 2026-10-16: `Value error while updating state of
+    sensor.griadki_batareika, topic: 'behavioral/location/gryadki/battery/attributes'`.
+    Пустое значение дом читает как «неизвестно», и это не ошибка.
+
+    Returns:
+        Ничего.
+    """
+    from datetime import datetime
+
+    from core.models.location import SensorReading
+    from core.services.location_mirror import _state_payload
+
+    moment = datetime(2026, 10, 16, 12, 0)
+    silent = SensorReading(
+        entity_id="sensor.griadki_batareika",
+        role="battery",
+        value="unavailable",
+        at=moment,
+        available=False,
+    )
+    alive = SensorReading(
+        entity_id="sensor.griadki_batareika", role="battery", value=100.0, at=moment
+    )
+
+    assert _state_payload(silent) == "", (
+        "слово unavailable уйдёт в числовой датчик и станет ошибкой"
+    )
+    assert _state_payload(alive) == "100"
+
+
+def test_unavailable_reading_has_no_value_in_attributes() -> None:
+    """В attributes недоступное показание едет `null`, а не словом.
+
+    Дом разбирает этот словарь и ругается на слово в числовом значении: 507
+    повторов в его журнале (живая находка 2026-10-16).
+
+    Returns:
+        Ничего.
+    """
+    from types import SimpleNamespace
+
+    from core.services.location_mirror import _attributes_payload
+
+    silent = SimpleNamespace(
+        entity_id="sensor.griadki_batareika",
+        value="unavailable",
+        unit="%",
+        at=None,
+        stale=True,
+        available=False,
+    )
+
+    payload = _attributes_payload(silent)
+
+    assert payload["value"] is None, f"слово уйдёт в числовой датчик: {payload}"
+    assert payload["available"] is False, "недоступность обязана быть видна"
