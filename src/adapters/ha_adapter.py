@@ -35,6 +35,7 @@ from adapters.ha_constants import (
     _NUMERIC_ROLES as _NUMERIC_ROLES,
     _VENTILATION_RETRIGGER_ROLES as _VENTILATION_RETRIGGER_ROLES,
     COMMAND_ECHO_WINDOW_SEC as COMMAND_ECHO_WINDOW_SEC,
+    DIVERGENCE_COMMAND_WINDOW_SEC as DIVERGENCE_COMMAND_WINDOW_SEC,
     GLOBAL_ENTITY_FIELDS as GLOBAL_ENTITY_FIELDS,
     MANUAL_OFF_VALUES as MANUAL_OFF_VALUES,
     MANUAL_ON_VALUES as MANUAL_ON_VALUES,
@@ -1005,6 +1006,30 @@ class HAAdapter:
             recent = {}
             self._recent_commands = recent
         recent[entity_id] = time.monotonic()
+
+    def was_commanded_recently(self, entity_id: str) -> bool:
+        """Приказывали ли мы этому прибору недавно.
+
+        Нужно сторожу сверки (BACKLOG B86): повторять решение стоит только тогда,
+        когда приказ был **от нас** — расхождение значит «команда не дошла». Если
+        приказа не было, прибор изменил кто-то другой, и повторять своё решение
+        значит спорить с человеком.
+
+        Окно шире, чем у защиты от эха собственной команды
+        (`COMMAND_ECHO_WINDOW_SEC`): там речь о секундах вокруг команды, здесь — о
+        цикле сторожа.
+
+        Args:
+            entity_id: Сущность прибора.
+
+        Returns:
+            True, если команда уходила не дольше
+            ``DIVERGENCE_COMMAND_WINDOW_SEC`` назад.
+        """
+        moment = self._recent_commands.get(entity_id)
+        if moment is None:
+            return False
+        return time.monotonic() - moment <= DIVERGENCE_COMMAND_WINDOW_SEC
 
     def _is_recent_command(self, entity_id: str) -> bool:
         """Командовали ли мы этому устройству только что.

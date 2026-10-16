@@ -551,6 +551,14 @@ class WatchdogService:
     #: отказ прибора от уступки человеку: расхождение из-за оверрайда — не
     #: проблема (концепция §7, п. 2).
     manual_override_supplier: Callable[[str], bool] | None = None
+    #: Признак «мы сами командовали этому прибору недавно» (BACKLOG B86). Нужен,
+    #: чтобы повтор решения не спорил с человеком: повторяем только то, что сами
+    #: приказывали (команда не дошла). Если приказа не было, прибор изменил
+    #: кто-то другой — человек, кнопка, сценарий — и это уступка, а не отказ.
+    #:
+    #: Без источника считаем, что приказ был: сторож обязан чинить неотвечающие
+    #: приборы, а в бою источник всегда есть (его подставляет контейнер).
+    command_recency_supplier: Callable[[str], bool] | None = None
 
     #: Сколько раз решение уже повторялось для прибора (B64). Сбрасывается, когда
     #: прибор согласился с решением.
@@ -868,6 +876,16 @@ class WatchdogService:
             attempts = self._divergence_attempts.get(entry.entity_id, 0)
             if attempts >= DIVERGENCE_REASSERT_ATTEMPTS:
                 continue
+            if not self._commanded_recently(entry.device):
+                # Прибора мы не трогали — значит его изменил кто-то другой. Своё
+                # решение не повторяем: спорить с человеком хуже, чем оставить
+                # расхождение (в журнале оно названо, в тревогах видно).
+                logger.warning(
+                    f"Повтор решения для {entry.device} пропущен: мы этому прибору "
+                    f"не приказывали, а {entry.device_state!r} не совпало с "
+                    f"автоматом {entry.entity_id} ({entry.mismatch_reason})"
+                )
+                continue
             self._divergence_attempts[entry.entity_id] = attempts + 1
             logger.warning(
                 f"Повтор решения для {entry.device}: прибор {entry.device_state!r} "
@@ -878,6 +896,25 @@ class WatchdogService:
                 await trigger(entry.entity_id, DEVICE_DIVERGED_TRIGGER, respect_debounce=False)
             except Exception as exc:  # noqa: BLE001 — повтор не должен ронять проверку
                 logger.warning(f"Повтор решения для {entry.entity_id} не удался: {exc}")
+
+    def _commanded_recently(self, device_id: str) -> bool:
+        """Приказывали ли мы этому прибору недавно (BACKLOG B86).
+
+        Args:
+            device_id: Сущность прибора.
+
+        Returns:
+            True, если приказ был от нас; без источника — True: сторож обязан
+            чинить неотвечающие приборы, а в бою источник всегда есть.
+        """
+        supplier = self.command_recency_supplier
+        if supplier is None:
+            return True
+        try:
+            return bool(supplier(device_id))
+        except Exception as exc:  # noqa: BLE001 — наблюдатель не должен падать
+            logger.warning(f"Проверка «мы командовали прибору» для {device_id} не удалась: {exc}")
+            return True
 
     def _manual_override_active(self, device_id: str) -> bool:
         """Действует ли для прибора ручная блокировка.

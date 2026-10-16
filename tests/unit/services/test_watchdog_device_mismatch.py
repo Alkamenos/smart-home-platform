@@ -147,6 +147,7 @@ def make_watchdog(
     adapter: Any | None = None,
     event_bus: Any | None = None,
     manual_override: Any | None = None,
+    commanded_recently: Any | None = None,
 ) -> WatchdogService:
     """Собрать сторож с подменёнными движком и внешней системой.
 
@@ -155,6 +156,7 @@ def make_watchdog(
         adapter: Внешняя система-двойник.
         event_bus: Шина событий для проверки публикации проблем.
         manual_override: Признак действующей ручной блокировки.
+        commanded_recently: Признак «мы сами командовали прибору недавно».
 
     Returns:
         Сторож.
@@ -166,6 +168,7 @@ def make_watchdog(
         settings=WatchdogSettings(interval_sec=0.01),
         event_bus=event_bus,
         manual_override_supplier=manual_override,
+        command_recency_supplier=commanded_recently,
     )
 
 
@@ -531,3 +534,47 @@ async def test_snapshot_json_reports_device_state() -> None:
     payload = snapshot.to_json()
     assert '"device_state": "on"' in payload
     assert f'"mismatch": "{MISMATCH_DEVICE_ON_DECISION_OFF}"' in payload
+
+
+class TestRepeatOnlyForOurOwnCommand:
+    """Повтор решения — только за свой приказ (BACKLOG B86).
+
+    Сторож существует, чтобы чинить **недошедшую команду**. Но расхождение бывает
+    и от чужого действия: человек выключил свет, который автомат решил включить.
+    Тогда повтор — спор с человеком (жалоба владельца 2026-10-16 про спальню).
+    Различитель один: был ли приказ от нас.
+    """
+
+    @pytest.mark.asyncio
+    async def test_device_changed_without_our_command_is_not_repeated(self) -> None:
+        """Чужое действие не отменяется повтором решения.
+
+        Returns:
+            Ничего.
+        """
+        engine = FakeEngine({FSM_ID: "ON_MOTION"}, {FSM_ID: DEVICE}, {FSM_ID: "on"})
+        adapter = FakeAdapter({DEVICE: "off"})
+        watchdog = make_watchdog(engine, adapter, commanded_recently=lambda device: False)
+
+        await watchdog.check_once()
+
+        assert engine.triggered == [], (
+            "сторож повторил решение прибору, которого мы не трогали: это чужое действие"
+        )
+
+    @pytest.mark.asyncio
+    async def test_our_own_command_that_did_not_take_effect_is_repeated(self) -> None:
+        """Наша команда, которая не дошла, по-прежнему повторяется (смысл B64).
+
+        Returns:
+            Ничего.
+        """
+        engine = FakeEngine({FSM_ID: "ON_MOTION"}, {FSM_ID: DEVICE}, {FSM_ID: "on"})
+        adapter = FakeAdapter({DEVICE: "off"})
+        watchdog = make_watchdog(engine, adapter, commanded_recently=lambda device: True)
+
+        await watchdog.check_once()
+
+        assert engine.triggered == [(FSM_ID, DEVICE_DIVERGED_TRIGGER, False)], (
+            "наша недошедшая команда осталась без повтора"
+        )

@@ -572,6 +572,10 @@ class Container:
                 # а не отказ прибора: сторож спрашивает правило блокировки у
                 # посредника, а не повторяет его у себя (концепция §7, п. 2).
                 manual_override_supplier=self._manual_override_active,
+                # Повтор решения — только за свой приказ (BACKLOG B86): расхождение
+                # без нашего приказа значит чьё-то действие, и повторять своё
+                # решение было бы спором с человеком.
+                command_recency_supplier=getattr(self.adapter, "was_commanded_recently", None),
             )
         return self._watchdog
 
