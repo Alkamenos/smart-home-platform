@@ -34,7 +34,6 @@ from core.fsm.factory import FSMFactory
 from core.guards.builtin import register_all_guards
 from core.models.manifest import (
     Manifest,
-    all_sensor_entities,
     load_manifest,
     role_entities,
 )
@@ -1208,6 +1207,41 @@ class Container:
         self._start_location_state()
         return self._location_state
 
+    def _battery_watch_entities(self) -> list[str]:
+        """Сущности заряда, за которыми следит платформа.
+
+        Список берётся из манифеста — из роли ``battery`` комнат и локаций, — а не
+        выводится из имён датчиков. Вывод по имени (``<датчик>_battery``) ошибался
+        так, что наблюдение было наполовину мнимым: домен оставался от датчика,
+        поэтому получались сущности, которых в доме нет
+        (``binary_sensor.…_battery``, тогда как батарейка — ``sensor.…``), а сам
+        список повторялся — 26 записей на 13 имён, из них 6 придуманных (боевой
+        разбор 2026-10-17, B88). Дом отвечал на придуманные имена «404», и это
+        стало видно только после того, как «сущности нет» перестало выглядеть как
+        «не прочитали» (аудит К-5).
+
+        Датчики вне манифеста (уличные, терраса) описаны отдельно: их батарейки
+        добавляются правилами дома. Батарейки, не названные нигде, видит обход дома
+        (``house_health``): он читает состояния всего дома и сообщает о низком
+        заряде, поэтому без вывода по имени не теряется ничего.
+
+        Returns:
+            Сущности заряда без повторов, в порядке манифеста.
+        """
+        batteries: list[str] = []
+        places = [*self.manifest.rooms, *(self.manifest.locations or [])]
+        for place in places:
+            for entity in role_entities(getattr(place, "sensors", None), "battery"):
+                if entity not in batteries:
+                    batteries.append(entity)
+
+        rules = self.manifest.automation_rules
+        for domain in (rules.lighting, rules.climate, rules.ventilation):
+            for entity in getattr(domain, "battery_watch_entities", None) or ():
+                if entity not in batteries:
+                    batteries.append(entity)
+        return batteries
+
     def _start_sensor_health(self) -> None:
         """Запустить наблюдение за батарейками датчиков, если это возможно.
 
@@ -1222,23 +1256,7 @@ class Container:
         if adapter is None:
             return
 
-        # Батарейка названа по датчику: ESPHome публикует заряд отдельной
-        # сущностью с тем же префиксом. Список берётся из манифеста, а не
-        # сканируется по дому: подписка на всё — Known Issue #82.
-        batteries: list[str] = []
-        for room in self.manifest.rooms:
-            for sensor_id in all_sensor_entities(room.sensors):
-                if "_battery" not in sensor_id:
-                    batteries.append(f"{sensor_id.rsplit('_', 1)[0]}_battery")
-
-        # Датчики вне манифеста (уличные, терраса) в список не попадают, хотя
-        # их батарейки тоже садятся: добавляются явно в правилах дома.
-        rules = self.manifest.automation_rules
-        for domain in (rules.lighting, rules.climate, rules.ventilation):
-            for entity in getattr(domain, "battery_watch_entities", None) or ():
-                if entity not in batteries:
-                    batteries.append(entity)
-
+        batteries = self._battery_watch_entities()
         if not batteries:
             return
 
