@@ -352,7 +352,14 @@ class TestManifestRequirementsAreMet:
         # проверки охлаждения: летом в жару дом выдавал «решение принято».
         # `has_usable_reading` после этого остался неиспользуемым — как и
         # `is_day_time`, остаётся зарегистрированным ради внешних описаний.
+        #
+        # `device_is_off` пришёл в шаблоны света 2026-10-17 (B89): сторож сообщает
+        # одноразовый признак «прибор выключен», когда свет погасили вне платформы,
+        # и автомат приводит модель в соответствие вместо того, чтобы считать лампу
+        # горящей и не включать её по движению. У вентиляции тот же признак работает
+        # с 2026-10-13 (B54).
         assert guards == {
+            "device_is_off",
             "humidity_above_60",
             "humidity_below_60",
             "is_manual_override_enabled",
@@ -379,6 +386,7 @@ class TestManifestRequirementsAreMet:
             "may_cool": "make_may_cool",
             "may_dry": "make_may_dry",
             "may_stay_idle": "make_may_stay_idle",
+            "device_is_off": "make_device_is_off",
         }
         for name in guards:
             assert hasattr(builtin, factories[name]), f"для `{name}` нет реализации"

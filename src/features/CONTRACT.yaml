@@ -205,7 +205,7 @@ templates:
     reachable: true
     in_manifest: []
     actions: [turn_on_light, turn_off_light]
-    guards: [is_manual_override_enabled, stops_on_sleep, is_night_time]
+    guards: [is_manual_override_enabled, stops_on_sleep, is_night_time, device_is_off]
     triggers:
       sunset_started: НЕТ ПРОИСХОДИТЕЛЯ
       sleep_started: НЕТ ПРОИСХОДИТЕЛЯ
@@ -274,7 +274,7 @@ templates:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
     actions: [turn_on_light, turn_off_light]
-    guards: [may_turn_on, is_manual_override_enabled]
+    guards: [may_turn_on, is_manual_override_enabled, device_is_off]
     triggers:
       motion_detected: sensor
       manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ
@@ -316,7 +316,7 @@ templates:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
     actions: [turn_on_night_light, turn_off_night_light]
-    guards: [modifier_is_on, is_night_time]
+    guards: [modifier_is_on, is_night_time, device_is_off]
     triggers:
       motion_detected: sensor
       timeout: engine
