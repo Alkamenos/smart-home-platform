@@ -367,6 +367,35 @@ class TestFileStateStore:
         all_states = await store.load_all()
         assert len(all_states) == 0
 
+    @pytest.mark.asyncio
+    async def test_saving_over_an_existing_file_does_not_use_rename(self, temp_file, monkeypatch):
+        """Запись поверх существующего файла не опирается на переименование.
+
+        `os.rename` на POSIX молча заменяет целевой файл, а на Windows падает с
+        `FileExistsError`: «атомарная запись» работала бы только на половине
+        систем (боевой прогон на Windows 2026-10-17 — сохранение поверх
+        существующего файла завершалось ошибкой).
+
+        Проверка сделана инъекцией — запретом на переименование, — потому что на
+        Linux дефект иначе не виден вовсе: там оба вызова работают одинаково.
+        """
+        store = FileStateStore(temp_file, debounce_sec=0.1, logger=None)
+        await store.save("light.test", {"current": "ON"})
+        await store.flush()
+
+        def _rename_is_forbidden(*args, **kwargs):
+            raise FileExistsError("[WinError 183] файл уже существует")
+
+        monkeypatch.setattr(state_store_module.os, "rename", _rename_is_forbidden)
+
+        await store.save("light.test", {"current": "OFF"})
+        await store.flush()
+
+        saved = json.loads(Path(temp_file).read_text())
+        assert saved["states"]["light.test"]["current"] == "OFF", (
+            "запись поверх существующего файла обязана проходить заменой, а не переименованием"
+        )
+
 
 # ============================================
 # InputTextStateStore Tests

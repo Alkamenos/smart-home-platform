@@ -53,6 +53,11 @@ dev = [
     # Documentation
     "interrogate>=1.7",
 
+    # База часовых поясов IANA. На Linux она системная, а на Windows её нет вовсе:
+    # без пакета `ZoneInfo("Asia/Yekaterinburg")` падает, и 7 файлов тестов не
+    # собираются вовсе (найдено при первом прогоне на Windows 2026-10-17).
+    "tzdata; sys_platform == 'win32'",
+
     # Utilities
     "psutil>=5.9",
 ]

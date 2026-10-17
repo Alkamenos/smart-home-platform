@@ -251,8 +251,13 @@ class FileStateStore(StateStore):
                 f.flush()
                 os.fsync(f.fileno())
 
-            # Атомарный rename
-            os.rename(temp_path, self._path)
+            # Замена, а не переименование. `os.rename` на POSIX молча заменяет
+            # целевой файл, а на Windows падает с `FileExistsError` — «атомарная
+            # запись» работала бы только на половине систем (боевой прогон на
+            # Windows 2026-10-17: сохранение поверх существующего файла
+            # завершалось ошибкой). То же правило и та же причина записаны в
+            # `atomic.py`, где замена делается через `os.replace`.
+            os.replace(temp_path, self._path)
 
             self._last_write_time = time.time()
 
@@ -260,7 +265,11 @@ class FileStateStore(StateStore):
                 self._logger.debug(f"Saved {len(self._cache)} states to {self._path}")
 
         except Exception as e:
-            self._logger.error(f"Failed to save state file: {e}")
+            # Обработчик ошибки не имеет права падать сам: без этой проверки
+            # `logger=None` (законный случай — хранилище без логирования)
+            # превращал настоящую причину отказа в `AttributeError` и скрывал её.
+            if self._logger:
+                self._logger.error(f"Failed to save state file: {e}")
             raise
 
     async def flush(self) -> None:
