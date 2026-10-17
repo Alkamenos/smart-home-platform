@@ -180,7 +180,7 @@ templates:
     reachable: true
     in_manifest: []
     actions: [cover_open, cover_close]
-    guards: [covers_should_open, covers_should_close]
+    guards: [covers_should_open, covers_should_close, device_is_off]
     triggers:
       settings_changed: platform
       device_state_diverged: platform

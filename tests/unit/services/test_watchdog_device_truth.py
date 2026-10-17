@@ -6,8 +6,10 @@
 включится по движению никогда (боевой разбор 2026-10-17, гостиная).
 
 Здесь проверяется вторая половина правила: вместо повтора автомату уходит
-одноразовый признак «прибор выключен», и шаблон света приводит модель в
-соответствие. Признак адресован только лампам: у штор и вентиляции свои правила.
+одноразовый признак «прибор не работает», и шаблон приводит модель в
+соответствие. Признак адресован лампам и шторам: у вентиляции свой сторож,
+который и сообщает факт (B54), и два источника одного признака давали бы двойной
+вход в «Приток MAX».
 
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
@@ -31,9 +33,13 @@ from services.watchdog import MISMATCH_DEVICE_OFF_DECISION_ON, WatchdogService, 
 LIGHT_FSM = "light.stol_lighting_10"
 LIGHT_DEVICE = "light.stol"
 
-#: Автомат шторы и её прибор — признак лампам, шторам нет.
+#: Автомат шторы и её прибор — «прибор не работает» у шторы значит `closed`.
 COVER_FSM = "cover.shtora_cover_modes_10"
 COVER_DEVICE = "cover.shtora"
+
+#: Автомат вентиляции и её прибор — у вентиляции свой сторож (B54).
+FAN_FSM = "fan.rekuperator_ventilation_modes_10"
+FAN_DEVICE = "fan.rekuperator"
 
 #: Событие сторожа о расхождении прибора и решения.
 DIVERGED = "device_state_diverged"
@@ -224,16 +230,35 @@ class TestDeviceTruthIsSentToLights:
         )
 
     @pytest.mark.asyncio
-    async def test_cover_is_not_told_the_light_truth(self) -> None:
-        """Штору признак не трогает: у неё свои правила, и она бывает в движении."""
+    async def test_cover_is_told_too(self) -> None:
+        """Шторе факт уходит: «прибор не работает» у неё — это `closed`.
+
+        Словарь расхождений у лампы и шторы общий (`device_off_decision_on`),
+        поэтому признак адресован обоим семействам, а что он значит — решает
+        шаблон. Боевой разбор 2026-10-17: штора спальни стояла в расхождении
+        «автомат `OPEN`, прибор `closed`».
+        """
         engine = _Engine({COVER_FSM: "OPEN"}, {COVER_FSM: COVER_DEVICE})
         adapter = _Adapter({COVER_DEVICE: "closed"})
 
         await _watchdog(engine, adapter).check_once()
 
+        assert engine.triggered == [(COVER_FSM, DIVERGED, {"_device_is_off": True})], (
+            "штора осталась в расхождении: модель считает её открытой, а правила "
+            "на смену флагов дома ничего не пересмотрят"
+        )
+
+    @pytest.mark.asyncio
+    async def test_fan_is_left_to_its_own_watchdog(self) -> None:
+        """Вентиляция не здесь: у неё свой сторож, который и сообщает факт (B54)."""
+        engine = _Engine({FAN_FSM: "AIRING"}, {FAN_FSM: FAN_DEVICE})
+        adapter = _Adapter({FAN_DEVICE: "off"})
+
+        await _watchdog(engine, adapter).check_once()
+
         assert engine.triggered == [], (
-            "штору тронули признаком, определённым для ламп: переносить его на "
-            "шторы без разбора нельзя"
+            "вентиляцию тронул общий сторож: у неё свой, и два источника одного "
+            "признака давали бы двойной вход в «Приток MAX»"
         )
 
     @pytest.mark.asyncio
