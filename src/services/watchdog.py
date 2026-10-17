@@ -879,12 +879,16 @@ class WatchdogService:
             if not self._commanded_recently(entry.device):
                 # Прибора мы не трогали — значит его изменил кто-то другой. Своё
                 # решение не повторяем: спорить с человеком хуже, чем оставить
-                # расхождение (в журнале оно названо, в тревогах видно).
+                # расхождение (в журнале оно названо, в тревогах видно). Но и
+                # оставлять модель в неправде нельзя: автомату сообщается
+                # настоящее состояние прибора, и шаблон света приводит модель в
+                # соответствие (B89, боевой разбор 2026-10-17).
                 logger.warning(
                     f"Повтор решения для {entry.device} пропущен: мы этому прибору "
                     f"не приказывали, а {entry.device_state!r} не совпало с "
                     f"автоматом {entry.entity_id} ({entry.mismatch_reason})"
                 )
+                await self._tell_device_truth(entry, trigger)
                 continue
             self._divergence_attempts[entry.entity_id] = attempts + 1
             logger.warning(
@@ -896,6 +900,46 @@ class WatchdogService:
                 await trigger(entry.entity_id, DEVICE_DIVERGED_TRIGGER, respect_debounce=False)
             except Exception as exc:  # noqa: BLE001 — повтор не должен ронять проверку
                 logger.warning(f"Повтор решения для {entry.entity_id} не удался: {exc}")
+
+    async def _tell_device_truth(self, entry: FsmSnapshotEntry, trigger: Any) -> None:
+        """Сказать автомату света правду о приборе, когда команды от нас не было (B89).
+
+        Свет мог погасить кто-то вне платформы — человек выключателем или
+        автоматизация Home Assistant. Ручное действие опознаётся по `user_id`, а у
+        этих источников пользователя нет, поэтому платформа изменения не замечает и
+        продолжает считать лампу горящей. Тогда движение в «горит» команду не шлёт
+        (шаблон исходит из того, что включать нечего), а повтор решения запрещён —
+        и расхождение остаётся навсегда: боевой разбор 2026-10-17 в гостиной, свет
+        не включался, пока по комнате ходили чаще, чем раз в 10 минут.
+
+        Признак одноразовый (``_device_is_off``): в накопленный контекст он не
+        попадает и на следующем событии не всплывает (B43).
+
+        Посылается только лампам: у штор и вентиляции свои правила — у вентиляции
+        свой сторож, шторы бывают в движении, — и переносить признак на них без
+        разбора нельзя.
+
+        Args:
+            entry: Запись снимка с фактическим состоянием прибора.
+            trigger: Вызов движка, принимающий (entity_id, событие, контекст).
+
+        Returns:
+            Ничего.
+        """
+        if not str(entry.device or "").startswith("light."):
+            return
+        state = entry.device_state
+        if not isinstance(state, str) or state.strip().lower() != "off":
+            return
+        try:
+            await trigger(
+                entry.entity_id,
+                DEVICE_DIVERGED_TRIGGER,
+                {"_device_is_off": True},
+                respect_debounce=False,
+            )
+        except Exception as exc:  # noqa: BLE001 — признание правды не должно ронять проверку
+            logger.warning(f"Сторож: правда о приборе {entry.device} не передана: {exc}")
 
     def _commanded_recently(self, device_id: str) -> bool:
         """Приказывали ли мы этому прибору недавно (BACKLOG B86).

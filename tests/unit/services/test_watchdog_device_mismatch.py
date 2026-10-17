@@ -56,6 +56,8 @@ class FakeEngine:
     outcomes: dict[str, str | None] = field(default_factory=dict)
     #: Записанные повторы решения: (автомат, событие, respect_debounce).
     triggered: list[tuple[str, str, bool]] = field(default_factory=list)
+    #: Контекст каждого вызова: признак прибора живёт здесь (B89).
+    contexts: list[dict[str, Any] | None] = field(default_factory=list)
 
     async def trigger(
         self,
@@ -78,6 +80,7 @@ class FakeEngine:
             True — повтор принят.
         """
         self.triggered.append((entity_id, event, respect_debounce))
+        self.contexts.append(external_ctx)
         return True
 
     def get_all_states(self) -> dict[str, Any]:
@@ -547,7 +550,13 @@ class TestRepeatOnlyForOurOwnCommand:
 
     @pytest.mark.asyncio
     async def test_device_changed_without_our_command_is_not_repeated(self) -> None:
-        """Чужое действие не отменяется повтором решения.
+        """Чужое действие не отменяется повтором, но правда о приборе уходит (B89).
+
+        Повтор по-прежнему запрещён: спорить с чужим действием хуже, чем оставить
+        расхождение. Но и молчать нельзя — иначе модель останется в «горит»,
+        движение команду не шлёт, и свет не включится никогда (боевой разбор
+        2026-10-17, гостиная). Поэтому уходит одноразовый признак «прибор
+        выключен», и шаблон света приводит модель в соответствие.
 
         Returns:
             Ничего.
@@ -558,8 +567,12 @@ class TestRepeatOnlyForOurOwnCommand:
 
         await watchdog.check_once()
 
-        assert engine.triggered == [], (
+        assert all(context for context in engine.contexts), (
             "сторож повторил решение прибору, которого мы не трогали: это чужое действие"
+        )
+        assert engine.contexts == [{"_device_is_off": True}], (
+            "автомату ушла не правда о приборе, а что-то другое: модель останется "
+            "в «горит», и движение свет не включит"
         )
 
     @pytest.mark.asyncio
