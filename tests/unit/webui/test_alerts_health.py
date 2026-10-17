@@ -106,3 +106,27 @@ def test_unreadable_house_is_a_warning_not_a_note() -> None:
     assert len(alerts) == 1, f"непрочитанный дом не породил тревоги: {alerts}"
     assert alerts[0].kind == KIND_HEALTH
     assert alerts[0].severity == "warning", "молчание обхода выдано за порядок в доме"
+
+
+def test_missing_entity_is_a_warning_not_a_note() -> None:
+    """Сущности манифеста нет в доме — «вмешаться», а не «знать» (К-5).
+
+    Опечатка в манифесте или снятый прибор: пока сущности нет, решения по ней не
+    принимаются, а причина называлась «нет данных» — то же, что при обрыве связи.
+
+    Returns:
+        Ничего.
+    """
+    alerts = alerts_from_health(
+        _report(
+            {
+                "kind": "missing_entity",
+                "subject": "sensor.net_datchika_temperature",
+                "detail": "сущности нет в доме",
+                "at": None,
+            }
+        )
+    )
+
+    assert len(alerts) == 1, f"отсутствующая сущность не породила тревоги: {alerts}"
+    assert alerts[0].severity == "warning", "пропажа сущности выдана за заметку"

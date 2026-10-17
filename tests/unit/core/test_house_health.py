@@ -340,3 +340,118 @@ async def test_unreadable_house_is_reported_as_problem() -> None:
     kinds = [problem["kind"] for problem in report["problems"]]
     assert "house_unreadable" in kinds, "молчание обхода выдано за порядок в доме"
     assert report["sensor_count"] == 0
+
+
+class TestMissingEntitiesAreNamed:
+    """Сущность из манифеста, которой нет в доме, — это проблема.
+
+    Обход перебирал то, что **отдал** Home Assistant, поэтому сущность манифеста,
+    которой в доме нет (опечатка, снятый прибор), не попадала ни в реестр, ни в
+    тревоги: сбой выглядел как норма (аудит 2026-10-16, К-5). Место из манифеста
+    известно (`areas`), поэтому отсутствие можно назвать, а не промолчать.
+    """
+
+    @pytest.mark.asyncio
+    async def test_entity_missing_from_home_is_a_problem(self) -> None:
+        """Отсутствующая сущность названа проблемой с местом из манифеста.
+
+        Returns:
+            Ничего.
+        """
+        adapter = FakeAdapter(
+            [_state("sensor.est_temperature", "23.0", device_class="temperature")]
+        )
+        service = _service(
+            adapter,
+            areas={
+                "sensor.est_temperature": ("комната", "Гостиная"),
+                "sensor.net_datchika_temperature": ("локация", "Улица"),
+            },
+        )
+
+        report = await service.sweep()
+
+        missing = [p for p in report["problems"] if p["kind"] == "missing_entity"]
+        assert [p["subject"] for p in missing] == ["sensor.net_datchika_temperature"], (
+            "сущность манифеста, которой нет в доме, обязана быть названа"
+        )
+        assert missing[0]["area"] == "Улица"
+        assert "нет" in missing[0]["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_present_entities_are_not_reported_missing(self) -> None:
+        """Читаемая сущность отсутствующей не объявляется.
+
+        Returns:
+            Ничего.
+        """
+        adapter = FakeAdapter(
+            [_state("sensor.est_temperature", "23.0", device_class="temperature")]
+        )
+        service = _service(adapter, areas={"sensor.est_temperature": ("комната", "Гостиная")})
+
+        report = await service.sweep()
+
+        assert [p for p in report["problems"] if p["kind"] == "missing_entity"] == []
+
+    @pytest.mark.asyncio
+    async def test_missing_room_device_is_reported_too(self) -> None:
+        """Прибор комнаты из манифеста обязан быть в доме — как и датчик.
+
+        Решение записано тестом: ``_health_areas`` кладёт в карту мест не только
+        датчики, но и приборы комнат, и прибор, которого в доме нет, — такая же
+        работа для оператора.
+
+        Returns:
+            Ничего.
+        """
+        adapter = FakeAdapter(
+            [_state("sensor.est_temperature", "23.0", device_class="temperature")]
+        )
+        service = _service(
+            adapter,
+            areas={
+                "sensor.est_temperature": ("комната", "Гостиная"),
+                "light.net_lampy": ("комната", "Гостиная"),
+            },
+        )
+
+        report = await service.sweep()
+
+        missing = [p["subject"] for p in report["problems"] if p["kind"] == "missing_entity"]
+        assert missing == ["light.net_lampy"], f"прибор комнаты не назван: {report['problems']}"
+
+    @pytest.mark.asyncio
+    async def test_unreadable_house_does_not_list_every_entity_as_missing(self) -> None:
+        """Не прочитали дом — это не повод объявлять отсутствующим всё подряд.
+
+        Иначе одна неудачная попытка чтения давала бы тревогу на каждую сущность
+        манифеста, и настоящие проблемы в них утонули бы.
+
+        Returns:
+            Ничего.
+        """
+        areas = {"sensor.a_temperature": ("комната", "Гостиная")}
+        service = _service(FakeAdapter(fail=True), areas=areas)
+
+        report = await service.sweep()
+
+        kinds = [p["kind"] for p in report["problems"]]
+        assert kinds == ["house_unreadable"], f"обход выдал догадки за знание: {kinds}"
+
+    @pytest.mark.asyncio
+    async def test_empty_read_is_not_a_list_of_missing_entities(self) -> None:
+        """Пустой ответ дома — «не прочитали», а не «все сущности исчезли».
+
+        Returns:
+            Ничего.
+        """
+        service = _service(
+            FakeAdapter([]),
+            areas={"sensor.a_temperature": ("комната", "Гостиная")},
+        )
+
+        report = await service.sweep()
+
+        kinds = [p["kind"] for p in report["problems"]]
+        assert kinds == ["house_unreadable"], f"пустой ответ выдан за отсутствие сущностей: {kinds}"

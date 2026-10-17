@@ -98,6 +98,18 @@ PROBLEM_LOW_BATTERY = "low_battery"
 #: докладывал «всё хорошо», когда датчики не читались вовсе (аудит 2026-10-16, К-3).
 PROBLEM_HOUSE_UNREADABLE = "house_unreadable"
 
+#: Сущность манифеста, которой нет в доме.
+#:
+#: Обход перебирает то, что **отдал** Home Assistant, поэтому сущность манифеста,
+#: которой в доме нет (опечатка в имени или снятый прибор), не попадала ни в
+#: реестр, ни в тревоги: сбой выглядел как норма. Место из манифеста известно,
+#: поэтому отсутствие называется, а не умалчивается (аудит 2026-10-16, К-5).
+#:
+#: Касается и датчиков, и приборов комнат: и те и другие описаны в манифесте
+#: (``Container._health_areas``), и прибор, которого в доме нет, — такая же работа
+#: для оператора, как пропавший датчик.
+PROBLEM_MISSING_ENTITY = "missing_entity"
+
 #: Дольше этого показание считается молчащим. Шесть часов: раз в сутки значения
 #: обновляют даже медленные датчики, а суточные пороги террасы не трогаем.
 DEFAULT_STALE_AFTER_SEC = 6 * 3600
@@ -192,6 +204,7 @@ class HouseHealthService:
         now = self._clock()
         problems: list[dict[str, Any]] = []
         areas: dict[str, list[dict[str, Any]]] = {}
+        seen: set[str] = set()
         if not states:
             # Дом не прочитался — это и есть проблема, и она обязана быть названа.
             # Прежде отчёт отдавал пустой список проблем, и панель тревог молчала:
@@ -214,6 +227,7 @@ class HouseHealthService:
             entity_id = item.get("entity_id")
             if not isinstance(entity_id, str):
                 continue
+            seen.add(entity_id)
             if not self._is_sensor(entity_id, item):
                 continue
             reading = self._reading(entity_id, item, now)
@@ -222,6 +236,19 @@ class HouseHealthService:
             problem = self._problem(reading)
             if problem is not None:
                 problems.append(problem)
+        if states:
+            # Сущности, которых дом не отдал. Только когда дом вообще отвечал:
+            # иначе пустой ответ превращался бы в тревогу на каждую сущность
+            # манифеста, и настоящие проблемы в них утонули бы.
+            #
+            # Оговорка честности: «не отдал» — наблюдение, а не приговор.
+            # Home Assistant, перезапускаясь, отдаёт неполный список (интеграции
+            # загружаются постепенно), поэтому сразу после его старта возможна
+            # разовая пачка таких записей — следующий обход её снимет. Обещать
+            # «сущности нет» сильнее наблюдаемого мы не станем.
+            for entity_id, (kind, name) in self.areas.items():
+                if entity_id not in seen:
+                    problems.append(self._missing_problem(entity_id, kind, name, now))
         self._report = {
             "generated_at": now.isoformat(),
             "problems": problems,
@@ -376,6 +403,34 @@ class HouseHealthService:
             "detail": f"{reading.get('name')} ({where}): {detail}",
             "value": reading.get("value"),
             "at": reading.get("at"),
+        }
+
+    def _missing_problem(
+        self, entity_id: str, kind: str, name: str, now: datetime
+    ) -> dict[str, Any]:
+        """Проблема «сущность манифеста, которой нет в доме».
+
+        Args:
+            entity_id: Идентификатор сущности из манифеста.
+            kind: Вид места (``комната`` или ``локация``).
+            name: Имя места.
+            now: Текущее время.
+
+        Returns:
+            Запись проблемы.
+        """
+        where = name or "без места"
+        return {
+            "kind": PROBLEM_MISSING_ENTITY,
+            "subject": entity_id,
+            "name": entity_id,
+            "area": where,
+            "detail": (
+                f"{entity_id} ({where}): сущности нет в доме — манифест ссылается "
+                f"на неё, а Home Assistant её не отдал"
+            ),
+            "value": None,
+            "at": now.isoformat(),
         }
 
     def _area_title(self, kind: str, name: str) -> str:
