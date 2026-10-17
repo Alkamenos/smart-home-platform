@@ -62,7 +62,12 @@ class DeploymentState:
             "started_at": self.started_at.isoformat(),
             "last_mode_change": self.last_mode_change.isoformat(),
             "backup_created": self.backup_created,
-            "backup_path": str(self.backup_path) if self.backup_path else None,
+            # Путь отдаётся в POSIX-виде: он попадает в ответ интерфейса и в журнал,
+            # и его вид не должен зависеть от системы, на которой платформа
+            # запущена (на Windows `str(Path)` даёт `\backup`). Обратные слэши
+            # Windows принимает как разделитель и в таком виде, а на Linux иначе
+            # и не бывает.
+            "backup_path": self.backup_path.as_posix() if self.backup_path else None,
             "health_status": self.health_status,
             "error_count": self.error_count,
             "warning_count": self.warning_count,

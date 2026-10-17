@@ -87,7 +87,12 @@ def _make_adapter() -> HAAdapter:
     return HAAdapter(mode="websocket", ws_url="ws://fake-ha:8123", token="test-token")
 
 
-async def _wait_until(condition, timeout: float = 3.0) -> bool:
+# Ожидание с запасом: проверяется, что переподключение **наступает**, а не то, за
+# сколько секунд. Измерено на Windows 2026-10-18: повторный `connect()` наступает
+# через ~3.7 с — первый connect, обнаружение смерти задачи чтения и пауза backoff
+# 1.0 с. Прежние 3.0 с стояли ровно на границе и на Windows не укладывались, хотя
+# на Linux хватало; из-за этого три проверки падали не на своём предмете (B78).
+async def _wait_until(condition, timeout: float = 10.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if condition():

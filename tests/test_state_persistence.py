@@ -17,7 +17,6 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -121,8 +120,6 @@ class TestSaveState:
 
         assert "light.test" in data
 
-    @patch("sys.platform", "linux")
-    @patch("core.persistence.state_persistence.fcntl")
     def test_lock_is_taken_on_separate_file(self, persistence):
         """Замок берётся на отдельный файл, а не на файл данных.
 
@@ -132,7 +129,9 @@ class TestSaveState:
         работало, хотя докстринг утверждал обратно.
 
         Проверка именно этого: файл-замок существует и не совпадает с файлом
-        данных.
+        данных. Замок берётся настоящий: прежние подмены (`sys.platform` и
+        `fcntl`) на Windows не работали — модуль выбирает примитив **при
+        импорте**, и `fcntl` в нём тогда вовсе нет (B78).
         """
         persistence.save_state("light.test", "ON", {})
 

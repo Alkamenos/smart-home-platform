@@ -30,6 +30,7 @@
 import os
 import subprocess
 import tarfile
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,63 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEPLOY_SH = REPO_ROOT / "deploy" / "scripts" / "deploy.sh"
+
+
+def _posix_toolchain_unusable() -> str | None:
+    """Почему проверки `deploy.sh` не могут идти здесь, либо ``None``.
+
+    Скрипту нужны bash, `sha256sum` и `tar` — и, что важнее, **пути хоста**:
+    GNU `tar` из Git-Bash принимает `C:` в пути за имя удалённого хоста
+    (`tar (child): Cannot connect to C: resolve failed`). Поэтому проверок две:
+    инструменты на месте и оболочка понимает путь Windows.
+
+    Молчаливый пропуск запрещён: причина называется и попадает в отчёт, иначе
+    «проверки прошли» значило бы «проверок не было» (урок `check_gitignore.sh`).
+
+    Returns:
+        Текст причины либо ``None``, если инструменты пригодны.
+    """
+    try:
+        tools = subprocess.run(
+            [
+                "bash",
+                "-c",
+                "command -v sha256sum >/dev/null 2>&1 && command -v tar >/dev/null 2>&1",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"нет POSIX-оболочки: {exc}"
+
+    if tools.returncode != 0:
+        detail = (tools.stderr or tools.stdout or "").strip().splitlines()
+        reason = "нет POSIX-инструментов (нужны bash, sha256sum, tar)"
+        return f"{reason}: {detail[-1]}" if detail else reason
+
+    # Та же проверка, что валит настоящие проверки: путь хоста в `tar`.
+    with tempfile.TemporaryDirectory() as work:
+        probe = subprocess.run(
+            ["bash", "-c", 'tar -czf "$1" -C "$2" .', "_", str(Path(work) / "probe.tar.gz"), work],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    if probe.returncode != 0:
+        detail = (probe.stderr or "").strip().splitlines()
+        reason = (
+            "оболочка не принимает пути Windows: GNU tar видит в `C:` имя "
+            "удалённого хоста, нужен WSL"
+        )
+        return f"{reason} ({detail[-1]})" if detail else reason
+    return None
+
+
+#: Причина, по которой модуль пропускается целиком (пусто — не пропускается).
+_TOOLCHAIN_REASON = _posix_toolchain_unusable()
+
+pytestmark = pytest.mark.skipif(_TOOLCHAIN_REASON is not None, reason=_TOOLCHAIN_REASON or "")
 
 
 @pytest.fixture
