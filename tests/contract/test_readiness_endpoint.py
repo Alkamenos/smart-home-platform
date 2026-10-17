@@ -259,6 +259,29 @@ class TestReadyReflectsRealFilesystem:
             "файл ключа должен существовать после старта приложения"
         )
 
+    def test_empty_encryption_key_variable_does_not_lose_the_key(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Пустая переменная ключа не лишает дом ключа шифрования.
+
+        Повтор боевого развёртывания 2026-10-17: `.env` из образца содержит
+        ``HOME_ASSISTANT_ENCRYPTION_KEY=`` без значения. Пока пустая строка
+        считалась заданным ключом, файл ключа не создавался, и `/ready` отдавал
+        503 с причиной `encryption_key`.
+        """
+        from webui.app import create_app
+
+        monkeypatch.setenv("DATA_PATH", str(tmp_path / "data"))
+        monkeypatch.setenv("HOME_ASSISTANT_ENCRYPTION_KEY", "")
+
+        response = TestClient(create_app()).get("/ready")
+
+        detail = response.json()["checks"]["encryption_key"]
+        assert detail["ok"] is True, f"пустое значение переменной сломало ключ: {detail}"
+        assert (tmp_path / "data" / "encryption.key").is_file(), (
+            "пустое значение переменной не должно отменять создание файла ключа"
+        )
+
 
 class TestReadinessDoesNotTouchTheDataDirectory:
     """Проверка не должна ничего портить."""

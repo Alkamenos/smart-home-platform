@@ -12,15 +12,26 @@
 3. файл ключа — путь из ``ENCRYPTION_KEY_PATH``, иначе
    ``<DATA_PATH>/encryption.key``.
 
+Пустое значение аргумента или переменной — это «ключ не задан», а не ключ из
+пустой строки. Иначе строка ``HOME_ASSISTANT_ENCRYPTION_KEY=`` без значения
+(как в образце ``.env``) отменяла бы файл ключа: ключ выводился бы из пустоты,
+файл не создавался, а токены шифровались ключом, который воспроизводит кто
+угодно (боевое развёртывание 2026-10-17).
+
 Если файла нет, он создаётся один раз и сохраняется в томе данных, то есть
 переживает перезапуск и пересоздание контейнера. Раньше ключ генерировался в
 памяти при каждом старте, и это приводило к разрушению токенов: см. Known
 Issue #47 и #53.
 
-Если файл существует, но прочитать его не удалось или он пуст, ключ НЕ
-генерируется заново — иначе платформа продолжила бы работу с новым ключом и
-зашифровала бы старые значения повторно. В этом случае поднимается
-``EncryptionKeyError``.
+Если файл существует, но прочитать его не удалось, он пуст или не содержит
+ключа Fernet, ключ НЕ генерируется заново и НЕ выводится из содержимого — иначе
+платформа продолжила бы работу с другим ключом и зашифровала бы старые значения
+повторно. В этом случае поднимается ``EncryptionKeyError``.
+
+Ключ, заданный вручную (аргументом или переменной) и не являющийся ключом
+Fernet, принимается как пароль: из него выводится ключ, но подстановка
+называется предупреждением в журнале — молчаливая замена скрывала бы, каким
+ключом на самом деле зашифрованы токены.
 """
 
 import logging
@@ -38,6 +49,8 @@ logger = logging.getLogger(__name__)
 
 #: Переменная окружения с путём к файлу ключа.
 KEY_FILE_ENV = "ENCRYPTION_KEY_PATH"
+#: Переменная окружения с самим ключом шифрования.
+KEY_ENV = "HOME_ASSISTANT_ENCRYPTION_KEY"
 #: Имя файла ключа внутри каталога данных.
 DEFAULT_KEY_FILENAME = "encryption.key"
 #: Права на файл ключа: читать и писать может только владелец.
@@ -87,8 +100,9 @@ def load_or_create_key_file(path: Path) -> str:
         Ключ в формате Fernet.
 
     Raises:
-        EncryptionKeyError: Файл существует, но пуст или не читается. Ключ в
-            этом случае НЕ генерируется заново.
+        EncryptionKeyError: Файл существует, но пуст, не читается или не содержит
+            ключа Fernet. Ключ в этом случае НЕ генерируется заново и НЕ выводится
+            из содержимого.
     """
     try:
         raw = path.read_text(encoding="utf-8")
@@ -117,7 +131,35 @@ def load_or_create_key_file(path: Path) -> str:
             f"из резервной копии."
         )
 
+    _require_fernet_key(key, path)
     return key
+
+
+def _require_fernet_key(key: str, path: Path) -> None:
+    """Убедиться, что содержимое файла ключа — настоящий ключ Fernet.
+
+    Проверка нужна, чтобы «ключ не разобран» не превратился в другой ключ: файл
+    создаёт сама платформа и всегда настоящим ключом Fernet, поэтому постороннее
+    содержимое означает потерю ключа, а не повод завести новый.
+
+    Args:
+        key: Прочитанное из файла значение.
+        path: Путь к файлу — называется в сообщении об ошибке.
+
+    Raises:
+        EncryptionKeyError: Значение не является ключом Fernet.
+    """
+    try:
+        Fernet(key.encode())
+    except Exception as exc:
+        detail = str(exc) or type(exc).__name__
+        raise EncryptionKeyError(
+            f"Файл ключа {path} не является ключом Fernet ({detail}). Ключ НЕ "
+            f"выводится из содержимого — иначе сохранённые токены стали бы "
+            f"нечитаемыми молча. Восстановите файл из резервной копии или создайте "
+            f'новый: python -c "from core.security.encryption import '
+            f'generate_encryption_key; print(generate_encryption_key())"'
+        ) from exc
 
 
 class TokenEncryptor:
@@ -126,40 +168,76 @@ class TokenEncryptor:
     Использует симметричное шифрование Fernet для защиты данных.
     """
 
-    def __init__(self, encryption_key: str | None = None) -> None:
+    def __init__(self, encryption_key: str | bytes | None = None) -> None:
         """Инициализация шифровальщика.
 
         Args:
-            encryption_key: Ключ шифрования. Если None, берётся из переменной
-                окружения ``HOME_ASSISTANT_ENCRYPTION_KEY``, а при её отсутствии
-                — из файла ключа, который создаётся при первом обращении и
-                сохраняется в томе данных.
+            encryption_key: Ключ шифрования — ключ Fernet, произвольная
+                строка-пароль или ``bytes``. Если ``None`` или пустая строка,
+                ключ берётся из переменной окружения
+                ``HOME_ASSISTANT_ENCRYPTION_KEY``, а при её отсутствии — из файла
+                ключа, который создаётся при первом обращении и сохраняется в
+                томе данных.
 
         Raises:
-            EncryptionKeyError: Файл ключа существует, но пуст или не читается.
+            EncryptionKeyError: Файл ключа существует, но пуст, не читается или
+                не является ключом Fernet.
         """
+        # Пустое значение — это «ключ не задан», а не ключ из пустой строки.
+        # Иначе `HOME_ASSISTANT_ENCRYPTION_KEY=` из образца `.env` отменяло бы
+        # файл ключа: ключ выводился бы из пустоты, файл не создавался, а токены
+        # шифровались бы ключом, который воспроизводит кто угодно (2026-10-17).
+        if isinstance(encryption_key, str) and not encryption_key.strip():
+            encryption_key = None
+
+        source = "аргумент"
         if encryption_key is None:
-            encryption_key = os.environ.get("HOME_ASSISTANT_ENCRYPTION_KEY")
+            source = f"переменная {KEY_ENV}"
+            encryption_key = os.environ.get(KEY_ENV)
+            if isinstance(encryption_key, str) and not encryption_key.strip():
+                encryption_key = None
 
         if encryption_key is None:
+            source = "файл ключа"
             key_file = resolve_key_file()
             encryption_key = load_or_create_key_file(key_file)
             logger.info("Ключ шифрования токенов взят из файла %s", key_file)
 
-        # Убеждаемся, что ключ в правильном формате
-        if isinstance(encryption_key, str):
-            try:
-                self._cipher = Fernet(
-                    encryption_key.encode()
-                    if len(encryption_key) == 44
-                    else b64encode(encryption_key.encode())
-                )
-            except Exception:
-                # Если ключ не в формате Fernet, кодируем его
-                key = b64encode(encryption_key.encode()[:32].ljust(32))
-                self._cipher = Fernet(key)
-        else:
-            self._cipher = Fernet(encryption_key)
+        self._cipher = self._build_cipher(encryption_key, source)
+
+    @staticmethod
+    def _build_cipher(encryption_key: str | bytes, source: str) -> Fernet:
+        """Собрать шифровальщик из ключа.
+
+        Ключ Fernet берётся как есть; произвольная строка принимается как пароль,
+        из которого ключ выводится. Подстановка не молчит: иначе оператор не узнал
+        бы, что шифрует не тем ключом, который задал (пункт К-8 аудита 2026-10-16).
+
+        Args:
+            encryption_key: Ключ Fernet, строка-пароль или ``bytes``.
+            source: Название источника ключа — попадает в предупреждение.
+
+        Returns:
+            Готовый шифровальщик.
+        """
+        if not isinstance(encryption_key, str):
+            return Fernet(encryption_key)
+
+        try:
+            return Fernet(
+                encryption_key.encode()
+                if len(encryption_key) == 44
+                else b64encode(encryption_key.encode())
+            )
+        except Exception:
+            logger.warning(
+                "Ключ шифрования из источника «%s» не в формате Fernet — "
+                "используется ключ, выведенный из переданного значения. Для дома "
+                "берите ключ, созданный generate_encryption_key: иначе сохранённые "
+                "токены читаются не тем ключом, который задан.",
+                source,
+            )
+            return Fernet(b64encode(encryption_key.encode()[:32].ljust(32)))
 
     def encrypt(self, token: str) -> str:
         """Шифрует токен.

@@ -19,6 +19,9 @@ Fernet» с запасным кодированием и `generate_encryption_ke
 
 from __future__ import annotations
 
+import logging
+import sys
+
 import pytest
 from cryptography.fernet import Fernet
 
@@ -202,6 +205,11 @@ class TestKeySources:
         expected = TokenEncryptor(encryption_key=existing)
         assert encryptor.decrypt(expected.encrypt("test_token_12345")) == "test_token_12345"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows не хранит POSIX-права: st_mode там синтетический, "
+        "проверять 600 нечем (переносимость — B78)",
+    )
     def test_key_file_is_not_world_readable(self, tmp_path, monkeypatch):
         """Файл ключа доступен только владельцу.
 
@@ -258,6 +266,106 @@ class TestKeySources:
         encryptor = TokenEncryptor(encryption_key=Fernet.generate_key())
 
         assert encryptor.decrypt(encryptor.encrypt("test_token_12345")) == "test_token_12345"
+
+
+class TestEmptyKeyIsNotAKey:
+    """Пустое значение ключа означает «не задано», а не ключ из пустой строки.
+
+    Боевое развёртывание 2026-10-17: в `.env` из образца строка
+    ``HOME_ASSISTANT_ENCRYPTION_KEY=`` шла без значения. В контейнер она
+    попадала **пустой строкой**, а конструктор отличал только ``None``:
+    ключ выводился из пустых байт, файл ключа не создавался, `/ready` отдавал
+    503, а токен источника шифровался ключом, который может воспроизвести
+    кто угодно.
+    """
+
+    def test_empty_environment_key_falls_back_to_file(self, tmp_path, monkeypatch):
+        """Пустая переменная окружения не отменяет файл ключа."""
+        monkeypatch.setenv("HOME_ASSISTANT_ENCRYPTION_KEY", "")
+        monkeypatch.delenv("ENCRYPTION_KEY_PATH", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+
+        encryptor = TokenEncryptor()
+
+        key_file = tmp_path / "encryption.key"
+        assert key_file.is_file(), "пустое значение не должно отменять создание файла ключа"
+        stored = key_file.read_text(encoding="utf-8").strip()
+        assert TokenEncryptor(encryption_key=stored).decrypt(encryptor.encrypt("t")) == "t"
+
+    def test_whitespace_environment_key_falls_back_to_file(self, tmp_path, monkeypatch):
+        """Значение из одних пробелов — тоже «не задано»."""
+        monkeypatch.setenv("HOME_ASSISTANT_ENCRYPTION_KEY", "   ")
+        monkeypatch.delenv("ENCRYPTION_KEY_PATH", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+
+        TokenEncryptor()
+
+        assert (tmp_path / "encryption.key").is_file()
+
+    def test_empty_explicit_key_falls_back_to_file(self, tmp_path, monkeypatch):
+        """Пустая строка, переданная аргументом, — тоже «не задано»."""
+        monkeypatch.delenv("HOME_ASSISTANT_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("ENCRYPTION_KEY_PATH", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+
+        TokenEncryptor(encryption_key="")
+
+        assert (tmp_path / "encryption.key").is_file()
+
+    def test_empty_argument_does_not_hide_the_environment_key(self, tmp_path, monkeypatch):
+        """Пустой аргумент равен «не передан»: переменная окружения не игнорируется."""
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+        key = generate_encryption_key()
+        monkeypatch.setenv("HOME_ASSISTANT_ENCRYPTION_KEY", key)
+
+        encryptor = TokenEncryptor(encryption_key="")
+
+        expected = TokenEncryptor(encryption_key=key)
+        assert encryptor.decrypt(expected.encrypt("t")) == "t"
+        assert not (tmp_path / "encryption.key").exists(), (
+            "при заданной переменной окружения файл ключа не нужен"
+        )
+
+
+class TestNonFernetKeyIsNotSilent:
+    """Подстановка ключа из произвольной строки не должна быть молчаливой.
+
+    Пункт К-8 аудита 2026-10-16: `encryption.py` выводит ключ из неразобранного
+    значения без единого слова в журнале — оператор не узнаёт, что шифрует
+    токены не тем ключом, который задал.
+    """
+
+    def test_arbitrary_explicit_key_is_reported(self, caplog):
+        """Ключ-пароль из аргумента назван в журнале, а не подставлен молча."""
+        caplog.set_level(logging.WARNING)
+
+        TokenEncryptor(encryption_key="short-secret-key")
+
+        assert "Fernet" in caplog.text, "подстановка ключа обязана быть названа в журнале"
+
+    def test_arbitrary_environment_key_is_reported(self, caplog, monkeypatch):
+        """То же для ключа из переменной окружения."""
+        caplog.set_level(logging.WARNING)
+        monkeypatch.setenv("HOME_ASSISTANT_ENCRYPTION_KEY", "произвольная-строка")
+
+        TokenEncryptor()
+
+        assert "Fernet" in caplog.text
+
+    def test_key_file_with_foreign_content_is_refused(self, tmp_path, monkeypatch):
+        """Файл ключа с посторонним содержимым — отказ, а не подмена ключа.
+
+        Файл создаёт сама платформа и всегда настоящим ключом Fernet: постороннее
+        содержимое означает потерю ключа, а вывод из него нового ключа сделал бы
+        сохранённые токены нечитаемыми молча.
+        """
+        monkeypatch.delenv("HOME_ASSISTANT_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("ENCRYPTION_KEY_PATH", raising=False)
+        monkeypatch.setenv("DATA_PATH", str(tmp_path))
+        (tmp_path / "encryption.key").write_text("not-a-fernet-key", encoding="utf-8")
+
+        with pytest.raises(EncryptionKeyError, match="Fernet"):
+            TokenEncryptor()
 
 
 class TestKeyGeneration:
