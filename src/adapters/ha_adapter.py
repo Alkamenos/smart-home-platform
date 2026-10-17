@@ -140,6 +140,18 @@ if TYPE_CHECKING:
 #: входит отдельно: его смена отлавливается по имени сущности (``sleep_modifier_entity``).
 
 
+#: Причины чтения одной сущности по имени (аудит 2026-10-16, К-5).
+#:
+#: Разделены намеренно: «сущности нет в доме» — дело оператора (опечатка в
+#: манифесте или снятый прибор), «не прочитали» — временная беда, которая
+#: лечится повтором. Прежде оба случая давали `None`, и опечатка в манифесте
+#: выглядела как обрыв связи: обогрев не включался, а причина называлась одна.
+READ_OK = "ok"
+READ_ENTITY_ABSENT = "entity_absent"
+READ_FAILED = "read_failed"
+READ_NO_CONNECTION = "no_connection"
+
+
 class HAAdapter:
     """
     Adapter for bidirectional communication with Home Assistant.
@@ -193,6 +205,10 @@ class HAAdapter:
         # признак не ставится — прибор уже работает, и лишнее включение с
         # процентом сбрасывало бы его режим (боевой разбор 2026-10-13).
         self._startup_reapply_done = False
+        # Сущности, об отсутствии которых уже сказано в журнале. Дом отвечает
+        # 404 не переставая, поэтому одна опечатка в манифесте писалась бы при
+        # каждом чтении и каждом подключении; жалоба нужна одна (К-5).
+        self._absent_reported: set[str] = set()
         # Уведомление о включении «мы спим»: контейнер ставит сюда свою
         # функцию, адаптер отдаёт её клиенту в момент чтения модификатора —
         # как только сущность стала известна, клиент начинает ловить её
@@ -1260,8 +1276,12 @@ class HAAdapter:
         """Прочитать состояние одной сущности через REST.
 
         Наружу, а не только для внутреннего чтения: наблюдение за батарейками
-        (спека 014, FR-048) и будущая сквозная проверка здоровья дома
-        (`BACKLOG.md`, F6) спрашивают состояние по имени, а не по событию.
+        (спека 014, FR-048) и сквозная проверка здоровья дома (F6) спрашивают
+        состояние по имени, а не по событию.
+
+        ``None`` здесь означает «значения нет» и **не говорит, почему**: сущности
+        нет в доме или её не удалось прочитать. Различие называет
+        ``_read_entity_state`` (К-5), и оно же уходит в журнал.
 
         Args:
             entity_id: Идентификатор сущности.
@@ -1269,7 +1289,8 @@ class HAAdapter:
         Returns:
             Состояние как строка либо ``None``, если сущность не ответила.
         """
-        return await self._read_entity_state(entity_id)
+        state, _reason = await self._read_entity_state(entity_id)
+        return state
 
     async def get_all_states(self) -> list[dict[str, Any]]:
         """Прочитать состояния всех сущностей одним запросом.
@@ -1443,19 +1464,24 @@ class HAAdapter:
             for value in node:
                 self._collect_entity_ids(value, found)
 
-    async def _read_entity_state(self, entity: str) -> str | None:
-        """Прочитать состояние одной сущности через REST.
+    async def _read_entity_state(self, entity: str) -> tuple[str | None, str]:
+        """Прочитать состояние одной сущности через REST и назвать причину.
+
+        Причины разделены намеренно (аудит 2026-10-16, К-5): «сущности нет в
+        доме» (ответ 404) — дело оператора, «не прочитали» — временная беда,
+        которую лечит повтор.
 
         Args:
             entity: Идентификатор сущности.
 
         Returns:
-            Состояние как строка либо ``None``, если сущность не ответила.
+            Пару «состояние, причина»: ``READ_OK``, ``READ_ENTITY_ABSENT``,
+            ``READ_FAILED`` либо ``READ_NO_CONNECTION``.
         """
         client = self._ws_client
         session = self._session
         if client is None or session is None:
-            return None
+            return None, READ_NO_CONNECTION
         base = cast(str, self._ws_url)
         base = base.replace("wss://", "https://").replace("ws://", "http://")
         url = f"{base.split('/api/websocket')[0].rstrip('/')}/api/states/{entity}"
@@ -1465,16 +1491,19 @@ class HAAdapter:
                 headers={"Authorization": f"Bearer {self._token}"},
                 timeout=aiohttp.ClientTimeout(total=5),
             ) as response:
+                if response.status == 404:
+                    self._report_absent_entity(entity)
+                    return None, READ_ENTITY_ABSENT
                 if response.status != 200:
                     logger.warning(
                         f"Глобальная сущность {entity} не прочитана: "
                         f"Home Assistant ответил {response.status}"
                     )
-                    return None
+                    return None, READ_FAILED
                 payload = await response.json()
         except Exception as exc:  # noqa: BLE001 — подключение важнее значения
             logger.warning(f"Глобальная сущность {entity} не прочитана: {exc}")
-            return None
+            return None, READ_FAILED
 
         state = payload.get("state") if isinstance(payload, dict) else None
         if entity.startswith("climate.") and isinstance(payload, dict):
@@ -1483,7 +1512,25 @@ class HAAdapter:
             attributes = payload.get("attributes")
             if isinstance(attributes, dict) and attributes.get("temperature") is not None:
                 state = attributes.get("temperature")
-        return str(state) if state is not None else None
+        return (str(state) if state is not None else None), READ_OK
+
+    def _report_absent_entity(self, entity: str) -> None:
+        """Назвать отсутствующую в доме сущность — один раз на процесс.
+
+        Args:
+            entity: Идентификатор сущности.
+
+        Returns:
+            Ничего.
+        """
+        if entity in self._absent_reported:
+            return
+        self._absent_reported.add(entity)
+        logger.warning(
+            f"HAAdapter: сущность {entity} отсутствует в доме (Home Assistant "
+            f"ответил 404) — манифест ссылается на неё, а дом её не отдаёт. "
+            f"Это опечатка в манифесте или снятый прибор, а не сбой чтения."
+        )
 
     async def _refresh_climate_globals(self) -> None:
         """Прочитать глобальные значения климата при подключении.
@@ -1497,12 +1544,7 @@ class HAAdapter:
         Returns:
             Ничего.
         """
-        client = self._ws_client
-        if client is None:
-            return
-        for role, entity in self.climate_entities.items():
-            state = await self._read_entity_state(entity)
-            client.store_global(role, state, entity)
+        await self._store_globals(self.climate_entities)
 
     async def _refresh_ventilation_globals(self) -> None:
         """Прочитать глобальные значения вентиляции при подключении.
@@ -1515,12 +1557,7 @@ class HAAdapter:
         Returns:
             Ничего.
         """
-        client = self._ws_client
-        if client is None:
-            return
-        for role, entity in self.ventilation_entities.items():
-            state = await self._read_entity_state(entity)
-            client.store_global(role, state, entity)
+        await self._store_globals(self.ventilation_entities)
 
     async def _refresh_cover_globals(self) -> None:
         """Прочитать флаги штор при подключении (спека 015).
@@ -1533,11 +1570,27 @@ class HAAdapter:
         Returns:
             Ничего.
         """
+        await self._store_globals(self.cover_entities)
+
+    async def _store_globals(self, entities: dict[str, str]) -> None:
+        """Прочитать глобальные сущности и записать их клиенту.
+
+        Одна и та же работа была в трёх местах — климат, вентиляция, шторы.
+        Собрана здесь, потому что различие причин чтения нужно в одном месте:
+        отсутствующая сущность называется в журнале, а не выдаётся за «нет
+        данных» (аудит 2026-10-16, К-5).
+
+        Args:
+            entities: Роль → сущность.
+
+        Returns:
+            Ничего.
+        """
         client = self._ws_client
         if client is None:
             return
-        for role, entity in self.cover_entities.items():
-            state = await self._read_entity_state(entity)
+        for role, entity in entities.items():
+            state, _reason = await self._read_entity_state(entity)
             client.store_global(role, state, entity)
 
     def _global_context(self) -> dict[str, Any]:
@@ -1633,7 +1686,7 @@ class HAAdapter:
             return
         for sensor_id in router.mapped_sensors():
             try:
-                state = await self._read_entity_state(sensor_id)
+                state, _reason = await self._read_entity_state(sensor_id)
                 if state is None:
                     continue
                 await router.route_state_change(

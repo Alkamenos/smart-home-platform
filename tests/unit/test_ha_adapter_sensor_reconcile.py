@@ -77,16 +77,21 @@ def _adapter(router: Any, states: dict[str, str | None]) -> HAAdapter:
         event_router=router,
     )
 
-    async def fake_read(entity: str) -> str | None:
-        """Вернуть заданное состояние датчика.
+    async def fake_read(entity: str) -> tuple[str | None, str]:
+        """Вернуть заданное состояние датчика вместе с причиной чтения.
+
+        Сверке причина не нужна, но читает она тот же метод, что и всё
+        остальное: различие «сущности нет в доме» / «не прочитали» живёт в нём
+        (аудит 2026-10-16, К-5).
 
         Args:
             entity: Датчик.
 
         Returns:
-            Состояние либо None.
+            Пару «состояние, причина».
         """
-        return states.get(entity)
+        state = states.get(entity)
+        return state, "ok" if state is not None else "read_failed"
 
     adapter._read_entity_state = fake_read  # type: ignore[method-assign]
     return adapter
