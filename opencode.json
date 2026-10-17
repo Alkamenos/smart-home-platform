@@ -148,6 +148,11 @@
             "action": "webfetch",
             "resource": "http://127.0.0.1*",
             "effect": "allow"
+        },
+        {
+            "action": "*",
+            "resource": "*",
+            "effect": "allow"
         }
     ],
     "provider": {
