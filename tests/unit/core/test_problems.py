@@ -162,6 +162,39 @@ class TestSummaryText:
         assert "Грядки: Батарея — не отвечает" in text
         assert "Гостиная: Свет над столом — автомат завис" in text
 
+    def test_same_place_and_reason_are_grouped(self) -> None:
+        """Одно место и одна причина называются один раз, без `0x…` в именах.
+
+        Returns:
+            Ничего.
+        """
+        text = summary_text(
+            [
+                {"kind": "unavailable", "name": "0xa4c138ef3971344e Батарея", "area": "Грядки"},
+                {
+                    "kind": "unavailable",
+                    "name": "0xa4c138ef3971344e Температура",
+                    "area": "Грядки",
+                },
+                {
+                    "kind": "unavailable",
+                    "name": "0xa4c138ef3971344e Освещённость",
+                    "area": "Грядки",
+                },
+                {
+                    "kind": "unavailable",
+                    "name": "Датчик освещённости Освещённость",
+                    "area": "Улица",
+                },
+            ]
+        )
+
+        assert text.startswith("4: ")
+        assert "Грядки: Батарея, Температура, Освещённость — не отвечают" in text
+        assert "Улица: Датчик освещённости Освещённость — не отвечает" in text
+        assert text.count("Грядки") == 1, "место повторяется в строке"
+        assert "0x" not in text, "технический префикс остался в тексте"
+
     def test_long_summary_is_cut(self) -> None:
         """Слишком длинная строка обрезается, а не ломает состояние."""
         problems = [

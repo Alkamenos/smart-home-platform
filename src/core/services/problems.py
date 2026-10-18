@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -45,6 +46,29 @@ PROBLEM_REASONS: dict[str, str] = {
 #: Предел длины состояния датчика: Home Assistant хранит состояние строкой и
 #: обрезает слишком длинные значения в интерфейсе.
 SUMMARY_LIMIT = 240
+
+#: Технический префикс Zigbee-устройства в имени (`0xa4c138ef3971344e Батарея`):
+#: владельцу он ничего не говорит, а место уже названо.
+_HEX_PREFIX = re.compile(r"^0x[0-9a-fA-F]+\s+")
+
+#: Причина в единственном и множественном числе: «Грядки: Батарея, Температура —
+#: не отвечают» читается, а «не отвечает» про три датчика — нет.
+_PLURALS: dict[str, str] = {
+    "не отвечает": "не отвечают",
+    "молчит": "молчат",
+}
+
+
+def clean_name(name: str) -> str:
+    """Убрать из имени прибора технический префикс.
+
+    Args:
+        name: Имя из проблемы.
+
+    Returns:
+        Имя без `0x…`.
+    """
+    return _HEX_PREFIX.sub("", name).strip() or name
 
 
 def watchdog_problems(
@@ -154,25 +178,36 @@ def compose_report(
 def summary_text(problems: list[dict[str, Any]] | None) -> str:
     """Человеческая строка проблем для состояния датчика.
 
+    Проблемы собираются по месту и причине: «Грядки: Батарея, Температура —
+    не отвечают» вместо трёх повторов «Грядки: …». Так строка короче, а
+    владелец видит картину, а не список.
+
     Args:
         problems: Список проблем.
 
     Returns:
-        «Проблем нет» либо «3: Гостиная: Свет — автомат завис; …».
+        «Проблем нет» либо «4: Грядки: … — не отвечают; Улица: … — не отвечает».
     """
     items = list(problems or [])
     if not items:
         return "Проблем нет"
 
-    parts: list[str] = []
+    grouped: dict[tuple[str, str], list[str]] = {}
     for problem in items:
-        name = str(problem.get("name") or problem.get("subject") or "проблема")
-        where = str(problem.get("area") or "")
+        where = str(problem.get("area") or "").strip()
         reason = PROBLEM_REASONS.get(
             str(problem.get("kind") or ""), str(problem.get("kind") or "проблема")
         )
-        label = f"{where}: {name}" if where else name
-        parts.append(f"{label} — {reason}")
+        name = clean_name(str(problem.get("name") or problem.get("subject") or "проблема"))
+        grouped.setdefault((where, reason), []).append(name)
+
+    parts: list[str] = []
+    for (where, reason), names in grouped.items():
+        unique = list(dict.fromkeys(names))
+        label = ", ".join(unique)
+        if len(unique) > 1:
+            reason = _PLURALS.get(reason, reason)
+        parts.append(f"{where}: {label} — {reason}" if where else f"{label} — {reason}")
 
     text = f"{len(items)}: " + "; ".join(parts)
     if len(text) > SUMMARY_LIMIT:
