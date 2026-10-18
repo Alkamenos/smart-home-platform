@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -132,6 +133,9 @@ class HouseHealthService:
         low_battery_percent: Порог заряда, ниже которого батарейка «на исходе».
         interval_minutes: Как часто обходить дом.
         clock: Источник времени; подменяется в тестах.
+        on_report: Кому отдать снимок обхода (зеркало проблем в Home Assistant).
+            Отказ подписчика не отменяет обход: публикация в MQTT — доставка, а
+            не условие работы.
     """
 
     def __init__(
@@ -143,6 +147,7 @@ class HouseHealthService:
         low_battery_percent: float = DEFAULT_LOW_BATTERY_PERCENT,
         interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
         clock: Any | None = None,
+        on_report: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self._adapter = adapter
         self.areas = dict(areas or {})
@@ -153,6 +158,7 @@ class HouseHealthService:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._task: asyncio.Task[None] | None = None
         self._report: dict[str, Any] | None = None
+        self._on_report = on_report
 
     @property
     def last_report(self) -> dict[str, Any] | None:
@@ -255,7 +261,24 @@ class HouseHealthService:
             "areas": areas,
             "sensor_count": sum(len(items) for items in areas.values()),
         }
+        await self._notify(self._report)
         return self._report
+
+    async def _notify(self, report: dict[str, Any]) -> None:
+        """Отдать снимок обхода подписчику, не роняя обход при отказе (FR-009).
+
+        Args:
+            report: Снимок обхода.
+
+        Returns:
+            Ничего.
+        """
+        if self._on_report is None:
+            return
+        try:
+            await self._on_report(report)
+        except Exception as exc:  # noqa: BLE001 — доставка не отменяет обход
+            logger.warning(f"Обход дома: снимок не доставлен: {exc}")
 
     async def _read_states(self) -> list[dict[str, Any]]:
         """Прочитать состояния всех сущностей.

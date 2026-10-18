@@ -28,6 +28,11 @@ from core.models.manifest import (
     Manifest,
     iter_role_entities,
 )
+from core.services.platform_mirror import PLATFORM_PROBLEMS_ENTITY_ID
+
+
+#: Заголовок представления платформы на дашборде.
+PLATFORM_VIEW_TITLE = "Платформа"
 
 
 #: Подпись и значок роли датчика.
@@ -89,8 +94,48 @@ class LovelaceGenerator:
         """
         views = [self._place_view(room) for room in manifest.rooms]
         views += [self._place_view(location) for location in manifest.locations]
+        if getattr(manifest.dashboard, "show_platform", True):
+            views.insert(0, self._platform_view())
         title = str(getattr(manifest.dashboard, "title", "") or "").strip()
         return {"title": title, "views": views}
+
+    def _platform_view(self) -> dict[str, Any]:
+        """Собрать представление платформы: «что требует внимания».
+
+        Сущность ``sensor.platform_problems`` создаёт зеркало платформы
+        (`core.services.platform_mirror`), а не манифест. Идентификатор берётся
+        из константы зеркала: прежняя версия писала ``sensor.behavioral_platform``
+        по памяти, и владелец видел «сущность недоступна».
+
+        Returns:
+            Представление Lovelace.
+        """
+        return {
+            "title": PLATFORM_VIEW_TITLE,
+            "path": "platform",
+            "cards": [
+                {
+                    "type": "entities",
+                    "title": "Что требует внимания",
+                    "entities": [
+                        {
+                            "entity": PLATFORM_PROBLEMS_ENTITY_ID,
+                            "name": "Проблем в доме",
+                            "icon": "mdi:home-alert",
+                        }
+                    ],
+                },
+                {
+                    "type": "markdown",
+                    "content": (
+                        "Число — сколько сейчас проблем в доме: молчащие датчики, "
+                        "севшие батарейки, недоступные приборы. Откройте сущность: "
+                        "в атрибутах список — что именно и где. Обновляется при "
+                        "обходе дома."
+                    ),
+                },
+            ],
+        }
 
     def _place_view(self, place: Any) -> dict[str, Any]:
         """Собрать представление одного места: комнаты или локации.

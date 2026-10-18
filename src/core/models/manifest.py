@@ -492,6 +492,13 @@ class Dashboard(BaseModel):
     rooms: list[str] = Field(default_factory=list)
     show_sensors: bool = True
     show_devices: bool = True
+    show_platform: bool = True
+    """Показывать ли сводку платформы: сколько проблем в доме и какие.
+
+    Выключить стоит дому без MQTT: сущность «Проблемы в доме» создаёт зеркало
+    платформы, и без него карточка ссылалась бы на несуществующую сущность
+    (именно так дашборд однажды открылся с «сущность недоступна»).
+    """
 
 
 class Manifest(BaseModel):

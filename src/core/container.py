@@ -185,6 +185,8 @@ class Container:
         self._location_prime_task: Any | None = None
         #: Зеркало снимков локаций в Home Assistant (спека 016).
         self._location_mirror: Any | None = None
+        #: Зеркало проблем дома (карточка тревог на дашборде, B79).
+        self._platform_mirror: Any | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
@@ -961,6 +963,7 @@ class Container:
                 adapter=self.adapter,
                 areas=self._health_areas(),
                 battery_types=dict(getattr(self.manifest, "battery_types", {}) or {}),
+                on_report=self._platform_problems_publisher(),
             )
             if self._house_health.start():
                 logger.info(
@@ -1100,6 +1103,43 @@ class Container:
         self._location_mirror.bind(self.event_bus)
         self._schedule_location_prime()
 
+    def _mqtt_publisher(self, adapter: Any) -> Any | None:
+        """Собрать публикатор MQTT через адаптер (зеркала, FR-008).
+
+        ``core`` не импортирует ``adapters`` (`.ai/04_RULES.md`), поэтому
+        публикация идёт вызовом сервиса через адаптер.
+
+        Args:
+            adapter: Адаптер Home Assistant либо ``None``.
+
+        Returns:
+            Функция ``(topic, payload, retain) -> bool`` либо ``None``.
+        """
+        if adapter is None:
+            return None
+
+        async def _publish(topic: str, payload: str, retain: bool) -> bool:
+            """Опубликовать топик через Home Assistant.
+
+            Args:
+                topic: Топик MQTT.
+                payload: Полезная нагрузка.
+                retain: Хранить ли сообщение на брокере.
+
+            Returns:
+                True, если Home Assistant принял публикацию.
+            """
+            return bool(
+                await adapter.call_service(
+                    "mqtt",
+                    "publish",
+                    "",
+                    data={"topic": topic, "payload": payload, "retain": retain},
+                )
+            )
+
+        return _publish
+
     def _build_location_mirror(self, adapter: Any) -> Any:
         """Собрать зеркало локаций в Home Assistant (спека 016, FR-008).
 
@@ -1116,30 +1156,7 @@ class Container:
         from core.services.location_mirror import LocationMirror
 
         rules = self.manifest.automation_rules.locations
-        publisher = None
-        if adapter is not None:
-
-            async def _publish(topic: str, payload: str, retain: bool) -> bool:
-                """Опубликовать топик через Home Assistant.
-
-                Args:
-                    topic: Топик MQTT.
-                    payload: Полезная нагрузка.
-                    retain: Хранить ли сообщение на брокере.
-
-                Returns:
-                    True, если Home Assistant принял публикацию.
-                """
-                return bool(
-                    await adapter.call_service(
-                        "mqtt",
-                        "publish",
-                        "",
-                        data={"topic": topic, "payload": payload, "retain": retain},
-                    )
-                )
-
-            publisher = _publish
+        publisher = self._mqtt_publisher(adapter)
 
         return LocationMirror(
             state=self._location_state,
@@ -1147,6 +1164,44 @@ class Container:
             prefix=rules.mqtt_prefix,
             enabled=rules.mirror_enabled,
         )
+
+    def _platform_problems_publisher(self) -> Any | None:
+        """Собрать доставку сводки обхода в дом (B79, карточка тревог).
+
+        Карточка «Что требует внимания» на дашборде ссылается на
+        ``sensor.platform_problems``. Сущность создаёт зеркало платформы из
+        снимка обхода дома; без зеркала (дом без MQTT) доставки нет, и генератор
+        дашборда эту карточку не рисует (`dashboard.show_platform`).
+
+        Returns:
+            Асинхронная функция ``report -> None`` либо ``None``.
+        """
+        rules = self.manifest.automation_rules.locations
+        publisher = self._mqtt_publisher(self._adapter) if rules.mirror_enabled else None
+        if publisher is None:
+            return None
+
+        from core.services.platform_mirror import PlatformMirror
+
+        mirror = PlatformMirror(
+            publish=publisher,
+            prefix=rules.mqtt_prefix,
+            enabled=rules.mirror_enabled,
+        )
+        self._platform_mirror = mirror
+
+        async def _publish_report(report: dict[str, Any]) -> None:
+            """Отдать снимок обхода зеркалу.
+
+            Args:
+                report: Снимок обхода дома.
+
+            Returns:
+                Ничего.
+            """
+            await mirror.publish_report(report)
+
+        return _publish_report
 
     def _schedule_location_prime(self) -> None:
         """Прочитать текущие показания датчиков, когда появится связь с домом.
