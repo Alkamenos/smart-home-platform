@@ -116,12 +116,23 @@ export interface CommandResponse {
     result: unknown;
 }
 
+export interface PlaceDevice {
+    id: string;
+    name: string;
+    type: string;
+    behaviors: number;
+}
+
 export interface LocationSummary {
     id: string;
     name: string;
     kind: string;
     sensor_count: number;
     sensors: Record<string, string | string[]>;
+    /** Место верхнего уровня: «Теплица в саду» (B93). */
+    parent?: string | null;
+    /** Приборы места: показываются в дереве и переносятся между местами. */
+    devices?: PlaceDevice[];
 }
 
 export interface Decision {

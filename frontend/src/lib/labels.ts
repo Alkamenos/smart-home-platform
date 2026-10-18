@@ -45,10 +45,30 @@ export function roleLabel(role: string): string {
 /** Виды локаций. */
 export const KIND_LABELS: Record<string, string> = {
     room: "комната",
+    house: "дом",
     outdoor: "улица",
-    garden: "грядки",
+    garden: "сад",
+    greenhouse: "теплица",
+    terrace: "терраса",
+    lawn: "газон",
+    forest: "лес",
+    plot: "участок",
     other: "зона",
 };
+
+/** Виды, которые предлагаются при создании и правке места. */
+export const KIND_OPTIONS: string[] = [
+    "room",
+    "house",
+    "outdoor",
+    "garden",
+    "greenhouse",
+    "terrace",
+    "lawn",
+    "forest",
+    "plot",
+    "other",
+];
 
 /**
  * Назвать вид локации по-русски.
