@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.models.manifest import load_manifest
+from core.services.platform_mirror import PLATFORM_PROBLEMS_ENTITY_ID
 from dashboard.lovelace_generator import LovelaceGenerator
 
 
@@ -87,11 +88,16 @@ class TestOnlyRealEntities:
     def test_entities_come_from_the_house(self) -> None:
         """Каждая упомянутая сущность описана в доме.
 
+        Единственное исключение — сводка обхода дома: её публикует зеркало
+        платформы, и она объявлена константой (`sensor.platform_problems`), а не
+        взята из манифеста.
+
         Returns:
             Ничего.
         """
         manifest = _house()
         known = {device.id for room in manifest.rooms for device in room.devices}
+        known.add(PLATFORM_PROBLEMS_ENTITY_ID)
         for room in manifest.rooms:
             known.update(entity for _, entity in _roles(room.sensors))
         for location in manifest.locations:
@@ -146,7 +152,7 @@ class TestDashboardShape:
     """Дашборд состоит из мест дома."""
 
     def test_rooms_and_locations_are_separate_views(self) -> None:
-        """Комнаты и локации — разные представления.
+        """Комнаты и локации — разные представления, после сводки платформы.
 
         Returns:
             Ничего.
@@ -156,8 +162,13 @@ class TestDashboardShape:
         config = LovelaceGenerator().generate(manifest)
 
         titles = [view["title"] for view in _views(config)]
-        assert [room.name for room in manifest.rooms] == titles[: len(manifest.rooms)]
-        assert [location.name for location in manifest.locations] == titles[len(manifest.rooms) :]
+        offset = 1 if titles and titles[0] == "Платформа" else 0
+        assert [room.name for room in manifest.rooms] == titles[
+            offset : offset + len(manifest.rooms)
+        ]
+        assert [location.name for location in manifest.locations] == titles[
+            offset + len(manifest.rooms) :
+        ]
 
     def test_paths_are_usable_by_home_assistant(self) -> None:
         """Пути представлений — латиница, цифры и дефис.
@@ -193,6 +204,37 @@ class TestDashboardShape:
         assert not [name for name in names if name.islower() and "_" in name], (
             "роль показана владельцу как есть"
         )
+
+
+class TestPlatformView:
+    """Сводка платформы: «что требует внимания» на первом экране."""
+
+    def test_platform_view_is_first_and_names_the_entity(self) -> None:
+        """Первое представление — сводка обхода дома с настоящей сущностью.
+
+        Прежде здесь стояла карточка на ``sensor.behavioral_platform``, которой в
+        доме нет: дашборд открывался с «сущность недоступна». Идентификатор
+        берётся из зеркала платформы, а не пишется по памяти.
+
+        Returns:
+            Ничего.
+        """
+        views = _views(LovelaceGenerator().generate(_house()))
+
+        assert views, "представлений нет"
+        assert views[0]["title"] == "Платформа"
+        assert views[0]["path"] == "platform"
+        entities = [entity for card in views[0]["cards"] for entity in _entities_of(card)]
+        assert PLATFORM_PROBLEMS_ENTITY_ID in entities
+
+    def test_platform_view_can_be_switched_off(self) -> None:
+        """Дом без зеркала выключает сводку в манифесте, и карточки нет."""
+        manifest = _house()
+        object.__setattr__(manifest.dashboard, "show_platform", False)
+
+        views = _views(LovelaceGenerator().generate(manifest))
+
+        assert "Платформа" not in [view["title"] for view in views]
 
 
 def _entities_of(card: dict[str, Any]) -> list[str]:
