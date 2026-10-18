@@ -2066,23 +2066,40 @@ class HAAdapter:
             old_state = old_state_obj.get("state", "unknown") if old_state_obj else "unknown"
             new_state = new_state_obj.get("state", "unknown") if new_state_obj else "unknown"
 
-            # WARNING, а не INFO: логи адаптера наследуют корневой обработчик,
-            # где INFO не виден (урок #70). Событие уже прошло фильтр (`_deliver`
-            # зовёт обработчик только для сущностей манифеста), поэтому это
-            # ровно тот поток, по которому утром восстанавливается хронология:
-            # какая сущность изменилась, с какого значения и на какое. Без этого
-            # «датчик молчал» и «событие потерялось» неразличимы.
-            logger.warning(f"📡 HA STATE CHANGE: {entity_id}: '{old_state}' -> '{new_state}'")
-            log.info(
-                f"HAAdapter: WebSocket state_change for {entity_id}: '{old_state}' -> '{new_state}'"
-            )
-
             # Указание пользователя лежит в конверте события, а не в его данных.
             # Раньше оно подставлялось заглушкой и терялось: без него платформа
             # не отличала «человек выключил свет» от «сработал сценарий», а
             # ручная блокировка не включалась ни одним путём. Именно поэтому
             # человек гасил свет, а автоматика включала его обратно.
             ha_context = message.get("context") or {}
+
+            # Кто изменил состояние, видно только здесь, в конверте (BACKLOG
+            # B91): `user_id` — действие из приложения, `parent_id` —
+            # автоматизация, сценарий или скрипт, ни того ни другого — сам
+            # прибор (настенный выключатель, кнопка). Logbook Home Assistant
+            # этого не различает: наша команда несёт того же пользователя, что
+            # и приложение, поэтому рядом печатается `own` — «вернулась наша
+            # собственная команда».
+            own_change = self._is_own_context(ha_context.get("id")) or self._is_recent_command(
+                entity_id
+            )
+
+            # WARNING, а не INFO: логи адаптера наследуют корневой обработчик,
+            # где INFO не виден (урок #70). Событие уже прошло фильтр (`_deliver`
+            # зовёт обработчик только для сущностей манифеста), поэтому это
+            # ровно тот поток, по которому утром восстанавливается хронология:
+            # какая сущность изменилась, с какого значения и на какое. Без этого
+            # «датчик молчал» и «событие потерялось» неразличимы.
+            logger.warning(
+                f"📡 HA STATE CHANGE: {entity_id}: '{old_state}' -> '{new_state}'"
+                f" | user={ha_context.get('user_id') or '-'}"
+                f" parent={ha_context.get('parent_id') or '-'}"
+                f" ctx={ha_context.get('id') or '-'}"
+                f" own={own_change}"
+            )
+            log.info(
+                f"HAAdapter: WebSocket state_change for {entity_id}: '{old_state}' -> '{new_state}'"
+            )
 
             await self.on_state_change(
                 entity_id=entity_id,
@@ -2093,6 +2110,11 @@ class HAAdapter:
                     "source": "websocket",
                     "user_id": ha_context.get("user_id"),
                     "ha_context_id": ha_context.get("id"),
+                    # Родительский контекст: он есть у автоматизации, сценария и
+                    # скрипта Home Assistant и отсутствует у действия прибора.
+                    # Нужен, чтобы отличать «сработал сценарий» от «человек у
+                    # настенного выключателя» (BACKLOG B91).
+                    "ha_parent_id": ha_context.get("parent_id"),
                     "daylight": getattr(self._ws_client, "daylight", None),
                     # «Мы спим» приходит из Home Assistant: сущность есть, но её
                     # состояние платформе неизвестно — тогда решает неё, а не
