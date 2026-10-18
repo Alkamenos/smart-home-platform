@@ -18,7 +18,23 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from core.models.manifest import LocationConfig, role_entities
+from core.models.manifest import (
+    InstanceConfig,
+    LocationConfig,
+    Manifest,
+    role_entities,
+)
+
+
+def _instance() -> InstanceConfig:
+    """Описание дома для манифеста.
+
+    Returns:
+        Модель дома.
+    """
+    return InstanceConfig(
+        id="probe", name="Probe", owner="probe", created_at="2026-01-01T00:00:00Z"
+    )
 
 
 class TestLocationDevices:
@@ -35,6 +51,35 @@ class TestLocationDevices:
 
         assert [device.id for device in location.devices] == ["light.fonar"]
         assert location.devices[0].behaviors == []
+
+
+class TestPlacesAreUniform:
+    """Место прибора — комната или локация; ищется в обоих разделах."""
+
+    def test_location_device_is_found_by_place_lookup(self) -> None:
+        """Прибор локации попадает в общий список приборов дома.
+
+        Returns:
+            Ничего.
+        """
+        manifest = Manifest(
+            instance=_instance(),
+            locations=[
+                LocationConfig(
+                    id="ulitsa",
+                    name="Улица",
+                    kind="outdoor",
+                    devices=[{"id": "light.fonar", "type": "light", "name": "Фонарь"}],
+                    sensors={"battery": "sensor.fonar_battery"},
+                )
+            ],
+        )
+
+        assert [device.id for _, device in manifest.all_devices] == ["light.fonar"]
+        place = manifest.get_room_for_device("light.fonar")
+        assert place is not None, "место прибора локации не найдено"
+        assert place.id == "ulitsa"
+        assert manifest.get_sensors_for_device("light.fonar") == {"battery": "sensor.fonar_battery"}
 
 
 class TestLocationSensorLists:
