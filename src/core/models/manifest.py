@@ -541,20 +541,45 @@ class Manifest(BaseModel):
         return self.rooms
 
     @property
+    def all_places(self) -> list[RoomConfig | LocationConfig]:
+        """Все места дома: комнаты и локации (спека 016).
+
+        Место — то, где живут датчики и приборы. Комната и локация различаются
+        **расположением** (в доме или на улице), а не устройством: автоматика
+        прибора строится одинаково (требование владельца 2026-10-19). Прежде
+        автоматы собирались только для комнат, и перенос места в локации молча
+        выключал его автоматику.
+
+        Returns:
+            Список мест: сначала комнаты, затем локации.
+        """
+        return [*self.rooms, *self.locations]
+
+    @property
     def all_devices(self) -> list[tuple[str, DeviceConfig]]:
-        """Flat list of (room_id, device) for iteration."""
-        return [(room.id, device) for room in self.rooms for device in room.devices]
+        """Flat list of (place_id, device) for iteration."""
+        return [(place.id, device) for place in self.all_places for device in place.devices]
 
     @property
     def all_device_ids(self) -> list[str]:
         """Flat list of all device IDs."""
         return [device.id for _, device in self.all_devices]
 
-    def get_room_for_device(self, device_id: str) -> RoomConfig | None:
-        """Find the room containing a device."""
-        for room in self.rooms:
-            if any(d.id == device_id for d in room.devices):
-                return room
+    def get_room_for_device(self, device_id: str) -> RoomConfig | LocationConfig | None:
+        """Найти место прибора — комнату или локацию.
+
+        Имя оставлено прежним для совместимости, но ищет по всем местам: прибор
+        локации — такое же место, как прибор комнаты.
+
+        Args:
+            device_id: Идентификатор прибора.
+
+        Returns:
+            Место прибора либо ``None``.
+        """
+        for place in self.all_places:
+            if any(d.id == device_id for d in place.devices):
+                return place
         return None
 
     def get_device(self, device_id: str) -> DeviceConfig | None:
@@ -565,9 +590,16 @@ class Manifest(BaseModel):
         return None
 
     def get_sensors_for_device(self, device_id: str) -> SensorMap:
-        """Get sensors available for a device (from its room)."""
-        room = self.get_room_for_device(device_id)
-        return room.sensors if room else {}
+        """Датчики места, к которому относится прибор.
+
+        Args:
+            device_id: Идентификатор прибора.
+
+        Returns:
+            Привязка «роль → сущность» места либо пустая карта.
+        """
+        place = self.get_room_for_device(device_id)
+        return place.sensors if place else {}
 
 
 # ─── Backward compatibility aliases ───────────────────────────────────────────
