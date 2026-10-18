@@ -18,6 +18,7 @@ import pytest
 
 from core.events.event_bus import EventBus
 from core.events.fsm_events import EVENT_FSM_REJECTED, EVENT_FSM_TRANSITIONED
+from core.fsm.naming import helper_entity_id
 from services.fsm_state_bridge import FSMStateBridge
 
 
@@ -126,7 +127,9 @@ class TestHomeAssistantMirror:
         dispatcher.submit.assert_awaited_once()
         intent = dispatcher.submit.await_args.args[0]
         assert intent.data["value"] == "ON_MOTION"
-        assert intent.device_id == TRANSITION_PAYLOAD["fsm_id"]
+        assert intent.device_id == helper_entity_id(str(TRANSITION_PAYLOAD["fsm_id"])), (
+            "зеркало пишет в помощника, а не в несуществующую сущность автомата"
+        )
 
         # Главное: сбой зеркала не отменяет запись перехода в журнал.
         event_store.save_fsm_transition.assert_called_once()
@@ -205,7 +208,7 @@ class TestTransitionLog:
         # Зеркалирование состояния при этом состоялось.
         dispatcher.submit.assert_awaited_once()
         intent = dispatcher.submit.await_args.args[0]
-        assert intent.device_id == TRANSITION_PAYLOAD["fsm_id"]
+        assert intent.device_id == helper_entity_id(str(TRANSITION_PAYLOAD["fsm_id"]))
         assert intent.data["value"] == "ON_MOTION"
 
     async def test_should_not_raise_when_event_store_absent(self) -> None:

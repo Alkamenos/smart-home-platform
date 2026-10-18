@@ -25,6 +25,7 @@ from core.events.fsm_events import (
     EVENT_FSM_TRANSITIONED,
     EVENT_PLATFORM_STARTED,
 )
+from core.fsm.naming import helper_entity_id
 from core.persistence.event_store import EventStore, FsmTransition
 from core.persistence.state_persistence import StatePersistence
 from services.fsm_state_bridge import FSMStateBridge
@@ -129,7 +130,9 @@ class TestTransitionReachesSubscribers:
         await drain(engine)
 
         dispatcher.submit.assert_awaited_once()
-        assert intent_device(dispatcher) == FSM_ID
+        assert intent_device(dispatcher) == helper_entity_id(FSM_ID), (
+            "зеркало обязано писать в помощника, а не в несуществующую сущность автомата"
+        )
         transitions = event_store.get_recent_transitions(DEVICE_ID)
         assert len(transitions) == 1
         assert transitions[0].to_state == "ON_MOTION"

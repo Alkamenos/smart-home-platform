@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.fsm.naming import fsm_entity_id, helper_entity_id
 from core.models.manifest import load_manifest
 from core.services.platform_mirror import PLATFORM_PROBLEMS_ENTITY_ID
 from dashboard.lovelace_generator import LovelaceGenerator
@@ -98,6 +99,12 @@ class TestOnlyRealEntities:
         manifest = _house()
         known = {device.id for room in manifest.rooms for device in room.devices}
         known.add(PLATFORM_PROBLEMS_ENTITY_ID)
+        # Состояния автоматов живут в помощниках: их имена считает то же правило,
+        # что у фабрики автоматов.
+        for room in manifest.rooms:
+            known.update(_helper_ids(room))
+        for location in manifest.locations:
+            known.update(_helper_ids(location))
         for room in manifest.rooms:
             known.update(entity for _, entity in _roles(room.sensors))
         for location in manifest.locations:
@@ -235,6 +242,84 @@ class TestPlatformView:
         views = _views(LovelaceGenerator().generate(manifest))
 
         assert "Платформа" not in [view["title"] for view in views]
+
+
+class TestAutomataCard:
+    """Состояния автоматов видны в комнате, из которой они управляют."""
+
+    def test_every_place_with_behaviors_has_the_card(self) -> None:
+        """Где есть автомат, там есть карточка «Автоматы».
+
+        Returns:
+            Ничего.
+        """
+        config = LovelaceGenerator().generate(_house())
+
+        places_with_behaviors = [
+            room.name
+            for room in _house().rooms
+            if any(getattr(device, "behaviors", None) for device in room.devices)
+        ]
+        cards = {
+            view["title"]: [card.get("title") for card in view["cards"]] for view in _views(config)
+        }
+        for name in places_with_behaviors:
+            assert "Автоматы" in cards.get(name, []), f"в «{name}» нет карточки автоматов"
+
+    def test_entities_are_helpers_and_ascii(self) -> None:
+        """Карточка ссылается на помощников, а не на придуманные сущности.
+
+        Returns:
+            Ничего.
+        """
+        config = LovelaceGenerator().generate(_house())
+
+        helpers = [
+            entity
+            for card in _cards(config)
+            if card.get("title") == "Автоматы"
+            for entry in card.get("entities") or []
+            for entity in _entities_of({"entities": [entry]})
+        ]
+
+        assert helpers, "карточек автоматов нет"
+        assert all(entity.startswith("input_text.fsm_") for entity in helpers), helpers[:3]
+        assert all(entity.isascii() for entity in helpers), helpers[:3]
+
+    def test_card_names_are_human(self) -> None:
+        """В карточке видно «Обогрев», а не `climate_control`.
+
+        Returns:
+            Ничего.
+        """
+        config = LovelaceGenerator().generate(_house())
+
+        names = [
+            str(entry.get("name"))
+            for card in _cards(config)
+            if card.get("title") == "Автоматы"
+            for entry in card.get("entities") or []
+        ]
+
+        assert any("Обогрев" in name for name in names), names[:5]
+        assert not [name for name in names if "climate_control" in name]
+
+
+def _helper_ids(place: Any) -> list[str]:
+    """Помощники состояний автоматов места.
+
+    Args:
+        place: Комната либо локация манифеста.
+
+    Returns:
+        Список идентификаторов сущностей.
+    """
+    found: list[str] = []
+    for device in getattr(place, "devices", []) or []:
+        for behavior in getattr(device, "behaviors", []) or []:
+            fsm_id = fsm_entity_id(str(device.id), str(behavior.template), behavior.priority)
+            found.append(helper_entity_id(fsm_id))
+    return found
 
 
 def _entities_of(card: dict[str, Any]) -> list[str]:
