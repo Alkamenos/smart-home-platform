@@ -187,6 +187,10 @@ class Container:
         self._location_mirror: Any | None = None
         #: Зеркало проблем дома (карточка тревог на дашборде, B79).
         self._platform_mirror: Any | None = None
+        #: Подпись последней опубликованной сводки проблем (повтор не шлём).
+        self._problems_signature: Any | None = None
+        #: Фоновая задача слежения за проблемами автоматов.
+        self._problems_task: Any | None = None
         #: Зеркало состояний автоматов в помощники Home Assistant (B79).
         self._fsm_helper_mirror: Any | None = None
         #: Фоновая задача создания помощников и первой записи состояний.
@@ -747,6 +751,7 @@ class Container:
         self._start_sensor_health()
         self._start_location_state()
         self._start_fsm_helpers()
+        self._start_problems_watch()
 
         return PlatformContext(
             day_cycle=self._day_cycle,
@@ -1171,12 +1176,13 @@ class Container:
         )
 
     def _platform_problems_publisher(self) -> Any | None:
-        """Собрать доставку сводки обхода в дом (B79, карточка тревог).
+        """Собрать доставку сводки проблем в дом (B79, карточка тревог).
 
         Карточка «Что требует внимания» на дашборде ссылается на
-        ``sensor.platform_problems``. Сущность создаёт зеркало платформы из
-        снимка обхода дома; без зеркала (дом без MQTT) доставки нет, и генератор
-        дашборда эту карточку не рисует (`dashboard.show_platform`).
+        ``sensor.platforma_problemy_v_dome``. Сущность создаёт зеркало платформы
+        из сводки проблем (обход дома + сторож автоматов); без зеркала (дом без
+        MQTT) доставки нет, и генератор дашборда эту карточку не рисует
+        (`dashboard.show_platform`).
 
         Returns:
             Асинхронная функция ``report -> None`` либо ``None``.
@@ -1196,17 +1202,91 @@ class Container:
         self._platform_mirror = mirror
 
         async def _publish_report(report: dict[str, Any]) -> None:
-            """Отдать снимок обхода зеркалу.
+            """Пересобрать сводку и отдать её дому.
+
+            Снимок обхода — повод пересобрать: в сводку входят ещё проблемы
+            сторожа, и они меняются чаще, чем раз в полчаса.
 
             Args:
-                report: Снимок обхода дома.
+                report: Снимок обхода дома (не используется напрямую).
 
             Returns:
                 Ничего.
             """
-            await mirror.publish_report(report)
+            del report
+            await self._publish_problems()
 
         return _publish_report
+
+    def _device_names(self) -> dict[str, str]:
+        """Имена приборов манифеста: идентификатор → человеческое имя.
+
+        Returns:
+            Словарь имён.
+        """
+        names: dict[str, str] = {}
+        places = list(self.manifest.rooms) + list(self.manifest.locations)
+        for place in places:
+            for device in getattr(place, "devices", []) or []:
+                names[str(device.id)] = str(device.name or device.id)
+        return names
+
+    async def _publish_problems(self) -> None:
+        """Опубликовать сводку проблем, если она изменилась.
+
+        Сводка собирается из двух источников: обход дома (раз в полчаса) и
+        сторож автоматов (раз в минуту). Поэтому публикация идёт по обоим
+        поводам, а повтор одного и того же снимка не отправляется — иначе дом
+        получал бы одинаковые сообщения каждую минуту.
+
+        Returns:
+            Ничего.
+        """
+        mirror = self._platform_mirror
+        if mirror is None:
+            return
+        from core.services.problems import compose_report
+
+        report = compose_report(
+            getattr(self._house_health, "last_report", None),
+            getattr(self._watchdog, "last_snapshot", None),
+            device_names=self._device_names(),
+            areas=self._health_areas(),
+        )
+        signature = (report.get("count"), tuple(report.get("problems") or []))
+        if signature == self._problems_signature:
+            return
+        self._problems_signature = signature
+        await mirror.publish_report(report)
+
+    def _start_problems_watch(self) -> None:
+        """Следить за проблемами автоматов и обновлять карточку тревог (B79).
+
+        Обход дома идёт раз в полчаса, а зависание автомата и расхождение
+        «модель ↔ прибор» сторож видит за минуты. Ждать полчаса нельзя: тревога
+        должна появляться тогда, когда её заметили.
+
+        Returns:
+            Ничего.
+        """
+        if self._platform_mirror is None:
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Слежение за проблемами не запущено: нет работающего цикла")
+            return
+
+        async def _watch() -> None:
+            """Пересобирать сводку раз в минуту."""
+            while True:
+                await asyncio.sleep(60.0)
+                try:
+                    await self._publish_problems()
+                except Exception as exc:  # noqa: BLE001 — тревога не важнее платформы
+                    logger.warning(f"Сводка проблем не опубликована: {exc}")
+
+        self._problems_task = asyncio.create_task(_watch())
 
     @property
     def fsm_helper_mirror(self) -> Any:

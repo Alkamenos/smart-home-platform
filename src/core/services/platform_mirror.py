@@ -29,6 +29,8 @@ from typing import Any
 
 from loguru import logger
 
+from core.services.problems import summary_text
+
 
 #: Префикс топиков значений (тот же, что у зеркала локаций).
 DEFAULT_PREFIX = "behavioral"
@@ -98,8 +100,14 @@ class PlatformMirror:
 
         ok = await self._announce()
         problems = list(report.get("problems") or [])
-        ok = await self._send(f"{self._prefix}/platform/problems/state", str(len(problems))) and ok
+        # Состояние — человеческая строка, а не счётчик: владелец смотрит дом с
+        # телефона и должен видеть «что», а не «сколько» (требование 18.10).
+        ok = (
+            await self._send(f"{self._prefix}/platform/problems/state", summary_text(problems))
+            and ok
+        )
         attributes = {
+            "count": len(problems),
             "generated_at": report.get("generated_at"),
             "sensor_count": report.get("sensor_count", 0),
             "problems": problems,
@@ -137,7 +145,6 @@ class PlatformMirror:
             "unique_id": f"{self._prefix}_platform_problems",
             "state_topic": f"{self._prefix}/platform/problems/state",
             "json_attributes_topic": f"{self._prefix}/platform/problems/attributes",
-            "unit_of_measurement": "шт.",
             "icon": "mdi:home-alert",
             "device": device,
         }
