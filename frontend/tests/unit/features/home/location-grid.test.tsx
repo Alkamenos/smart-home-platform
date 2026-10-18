@@ -118,7 +118,7 @@ describe("LocationGrid", () => {
         render(<LocationGrid locations={LOCATIONS} />);
 
         expect(screen.getByText(/комната · 2/)).toBeInTheDocument();
-        expect(screen.getByText(/грядки · 1/)).toBeInTheDocument();
+        expect(screen.getByText(/сад · 1/)).toBeInTheDocument();
     });
 
     it("сортирует по температуре", async () => {
