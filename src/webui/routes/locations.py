@@ -18,7 +18,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from core.models.manifest import iter_role_entities
 from webui.routes import event_store
@@ -117,67 +117,203 @@ async def list_locations(request: Request) -> JSONResponse:
             if role:
                 sensors.setdefault(role, []).append(entity)
         location["sensors"] = sensors
+    # Место в дереве и его приборы — из манифеста: интерфейсу нужны родитель и
+    # состав, чтобы показать дерево и переносить приборы (B93).
+    store = _require_store(request)
+    manifest = getattr(store, "current", None)
+    for location in locations:
+        place = None
+        if manifest is not None:
+            place = next(
+                (
+                    item
+                    for item in [*manifest.rooms, *manifest.locations]
+                    if item.id == location["id"]
+                ),
+                None,
+            )
+        location["parent"] = getattr(place, "parent", None) if place is not None else None
+        location["devices"] = (
+            [
+                {
+                    "id": device.id,
+                    "name": device.name or device.id,
+                    "type": device.type,
+                    "behaviors": len(device.behaviors),
+                }
+                for device in (getattr(place, "devices", []) or [])
+            ]
+            if place is not None
+            else []
+        )
     return JSONResponse({"count": len(locations), "locations": locations})
 
 
 #: Сущность Home Assistant: домен и объект.
 _ENTITY_RE = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
+#: Идентификатор места: латиница, цифры и подчёркивание (идёт в пути и в правилах).
+_PLACE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
-class LocationSensorsUpdate(BaseModel):
-    """Новая привязка ролей датчиков локации.
 
-    Роль может закрываться несколькими сущностями (две камеры на террасе):
-    значение — сущность или список сущностей.
+class LocationUpdate(BaseModel):
+    """Правка места: имя, вид, родитель и роли датчиков.
+
+    Все поля необязательные: интерфейс меняет то, что человек тронул, а не
+    перезаписывает место целиком. Какое поле пришло — видно по
+    ``model_fields_set``, поэтому ``parent: null`` означает «сделать местом
+    верхнего уровня», а отсутствие поля — «не трогать».
     """
 
-    sensors: dict[str, str | list[str]] = Field(
-        default_factory=dict, description="Роль датчика → сущность или список сущностей"
+    name: str | None = Field(None, description="Человекочитаемое имя места")
+    kind: str | None = Field(None, description="Вид места: room, outdoor, garden, …")
+    parent: str | None = Field(None, description="Место верхнего уровня (id) либо null")
+    sensors: dict[str, str | list[str]] | None = Field(
+        None, description="Роль датчика → сущность или список сущностей"
     )
 
 
-def _apply_sensors(manifest: Any, location_id: str, sensors: dict[str, Any]) -> bool:
-    """Записать привязки датчиков в модель манифеста.
+class PlaceCreate(BaseModel):
+    """Новое место: комната (``kind: room``) или локация."""
 
-    Комнаты манифеста — тоже локации, но их датчики лежат в ``rooms[].sensors``;
-    особые зоны — в ``locations[].sensors``. Правка идёт туда, где локация
-    объявлена, иначе изменение ушло бы в никуда.
-
-    Args:
-        manifest: Модель манифеста (веб-слоя).
-        location_id: Идентификатор локации.
-        sensors: Новая привязка ролей.
-
-    Returns:
-        True, если локация найдена и обновлена.
-    """
-    for room in getattr(manifest, "rooms", []):
-        if room.id == location_id:
-            room.sensors = dict(sensors)
-            return True
-    for location in getattr(manifest, "locations", []):
-        if location.id == location_id:
-            location.sensors = dict(sensors)
-            return True
-    return False
+    id: str = Field(..., description="Идентификатор места (латиница, цифры, подчёркивание)")
+    name: str = Field(..., description="Человекочитаемое имя")
+    kind: str = Field("other", description="Вид места; ``room`` создаёт комнату")
+    parent: str | None = Field(None, description="Место верхнего уровня (id)")
 
 
-@router.put("/api/v1/locations/{location_id}", response_class=JSONResponse)
-async def update_location_sensors(
-    location_id: str, request: Request, body: LocationSensorsUpdate
-) -> JSONResponse:
-    """Задать роли датчиков локации (спека 017, US5, FR-026).
+class DeviceMove(BaseModel):
+    """Перенос прибора в другое место."""
+
+    device_id: str = Field(..., description="Сущность Home Assistant, описанная в манифесте")
+
+
+def _require_store(request: Request) -> Any | None:
+    """Взять хранилище манифеста.
 
     Args:
-        location_id: Идентификатор локации (комната или особая зона).
         request: Входящий HTTP-запрос.
-        body: Новая привязка «роль → сущность».
 
     Returns:
-        ``{"status": "saved", ...}`` при успехе; ``400`` при некорректной
-        сущности; ``404`` для неизвестной локации; ``503`` без хранилища.
+        Хранилище либо ``None``, если платформа не собрана или манифест не читается.
     """
-    for role, entity in iter_role_entities(body.sensors):
+    store = getattr(request.app.state, "manifest_store", None)
+    if store is None:
+        return None
+    try:
+        if store.current is None:
+            store.load()
+    except Exception:  # noqa: BLE001 — причина попадёт в ответ вызывающего
+        return None
+    return store
+
+
+def _places_data(manifest: Any) -> list[dict[str, Any]]:
+    """Разделы мест как словари: комнаты и локации.
+
+    Args:
+        manifest: Модель манифеста.
+
+    Returns:
+        Список словарей мест (из ``model_dump``), чтобы правка шла по копии, а не
+        по живому объекту: ошибку проверки нельзя оставлять в модели.
+    """
+    return [*manifest["rooms"], *manifest["locations"]]
+
+
+def _find_place_data(manifest: dict[str, Any], place_id: str) -> dict[str, Any] | None:
+    """Найти место в словаре манифеста.
+
+    Args:
+        manifest: Манифест как словарь.
+        place_id: Идентификатор места.
+
+    Returns:
+        Словарь места либо ``None``.
+    """
+    return next((place for place in _places_data(manifest) if place["id"] == place_id), None)
+
+
+def _find_device(
+    manifest: dict[str, Any], device_id: str
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Найти прибор и место, в котором он описан.
+
+    Args:
+        manifest: Манифест как словарь.
+        device_id: Сущность прибора.
+
+    Returns:
+        Пара «место, прибор» либо ``(None, None)``.
+    """
+    for place in _places_data(manifest):
+        for device in place.get("devices") or []:
+            if device.get("id") == device_id:
+                return place, device
+    return None, None
+
+
+def _validated(store: Any, data: dict[str, Any]) -> tuple[Any | None, JSONResponse | None]:
+    """Проверить изменённый манифест моделью.
+
+    Правка идёт по словарю, поэтому проверки модели (в том числе инварианты
+    дерева мест) нужно запустить явно: иначе неверный родитель или цикл уехали бы
+    в файл мимо проверки.
+
+    Args:
+        store: Хранилище манифеста.
+        data: Изменённый манифест как словарь.
+
+    Returns:
+        Пару «модель, ошибка»: ровно одно из двух не ``None``.
+    """
+    try:
+        return store.model_type(**data), None
+    except ValidationError as exc:
+        fields = [
+            {
+                "loc": ".".join(str(part) for part in error.get("loc", ())),
+                "message": error.get("msg", "некорректное значение"),
+            }
+            for error in exc.errors()
+        ]
+        return None, JSONResponse(
+            {"error": "Манифест не принят проверкой", "fields": fields},
+            status_code=400,
+        )
+
+
+async def _apply_and_report(request: Request, store: Any) -> list[str]:
+    """Применить правку к работающей платформе и собрать предупреждения.
+
+    Args:
+        request: Входящий HTTP-запрос.
+        store: Хранилище манифеста.
+
+    Returns:
+        Список предупреждений: правка сохранена, но не применена.
+    """
+    container = getattr(request.app.state, "container", None)
+    lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
+    warnings: list[str] = []
+    try:
+        apply_manifest_to_runtime(store, container, lifecycle_service)
+        await prime_location_state(container)
+    except Exception as exc:  # noqa: BLE001 — причина попадает в ответ
+        warnings.append(f"Сохранено, но не применено в рантайме: {exc}")
+    return warnings
+
+
+def _validate_sensors(sensors: dict[str, Any]) -> None:
+    """Проверить привязку ролей датчиков.
+
+    Args:
+        sensors: Роль → сущность или список сущностей.
+
+    Raises:
+        HTTPException: Если роль пустая или сущность не похожа на сущность дома.
+    """
+    for role, entity in iter_role_entities(sensors):
         if not role.strip():
             raise HTTPException(status_code=400, detail="Роль датчика не может быть пустой")
         if not _ENTITY_RE.match(entity):
@@ -186,35 +322,270 @@ async def update_location_sensors(
                 detail=f"Сущность {entity!r} не похожа на сущность Home Assistant (домен.объект)",
             )
 
-    store = getattr(request.app.state, "manifest_store", None)
+
+@router.put("/api/v1/locations/{location_id}", response_class=JSONResponse)
+async def update_location(location_id: str, request: Request, body: LocationUpdate) -> JSONResponse:
+    """Изменить место: имя, вид, родителя и роли датчиков (B93).
+
+    Правка идёт через манифест, а не через YAML руками: интерфейс и файл не
+    расходятся, а инварианты дерева мест проверяются моделью.
+
+    Args:
+        location_id: Идентификатор места (комната или локация).
+        request: Входящий HTTP-запрос.
+        body: Что меняем; поля, которых нет в теле, не трогаются.
+
+    Returns:
+        ``{"status": "saved", ...}`` при успехе; ``400`` при некорректных
+        значениях, ``404`` для неизвестного места, ``503`` без хранилища.
+    """
+    store = _require_store(request)
     if store is None:
         return JSONResponse(
             {"error": "Хранилище манифеста недоступно: платформа не собрана"},
             status_code=503,
         )
-    try:
-        if store.current is None:
-            store.load()
-    except Exception as e:  # noqa: BLE001 — причина попадает в ответ
-        return JSONResponse({"error": f"Манифест не прочитан: {e}"}, status_code=503)
 
-    if not _apply_sensors(store.current, location_id, body.sensors):
+    data = store.current.model_dump()
+    place = _find_place_data(data, location_id)
+    if place is None:
         return JSONResponse(
             {"error": f"Локация {location_id!r} не описана в манифесте"}, status_code=404
         )
 
+    provided = body.model_fields_set
+    if "sensors" in provided:
+        sensors = dict(body.sensors or {})
+        _validate_sensors(sensors)
+        place["sensors"] = sensors
+    if "name" in provided:
+        name = (body.name or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Имя места не может быть пустым")
+        place["name"] = name
+    if "kind" in provided:
+        kind = (body.kind or "").strip()
+        if not kind:
+            raise HTTPException(status_code=400, detail="Вид места не может быть пустым")
+        place["kind"] = kind
+    if "parent" in provided:
+        parent = (body.parent or "").strip()
+        place["parent"] = parent or None
+
+    model, error = _validated(store, data)
+    if error is not None:
+        return error
+    store.current = model
     store.save()
 
-    container = getattr(request.app.state, "container", None)
-    lifecycle_service = getattr(request.app.state, "lifecycle_service", None)
-    warnings: list[str] = []
-    try:
-        apply_manifest_to_runtime(store, container, lifecycle_service)
-        await prime_location_state(container)
-    except Exception as exc:  # noqa: BLE001 — причина попадает в ответ
-        warnings.append(f"Роли сохранены, но не применены в рантайме: {exc}")
+    warnings = await _apply_and_report(request, store)
+    return JSONResponse(
+        {
+            "status": "saved",
+            "location_id": location_id,
+            "changed": sorted(provided),
+            "warnings": warnings,
+        }
+    )
 
-    return JSONResponse({"status": "saved", "location_id": location_id, "warnings": warnings})
+
+@router.post("/api/v1/locations", status_code=201, response_class=JSONResponse)
+async def create_location(request: Request, body: PlaceCreate) -> JSONResponse:
+    """Завести новое место — комнату или локацию (B93).
+
+    Args:
+        request: Входящий HTTP-запрос.
+        body: Идентификатор, имя, вид и родитель.
+
+    Returns:
+        ``{"status": "created", ...}``; ``400`` при некорректных значениях,
+        ``409`` если место с таким идентификатором уже есть.
+    """
+    store = _require_store(request)
+    if store is None:
+        return JSONResponse(
+            {"error": "Хранилище манифеста недоступно: платформа не собрана"},
+            status_code=503,
+        )
+
+    place_id = body.id.strip()
+    if not _PLACE_ID_RE.match(place_id):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Идентификатор {place_id!r} не годится: латиница, цифры и подчёркивание, "
+                f"начинается с буквы"
+            ),
+        )
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Имя места не может быть пустым")
+
+    data = store.current.model_dump()
+    if _find_place_data(data, place_id) is not None:
+        return JSONResponse(
+            {"error": f"Место {place_id!r} уже описано в манифесте"}, status_code=409
+        )
+
+    kind = body.kind.strip() or "other"
+    entry: dict[str, Any] = {
+        "id": place_id,
+        "name": name,
+        "kind": kind,
+        "parent": (body.parent or "").strip() or None,
+        "sensors": {},
+        "devices": [],
+    }
+    section = "rooms" if kind == "room" else "locations"
+    data[section].append(entry)
+
+    model, error = _validated(store, data)
+    if error is not None:
+        return error
+    store.current = model
+    store.save()
+
+    warnings = await _apply_and_report(request, store)
+    return JSONResponse(
+        {
+            "status": "created",
+            "location_id": place_id,
+            "section": section,
+            "warnings": warnings,
+        },
+        status_code=201,
+    )
+
+
+@router.delete("/api/v1/locations/{location_id}", response_class=JSONResponse)
+async def delete_location(location_id: str, request: Request) -> JSONResponse:
+    """Удалить пустое место.
+
+    Удаление разрешено только для места без приборов, датчиков и детей: иначе
+    часть дома молча выпала бы из автоматики. Сначала перенесите приборы и
+    датчики, потом удаляйте.
+
+    Args:
+        location_id: Идентификатор места.
+        request: Входящий HTTP-запрос.
+
+    Returns:
+        ``{"status": "deleted"}``; ``409`` если место не пустое.
+    """
+    store = _require_store(request)
+    if store is None:
+        return JSONResponse(
+            {"error": "Хранилище манифеста недоступно: платформа не собрана"},
+            status_code=503,
+        )
+
+    data = store.current.model_dump()
+    place = _find_place_data(data, location_id)
+    if place is None:
+        return JSONResponse(
+            {"error": f"Локация {location_id!r} не описана в манифесте"}, status_code=404
+        )
+
+    children = [item["name"] for item in _places_data(data) if item.get("parent") == location_id]
+    devices = [device.get("id") for device in place.get("devices") or []]
+    sensors = list((place.get("sensors") or {}).keys())
+    if children or devices or sensors:
+        return JSONResponse(
+            {
+                "error": (
+                    f"Место {location_id!r} не пустое: сначала перенесите приборы и датчики "
+                    f"и разберите вложенные места"
+                ),
+                "children": children,
+                "devices": devices,
+                "sensor_roles": sensors,
+            },
+            status_code=409,
+        )
+
+    section = "rooms" if location_id in {item["id"] for item in data["rooms"]} else "locations"
+    data[section] = [item for item in data[section] if item["id"] != location_id]
+
+    model, error = _validated(store, data)
+    if error is not None:
+        return error
+    store.current = model
+    store.save(allow_removal=True)
+
+    warnings = await _apply_and_report(request, store)
+    return JSONResponse({"status": "deleted", "location_id": location_id, "warnings": warnings})
+
+
+@router.post("/api/v1/locations/{location_id}/devices", response_class=JSONResponse)
+async def move_device(location_id: str, request: Request, body: DeviceMove) -> JSONResponse:
+    """Перенести прибор в это место (B93).
+
+    Прибор описывается в манифесте один раз, поэтому перенос — это удаление из
+    прежнего места и добавление в новое. Автоматика прибора не меняется: правила
+    поведения остаются с ним, а место нужно для правил «комнат без окон» и для
+    панели дома.
+
+    Args:
+        location_id: Куда переносим.
+        request: Входящий HTTP-запрос.
+        body: Какой прибор переносим.
+
+    Returns:
+        ``{"status": "saved", "moved": true, "from": ...}``; ``404`` если прибор
+        или место не найдены, ``503`` без хранилища.
+    """
+    store = _require_store(request)
+    if store is None:
+        return JSONResponse(
+            {"error": "Хранилище манифеста недоступно: платформа не собрана"},
+            status_code=503,
+        )
+
+    data = store.current.model_dump()
+    target = _find_place_data(data, location_id)
+    if target is None:
+        return JSONResponse(
+            {"error": f"Локация {location_id!r} не описана в манифесте"}, status_code=404
+        )
+
+    source, device = _find_device(data, body.device_id)
+    if source is None or device is None:
+        return JSONResponse(
+            {"error": f"Прибор {body.device_id!r} не описан ни в одном месте манифеста"},
+            status_code=404,
+        )
+    if source["id"] == location_id:
+        return JSONResponse(
+            {
+                "status": "unchanged",
+                "moved": False,
+                "from": source["id"],
+                "to": location_id,
+            }
+        )
+
+    source["devices"] = [
+        item for item in source.get("devices") or [] if item.get("id") != body.device_id
+    ]
+    target.setdefault("devices", []).append(device)
+
+    model, error = _validated(store, data)
+    if error is not None:
+        return error
+    store.current = model
+    store.save(allow_removal=True)
+
+    warnings = await _apply_and_report(request, store)
+    return JSONResponse(
+        {
+            "status": "saved",
+            "moved": True,
+            "device_id": body.device_id,
+            "from": source["id"],
+            "to": location_id,
+            "warnings": warnings,
+        }
+    )
 
 
 @router.get("/api/v1/locations/{location_id}/state", response_class=JSONResponse)

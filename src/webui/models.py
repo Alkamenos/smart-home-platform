@@ -43,6 +43,10 @@ class RoomConfig(BaseModel):
 
     id: str = Field(..., description="Room identifier")
     name: str = Field(..., description="Human-readable room name")
+    kind: str = Field(default="room", description="Вид места: комната, дом, … (B93)")
+    parent: str | None = Field(
+        default=None, description="Место верхнего уровня, в которое входит комната (B93)"
+    )
     sensors: SensorMap = Field(
         default_factory=dict, description="Room sensors: роль → сущность или список"
     )
@@ -152,6 +156,13 @@ class DashboardConfig(BaseModel):
     rooms: list[str] = Field(default_factory=list, description="Rooms to show on dashboard")
     show_sensors: bool = Field(default=True, description="Show sensors on dashboard")
     show_devices: bool = Field(default=True, description="Show devices on dashboard")
+    show_platform: bool = Field(
+        default=True,
+        description=(
+            "Показывать сводку платформы на дашборде. Поле объявлено и здесь: иначе "
+            "правка манифеста через интерфейс вычеркнула бы его (правило B60)"
+        ),
+    )
 
 
 class ManifestModel(BaseModel):
