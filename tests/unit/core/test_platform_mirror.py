@@ -5,8 +5,8 @@
 обход дома публикует свою сводку как сущность Home Assistant через
 MQTT-автообнаружение:
 
-* состояние — сколько сейчас проблем;
-* атрибуты — что именно и где.
+* состояние — читаемая строка «что и где» («2: Грядки: Батарея — не отвечает; …»);
+* атрибуты — число, время и полный список проблем.
 
 Проверки держат три вещи, на которых легко ошибиться:
 
@@ -127,14 +127,17 @@ class TestProblemsEntity:
         )
 
     @pytest.mark.asyncio
-    async def test_state_is_the_number_of_problems(self) -> None:
-        """Состояние сущности — сколько проблем сейчас."""
+    async def test_state_names_the_problems(self) -> None:
+        """Состояние — читаемая строка «что и где», а не счётчик."""
         recorder = Recorder()
         mirror = PlatformMirror(publish=recorder)
 
         await mirror.publish_report(REPORT)
 
-        assert _payload(recorder, "/platform/problems/state") == "2"
+        text = _payload(recorder, "/platform/problems/state")
+        assert text.startswith("2: "), text
+        assert "Грядки: Батарея — не отвечает" in text
+        assert "Терраса: Батарейка — батарейка на исходе" in text
 
     @pytest.mark.asyncio
     async def test_attributes_name_every_problem(self) -> None:
@@ -145,6 +148,7 @@ class TestProblemsEntity:
         await mirror.publish_report(REPORT)
 
         attributes = json.loads(_payload(recorder, "/platform/problems/attributes"))
+        assert attributes["count"] == 2
         assert [item["subject"] for item in attributes["problems"]] == [
             "sensor.0xa4c138ef3971344e_battery",
             "sensor.datchik_temperatury_terassa_battery",
@@ -166,14 +170,14 @@ class TestProblemsEntity:
         assert configs == ["homeassistant/sensor/behavioral_platform_problems/config"]
 
     @pytest.mark.asyncio
-    async def test_no_problems_publishes_zero(self) -> None:
-        """Проблем нет — это ноль, а не молчание: иначе сущность зависнет."""
+    async def test_no_problems_says_so(self) -> None:
+        """Проблем нет — это «Проблем нет», а не пустое состояние."""
         recorder = Recorder()
         mirror = PlatformMirror(publish=recorder)
 
         await mirror.publish_report({**REPORT, "problems": []})
 
-        assert _payload(recorder, "/platform/problems/state") == "0"
+        assert _payload(recorder, "/platform/problems/state") == "Проблем нет"
 
 
 class TestFailuresAreVisibleNotFatal:
