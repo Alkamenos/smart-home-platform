@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 #: Привязка роли датчика: одна сущность или несколько.
@@ -119,6 +119,11 @@ class RoomConfig(BaseModel):
 
     id: str
     name: str
+    kind: str = "room"
+    """Вид места. У комнаты — ``room``; вид нужен, чтобы комната и локация
+    описывались одним понятием (B93)."""
+    parent: str | None = None
+    """Место верхнего уровня, в которое входит эта комната (id)."""
     sensors: SensorMap = Field(default_factory=dict)
     devices: list[DeviceConfig] = Field(default_factory=list)
 
@@ -155,6 +160,8 @@ class LocationConfig(BaseModel):
     id: str
     name: str
     kind: str = "other"
+    parent: str | None = None
+    """Место верхнего уровня: «Теплица в саду», «Грядки в саду» (B93)."""
     sensors: SensorMap = Field(default_factory=dict)
     devices: list[DeviceConfig] = Field(default_factory=list)
     stale_after_sec: int | None = None
@@ -554,6 +561,101 @@ class Manifest(BaseModel):
             Список мест: сначала комнаты, затем локации.
         """
         return [*self.rooms, *self.locations]
+
+    @model_validator(mode="after")
+    def validate_place_tree(self) -> Manifest:
+        """Проверить дерево мест: идентификаторы, родителей и циклы.
+
+        Места — одно пространство имён (B93): комната ``sad`` и локация ``sad``
+        одновременно сделали бы вложенность неоднозначной, а правило «Теплица в
+        саду» — невыразимым. Проверка стоит в модели, а не в интерфейсе: правило
+        должно действовать для любого способа правки манифеста.
+
+        Returns:
+            Тот же манифест.
+
+        Raises:
+            ValueError: Если идентификатор повторяется, родитель не найден, есть
+                цикл или локация вложена в комнату.
+        """
+        by_id: dict[str, RoomConfig | LocationConfig] = {}
+        for place in self.all_places:
+            if place.id in by_id:
+                raise ValueError(
+                    f"Место '{place.id}' описано дважды: комнаты и локации делят "
+                    f"одно пространство имён"
+                )
+            by_id[place.id] = place
+
+        for place in self.all_places:
+            parent_id = place.parent
+            if parent_id is None:
+                continue
+            parent = by_id.get(parent_id)
+            if parent is None:
+                raise ValueError(
+                    f"Место '{place.id}' ссылается на неизвестного родителя '{parent_id}'"
+                )
+            if parent_id == place.id:
+                raise ValueError(f"Место '{place.id}' не может быть родителем само себе")
+            if isinstance(place, LocationConfig) and isinstance(parent, RoomConfig):
+                raise ValueError(
+                    f"Локация '{place.id}' не может вкладываться в комнату "
+                    f"'{parent_id}': комнаты — это внутренние помещения"
+                )
+
+        for place in self.all_places:
+            seen = {place.id}
+            current = by_id.get(place.parent) if place.parent else None
+            while current is not None:
+                if current.id in seen:
+                    raise ValueError(f"Цикл во вложенности мест: '{place.id}' замкнут сам на себя")
+                seen.add(current.id)
+                current = by_id.get(current.parent) if current.parent else None
+
+        return self
+
+    def place(self, place_id: str) -> RoomConfig | LocationConfig | None:
+        """Найти место по идентификатору — комнату или локацию.
+
+        Args:
+            place_id: Идентификатор места.
+
+        Returns:
+            Место либо ``None``.
+        """
+        return next((place for place in self.all_places if place.id == place_id), None)
+
+    def children(self, place_id: str | None) -> list[RoomConfig | LocationConfig]:
+        """Непосредственные дети места.
+
+        Args:
+            place_id: Идентификатор родителя; ``None`` — места верхнего уровня.
+
+        Returns:
+            Дети в порядке объявления.
+        """
+        return [place for place in self.all_places if place.parent == place_id]
+
+    def place_path(self, place_id: str) -> list[RoomConfig | LocationConfig]:
+        """Путь от корня до места — для «хлебных крошек» и порядка на панели.
+
+        Args:
+            place_id: Идентификатор места.
+
+        Returns:
+            Список мест от верхнего к запрошенному; пустой, если места нет.
+        """
+        path: list[RoomConfig | LocationConfig] = []
+        current = self.place(place_id)
+        seen: set[str] = set()
+        while current is not None:
+            if current.id in seen:  # защита от повреждённого дерева
+                break
+            seen.add(current.id)
+            path.append(current)
+            current = self.place(current.parent) if current.parent else None
+        return list(reversed(path))
 
     @property
     def all_devices(self) -> list[tuple[str, DeviceConfig]]:

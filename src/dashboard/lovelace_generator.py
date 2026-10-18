@@ -95,6 +95,32 @@ BEHAVIOR_LABELS: dict[str, str] = {
 }
 
 
+def _tree_order(manifest: Manifest) -> list[Any]:
+    """Обойти места деревом: родитель идёт раньше своих детей.
+
+    Комнаты и локации — одно дерево (B93): «Теплица в саду» должна стоять сразу
+    после сада, а не в общем списке локаций. Места без родителя — корни, в
+    порядке объявления.
+
+    Args:
+        manifest: Манифест дома.
+
+    Returns:
+        Места в порядке обхода.
+    """
+
+    ordered: list[Any] = []
+
+    def walk(place: Any) -> None:
+        ordered.append(place)
+        for child in manifest.children(place.id):
+            walk(child)
+
+    for root in manifest.children(None):
+        walk(root)
+    return ordered
+
+
 class LovelaceGenerator:
     """Генератор конфигурации дашборда Home Assistant."""
 
@@ -111,8 +137,7 @@ class LovelaceGenerator:
         Returns:
             Конфигурация Lovelace: название и представления.
         """
-        views = [self._place_view(room) for room in manifest.rooms]
-        views += [self._place_view(location) for location in manifest.locations]
+        views = [self._place_view(place) for place in _tree_order(manifest)]
         if getattr(manifest.dashboard, "show_platform", True):
             views.insert(0, self._platform_view())
         title = str(getattr(manifest.dashboard, "title", "") or "").strip()
