@@ -50,6 +50,29 @@ rooms:
     - template: cover_modes
       priority: 10
       params: {}
+  # Ниже — приборы «только показ» (поведений нет): платформа ими не управляет,
+  # но владелец видит их на панели дома и в обходе. Автоматика добавляется
+  # отдельно, когда решено, что именно должно управляться.
+  - id: climate.termostat_gostinaia
+    type: climate
+    name: Термостат гостиной
+    behaviors: []
+  - id: climate.esphome_web_0d22a4_ac_name
+    type: climate
+    name: Кондиционер
+    behaviors: []
+  - id: light.ambient_light
+    type: light
+    name: Фоновый свет
+    behaviors: []
+  - id: light.kus
+    type: light
+    name: Кусь
+    behaviors: []
+  - id: switch.podsvetka_zerkala
+    type: light
+    name: Подсветка зеркала
+    behaviors: []
 - id: sanuzel
   name: Санузел
   sensors:
@@ -86,6 +109,14 @@ rooms:
         exhaust_temp_threshold: 25.0
         exhaust_humidity_threshold: 65.0
         exhaust_seconds: 3600
+  - id: light.zerkalo_sanuzel
+    type: light
+    name: Зеркало в санузле
+    behaviors: []
+  - id: switch.par_v_saune
+    type: switch
+    name: Пар в сауне
+    behaviors: []
 - id: konteiner
   name: Контейнер
   sensors:
@@ -126,6 +157,18 @@ rooms:
       priority: 10
       params:
         off_by: sleep
+  - id: switch.girlianda_terassa
+    type: light
+    name: Гирлянда на террасе (выключатель)
+    behaviors: []
+  - id: light.girlianda_na_oknakh
+    type: light
+    name: Гирлянда на окнах
+    behaviors: []
+  - id: light.podsvetka_stupenei
+    type: light
+    name: Подсветка ступеней
+    behaviors: []
 - id: spalnia
   name: Спальня
   sensors:
@@ -246,6 +289,21 @@ rooms:
     - template: lighting
       priority: 10
       params: {}
+- id: kukhnia
+  name: Кухня
+  # Камера на кухне — исключение из правила «камеры относятся к локациям»
+  # (требование владельца 2026-10-18). Датчик дыма живёт здесь же.
+  sensors:
+    battery: sensor.datchik_dyma_battery
+  devices:
+  - id: camera.lc_profile000
+    type: camera
+    name: Камера на кухне
+    behaviors: []
+  - id: light.svet_nad_rabochei_poverkhnostiu
+    type: light
+    name: Свет над рабочей поверхностью
+    behaviors: []
 - id: sad
   name: Сад
   sensors:
@@ -253,6 +311,7 @@ rooms:
     temperature: sensor.datchik_temperatury_sad_temperature
     humidity: sensor.datchik_temperatury_sad_humidity
     battery: sensor.datchik_temperatury_sad_battery
+    water_level: sensor.datchik_urovnia_vody_v_bakakh_liquid_level_percent
   devices:
   - id: light.vse_fonari
     type: light
@@ -266,6 +325,78 @@ rooms:
       priority: 10
       params:
         off_by: sunrise
+  - id: light.fonar
+    type: light
+    name: Фонарь
+    behaviors: []
+  - id: light.fonar_dvor
+    type: light
+    name: Фонарь (двор)
+    behaviors: []
+  - id: light.fonar_parkovka
+    type: light
+    name: Фонарь (парковка)
+    behaviors: []
+  - id: light.fonar_u_teplitsy
+    type: light
+    name: Фонарь у теплицы
+    behaviors: []
+  - id: light.ulichnaia_girlianda
+    type: light
+    name: Уличная гирлянда
+    behaviors: []
+  - id: light.vorota_sad
+    type: light
+    name: Ворота (сад)
+    behaviors: []
+  - id: light.kalitka_vostok_sad
+    type: light
+    name: Калитка (восток, сад)
+    behaviors: []
+  - id: switch.nasos
+    type: switch
+    name: Насос садовый
+    behaviors: []
+  - id: switch.nasos_i_septik
+    type: switch
+    name: Насос и септик
+    behaviors: []
+  - id: valve.klapan_napolneniia_bakov
+    type: valve
+    name: Клапан наполнения баков
+    behaviors: []
+  - id: valve.klapany_a_l1
+    type: valve
+    name: Клапан A1 (теплица)
+    behaviors: []
+  - id: valve.klapany_a_l2
+    type: valve
+    name: Клапан A2
+    behaviors: []
+  - id: valve.klapany_a_l3
+    type: valve
+    name: Клапан A3
+    behaviors: []
+  - id: valve.klapany_a_l4
+    type: valve
+    name: Клапан A4
+    behaviors: []
+  - id: valve.klapany_b_l1
+    type: valve
+    name: Клапан B1
+    behaviors: []
+  - id: valve.klapany_b_l2
+    type: valve
+    name: Клапан B2
+    behaviors: []
+  - id: valve.klapany_b_l3
+    type: valve
+    name: Клапан B3
+    behaviors: []
+  - id: valve.klapany_b_l4
+    type: valve
+    name: Клапан B4
+    behaviors: []
 locations:
 - id: ulitsa
   name: Улица
@@ -275,16 +406,88 @@ locations:
     rain: binary_sensor.datchik_dozhdia_water_leak
     illuminance: sensor.datchik_osveshchennosti_illuminance
     battery: sensor.datchik_dozhdia_battery
+    contact: binary_sensor.datchik_otkrytiia_vorota_contact
+  devices:
+  # Ворота и калитки — чтобы было видно, о чём речь (требование владельца
+  # 2026-10-18). Камеры относятся к локациям; кухня и гостиная — исключения.
+  - id: light.vorota_sever
+    type: light
+    name: Ворота (север)
+    behaviors: []
+  - id: light.kalitka_sever_fonar
+    type: light
+    name: Калитка (север)
+    behaviors: []
+  - id: light.kalitka_vostok_ulitsa
+    type: light
+    name: Калитка (восток, улица)
+    behaviors: []
+  - id: light.kalitka_iug
+    type: light
+    name: Калитка (юг)
+    behaviors: []
+  - id: light.fonar_vorota
+    type: light
+    name: Фонарь (ворота)
+    behaviors: []
+  - id: light.lampa_na_vorotakh
+    type: light
+    name: Лампа на воротах
+    behaviors: []
+  - id: light.podsvetka_doma
+    type: light
+    name: Подсветка дома
+    behaviors: []
+  - id: camera.main_sub_lens_0
+    type: camera
+    name: Камера (улица)
+    behaviors: []
   stale_after_sec: 86400
 - id: gryadki
   name: Грядки
   kind: garden
   sensors:
     illuminance: sensor.0xa4c138ef3971344e_illuminance
+    humidity: sensor.0xa4c138ef3971344e_humidity
     soil_ec: sensor.0xa4c138ef3971344e_soil_fertility
     soil_moisture: sensor.0xa4c138ef3971344e_soil_moisture
     battery: sensor.0xa4c138ef3971344e_battery
     soil_temperature: sensor.0xa4c138ef3971344e_temperature
+  stale_after_sec: 86400
+- id: teplitsa
+  name: Теплица
+  kind: garden
+  # Теплица — локация в саду, а не комната (требование владельца 2026-10-18).
+  sensors:
+    temperature:
+    - sensor.temperatura_v_teplitse_ogurtsy_temperature
+    - sensor.temperatura_v_teplitse_tomaty_temperature
+    - sensor.d1215es_new_current_temperature
+    humidity: sensor.temperatura_v_teplitse_ogurtsy_humidity
+    battery:
+    - sensor.temperatura_v_teplitse_ogurtsy_battery
+    - sensor.temperatura_v_teplitse_tomaty_battery
+  devices:
+  - id: switch.0x842712fffe34d820
+    type: light
+    name: Свет в теплице
+    behaviors: []
+  - id: switch.d1215es_new_start
+    type: switch
+    name: Обогрев теплицы (запуск)
+    behaviors: []
+  - id: switch.d1215es_new_heat_preservation
+    type: switch
+    name: Обогрев теплицы (сохранение тепла)
+    behaviors: []
+  - id: switch.podsvetka_rassady
+    type: light
+    name: Подсветка рассады
+    behaviors: []
+  - id: switch.klapan_poliva_rassady
+    type: valve
+    name: Клапан полива рассады
+    behaviors: []
   stale_after_sec: 86400
 # Тип батарейки по сущности: в тревоге о севшей батарейке и в сведениях о датчике
 # видно, какую покупать (требование владельца 2026-10-15). Home Assistant тип не
