@@ -62,6 +62,7 @@ SENSOR_LABELS: dict[str, tuple[str, str]] = {
     "soil_ec": ("Плодородие почвы", "mdi:sprout"),
     "animal": ("Животное", "mdi:paw"),
     "vehicle": ("Машина", "mdi:car"),
+    "water_level": ("Уровень воды", "mdi:water"),
 }
 
 #: Значок прибора по его типу.
@@ -74,6 +75,9 @@ DEVICE_ICONS: dict[str, str] = {
     "ventilation_humidity": "mdi:fan",
     "fan": "mdi:fan",
     "cover": "mdi:window-shutter",
+    "valve": "mdi:valve",
+    "camera": "mdi:cctv",
+    "switch": "mdi:toggle-switch",
 }
 
 #: Человеческое имя поведения: в карточке автомата видно «Обогрев», а не

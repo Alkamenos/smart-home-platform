@@ -137,8 +137,11 @@ class LocationConfig(BaseModel):
 
     Комнаты манифеста — тоже локации (``kind: room``) и описываются как раньше:
     их датчики лежат в ``RoomConfig.sensors``. Этот раздел — для зон вне комнат
-    (улица, грядки): у них нет устройств, только датчики. Привязка явная
-    (FR-010): роль → сущность Home Assistant, без угадывания по именам.
+    (улица, сад, теплица): у них могут быть и датчики, и приборы (уличные фонари,
+    ворота и калитки, камеры, клапаны полива). Поведений у таких приборов обычно
+    нет — платформа их показывает, но не управляет (решение владельца 2026-10-18).
+    Привязка явная (FR-010): роль → сущность Home Assistant, без угадывания по
+    именам.
 
     Attributes:
         id: Идентификатор локации, уникальный среди локаций и комнат.
@@ -146,12 +149,14 @@ class LocationConfig(BaseModel):
         kind: Вид зоны — ``outdoor``, ``garden``, ``other``. Влияет на оформление
             и умолчания, но не на логику снимка.
         sensors: Роль датчика → сущность Home Assistant.
+        devices: Приборы зоны (только показ, если у них нет поведений).
     """
 
     id: str
     name: str
     kind: str = "other"
     sensors: SensorMap = Field(default_factory=dict)
+    devices: list[DeviceConfig] = Field(default_factory=list)
     stale_after_sec: int | None = None
     """Свой порог молчания для локации. ``None`` — порог дома
     (``automation_rules.locations.stale_after_sec``). Нужен зонам с редкими
@@ -160,11 +165,15 @@ class LocationConfig(BaseModel):
 
     @field_validator("sensors")
     @classmethod
-    def validate_sensor_ids(cls, v: dict[str, str]) -> dict[str, str]:
+    def validate_sensor_ids(cls, v: SensorMap) -> SensorMap:
         """Проверить, что сущности датчиков заданы.
 
+        Роль может ссылаться на список сущностей (несколько температур теплицы):
+        проверка обязана принимать обе формы, иначе список падал на `.strip()`
+        ещё до начала работы.
+
         Args:
-            v: Привязка «роль → сущность».
+            v: Привязка «роль → сущность или список сущностей».
 
         Returns:
             Ту же привязку.
@@ -172,8 +181,9 @@ class LocationConfig(BaseModel):
         Raises:
             ValueError: Если у роли пустая сущность.
         """
-        for sensor_type, entity_id in v.items():
-            if not entity_id.strip():
+        for sensor_type, binding in v.items():
+            entities = [binding] if isinstance(binding, str) else list(binding)
+            if not entities or any(not str(entity).strip() for entity in entities):
                 raise ValueError(f"Sensor '{sensor_type}' has empty entity_id")
         return v
 

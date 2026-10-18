@@ -1020,6 +1020,11 @@ class Container:
         for location in getattr(self.manifest, "locations", []) or []:
             for _role, entity in iter_role_entities(location.sensors):
                 areas.setdefault(entity, ("локация", location.name))
+            # Приборы локации (уличные фонари, ворота, камеры) тоже в обходе:
+            # пропавший прибор зоны — такая же работа для оператора, как
+            # пропавший датчик (решение владельца 2026-10-18).
+            for device in getattr(location, "devices", []) or []:
+                areas.setdefault(device.id, ("локация", location.name))
         for room in getattr(self.manifest, "rooms", []) or []:
             for _role, entity in iter_role_entities(room.sensors):
                 areas.setdefault(entity, ("комната", room.name))
