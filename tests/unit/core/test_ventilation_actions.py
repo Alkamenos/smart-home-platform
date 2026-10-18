@@ -656,6 +656,64 @@ class TestVentilationActions:
         assert intent.data["preset_mode"] == "Приток MAX"
         assert set(intent.data) == {"preset_mode"}
 
+    def test_fan_set_preset_skips_when_mode_is_the_same(self) -> None:
+        """Команда режима несёт `skip_if`: тот же режим не отправляем.
+
+        У боевого рекуператора от каждой команды вспыхивает дисплей (замечание
+        владельца 2026-10-19), а автомат ставил тот же режим на каждом
+        `settings_changed` — 26 команд за полчаса.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_set_preset")(
+            None, {"entity_id": "fan.base_smart", "preset_mode": "Приток"}
+        )
+
+        assert intent is not None
+        assert intent.skip_if == {"state": "on", "preset_mode": "Приток"}
+
+    def test_fan_set_percentage_skips_when_speed_is_the_same(self) -> None:
+        """Команда скорости несёт `skip_if` с процентом.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_set_percentage")(
+            None, {"entity_id": "fan.base_smart", "percentage": 45}
+        )
+
+        assert intent is not None
+        assert intent.skip_if == {"state": "on", "percentage": 45}
+
+    def test_fan_turn_off_skips_when_already_off(self) -> None:
+        """Выключенному прибору команду выключения не шлём.
+
+        Returns:
+            Ничего.
+        """
+        intent = _action("fan_turn_off")(None, {"entity_id": "fan.base_smart"})
+
+        assert intent is not None
+        assert intent.skip_if == {"state": "off"}
+
+    def test_airing_steps_skip_when_already_there(self) -> None:
+        """Проветривание: и включение, и режим несут `skip_if`.
+
+        Returns:
+            Ничего.
+        """
+        steps = _steps(
+            _action("fan_airing_on")(
+                None, {"entity_id": "fan.base_smart", "mode_airing": "Приток MAX"}
+            )
+        )
+
+        assert [step.skip_if for step in steps] == [
+            {"state": "on", "percentage": 100},
+            {"state": "on", "preset_mode": "Приток MAX"},
+        ]
+
     def test_mode_and_speed_are_two_independent_steps(self) -> None:
         """Режим и скорость — две команды: смена скорости не сбрасывает режим.
 
