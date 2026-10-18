@@ -20,6 +20,7 @@ from loguru import logger
 
 from core.definitions import YAMLFSMDefinition, YAMLTransition
 from core.fsm.engine import FSMDefinition, FSMEngine, Transition
+from core.fsm.naming import fsm_entity_id
 from core.models.manifest import BehaviorConfig
 from core.registry import Registry
 
@@ -371,9 +372,11 @@ class FSMFactory:
         """
         # Переопределяем entity_id для уникальности FSM
         # Формат: {device_id}_{template_name}_{priority}
-        # Используем имя поведенческого шаблона (behavior.template), а не entity_id из YAML
+        # Используем имя поведенческого шаблона (behavior.template), а не entity_id из YAML.
+        # Правило живёт в `core.fsm.naming`: по нему же дашборд и зеркало находят
+        # состояние автомата в Home Assistant.
         template_name = behavior_template_name if behavior_template_name else "fsm"
-        new_entity_id = f"{device_id}_{template_name}_{behavior_priority}"
+        new_entity_id = fsm_entity_id(device_id, template_name, behavior_priority)
         template_data["entity_id"] = new_entity_id
 
         # Внедряем params из BehaviorConfig

@@ -187,6 +187,10 @@ class Container:
         self._location_mirror: Any | None = None
         #: Зеркало проблем дома (карточка тревог на дашборде, B79).
         self._platform_mirror: Any | None = None
+        #: Зеркало состояний автоматов в помощники Home Assistant (B79).
+        self._fsm_helper_mirror: Any | None = None
+        #: Фоновая задача создания помощников и первой записи состояний.
+        self._fsm_helper_task: Any | None = None
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
@@ -742,6 +746,7 @@ class Container:
         _ = self.house_health  # обход дома: собрать и запустить (BACKLOG F6)
         self._start_sensor_health()
         self._start_location_state()
+        self._start_fsm_helpers()
 
         return PlatformContext(
             day_cycle=self._day_cycle,
@@ -1202,6 +1207,81 @@ class Container:
             await mirror.publish_report(report)
 
         return _publish_report
+
+    @property
+    def fsm_helper_mirror(self) -> Any:
+        """Зеркало состояний автоматов в помощники Home Assistant (B79).
+
+        Returns:
+            Зеркало либо ``None``, если адаптера нет.
+        """
+        if self._fsm_helper_mirror is None:
+            from core.services.fsm_helper_mirror import FsmHelperMirror
+
+            adapter = self._adapter
+            if adapter is None:
+                return None
+
+            async def _publish_state(entity_id: str, value: str) -> bool:
+                """Записать значение в помощника через Home Assistant.
+
+                Args:
+                    entity_id: Идентификатор сущности помощника.
+                    value: Значение.
+
+                Returns:
+                    True, если дом принял запись.
+                """
+                return bool(
+                    await adapter.call_service(
+                        "input_text", "set_value", entity_id, {"value": value}
+                    )
+                )
+
+            self._fsm_helper_mirror = FsmHelperMirror(
+                send_command=getattr(adapter, "helpers_command", None),
+                publish_state=_publish_state,
+            )
+        return self._fsm_helper_mirror
+
+    def _start_fsm_helpers(self) -> None:
+        """Создать помощников состояний и записать текущие состояния (B79).
+
+        Помощники создаются один раз на старте: по ним дашборд показывает
+        состояния автоматов, а история копится в самом доме (нативный журнал).
+        Отказ дома не влияет ни на переходы, ни на журнал платформы.
+
+        Returns:
+            Ничего.
+        """
+        adapter = self._adapter
+        mirror = self.fsm_helper_mirror
+        if adapter is None or mirror is None:
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Зеркало автоматов не запущено: нет работающего цикла")
+            return
+
+        async def _provision() -> None:
+            """Дождаться связи, создать недостающих помощников и записать состояния."""
+            for _ in range(60):
+                if getattr(adapter, "is_connected", False):
+                    break
+                await asyncio.sleep(1.0)
+            states = self.fsm.get_all_states()
+            try:
+                await mirror.ensure(states.keys())
+            except Exception as exc:  # noqa: BLE001 — зеркало не важнее переходов
+                logger.warning(f"Зеркало автоматов: помощники не созданы: {exc}")
+                return
+            for fsm_id, state in states.items():
+                value = getattr(state, "current_state", None)
+                if value:
+                    await mirror.write(fsm_id, value)
+
+        self._fsm_helper_task = asyncio.create_task(_provision())
 
     def _schedule_location_prime(self) -> None:
         """Прочитать текущие показания датчиков, когда появится связь с домом.

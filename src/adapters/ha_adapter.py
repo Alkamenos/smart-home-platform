@@ -874,6 +874,30 @@ class HAAdapter:
             logger.warning(f"HAAdapter: первый пересмотр настроек не удался: {exc}")
         self._startup_reapply_done = True
 
+    async def helpers_command(self, command_type: str, **payload: Any) -> dict[str, Any]:
+        """Отправить команду WebSocket API помощников Home Assistant (B79).
+
+        Зеркало состояний автоматов создаёт вспомогательные элементы
+        (`input_text`) через этот API: обычный ``call_service`` умеет только
+        писать значения в уже существующие, а ручное создание двух десятков
+        помощников — не работа для владельца.
+
+        Args:
+            command_type: Тип команды (``input_text/list``, ``input_text/create``).
+            **payload: Поля команды.
+
+        Returns:
+            Ответ дома целиком: ``success`` и ``result`` либо ``error``.
+        """
+        client = self._ws_client
+        sender = getattr(client, "command", None)
+        if sender is None:
+            return {
+                "success": False,
+                "error": {"code": "no_websocket", "message": "нет WebSocket-соединения"},
+            }
+        return await sender(command_type, **payload)
+
     async def call_service(
         self,
         domain: str,
