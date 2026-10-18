@@ -385,41 +385,40 @@ class TestSaveAll:
 class TestAtomicWrite:
     """Тесты атомарности записи"""
 
-    def test_uses_temp_file_then_rename(self):
+    def test_uses_temp_file_then_rename(self, tmp_path: Path):
         """Запись использует временный файл затем atomic rename"""
-        fd, path = tempfile.mkstemp(suffix=".json")
-        os.close(fd)
-        os.unlink(path)
+        # Свой каталог, а не общий системный: проверка «рядом не осталось
+        # временных файлов» не должна зависеть от того, кто ещё пишет в %TEMP%
+        # (18.10 глоб `*.tmp.*` по системной папке ловил чужой `*.tmp.js`).
+        path = tmp_path / "state.json"
 
-        persistence = StatePersistence(path)
+        persistence = StatePersistence(str(path))
 
         # Сохраняем состояние
         persistence.save_state("light.test", "ON", {})
 
-        # Проверяем что нет временных файлов
-        temp_files = list(Path(path).parent.glob("*.tmp.*"))
+        # Проверяем что нет временных файлов рядом с состоянием
+        temp_files = list(tmp_path.glob("*.tmp.*"))
         assert len(temp_files) == 0
 
         # Проверяем что основной файл существует и корректен
-        assert Path(path).exists()
+        assert path.exists()
         with open(path) as f:
             data = json.load(f)
         assert "light.test" in data
 
-    def test_cleans_up_temp_file_on_error(self):
+    def test_cleans_up_temp_file_on_error(self, tmp_path: Path):
         """Временные файлы очищаются при ошибке"""
-        fd, path = tempfile.mkstemp(suffix=".json")
-        os.close(fd)
-        os.unlink(path)
+        path = tmp_path / "state.json"
 
-        persistence = StatePersistence(path)
+        persistence = StatePersistence(str(path))
 
         # Создаем ситуацию где temp файл может остаться
         # (в реальной ситуации это проверяется через mocking)
         persistence.save_state("light.test", "ON", {})
 
         # Все temp файлы должны быть удалены
-        temp_files = list(Path(path).parent.glob("*.tmp.*"))
+        temp_files = list(tmp_path.glob("*.tmp.*"))
         assert len(temp_files) == 0
 
 
