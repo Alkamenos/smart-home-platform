@@ -27,6 +27,36 @@ STATE_CONFIRM_ATTEMPTS = 10
 STATE_CONFIRM_DELAY_S = 0.5
 
 
+def _values_match(current: Any, expected: Any) -> bool:
+    """Сравнить значение прибора с ожидаемым, не выдумывая различий.
+
+    Home Assistant отдаёт числа как float, а названия режимов — как есть, поэтому
+    ``14`` и ``14.0`` — одно и то же, а регистр и лишние пробелы в названии режима
+    различием не считаются. ``None`` (прибор не сообщил значение) совпадением не
+    считается: молчание прибора — не подтверждение.
+
+    Args:
+        current: Значение из снимка прибора.
+        expected: Значение из команды.
+
+    Returns:
+        True, если значения означают одно и то же.
+    """
+    if current is None or expected is None:
+        return False
+    if isinstance(current, bool) or isinstance(expected, bool):
+        # Логическое значение сравнивается только с логическим: `True` и `1` —
+        # разные вещи, и «включено» не должно совпасть с числом.
+        if not (isinstance(current, bool) and isinstance(expected, bool)):
+            return False
+        return current is expected
+    try:
+        return float(current) == float(expected)
+    except (TypeError, ValueError):
+        pass
+    return str(current).strip().casefold() == str(expected).strip().casefold()
+
+
 class CommandIntent(BaseModel):
     """
     Represents a command intent with priority and source information.
@@ -58,6 +88,15 @@ class CommandIntent(BaseModel):
     last_updated: float = Field(default_factory=time.time)
     ttl_seconds: float = Field(default=3600.0, ge=0)
     bypass_lockout: bool = False
+    skip_if: dict[str, Any] | None = None
+    """Не отправлять команду, если прибор уже в этом состоянии.
+
+    Ключ — ``state`` или имя атрибута сущности, значение — ожидаемое. Если всё
+    совпало, команда не уходит: у боевого рекуператора от каждой команды
+    вспыхивает дисплей (замечание владельца 2026-10-19), а повтор «того же
+    режима» ничего не меняет. Неизвестное состояние (прочитать не удалось) —
+    не повод молчать: команда отправляется.
+    """
     requires_state: str | None = None
     """Состояние прибора, без которого команду отправлять нельзя.
 
@@ -254,6 +293,14 @@ class CommandDispatcher:
                 self._active_intents[device_id] = processed_intent
                 processed_intent.refresh()
 
+            if processed_intent.skip_if and await self._already_in_state(processed_intent):
+                logger.info(
+                    f"Команда не нужна: {device_id} уже в нужном состоянии "
+                    f"({processed_intent.source} → "
+                    f"{processed_intent.domain}.{processed_intent.service})"
+                )
+                return True
+
             logger.info(
                 f"Accepted intent from {processed_intent.source} (priority={processed_intent.priority}) "
                 f"for device {device_id}"
@@ -285,6 +332,36 @@ class CommandDispatcher:
         except Exception as e:
             logger.error(f"Error submitting CommandIntent: {e}")
             return False
+
+    async def _already_in_state(self, intent: CommandIntent) -> bool:
+        """Проверить, что прибор уже в состоянии, которое просит команда.
+
+        Состояние читается у прибора, а не берётся из памяти платформы: память
+        говорит, что мы просили, а не что прибор имеет. Расхождение (человек
+        переключил вручную, прибор откатился) — ровно тот случай, когда команду
+        отправить нужно.
+
+        Args:
+            intent: Намерение с заполненным ``skip_if``.
+
+        Returns:
+            True, если все ожидаемые значения совпали и команда не нужна.
+        """
+        if not intent.skip_if:
+            return False
+        reader = getattr(self._ha_adapter, "get_entity_snapshot", None)
+        if reader is None:
+            return False
+        try:
+            snapshot = await reader(intent.device_id)
+        except Exception as exc:  # noqa: BLE001 — неизвестность не повод молчать
+            logger.warning(f"Состояние {intent.device_id} не прочитано: {exc}")
+            return False
+        if not snapshot:
+            return False
+        return all(
+            _values_match(snapshot.get(key), expected) for key, expected in intent.skip_if.items()
+        )
 
     async def _wait_for_state(self, entity_id: str, expected: str) -> str | None:
         """Дождаться, пока прибор примет заданное состояние.

@@ -824,6 +824,7 @@ def _fan_intent(
     service: str,
     source: str,
     keys: tuple[str, ...] = (),
+    skip_if: dict[str, Any] | None = None,
 ) -> CommandIntent | None:
     """Собрать команду вентилятора.
 
@@ -839,6 +840,10 @@ def _fan_intent(
         service: Услуга Home Assistant.
         source: Источник для аудита и блокировок.
         keys: Поля контекста, допустимые в данных этой услуги.
+        skip_if: Состояние и атрибуты прибора, при которых команда не нужна:
+            у боевого рекуператора от каждой команды вспыхивает дисплей
+            (замечание владельца 2026-10-19), а повтор «того же режима» ничего
+            не меняет.
 
     Returns:
         CommandIntent либо ``None``, если устройство не указано.
@@ -859,6 +864,7 @@ def _fan_intent(
         data=data,
         priority=context.get("priority", 50),
         source=source,
+        skip_if=skip_if,
     )
 
 
@@ -872,7 +878,11 @@ def fan_turn_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     Returns:
         Команда включения либо ``None`` без устройства.
     """
-    return _fan_intent(context, "turn_on", "fan_turn_on", keys=("percentage",))
+    percentage = context.get("percentage")
+    skip_if: dict[str, Any] = {"state": "on"}
+    if percentage is not None:
+        skip_if["percentage"] = percentage
+    return _fan_intent(context, "turn_on", "fan_turn_on", keys=("percentage",), skip_if=skip_if)
 
 
 def fan_turn_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
@@ -888,7 +898,7 @@ def fan_turn_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     Returns:
         Команда выключения либо ``None`` без устройства.
     """
-    return _fan_intent(context, "turn_off", "fan_turn_off")
+    return _fan_intent(context, "turn_off", "fan_turn_off", skip_if={"state": "off"})
 
 
 def fan_set_percentage(state: Any, context: dict[str, Any]) -> CommandIntent | None:
@@ -933,6 +943,7 @@ def fan_set_percentage(state: Any, context: dict[str, Any]) -> CommandIntent | N
         "turn_on",
         "fan_set_percentage",
         keys=("percentage",),
+        skip_if={"state": "on", "percentage": value},
     )
 
 
@@ -961,6 +972,7 @@ def fan_set_preset(state: Any, context: dict[str, Any]) -> CommandIntent | None:
         "set_preset_mode",
         "fan_set_preset",
         keys=("preset_mode",),
+        skip_if={"state": "on", "preset_mode": preset_mode},
     )
 
 
@@ -997,10 +1009,18 @@ def fan_airing_on(state: Any, context: dict[str, Any]) -> list[CommandIntent]:
     # за режимом (боевой разбор 2026-10-13: прибор возвращался в «Рекуперацию»
     # через пару минут после нашей пары команд).
     power = _fan_intent(
-        {**context, "percentage": 100}, "turn_on", "fan_airing_on", keys=("percentage",)
+        {**context, "percentage": 100},
+        "turn_on",
+        "fan_airing_on",
+        keys=("percentage",),
+        skip_if={"state": "on", "percentage": 100},
     )
     preset = _fan_intent(
-        {**context, "preset_mode": mode}, "set_preset_mode", "fan_airing_on", keys=("preset_mode",)
+        {**context, "preset_mode": mode},
+        "set_preset_mode",
+        "fan_airing_on",
+        keys=("preset_mode",),
+        skip_if={"state": "on", "preset_mode": mode},
     )
     return [step for step in (power, preset) if step is not None]
 
@@ -1032,6 +1052,7 @@ def fan_airing_reassert(state: Any, context: dict[str, Any]) -> CommandIntent | 
         "set_preset_mode",
         "fan_airing_reassert",
         keys=("preset_mode",),
+        skip_if={"state": "on", "preset_mode": mode},
     )
 
 
@@ -1127,7 +1148,7 @@ def exhaust_on(state: Any, context: dict[str, Any]) -> CommandIntent | None:
         Команда либо ``None`` без устройства.
     """
     del state
-    return _fan_intent(context, "turn_on", "exhaust_on")
+    return _fan_intent(context, "turn_on", "exhaust_on", skip_if={"state": "on"})
 
 
 def exhaust_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
@@ -1141,7 +1162,7 @@ def exhaust_off(state: Any, context: dict[str, Any]) -> CommandIntent | None:
         Команда либо ``None`` без устройства.
     """
     del state
-    return _fan_intent(context, "turn_off", "exhaust_off")
+    return _fan_intent(context, "turn_off", "exhaust_off", skip_if={"state": "off"})
 
 
 def _modifier_off_intent(

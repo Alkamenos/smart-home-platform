@@ -1330,6 +1330,50 @@ class HAAdapter:
         state, _reason = await self._read_entity_state(entity_id)
         return state
 
+    async def get_entity_snapshot(self, entity_id: str) -> dict[str, Any] | None:
+        """Прочитать состояние и атрибуты одной сущности через REST.
+
+        Нужно, чтобы не слать команду, когда прибор уже в нужном режиме: у
+        боевого рекуператора от каждой команды вспыхивает дисплей (замечание
+        владельца 2026-10-19), а повтор «того же режима» ничего не меняет.
+
+        ``None`` означает «прочитать не удалось»: это не подтверждение того, что
+        прибор уже в нужном состоянии, поэтому вызывающий обязан отправить
+        команду.
+
+        Args:
+            entity_id: Идентификатор сущности.
+
+        Returns:
+            Словарь ``{"state": …, **атрибуты}`` либо ``None``.
+        """
+        client = self._ws_client
+        session = self._session
+        if client is None or session is None:
+            return None
+        base = cast(str, self._ws_url)
+        base = base.replace("wss://", "https://").replace("ws://", "http://")
+        url = f"{base.split('/api/websocket')[0].rstrip('/')}/api/states/{entity_id}"
+        try:
+            async with session.get(
+                url,
+                headers={"Authorization": f"Bearer {self._token}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status != 200:
+                    return None
+                payload = await response.json()
+        except Exception as exc:  # noqa: BLE001 — неизвестность не повод молчать
+            logger.warning(f"Снимок {entity_id} не прочитан: {exc}")
+            return None
+        if not isinstance(payload, dict):
+            return None
+        snapshot: dict[str, Any] = {"state": payload.get("state")}
+        attributes = payload.get("attributes")
+        if isinstance(attributes, dict):
+            snapshot.update(attributes)
+        return snapshot
+
     async def get_all_states(self) -> list[dict[str, Any]]:
         """Прочитать состояния всех сущностей одним запросом.
 
