@@ -33,6 +33,7 @@ from core.events.fsm_events import (
     EVENT_FSM_TRANSITIONED,
     TIMESTAMP_FORMAT,
 )
+from core.fsm.naming import helper_entity_id
 from core.persistence.event_store import EventStore, FsmTransition, SensorEvent
 
 
@@ -208,8 +209,13 @@ class FSMStateBridge:
             logger.debug("Skipping Home Assistant mirror: missing fsm_id or to_state")
             return
 
+        # Адресат — **помощник**, а не сам автомат: прежняя версия слала
+        # ``input_text.set_value`` на ``input_text.<fsm_id>``, но таких сущностей
+        # в доме нет, а Home Assistant отвечает «выполнено» и на несуществующую
+        # сущность. Состояние автоматов не попадало в дом вовсе (проверено
+        # 18.10: в доме было 0 помощников ``input_text``).
         intent = CommandIntent(
-            device_id=fsm_id,
+            device_id=helper_entity_id(str(fsm_id)),
             domain=MIRROR_DOMAIN,
             service=MIRROR_SERVICE,
             data={"value": to_state},

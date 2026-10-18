@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.fsm.naming import fsm_entity_id, helper_entity_id
 from core.models.manifest import (
     Manifest,
     iter_role_entities,
@@ -73,6 +74,20 @@ DEVICE_ICONS: dict[str, str] = {
     "ventilation_humidity": "mdi:fan",
     "fan": "mdi:fan",
     "cover": "mdi:window-shutter",
+}
+
+#: Человеческое имя поведения: в карточке автомата видно «Обогрев», а не
+#: `climate_control`. Незнакомое поведение называется собой, с пробелами.
+BEHAVIOR_LABELS: dict[str, str] = {
+    "lighting": "Освещение",
+    "night_light": "Ночной свет",
+    "deco_light": "Декор-свет",
+    "climate_control": "Обогрев",
+    "climate_hysteresis": "Обогрев",
+    "ventilation_modes": "Вентиляция",
+    "ventilation_humidity": "Вентиляция",
+    "cover_modes": "Шторы",
+    "humidity_control": "Влажность",
 }
 
 
@@ -153,6 +168,9 @@ class LovelaceGenerator:
         devices = self._device_card(place)
         if devices is not None:
             cards.append(devices)
+        automata = self._fsm_card(place)
+        if automata is not None:
+            cards.append(automata)
         if not cards:
             cards.append(
                 {
@@ -209,6 +227,40 @@ class LovelaceGenerator:
         if not entities:
             return None
         return {"type": "entities", "title": "Управление", "entities": entities}
+
+    def _fsm_card(self, place: Any) -> dict[str, Any] | None:
+        """Собрать карточку состояний автоматов места (B79).
+
+        Состояние автомата живёт в помощнике Home Assistant (`input_text.…`):
+        платформа создаёт его сама, и в доме копится нативная история. Имя
+        помощника считает `core.fsm.naming` — то же правило, что у фабрики
+        автоматов, поэтому карточка ссылается на настоящую сущность.
+
+        Args:
+            place: Комната либо локация манифеста.
+
+        Returns:
+            Карточка `entities` либо ``None``, если автоматов нет.
+        """
+        entities: list[dict[str, Any]] = []
+        for device in getattr(place, "devices", []) or []:
+            if "." not in str(device.id):
+                continue
+            for behavior in getattr(device, "behaviors", []) or []:
+                fsm_id = fsm_entity_id(str(device.id), str(behavior.template), behavior.priority)
+                label = BEHAVIOR_LABELS.get(
+                    str(behavior.template), str(behavior.template).replace("_", " ")
+                )
+                entities.append(
+                    {
+                        "entity": helper_entity_id(fsm_id),
+                        "name": f"{device.name or device.id}: {label}",
+                        "icon": "mdi:state-machine",
+                    }
+                )
+        if not entities:
+            return None
+        return {"type": "entities", "title": "Автоматы", "entities": entities}
 
     def _path(self, place_id: str) -> str:
         """Путь представления по идентификатору места.
