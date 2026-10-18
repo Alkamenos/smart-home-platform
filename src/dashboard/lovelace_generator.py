@@ -78,6 +78,7 @@ DEVICE_ICONS: dict[str, str] = {
     "valve": "mdi:valve",
     "camera": "mdi:cctv",
     "switch": "mdi:toggle-switch",
+    "timer": "mdi:timer-outline",
 }
 
 #: Человеческое имя поведения: в карточке автомата видно «Обогрев», а не

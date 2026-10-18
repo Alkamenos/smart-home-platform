@@ -113,61 +113,22 @@ rooms:
     type: light
     name: Зеркало в санузле
     behaviors: []
+- id: sauna
+  name: Сауна
+  # Отдельная комната (решение владельца 2026-10-19). В доме у неё только пар:
+  # датчика температуры/влажности сауны в Home Assistant нет.
+  devices:
   - id: switch.par_v_saune
     type: switch
-    name: Пар в сауне
+    name: Подача пара
     behaviors: []
-- id: konteiner
-  name: Контейнер
-  sensors:
-    motion: binary_sensor.datchik_dvizheniia_konteiner_occupancy
-    battery: sensor.datchik_dvizheniia_konteiner_battery
-  devices:
-  - id: light.svet_v_konteinere
-    type: light
-    name: Свет в контейнере
-    behaviors:
-    - template: lighting
-      priority: 10
-      params: {}
-- id: terassa
-  name: Терраса
-  sensors:
-    motion:
-    - binary_sensor.main_motion
-    - binary_sensor.terassa_motion
-    person:
-    - binary_sensor.main_person
-    - binary_sensor.terassa_person
-    animal:
-    - binary_sensor.main_pet
-    - binary_sensor.terassa_pet
-    vehicle:
-    - binary_sensor.main_vehicle
-    - binary_sensor.terassa_vehicle
-    battery: sensor.datchik_temperatury_terassa_battery
-    humidity: sensor.datchik_temperatury_terassa_humidity
-    temperature: sensor.datchik_temperatury_terassa_temperature
-  devices:
-  - id: light.girlianda_terassa
-    type: light
-    name: Гирлянда на террасе
-    behaviors:
-    - template: deco_light
-      priority: 10
-      params:
-        off_by: sleep
-  - id: switch.girlianda_terassa
-    type: light
-    name: Гирлянда на террасе (выключатель)
+  - id: valve.par_v_saune
+    type: valve
+    name: Клапан пара
     behaviors: []
-  - id: light.girlianda_na_oknakh
-    type: light
-    name: Гирлянда на окнах
-    behaviors: []
-  - id: light.podsvetka_stupenei
-    type: light
-    name: Подсветка ступеней
+  - id: timer.taimer_para
+    type: timer
+    name: Таймер пара
     behaviors: []
 - id: spalnia
   name: Спальня
@@ -312,8 +273,79 @@ rooms:
     - template: lighting
       priority: 10
       params: {}
+locations:
+- id: ulitsa
+  name: Улица
+  kind: outdoor
+  sensors:
+    temperature: sensor.temperatura_na_ulitse_srednee
+    rain: binary_sensor.datchik_dozhdia_water_leak
+    illuminance: sensor.datchik_osveshchennosti_illuminance
+    battery: sensor.datchik_dozhdia_battery
+  devices:
+  # Калитки — на улице (решение владельца 2026-10-19); основная — восток.
+  # Камеры относятся к локациям; кухня и гостиная — исключения.
+  - id: light.kalitka_vostok_ulitsa
+    type: light
+    name: Калитка (основная, восток)
+    behaviors: []
+  - id: light.kalitka_sever_fonar
+    type: light
+    name: Калитка (север)
+    behaviors: []
+  - id: light.kalitka_iug
+    type: light
+    name: Калитка (юг)
+    behaviors: []
+  - id: light.kalitka_vostok_sad
+    type: light
+    name: Калитка (восток, сад)
+    behaviors: []
+  - id: light.podsvetka_doma
+    type: light
+    name: Подсветка дома
+    behaviors: []
+  - id: camera.main_sub_lens_0
+    type: camera
+    name: Камера (улица)
+    behaviors: []
+- id: parkovka
+  name: Парковка
+  kind: outdoor
+  parent: ulitsa
+  devices:
+  - id: light.fonar_parkovka
+    type: light
+    name: Фонарь (парковка)
+    behaviors: []
+- id: zona_vorot
+  name: Зона ворот
+  kind: outdoor
+  parent: ulitsa
+  sensors:
+    contact: binary_sensor.datchik_otkrytiia_vorota_contact
+    battery: sensor.datchik_otkrytiia_vorota_battery
+  devices:
+  - id: light.vorota_sever
+    type: light
+    name: Ворота (север)
+    behaviors: []
+  - id: light.vorota_sad
+    type: light
+    name: Ворота (сад)
+    behaviors: []
+  - id: light.fonar_vorota
+    type: light
+    name: Фонарь (ворота)
+    behaviors: []
+  - id: light.lampa_na_vorotakh
+    type: light
+    name: Лампа на воротах
+    behaviors: []
 - id: sad
   name: Сад
+  kind: garden
+  parent: ulitsa
   sensors:
     motion: binary_sensor.kalitka_sad_lc_motion_alarm
     temperature: sensor.datchik_temperatury_sad_temperature
@@ -341,10 +373,6 @@ rooms:
     type: light
     name: Фонарь (двор)
     behaviors: []
-  - id: light.fonar_parkovka
-    type: light
-    name: Фонарь (парковка)
-    behaviors: []
   - id: light.fonar_u_teplitsy
     type: light
     name: Фонарь у теплицы
@@ -353,14 +381,7 @@ rooms:
     type: light
     name: Уличная гирлянда
     behaviors: []
-  - id: light.vorota_sad
-    type: light
-    name: Ворота (сад)
-    behaviors: []
-  - id: light.kalitka_vostok_sad
-    type: light
-    name: Калитка (восток, сад)
-    behaviors: []
+  # Полив: клапаны A/B пока здесь — зоны полива ещё не разложены владельцем.
   - id: switch.nasos
     type: switch
     name: Насос садовый
@@ -405,67 +426,11 @@ rooms:
     type: valve
     name: Клапан B4
     behaviors: []
-locations:
-- id: ulitsa
-  name: Улица
-  kind: outdoor
-  sensors:
-    temperature: sensor.temperatura_na_ulitse_srednee
-    rain: binary_sensor.datchik_dozhdia_water_leak
-    illuminance: sensor.datchik_osveshchennosti_illuminance
-    battery: sensor.datchik_dozhdia_battery
-    contact: binary_sensor.datchik_otkrytiia_vorota_contact
-  devices:
-  # Ворота и калитки — чтобы было видно, о чём речь (требование владельца
-  # 2026-10-18). Камеры относятся к локациям; кухня и гостиная — исключения.
-  - id: light.vorota_sever
-    type: light
-    name: Ворота (север)
-    behaviors: []
-  - id: light.kalitka_sever_fonar
-    type: light
-    name: Калитка (север)
-    behaviors: []
-  - id: light.kalitka_vostok_ulitsa
-    type: light
-    name: Калитка (восток, улица)
-    behaviors: []
-  - id: light.kalitka_iug
-    type: light
-    name: Калитка (юг)
-    behaviors: []
-  - id: light.fonar_vorota
-    type: light
-    name: Фонарь (ворота)
-    behaviors: []
-  - id: light.lampa_na_vorotakh
-    type: light
-    name: Лампа на воротах
-    behaviors: []
-  - id: light.podsvetka_doma
-    type: light
-    name: Подсветка дома
-    behaviors: []
-  - id: camera.main_sub_lens_0
-    type: camera
-    name: Камера (улица)
-    behaviors: []
-  stale_after_sec: 86400
-- id: gryadki
-  name: Грядки
-  kind: garden
-  sensors:
-    illuminance: sensor.0xa4c138ef3971344e_illuminance
-    humidity: sensor.0xa4c138ef3971344e_humidity
-    soil_ec: sensor.0xa4c138ef3971344e_soil_fertility
-    soil_moisture: sensor.0xa4c138ef3971344e_soil_moisture
-    battery: sensor.0xa4c138ef3971344e_battery
-    soil_temperature: sensor.0xa4c138ef3971344e_temperature
-  stale_after_sec: 86400
 - id: teplitsa
   name: Теплица
-  kind: garden
-  # Теплица — локация в саду, а не комната (требование владельца 2026-10-18).
+  kind: greenhouse
+  parent: sad
+  # Теплица — локация в саду (требование владельца 2026-10-19).
   sensors:
     temperature:
     - sensor.temperatura_v_teplitse_ogurtsy_temperature
@@ -497,18 +462,94 @@ locations:
     name: Клапан полива рассады
     behaviors: []
   stale_after_sec: 86400
-# Тип батарейки по сущности: в тревоге о севшей батарейке и в сведениях о датчике
-# видно, какую покупать (требование владельца 2026-10-15). Home Assistant тип не
-# отдаёт — его знает владелец.
-#
-# Внимание: здесь стоит заготовка «AAA» для всех датчиков дома — так решил владелец
-# 2026-10-16 («пока все AAA, позже поменяю руками»). Это не описание приборов, а
-# место, куда владелец вписывает настоящие типы: угадывать их по модели нельзя —
-# промах стоит покупки не той батарейки.
-#
-# Список охватывает датчики дома (кнопки, движения, температура, теплица, сад,
-# улица). Личные приборы владельца (телефоны, часы, машина) сюда не входят: это не
-# датчики дома, и в обходе дома они не участвуют.
+- id: gryadki
+  name: Грядки
+  kind: garden
+  parent: sad
+  sensors:
+    illuminance: sensor.0xa4c138ef3971344e_illuminance
+    humidity: sensor.0xa4c138ef3971344e_humidity
+    soil_ec: sensor.0xa4c138ef3971344e_soil_fertility
+    soil_moisture: sensor.0xa4c138ef3971344e_soil_moisture
+    battery: sensor.0xa4c138ef3971344e_battery
+    soil_temperature: sensor.0xa4c138ef3971344e_temperature
+  stale_after_sec: 86400
+- id: les
+  name: Лес
+  kind: forest
+  parent: ulitsa
+  devices:
+  - id: light.fonar_les
+    type: light
+    name: Фонарь (лес)
+    behaviors: []
+- id: gazon
+  name: Газон
+  kind: lawn
+  parent: ulitsa
+  # Место заведено по списку владельца; приборы появятся, когда полив будет
+  # разложен по зонам (клапаны A/B пока в саду).
+- id: konteiner
+  name: Контейнер
+  kind: outdoor
+  parent: ulitsa
+  sensors:
+    motion: binary_sensor.datchik_dvizheniia_konteiner_occupancy
+    battery: sensor.datchik_dvizheniia_konteiner_battery
+  devices:
+  - id: light.svet_v_konteinere
+    type: light
+    name: Свет в контейнере
+    behaviors:
+    - template: lighting
+      priority: 10
+      params: {}
+  - id: light.podsvetka_konteiner
+    type: light
+    name: Подсветка контейнера
+    behaviors: []
+- id: terassa
+  name: Терраса
+  kind: terrace
+  # Терраса — локация: она вне отапливаемого контура, автоматика работает
+  # одинаково в любом месте (B93). Владелец может поменять вид в редакторе.
+  sensors:
+    motion:
+    - binary_sensor.main_motion
+    - binary_sensor.terassa_motion
+    person:
+    - binary_sensor.main_person
+    - binary_sensor.terassa_person
+    animal:
+    - binary_sensor.main_pet
+    - binary_sensor.terassa_pet
+    vehicle:
+    - binary_sensor.main_vehicle
+    - binary_sensor.terassa_vehicle
+    battery: sensor.datchik_temperatury_terassa_battery
+    humidity: sensor.datchik_temperatury_terassa_humidity
+    temperature: sensor.datchik_temperatury_terassa_temperature
+  devices:
+  - id: light.girlianda_terassa
+    type: light
+    name: Гирлянда на террасе
+    behaviors:
+    - template: deco_light
+      priority: 10
+      params:
+        off_by: sleep
+  - id: switch.girlianda_terassa
+    type: light
+    name: Гирлянда на террасе (выключатель)
+    behaviors: []
+  - id: light.girlianda_na_oknakh
+    type: light
+    name: Гирлянда на окнах
+    behaviors: []
+  - id: light.podsvetka_stupenei
+    type: light
+    name: Подсветка ступеней
+    behaviors: []
 battery_types:
   sensor.0xa4c138ef3971344e_battery: AAA
   sensor.datchik_dozhdia_battery: AAA
