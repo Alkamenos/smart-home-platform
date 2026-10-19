@@ -28,6 +28,11 @@
 `tests/unit/core/test_event_router_device_change.py`,
 `tests/unit/test_ha_adapter_device_change_routing.py`.
 
+Проверено живьём после пересборки образа 20.10 в 00:50: откаты `fan.base_smart`
+и `fan.base_smart_2` пришли с `own=False`, маршрут сработал, «Приток MAX»
+вернулся за ~1 секунду (HA подтвердил `set_preset_mode`). Полный прогон —
+**3247 passed / 19 skipped**, ruff/format/mypy чистые.
+
 ### 2026-10-19: файлы платформы читаются в UTF-8 на Windows (B78, регрессия)
 
 Полный прогон на Windows после новых коммитов снова дал **20 падений**:

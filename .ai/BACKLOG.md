@@ -2771,6 +2771,13 @@ Home Assistant, поэтому у изменения есть `parent_id` и н�
 спальня осталась на «Рекуперации (лето)» 100 %. Именно это окно и закрывает
 новый маршрут: событие прибора приходит в момент отката, а не через пять минут.
 
+**После пересборки образа (20.10, 00:50).** Откаты обоих рекуператоров
+(`fan.base_smart` и `fan.base_smart_2`) пришли с `own=False`; в журнале —
+`Routing: device=… → fsm=…, event=settings_changed`, затем
+`fan_airing_reassert` и `set_preset_mode «Приток MAX»`. Прибор вернулся в
+максимум за **~1 секунду** вместо пяти минут, HA подтвердил вызов. Контейнер
+healthy, `/ready` — true, 22 автомата.
+
 **Тесты:** `tests/integration/ventilation/test_device_drift_reassert.py`,
 `tests/unit/core/test_event_router_device_change.py` (3),
 `tests/unit/test_ha_adapter_device_change_routing.py` (2).
