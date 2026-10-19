@@ -103,7 +103,7 @@ class TestSaveState:
         persistence.save_state("light.kitchen", "ON", {"bright": 100})
         persistence.save_state("light.kitchen", "OFF", {"bright": 0})
 
-        with open(persistence.storage_path) as f:
+        with open(persistence.storage_path, encoding="utf-8") as f:
             data = json.load(f)
 
         assert data["light.kitchen"]["state"] == "OFF"
@@ -115,7 +115,7 @@ class TestSaveState:
         # Реальное тестирование platform-specific locking требует соответствующей OS
         persistence.save_state("light.test", "ON", {})
 
-        with open(persistence.storage_path) as f:
+        with open(persistence.storage_path, encoding="utf-8") as f:
             data = json.load(f)
 
         assert "light.test" in data
@@ -146,7 +146,7 @@ class TestSaveState:
         """Пустой контекст сохраняется корректно"""
         persistence.save_state("light.test", "ON", {})
 
-        with open(persistence.storage_path) as f:
+        with open(persistence.storage_path, encoding="utf-8") as f:
             data = json.load(f)
 
         assert data["light.test"]["context"] == {}
@@ -162,7 +162,7 @@ class TestSaveState:
 
         persistence.save_state("light.test", "COMPLEX", context)
 
-        with open(persistence.storage_path) as f:
+        with open(persistence.storage_path, encoding="utf-8") as f:
             data = json.load(f)
 
         assert data["light.test"]["context"] == context
@@ -182,7 +182,7 @@ class TestLoadState:
             "light.bedroom": {"state": "OFF", "context": {}},
         }
 
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f)
 
         return StatePersistence(path), data
@@ -246,7 +246,7 @@ class TestClearState:
             "light.two": {"state": "OFF", "context": {}},
         }
 
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f)
 
         return StatePersistence(path)
@@ -303,7 +303,7 @@ class TestClearAll:
             "light.two": {"state": "OFF", "context": {}},
         }
 
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f)
 
         return StatePersistence(path)

@@ -213,7 +213,7 @@ class DevicePersistence:
             return {}
 
         try:
-            with open(self.devices_file) as f:
+            with open(self.devices_file, encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError as exc:
             # Раньше здесь возвращался пустой словарь, и следующая же запись
@@ -278,7 +278,7 @@ class DevicePersistence:
             return {}
 
         try:
-            with open(self.configs_file) as f:
+            with open(self.configs_file, encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError as exc:
             backup = preserve_corrupt_file(self.configs_file)
@@ -537,7 +537,7 @@ class DeviceAccessPersistence:
             return {}
 
         try:
-            with open(self.access_file) as f:
+            with open(self.access_file, encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError as exc:
             backup = preserve_corrupt_file(self.access_file)
@@ -637,7 +637,7 @@ class DeviceSyncEventPersistence:
             return {}
 
         try:
-            with open(self.events_file) as f:
+            with open(self.events_file, encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError as exc:
             backup = preserve_corrupt_file(self.events_file)

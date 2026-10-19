@@ -70,7 +70,7 @@ class ManifestStore:
             FileNotFoundError: Если файла манифеста нет.
             ValidationError: Если манифест некорректен.
         """
-        with open(self.path) as f:
+        with open(self.path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         self.current = self.model_type(**data)
@@ -283,7 +283,7 @@ class ManifestStore:
             FileNotFoundError: Если файла нет.
             ValidationError: Если манифест некорректен.
         """
-        with open(self.path) as f:
+        with open(self.path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
 
     def revert(self) -> Any:

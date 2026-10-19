@@ -236,7 +236,7 @@ class FSMPersistence:
 
             data = {"state": state, "updated_at": time.time()}
 
-            with open(storage_file, "w") as f:
+            with open(storage_file, "w", encoding="utf-8") as f:
                 json.dump(data, f)
 
             self._logger.debug(f"Saved state to file: {storage_file}")
@@ -283,7 +283,7 @@ class FSMPersistence:
             storage_file = storage_dir / f"{storage_key}.json"
 
             if storage_file.exists():
-                with open(storage_file) as f:
+                with open(storage_file, encoding="utf-8") as f:
                     data = json.load(f)
                     return data.get("state")
 

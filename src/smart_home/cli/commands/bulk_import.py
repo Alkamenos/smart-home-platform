@@ -141,7 +141,7 @@ async def _handle_config(args: argparse.Namespace, manifest_path: str) -> int:
 
     if args.show:
         if config_file.exists():
-            with open(config_file) as f:
+            with open(config_file, encoding="utf-8") as f:
                 print(f.read())
         else:
             print("No configuration found. Use --set to create one.")
@@ -246,7 +246,7 @@ def _load_existing_rooms(manifest_path: str) -> list[dict]:
     if not Path(manifest_path).exists():
         return []
 
-    with open(manifest_path) as f:
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = yaml.safe_load(f) or {}
 
     return manifest.get("rooms", [])

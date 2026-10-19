@@ -515,7 +515,7 @@ def _load_manifest(path: str) -> dict:
     Returns:
         Manifest data as dictionary.
     """
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 

@@ -186,7 +186,7 @@ class FileStateStore(StateStore):
 
         try:
             if self._path.exists() and self._path.stat().st_size > 0:
-                with open(self._path) as f:
+                with open(self._path, encoding="utf-8") as f:
                     data = json.load(f)
 
                     # Проверяем версию
@@ -246,7 +246,7 @@ class FileStateStore(StateStore):
             temp_path = self._path.with_suffix(".tmp")
 
             # Пишем во временный файл
-            with open(temp_path, "w") as f:
+            with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())

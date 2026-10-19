@@ -212,7 +212,7 @@ class HASourcePersistence:
             return {}
 
         try:
-            with open(self.sources_file) as f:
+            with open(self.sources_file, encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError as exc:
             # Молчаливый возврат пустого словаря приводил к тому, что
