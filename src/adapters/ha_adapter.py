@@ -799,6 +799,31 @@ class HAAdapter:
             except Exception as e:
                 log.error(f"HAAdapter: EventRouter.route_state_change failed for {entity_id}: {e}")
 
+        # Прибор вентиляции может сам снять назначенный режим: у боевого
+        # рекуператора «Приток MAX» держится около пяти минут, и событие об
+        # откате приходит как чужое изменение (`own_action` = False). Без этого
+        # пересмотра откат замечал только сторож — раз в пять минут, и в бою
+        # 2026-10-20 он прочитал состояние до отката и пропустил подтверждение:
+        # спальня дула «Рекуперацией (лето)» на 100 % ещё пять минут.
+        #
+        # Эхо своей команды сюда не идёт намеренно: оно не сообщает ничего
+        # нового, а лишний пересмотр мог бы отправить вторую команду и снова
+        # зажечь дисплей рекуператора (B95).
+        if not own_action and self._event_router is not None:
+            route_device_change = getattr(self._event_router, "route_device_change", None)
+            if route_device_change is not None:
+                try:
+                    await route_device_change(
+                        entity_id=entity_id,
+                        new_state=new_state,
+                        old_state=old_state,
+                        context=event_context,
+                    )
+                except Exception as e:
+                    log.error(
+                        f"HAAdapter: EventRouter.route_device_change failed for {entity_id}: {e}"
+                    )
+
         # Ручное действие человека из Home Assistant: состояние меняет человек —
         # сам (`user_id`) или через свою кнопку и автоматизацию (`parent_id`).
         # Трекер это уже записал (из-за чего действует блокировка оверрайда), но

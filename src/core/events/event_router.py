@@ -17,6 +17,12 @@ from core.fsm.engine import FSMEngine
 from core.models.manifest import Manifest, all_sensor_entities, iter_role_entities
 
 
+#: Часть имени автомата, по которой узнаётся вентиляция. Изменение состояния
+#: самого прибора пересматривает только её: у света и штор свои поводы, и
+#: чужое событие не должно двигать их решения.
+VENTILATION_MARKER = "_ventilation_modes_"
+
+
 def as_measurement(value: str | Any) -> Any:
     """Привести показание датчика к числу, если это возможно.
 
@@ -126,6 +132,9 @@ class EventRouter:
         self._manifest = manifest
         self._engine = engine
         self._sensor_to_fsms: dict[str, list[tuple[str, str]]] = {}
+        #: Приборы вентиляции и их автоматы: изменение состояния прибора —
+        #: такой же повод пересмотреть решение, как показание датчика.
+        self._device_to_fsms: dict[str, list[str]] = {}
         # Роль датчика («humidity», «motion») по паре «датчик → автомат», а не по
         # сущности: один физический датчик может быть источником для двух комнат
         # под разными именами (например, движение гостиной плюс влажность для
@@ -151,6 +160,7 @@ class EventRouter:
         """Build sensor-to-FSM mapping from room structure."""
         self._fsm_to_room.clear()
         self._room_climate_fsms.clear()
+        self._device_to_fsms.clear()
         for room in self._manifest.rooms:
             # Collect all FSM entity IDs for devices in this room
             room_fsm_ids: list[str] = []
@@ -160,6 +170,17 @@ class EventRouter:
                 room_fsm_ids.extend(device_fsms)
                 for fsm_id in device_fsms:
                     self._fsm_to_room[fsm_id] = room.id
+                # Прибор вентиляции может сам снять назначенный режим: у боевого
+                # рекуператора «Приток MAX» держится около пяти минут. Событие
+                # прибора приходит в момент отката, и это единственный повод,
+                # который не запаздывает (сторож читает состояние раз в пять
+                # минут и успевает увидеть его до отката — боевая находка
+                # 2026-10-20). Поэтому запоминаем связь «прибор → его автомат».
+                ventilation_fsms = [
+                    fsm_id for fsm_id in device_fsms if VENTILATION_MARKER in fsm_id
+                ]
+                if ventilation_fsms:
+                    self._device_to_fsms[device.id] = ventilation_fsms
                 if getattr(device, "type", None) == "climate":
                     climate_fsm_ids.extend(device_fsms)
             self._room_climate_fsms[room.id] = climate_fsm_ids
@@ -226,6 +247,7 @@ class EventRouter:
         self._last_measurements.clear()
         self._fsm_to_room.clear()
         self._room_climate_fsms.clear()
+        self._device_to_fsms.clear()
         self._build_mapping()
 
     def get_mapping(self, sensor_id: str) -> list[tuple[str, str]]:
@@ -345,6 +367,61 @@ class EventRouter:
                 entity_id=fsm_entity_id,
                 event=event_name,
                 external_ctx=external_ctx,
+            )
+
+    async def route_device_change(
+        self,
+        entity_id: str,
+        new_state: str,
+        old_state: str,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        """Пересмотреть автомат вентиляции при изменении состояния прибора.
+
+        Прибор вентиляции умеет «соскочить» с назначенного режима сам: у боевого
+        рекуператора «Приток MAX» держится около пяти минут, после чего прибор
+        возвращается в обычный режим. Показание датчика к этому моменту молчит,
+        а сторож проверяет решение раз в пять минут и успевает прочитать
+        состояние **до** отката — команда подтверждения не уходит, и комната
+        остаётся в обычном режиме на прежней скорости (боевая находка
+        2026-10-20: спальня дула «Рекуперацией (лето)» на 100 % пять минут).
+
+        Событие самого прибора приходит в момент отката, поэтому изменение его
+        состояния — такой же повод пересмотреть решение, как и показание
+        датчика. Пересматриваются только автоматы вентиляции: у света и штор
+        свои поводы, и чужое событие не должно двигать их решения.
+
+        Args:
+            entity_id: Прибор, изменивший состояние.
+            new_state: Новое состояние прибора.
+            old_state: Прежнее состояние прибора.
+            context: Контекст события: общие значения дома и признаки.
+
+        Returns:
+            Ничего.
+        """
+        fsm_ids = self._device_to_fsms.get(entity_id)
+        if not fsm_ids:
+            return
+        base_context = dict(context or {})
+        for fsm_entity_id in fsm_ids:
+            external_ctx = {
+                **base_context,
+                "entity_id": entity_id,
+                "new_state": new_state,
+                "old_state": old_state,
+            }
+            # Последние показания комнаты: без температуры условие «жарко»
+            # откажет `guard_data_missing`, и «Приток MAX» не вернётся.
+            external_ctx.update(self.settings_context(fsm_entity_id))
+            logger.info(
+                f"Routing: device={entity_id} → fsm={fsm_entity_id}, event={self.SETTINGS_CHANGED}"
+            )
+            await self._engine.trigger(
+                entity_id=fsm_entity_id,
+                event=self.SETTINGS_CHANGED,
+                external_ctx=external_ctx,
+                respect_debounce=False,
             )
 
     #: Триггер пересмотра вентиляции при смене глобального переключателя.

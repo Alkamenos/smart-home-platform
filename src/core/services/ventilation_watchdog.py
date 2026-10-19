@@ -42,11 +42,9 @@ from typing import Any
 
 from loguru import logger
 
+from core.events.event_router import VENTILATION_MARKER
 from core.fsm.engine import FSMEngine
 
-
-#: Часть имени автомата, по которой отбираются автоматы вентиляции.
-VENTILATION_MARKER = "_ventilation_modes_"
 
 #: Состояние «прибор стоит по решению». Для него остановленный прибор —
 #: норма, и подтверждать нечего: признак остановки ни одному переходу не нужен.
