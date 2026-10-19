@@ -4,6 +4,21 @@
 
 ## Последние значимые изменения
 
+### 2026-10-19: файлы платформы читаются в UTF-8 на Windows (B78, регрессия)
+
+Полный прогон на Windows после новых коммитов снова дал **20 падений**:
+`'charmap' codec can't decode byte 0x98` и mojibake вместо кириллицы. Причина —
+persistence и CLI открывали JSON/YAML без `encoding`, и Python брал кодировку
+локали (cp1251), хотя файлы пишутся в UTF-8 (`atomic_write_json` с
+`ensure_ascii=False`). Изолированно тесты проходили: дефект виден только на
+реальных файлах с кириллицей.
+
+Исправлено: `core/persistence/{sources,devices,manifest_store,state_store}.py`
+(9 мест), `core/fsm/persistence.py`, `webui/app.py`,
+`smart_home/cli/commands/bulk_import.py`; тест `test_state_persistence.py` тоже
+читал файл без encoding. **3241 passed, 19 skipped, 0 failed**; ruff/format/mypy
+чистые.
+
 ### 2026-10-19: восстановление после ночного отключения электричества
 
 Ночью 18→19.10 отключали электричество. Платформа (контейнер behavioral-platform) пережила сбой корректно: watchdog показывал `degraded`, retry каждые 60 с, ни одной ошибки. HA-хост (Raspberry Pi, 192.168.2.10) после перезагрузки потерял IPv4-адрес (DHCP не восстановился) — доступен только по IPv6 (homeassistant.local → fd59:6b5f:914b::2cd).

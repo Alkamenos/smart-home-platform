@@ -1549,6 +1549,21 @@ Home Assistant нет вовсе (`unknown_command`), а сам дом стои�
 **Итог 18.10:** на Windows — **0 падений, 3142 passed, 19 skipped** (все пропуски
 с названной причиной); на Linux и в CI ничего не пропускается.
 
+**Сделано 19.10 — кодировка UTF-8 (регрессия того же класса).** После новых
+коммитов полный прогон на Windows снова дал **20 падений**: `'charmap' codec can't
+decode byte 0x98` и mojibake (`'РљСѓС…РѕРЅРЅС‹Р№ СЃРІРµС‚'` вместо
+`'Кухонный свет'`). Причина: persistence и CLI открывали JSON/YAML **без
+`encoding`**, и Python на Windows брал кодировку локали (cp1251), тогда как файлы
+пишутся в UTF-8 (`atomic_write_json` с `ensure_ascii=False`). Изолированно тесты
+проходили — дефект виден только на реальных файлах с кириллицей.
+
+Исправлено во всех местах чтения/записи: `core/persistence/{sources,devices,
+manifest_store,state_store}.py`, `core/fsm/persistence.py`, `webui/app.py`,
+`smart_home/cli/commands/bulk_import.py`; в `tests/test_state_persistence.py`
+тест тоже читал файл без encoding.
+
+**Итог 19.10:** **3241 passed, 19 skipped, 0 failed**; ruff/format/mypy чистые.
+
 ### B82 — Нейтральное имя образца манифеста
 
 **Источник:** B78 («переносимость»). **Статус:** ⬜ Не начато. **Приоритет:** 🟢 Low.
