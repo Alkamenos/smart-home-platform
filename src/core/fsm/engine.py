@@ -621,7 +621,9 @@ class FSMEngine:
                 # Таймер восстанавливается вместе с состоянием: без него
                 # автомат ждал бы триггера, который не придёт. Взводится здесь,
                 # а не в пути перехода, потому что перехода при старте нет.
-                self._schedule_restored_timeout(definition, saved_state, restored_age)
+                self._schedule_restored_timeout(
+                    definition, saved_state, restored_age, saved_context
+                )
             else:
                 logger.warning(
                     f"Saved state '{saved_state}' for entity {definition.entity_id} is invalid, "
@@ -859,12 +861,23 @@ class FSMEngine:
         if definition is None:
             return None
 
+        # Условия переходов учитываются и здесь: у одного состояния может быть
+        # несколько сроков, и какой из них действует, решает контекст состояния
+        # (например, ручной свет при «мы спим» гаснет через 5 минут, а не через
+        # час). Сторож обязан ждать столько же, сколько движок.
+        current = self._states.get(entity_id)
+        context = current.context if current is not None and current.current_state == state else {}
+
         timeouts = [
             transition.timeout_sec
             for transition in definition.transitions
             if transition.from_state == state
             and transition.timeout_sec is not None
             and transition.timeout_sec > 0
+            and (
+                transition.guard is None
+                or self._evaluate_guard(transition.guard, entity_id, context)
+            )
         ]
         return max(timeouts) if timeouts else None
 
@@ -1475,7 +1488,7 @@ class FSMEngine:
                 value
                 for value in (
                     self._incoming_timeout(definition, transition),
-                    self._outgoing_timeout(entity_id, transition.to_state),
+                    self._outgoing_timeout(entity_id, transition.to_state, new_context),
                 )
                 if value is not None
             ]
@@ -1546,7 +1559,13 @@ class FSMEngine:
         # которое пролежало отрицательное время.
         return max(0.0, age)
 
-    def _schedule_restored_timeout(self, definition: FSMDefinition, state: str, age: float) -> None:
+    def _schedule_restored_timeout(
+        self,
+        definition: FSMDefinition,
+        state: str,
+        age: float,
+        context: dict[str, Any] | None = None,
+    ) -> None:
         """Взвести отложенный переход для восстановленного состояния.
 
         Остаток считается от фактического времени в состояние, а не от старта
@@ -1559,7 +1578,7 @@ class FSMEngine:
             state: Восстановленное имя состояния.
             age: Сколько секунд состояние уже пролежало, сек.
         """
-        timeout_sec = self._outgoing_timeout(definition.entity_id, state)
+        timeout_sec = self._outgoing_timeout(definition.entity_id, state, context)
         if timeout_sec is None:
             return
 
@@ -1600,7 +1619,9 @@ class FSMEngine:
             return value
         return None
 
-    def _outgoing_timeout(self, entity_id: str, state: str) -> float | None:
+    def _outgoing_timeout(
+        self, entity_id: str, state: str, context: dict[str, Any] | None = None
+    ) -> float | None:
         """Возвращает ожидание по исходящим переходам по триггеру ``timeout``.
 
         Фильтр по триггеру обязателен. Шаблоны объявляют ожидание так:
@@ -1622,6 +1643,11 @@ class FSMEngine:
         if definition is None:
             return None
 
+        # Условия переходов решают, какой из сроков действует: у ручного света
+        # их два — короткий при «мы спим» и стандартный оверрайд в остальное
+        # время. Переход, условие которого не прошло, таймер не взводит;
+        # иначе побеждал бы самый долгий срок и короткий не сработал бы никогда.
+        context = context or {}
         timeouts = [
             transition.timeout_sec
             for transition in definition.transitions
@@ -1629,6 +1655,10 @@ class FSMEngine:
             and transition.trigger == "timeout"
             and transition.timeout_sec is not None
             and transition.timeout_sec > 0
+            and (
+                transition.guard is None
+                or self._evaluate_guard(transition.guard, entity_id, context)
+            )
         ]
         return max(timeouts) if timeouts else None
 

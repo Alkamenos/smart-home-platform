@@ -358,6 +358,11 @@ class TestManifestRequirementsAreMet:
         # и автомат приводит модель в соответствие вместо того, чтобы считать лампу
         # горящей и не включать её по движению. У вентиляции тот же признак работает
         # с 2026-10-13 (B54).
+        #
+        # `modifier_is_off` добавлен 2026-10-21 (B97): у ручного света два срока
+        # погашения — 5 минут при «мы спим» и стандартный час иначе. Условие
+        # «не спим» выбирает второй срок и не пропускает его, пока модификатор
+        # включён.
         assert guards == {
             "device_is_off",
             "humidity_above_60",
@@ -370,6 +375,7 @@ class TestManifestRequirementsAreMet:
             "may_heat",
             "may_stop_heating",
             "may_turn_on",
+            "modifier_is_off",
             "modifier_is_on",
         }, f"состав нужных guard'ов изменился: {sorted(guards)}"
 
@@ -381,6 +387,7 @@ class TestManifestRequirementsAreMet:
             "is_night_time": "make_is_night_time",
             "may_turn_on": "make_may_turn_on",
             "modifier_is_on": "make_modifier_is_on",
+            "modifier_is_off": "make_modifier_is_off",
             "may_heat": "make_may_heat",
             "may_stop_heating": "make_may_stop_heating",
             "may_cool": "make_may_cool",

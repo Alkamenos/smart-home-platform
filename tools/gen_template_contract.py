@@ -26,6 +26,10 @@ PLATFORM_EVENTS: dict[str, str] = {
         "смена глобального переключателя вентиляции; шлёт HAAdapter через "
         "EventRouter.route_settings_change"
     ),
+    "device_state_diverged": (
+        "прибор разошёлся с решением; шлёт сторож платформы "
+        "(services/watchdog.py, DEVICE_DIVERGED_TRIGGER)"
+    ),
 }
 
 CONTRACT_PATH = pathlib.Path("src/features/CONTRACT.yaml")

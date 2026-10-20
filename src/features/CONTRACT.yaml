@@ -96,6 +96,7 @@ registered_guards:  # реестр после register_all_guards
   - may_stop_heating
   - may_turn_on
   - mode_for_weather
+  - modifier_is_off
   - modifier_is_on
   - owner_wants_airing
   - sensor_is_alive
@@ -274,7 +275,7 @@ templates:
     reachable: true
     in_manifest: [kitchen, living_room, bedroom, bathroom]
     actions: [turn_on_light, turn_off_light]
-    guards: [may_turn_on, is_manual_override_enabled, device_is_off]
+    guards: [may_turn_on, is_manual_override_enabled, modifier_is_on, modifier_is_off, device_is_off]
     triggers:
       motion_detected: sensor
       manual_switch_on: НЕТ ПРОИСХОДИТЕЛЯ

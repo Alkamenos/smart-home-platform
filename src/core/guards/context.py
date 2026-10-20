@@ -69,6 +69,7 @@ REGISTERED_GUARDS = (
     "is_manual_override_enabled",
     "may_turn_on",
     "modifier_is_on",
+    "modifier_is_off",
     "humidity_above_60",
     "humidity_below_60",
     "below_setpoint",

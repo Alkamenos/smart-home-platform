@@ -279,6 +279,53 @@ def make_modifier_is_on() -> Callable[[Any, dict[str, Any]], bool]:
     return modifier_is_on
 
 
+def make_modifier_is_off() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить guard «модификатор „мы спим“ не включён».
+
+    Нужен, чтобы у одного и того же перехода ``ON_MANUAL --[timeout]--> OFF``
+    было два срока: короткий, пока владелец спит, и обычный ручной оверрайд —
+    когда не спит. Движок выбирает таймаут по условию перехода на контексте
+    состояния, поэтому условие обязано быть однозначным.
+
+    ``None`` (сущности нет или состояние не прочитано) считается «не спим»:
+    пропавшая в Home Assistant сущность не должна молча гасить свет через
+    пять минут — это тот же принцип, что у ``may_turn_on``, где неизвестный
+    модификатор не запрещает включение.
+
+    Returns:
+        Функция ``(state, context) -> bool``.
+    """
+
+    def modifier_is_off(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить переход, если режим сна не подтверждён.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если модификатор выключен или его состояние неизвестно.
+        """
+        del state  # состояние на решение не влияет: решает только модификатор
+        return context.get("sleep_modifier_on") is not True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа: «мы спим» либо данных нет.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            ``sleep_modifier``, если модификатор включён, иначе None.
+        """
+        del state
+        return "sleep_modifier" if context.get("sleep_modifier_on") is True else None
+
+    modifier_is_off.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return modifier_is_off
+
+
 def make_is_manual_override_enabled(
     control_tracker: Any,
     *,
