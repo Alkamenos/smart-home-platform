@@ -29,6 +29,13 @@ ports_description:
 # Supervisor перезапускает аддон, если /health перестал отвечать.
 watchdog: "http://[HOST]:[PORT:8125]/health"
 
+# Панель в боковой панели Home Assistant: интерфейс открывается через ingress,
+# префикс пути приходит в X-Ingress-Path (см. src/webui/ingress.py).
+ingress: true
+ingress_port: 8125
+panel_title: Поведенческая платформа
+panel_icon: mdi:home-analytics
+
 options:
   log_level: info
   shadow_mode: false
