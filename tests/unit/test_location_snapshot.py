@@ -142,6 +142,61 @@ class TestStale:
 
         assert snapshot.readings["temperature"][0].value == 18.0
 
+    def test_battery_is_never_stale(self) -> None:
+        """Батарейка отчитывается раз в сутки: «молчит» для неё — ложная тревога.
+
+        B90: в снимке локации заряд помечался молчащим, и владелец видел тревогу
+        там, где всё в порядке. Обход дома такие датчики уже исключает — теперь и
+        снимок.
+
+        Returns:
+            Ничего.
+        """
+        snapshot = _snapshot(
+            [
+                _reading(
+                    "sensor.datchik_battery",
+                    "battery",
+                    100,
+                    unit="%",
+                    ago_sec=STALE_AFTER * 10,
+                )
+            ]
+        )
+
+        assert snapshot.readings["battery"][0].stale is False
+        assert snapshot.derived["stale_count"] == 0
+        assert snapshot.derived["stale_sensors"] == []
+        assert snapshot.derived["available_count"] == 1
+
+    def test_battery_by_entity_suffix_is_not_stale(self) -> None:
+        """Роль может быть названа иначе — суффикс `_battery` тоже признак.
+
+        Returns:
+            Ничего.
+        """
+        snapshot = _snapshot(
+            [_reading("sensor.room_battery", "charge", 80, unit="%", ago_sec=STALE_AFTER * 5)]
+        )
+
+        assert snapshot.readings["charge"][0].stale is False
+
+    def test_temperature_next_to_battery_still_goes_stale(self) -> None:
+        """Исключение касается только батарейки, а не всей локации.
+
+        Returns:
+            Ничего.
+        """
+        snapshot = _snapshot(
+            [
+                _reading("sensor.t", "temperature", 21.0, ago_sec=STALE_AFTER * 5),
+                _reading("sensor.battery", "battery", 90, unit="%", ago_sec=STALE_AFTER * 5),
+            ]
+        )
+
+        assert snapshot.derived["stale_count"] == 1
+        assert snapshot.derived["stale_sensors"] == ["sensor.t"]
+
 
 class TestUnavailable:
     """Исчезнувший датчик отличается от пустого показания."""
