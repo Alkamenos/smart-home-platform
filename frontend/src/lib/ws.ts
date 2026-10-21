@@ -1,4 +1,4 @@
-import { identityHeaders } from "@/lib/api";
+import { identityHeaders, ingressPrefix } from "@/lib/api";
 
 /**
  * Клиент канала живых изменений (спека 017, FR-012, R-05).
@@ -69,7 +69,9 @@ export class EventStream {
             return;
         }
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const socket = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/events`);
+        const socket = new WebSocket(
+            `${protocol}//${window.location.host}${ingressPrefix()}/api/v1/ws/events`,
+        );
         this.socket = socket;
 
         socket.onopen = async () => {

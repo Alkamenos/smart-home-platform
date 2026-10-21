@@ -19,6 +19,42 @@ export class ApiError extends Error {
     }
 }
 
+declare global {
+    interface Window {
+        /** Префикс ingress Home Assistant (B79); пусто при обычном доступе. */
+        __INGRESS_PATH__?: string;
+    }
+}
+
+/**
+ * Префикс ingress, если интерфейс открыт из боковой панели Home Assistant.
+ *
+ * Аддон живёт по адресу `/api/hassio_ingress/<token>/`, и абсолютные пути
+ * приложения без префикса ушли бы в корень домена — в сам Home Assistant.
+ *
+ * @returns Префикс без хвостового слэша либо пустая строка.
+ */
+export function ingressPrefix(): string {
+    if (typeof window === "undefined") {
+        return "";
+    }
+    const prefix = window.__INGRESS_PATH__ ?? "";
+    return prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+}
+
+/**
+ * Дописать префикс ingress к абсолютному пути приложения.
+ *
+ * @param path Путь вида `/api/v1/...`.
+ * @returns Путь с префиксом, если он есть.
+ */
+export function withIngress(path: string): string {
+    if (!path.startsWith("/")) {
+        return path;
+    }
+    return `${ingressPrefix()}${path}`;
+}
+
 let identityPromise: Promise<Session> | null = null;
 
 /** Сбросить кэш идентичности (для тестов). */
@@ -33,7 +69,7 @@ export function resetIdentity(): void {
  */
 export function getIdentity(): Promise<Session> {
     if (!identityPromise) {
-        identityPromise = fetch("/api/v1/session")
+        identityPromise = fetch(withIngress("/api/v1/session"))
             .then(async (response) => {
                 if (!response.ok) {
                     return { user_id: "", is_admin: false, display_name: "" } satisfies Session;
@@ -75,7 +111,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
         headers.set(key, value);
     }
 
-    const response = await fetch(path, { ...init, headers });
+    const response = await fetch(withIngress(path), { ...init, headers });
     if (!response.ok) {
         throw new ApiError(response.status, await readError(response));
     }
