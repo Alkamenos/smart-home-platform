@@ -20,6 +20,7 @@ from core.events.device_events import (
     DeviceStateChangedEvent,
 )
 from core.events.event_bus import EventBus
+from core.logger import get_logger
 from core.metrics import get_metrics_collector
 from core.models.device import Device
 from core.models.device_access import DeviceAccess
@@ -31,6 +32,11 @@ from core.persistence.index_manager import IndexManager
 
 
 logger = logging.getLogger(__name__)
+
+#: Журнал синхронизации источника (B87): отдельный логгер компонента, потому что
+#: INFO корневого логгера в контейнере не виден (урок #70), а ход и итог
+#: синхронизации должны быть видны без перевода успеха в предупреждение.
+_sync_logger = get_logger("source_sync")
 
 EVENT_DEVICE_LOADED = "device.loaded"
 EVENT_DEVICE_CONFIG_CHANGED = "device.config_changed"
@@ -496,7 +502,7 @@ class DeviceService:
         Raises:
             ValueError: Если источник не найден
         """
-        logger.info(f"Начинаю синхронизацию устройств из источника {source_id}")
+        _sync_logger.info(f"Начинаю синхронизацию устройств из источника {source_id}")
         source_id_str = str(source_id)
         sync_start_time = time.time()
 
@@ -509,7 +515,7 @@ class DeviceService:
             if not source:
                 raise ValueError(f"Источник {source_id} не найден")
 
-            logger.info(f"Источник найден: {source.name} ({source.url})")
+            _sync_logger.info(f"Источник найден: {source.name} ({source.url})")
 
             # 2-4. Прочитать состояния источника через REST-клиент
             parsed_devices = await self._fetch_source_devices(source, source_id)
@@ -534,7 +540,7 @@ class DeviceService:
             self._metrics.record_source_sync_duration(source_id_str, sync_duration)
             self._update_device_availability_metrics()
 
-            logger.info(
+            _sync_logger.info(
                 f"Синхронизация из источника {source_id} успешно завершена: "
                 f"устройств в источнике — {len(merged)}, исчезнувших — {len(removed)}, "
                 f"время — {sync_duration:.2f}s"

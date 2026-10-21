@@ -575,6 +575,51 @@ class TestSyncDevicesFromSource:
             mock_persistence.devices.save_devices.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_sync_summary_is_visible_in_container_log(
+        self, device_service, mock_persistence, caplog
+    ):
+        """Ход и итог синхронизации видны в журнале контейнера (B87).
+
+        INFO корневого логгера в контейнере не виден (урок #70), поэтому
+        синхронизация пишет в собственный логгер компонента: «успешно завершена»
+        должна быть видна без перевода успеха в предупреждение.
+
+        Args:
+            device_service: Сервис устройств.
+            mock_persistence: Хранилище-двойник.
+            caplog: Захват журнала pytest.
+
+        Returns:
+            Ничего.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        from core.models.ha_source import HASource
+
+        source_id = uuid4()
+        mock_persistence.sources.load_source.return_value = HASource(
+            id=source_id, name="Test HA", url="http://localhost:8123", token="test_token"
+        )
+
+        with patch("adapters.home_assistant.rest_client.HARestClient") as mock_rest_client_class:
+            mock_rest_client = AsyncMock()
+            mock_rest_client.connect_to_ha = AsyncMock(return_value=True)
+            mock_rest_client.fetch_devices = AsyncMock(return_value=[])
+            mock_rest_client.__aenter__ = AsyncMock(return_value=mock_rest_client)
+            mock_rest_client.__aexit__ = AsyncMock(return_value=None)
+            mock_rest_client_class.return_value = mock_rest_client
+
+            with caplog.at_level(logging.INFO, logger="platform_v3.source_sync"):
+                await device_service.sync_devices_from_source(source_id)
+
+        messages = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "platform_v3.source_sync"
+        ]
+        assert any("успешно завершена" in message for message in messages), messages
+
+    @pytest.mark.asyncio
     async def test_sync_publishes_device_loaded_events(
         self, device_service, mock_persistence, event_bus
     ):
