@@ -8,8 +8,6 @@
 
 import asyncio
 import logging
-import os
-import time
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -20,7 +18,6 @@ from core.events.device_events import (
     DeviceStateChangedEvent,
 )
 from core.events.event_bus import EventBus
-from core.logger import get_logger
 from core.metrics import get_metrics_collector
 from core.models.device import Device
 from core.models.device_access import DeviceAccess
@@ -29,14 +26,10 @@ from core.models.device_config import DeviceConfig
 from core.models.ha_source import HASource
 from core.persistence.cache import DeviceCache
 from core.persistence.index_manager import IndexManager
+from services.source_sync import SourceSynchronizer, sync_filter_enabled as sync_filter_enabled
 
 
 logger = logging.getLogger(__name__)
-
-#: Журнал синхронизации источника (B87): отдельный логгер компонента, потому что
-#: INFO корневого логгера в контейнере не виден (урок #70), а ход и итог
-#: синхронизации должны быть видны без перевода успеха в предупреждение.
-_sync_logger = get_logger("source_sync")
 
 EVENT_DEVICE_LOADED = "device.loaded"
 EVENT_DEVICE_CONFIG_CHANGED = "device.config_changed"
@@ -50,45 +43,10 @@ EVENT_DEVICE_REMOVED = "device.removed"
 #: менялось» — не недоступность (BACKLOG B70).
 UNAVAILABLE_STATES = frozenset({"unavailable", "unknown"})
 
-#: Переменная окружения, включающая фильтр сущностей при синхронизации.
-SYNC_FILTER_ENV = "SYNC_FILTER_MANIFEST_ONLY"
-
-#: Значения, читаемые как «включено». Незаданная переменная — «выключено».
-_TRUTHY_VALUES = {"1", "true", "yes", "on"}
-
-
-def sync_filter_enabled() -> bool:
-    """Включён ли фильтр сущностей при синхронизации.
-
-    По умолчанию **выключен**, и это решение владельца, а не техническая
-    осторожность. Фильтр меняет контракт платформы: при нём синхронизация
-    перестаёт быть способом узнать о новом устройстве и остаётся только
-    обновлением уже описанного — добавить устройство может мастер discovery.
-
-    Цена измерена, а не предположена: включение фильтра роняет **38 тестов**, из
-    них 21 в `tests/integration/{test_device_sync,test_device_sync_lifecycle,
-    test_concurrency_and_removal}.py` и 17 контрактных и прочих. Это не
-    устаревшие тесты — они проверяют нынешний контракт как рабочий, и переписывание
-    их под новое поведение означало бы смену контракта без отдельного на то
-    решения.
-
-    Поэтому флаг по умолчанию `false`: как и `SHADOW_MODE`, забытая настройка не
-    должна молча менять смысл платформы. Включать осознанно, и тогда падение
-    тестов — это список меняющихся поведений, а не сбой.
-
-    Returns:
-        True, если фильтр применять.
-    """
-    return os.getenv(SYNC_FILTER_ENV, "false").strip().lower() in _TRUTHY_VALUES
-
-
 # Канал Home Assistant с изменениями состояния. Раньше обработчик
 # handle_state_change существовал, но ни на что не подписывался, поэтому
 # состояние устройства обновлялось только синхронизацией (FR-007).
 EVENT_HA_STATE_CHANGE = "state_change"
-
-# Пользователь, которому выдаётся доступ на устройства, найденные синхронизацией
-SYNC_ACCESS_USER = "admin_user"
 
 
 class DeviceService:
@@ -148,6 +106,9 @@ class DeviceService:
         self._cache = DeviceCache(max_size=cache_max_size, ttl_seconds=cache_ttl_seconds)
         self._index = IndexManager()
         self._state_change_subscribed = False
+        # Синхронизация вынесена в отдельный класс (B80): сервис остаётся
+        # единственным входом и владельцем хранилища.
+        self._sync = SourceSynchronizer(self)
 
     def subscribe_state_changes(self) -> None:
         """Подписать обработчик изменения состояния устройства на шину.
@@ -188,385 +149,40 @@ class DeviceService:
             }
         )
 
-    async def _merge_synced_devices(
-        self, source_id: UUID, parsed_devices: list[Device]
-    ) -> tuple[list[Device], list[Device]]:
-        """Сводит устройства из источника с уже известными.
+    async def sync_devices_from_source(self, source_id: UUID) -> list[Device]:
+        """Синхронизирует устройства из указанного источника Home Assistant.
 
-        Существующие записи обновляются на месте (сохраняются идентификатор и
-        выданные права), новые создаются, а пропавшие из Home Assistant
-        помечаются статусом ``removed_from_ha`` — молча их не теряем.
+        Сам путь синхронизации живёт в `SourceSynchronizer` (B80): здесь —
+        публичный вход сервиса. Показатели доступности обновляются после успеха,
+        потому что считаются по хранилищу сервиса.
 
         Args:
-            source_id: Идентификатор источника.
-            parsed_devices: Устройства, прочитанные из источника.
+            source_id: Идентификатор источника HA для синхронизации.
 
         Returns:
-            Пара: актуальный список устройств источника и список исчезнувших.
+            Список загруженных устройств.
+
+        Raises:
+            ValueError: Если источник не найден.
         """
-        known = await self._load_source_devices(source_id)
-        by_entity = {device.ha_entity_id: device for device in known}
-
-        seen: set[str] = set()
-        merged: list[Device] = []
-        for fresh in parsed_devices:
-            existing = by_entity.get(fresh.ha_entity_id)
-            if existing is None:
-                fresh.status = "available" if fresh.status != "unavailable" else "unavailable"
-                await self._grant_sync_access(fresh)
-                merged.append(fresh)
-                seen.add(fresh.ha_entity_id)
-                continue
-
-            existing.name = fresh.name
-            existing.device_type = fresh.device_type
-            existing.state = fresh.state
-            existing.attributes = fresh.attributes
-            existing.ha_area_id = fresh.ha_area_id
-            existing.model = fresh.model
-            existing.manufacturer = fresh.manufacturer
-            existing.status = fresh.status
-            existing.updated_at = datetime.utcnow()
-            merged.append(existing)
-            seen.add(existing.ha_entity_id)
-
-        removed: list[Device] = []
-        for device in known:
-            if device.ha_entity_id in seen or device.status == "removed_from_ha":
-                continue
-            device.status = "removed_from_ha"
-            device.updated_at = datetime.utcnow()
-            removed.append(device)
-
-        logger.info(
-            f"Сведение синхронизации источника {source_id}: новых — "
-            f"{sum(1 for d in merged if d not in known)}, исчезнувших — {len(removed)}"
-        )
-        return merged, removed
-
-    async def _load_source_devices(self, source_id: UUID) -> list[Device]:
-        """Загружает известные устройства источника из кэша и хранилища.
-
-        Args:
-            source_id: Идентификатор источника.
-
-        Returns:
-            Список устройств источника.
-        """
-        known: dict[UUID, Device] = {
-            device_id: device
-            for device_id, device in self._devices.items()
-            if device.source_id == source_id
-        }
-
-        if self.persistence and hasattr(self.persistence, "devices"):
-            try:
-                stored = await self.persistence.devices.load_devices_by_source(source_id)
-            except Exception as e:
-                logger.warning(f"Не удалось загрузить устройства источника {source_id}: {e}")
-                stored = []
-            for device in stored:
-                known.setdefault(device.id, device)
-
-        return list(known.values())
-
-    async def _grant_sync_access(self, device: Device) -> None:
-        """Выдаёт права на новое устройство владельцу инсталляции.
-
-        Без этого устройство не попало бы в список: список отдаёт только
-        устройства, доступные пользователю (spec 006, FR-015).
-
-        Args:
-            device: Новое устройство источника.
-        """
-        if self.persistence is None or not hasattr(self.persistence, "device_access"):
-            return
-        try:
-            await self.grant_access(
-                device_id=device.id,
-                user_id=SYNC_ACCESS_USER,
-                role="admin",
-                granted_by=SYNC_ACCESS_USER,
-            )
-        except Exception as e:
-            logger.warning(f"Не удалось выдать права на {device.ha_entity_id}: {e}")
-
-    async def _deactivate_removed_devices(self, removed: list[Device]) -> None:
-        """Снимает машины состояний устройств, исчезнувших из Home Assistant.
-
-        Args:
-            removed: Устройства, помеченные как removed_from_ha.
-        """
-        if not removed or self._engine is None:
-            return
-
-        unregistered = 0
-        for device in removed:
-            try:
-                entities = self._engine.get_entities_by_device(device.ha_entity_id)
-            except Exception as e:
-                logger.warning(f"Не удалось найти автоматику {device.ha_entity_id}: {e}")
-                continue
-            for entity_id in entities:
-                self._engine.unregister(entity_id)
-                unregistered += 1
-
-        if unregistered and self._event_router is not None:
-            try:
-                self._event_router.rebuild()
-            except Exception as e:
-                logger.warning(f"Не удалось перестроить маршрутизацию: {e}")
-
-        logger.info(f"Снято машин состояний для исчезнувших устройств: {unregistered}")
-
-    def _known_entity_ids(self, source_id: UUID) -> set[str]:
-        """Идентификаторы сущностей, уже известных сервису для источника.
-
-        Известные сущности сохраняются при фильтрации: устройство, добавленное
-        через интерфейс или найденное прошлой синхронизацией, не должно исчезать
-        из базы только потому, что его нет в манифесте. Иначе фильтр сам
-        становился бы причиной `removed_from_ha` — то есть снятия автоматики у
-        живого устройства.
-
-        Args:
-            source_id: Идентификатор источника.
-
-        Returns:
-            Множество `ha_entity_id`, известных сервису для этого источника.
-        """
-        return {
-            device.ha_entity_id
-            for device in self._devices.values()
-            if device.source_id == source_id and device.ha_entity_id
-        }
+        devices = await self._sync.run(source_id)
+        self._update_device_availability_metrics()
+        return devices
 
     def sync_entity_filter(self, source_id: UUID) -> set[str] | None:
         """Сущности, состояния которых синхронизация должна принимать.
 
-        Это манифест **плюс** уже известные сервису сущности источника, а не
-        манифест в одиночку:
-
-        - в бою Home Assistant отдаёт 1502 сущности против 6 описанных, и остальные
-          1496 попадали в `devices.json` молча — они не автоматизируются, но
-          занимают место и время на каждую синхронизацию;
-        - «только манифест» означал бы, что всё остальное помечается
-          `removed_from_ha` (`_merge_synced_devices`), то есть фильтр отбирал бы
-          устройства у живого дома.
-
-        Пустой манифест означает отсутствие фильтра, а не пустой результат: иначе
-        сборка без манифеста стала бы молчащей — устройств нет, синхронизация
-        «успешна», и это неотличимо от поломки.
+        Ответ живёт в `SourceSynchronizer`; метод сохранён как часть контракта
+        сервиса (его проверяет `tests/unit/test_sync_entity_filter.py`).
 
         Args:
             source_id: Идентификатор источника.
 
         Returns:
-            Множество допустимых `ha_entity_id` либо `None`, если фильтр не
+            Множество допустимых `ha_entity_id` либо None, если фильтр не
             применяется.
         """
-        if self._manifest is None or not sync_filter_enabled():
-            return None
-
-        from core.events.event_router import collect_subscribed_entities
-
-        allowed = set(collect_subscribed_entities(self._manifest))
-        allowed |= self._known_entity_ids(source_id)
-        return allowed
-
-    async def _fetch_source_devices(self, source: HASource, source_id: UUID) -> list[Device]:
-        """Читает состояния устройств источника Home Assistant.
-
-        Args:
-            source: Источник Home Assistant.
-            source_id: Идентификатор источника (проставляется устройствам).
-
-        Returns:
-            Устройства, разобранные из состояний источника.
-
-        Raises:
-            RuntimeError: Если подключиться к источнику не удалось.
-        """
-        from adapters.home_assistant.rest_client import HARestClient
-
-        async with HARestClient(source.url, source.token) as rest_client:
-            if not await rest_client.connect_to_ha():
-                raise RuntimeError(f"Не удалось подключиться к HA: {source.url}")
-
-            ha_states = await rest_client.fetch_devices()
-
-        allowed = self.sync_entity_filter(source_id)
-        if allowed is not None:
-            before = len(ha_states)
-            ha_states = [state for state in ha_states if state.get("entity_id") in allowed]
-            logger.info(
-                f"Фильтр синхронизации источника {source_id}: {len(ha_states)} из "
-                f"{before} состояний (манифест + известные устройства)"
-            )
-
-        parsed_devices = self.parse_devices(ha_states)
-        for device in parsed_devices:
-            device.source_id = source_id
-        logger.info(
-            f"Преобразовано {len(parsed_devices)} устройств для источника {source_id} "
-            f"(прочитано состояний: {len(ha_states)})"
-        )
-        return parsed_devices
-
-    async def _mark_source_synced(self, source: HASource, device_count: int | None = None) -> None:
-        """Фиксирует успешную синхронизацию в метаданных источника.
-
-        Обновляются не только время, но и состояние источника: `status` и
-        `device_count`. Раньше здесь писалось только время, и оба поля оставались
-        в прежнем значении — в бою это давало `status: disconnected` и
-        `device_count: 0` при 1502 загруженных устройствах. Статус источника
-        интерфейс берёт из этого поля, то есть показывал «Дом отключён» при
-        работающем источнике.
-
-        Args:
-            source: Источник Home Assistant.
-            device_count: Сколько устройств пришло из источника; при ``None``
-                прежнее значение сохраняется (вызывающий может не знать числа).
-        """
-        source.last_sync = datetime.utcnow()
-        source.last_error = None
-        # Канонический статус, а не исторический `active`: API понимал оба
-        # значения, но источник после синхронизации обязан иметь одно, иначе
-        # следующая проверка снова столкнётся с двумя формами одного и того же.
-        source.status = "connected"
-        if device_count is not None:
-            source.device_count = device_count
-        if self.persistence and hasattr(self.persistence, "sources"):
-            await self.persistence.sources.save_source(source)
-            logger.info(
-                f"Обновлено состояние источника {source.id}: status=connected, "
-                f"устройств={source.device_count}"
-            )
-
-    async def _mark_source_failed(self, source: HASource, error: str) -> None:
-        """Фиксирует неудачную синхронизацию.
-
-        Источник переводится в `disconnected`, а время последней **успешной**
-        синхронизации не меняется: иначе оператор увидит свежую дату при данных
-        трёхдневной давности, и расхождение не будет видно.
-
-        Args:
-            source: Источник Home Assistant.
-            error: Текст ошибки для источника.
-        """
-        source.status = "disconnected"
-        source.last_error = error
-        if self.persistence and hasattr(self.persistence, "sources"):
-            try:
-                await self.persistence.sources.save_source(source)
-            except Exception as save_error:  # noqa: BLE001 — отказ не должен ронять разбор
-                logger.warning(f"Не удалось сохранить состояние источника: {save_error}")
-        logger.warning(f"Синхронизация источника {source.id} не удалась: {error}")
-
-    async def _persist_sync_result(self, merged: list[Device], removed: list[Device]) -> None:
-        """Фиксирует результат синхронизации во всех хранилищах и событиях.
-
-        Args:
-            merged: Актуальные устройства источника.
-            removed: Устройства, помеченные как removed_from_ha.
-        """
-        if self.persistence and hasattr(self.persistence, "devices"):
-            await self.persistence.devices.save_devices(merged)
-            logger.info(f"Сохранено {len(merged)} устройств в persistence")
-
-        for device in merged:
-            self._devices[device.id] = device
-            self._index.add_device(device)
-        for device in removed:
-            self._devices[device.id] = device
-            self._index.update_device(device)
-        logger.info(
-            f"Обновлены внутренние хранилища: записей — {len(merged)}, исчезнувших — {len(removed)}"
-        )
-
-        await self._deactivate_removed_devices(removed)
-
-        for device in merged:
-            await self._publish_device_loaded_event(device)
-        for device in removed:
-            await self._publish_device_removed_event(device)
-
-    async def sync_devices_from_source(self, source_id: UUID) -> list[Device]:
-        """Синхронизирует устройства из указанного источника Home Assistant.
-
-        Args:
-            source_id: Идентификатор источника HA для синхронизации
-
-        Returns:
-            Список загруженных устройств
-
-        Raises:
-            ValueError: Если источник не найден
-        """
-        _sync_logger.info(f"Начинаю синхронизацию устройств из источника {source_id}")
-        source_id_str = str(source_id)
-        sync_start_time = time.time()
-
-        try:
-            # 1. Получить источник из persistence
-            if not self.persistence or not hasattr(self.persistence, "sources"):
-                raise ValueError("Persistence модуль не имеет sources")
-
-            source = await self.persistence.sources.load_source(source_id)
-            if not source:
-                raise ValueError(f"Источник {source_id} не найден")
-
-            _sync_logger.info(f"Источник найден: {source.name} ({source.url})")
-
-            # 2-4. Прочитать состояния источника через REST-клиент
-            parsed_devices = await self._fetch_source_devices(source, source_id)
-
-            # 5. Свести результат с единым хранилищем: обновить известные
-            # устройства, создать новые, пометить исчезнувшие. Раньше каждая
-            # синхронизация порождала новые записи с новыми id (дубли), а
-            # исчезнувшие устройства навсегда оставались обычными (spec 006).
-            merged, removed = await self._merge_synced_devices(source_id, parsed_devices)
-
-            # 6-9. Записать результат: хранилище → память и индекс → снятие
-            # автоматики исчезнувших → события
-            await self._persist_sync_result(merged, removed)
-
-            # 10. Обновить источник: время последней синхронизации, состояние и число
-            # устройств. Без состояния источник остаётся «отключённым» при
-            # успешной синхронизации, и интерфейс показывает неправду.
-            await self._mark_source_synced(source, device_count=len(merged))
-
-            # 11. Обновляем метрики
-            sync_duration = time.time() - sync_start_time
-            self._metrics.record_source_sync_duration(source_id_str, sync_duration)
-            self._update_device_availability_metrics()
-
-            _sync_logger.info(
-                f"Синхронизация из источника {source_id} успешно завершена: "
-                f"устройств в источнике — {len(merged)}, исчезнувших — {len(removed)}, "
-                f"время — {sync_duration:.2f}s"
-            )
-
-            return merged
-
-        except Exception as e:
-            logger.error(f"Ошибка синхронизации источника {source_id}: {e}")
-            # Записываем ошибку синхронизации
-            error_type = type(e).__name__
-            self._metrics.record_sync_error(source_id_str, error_type)
-
-            # Обновляем источник: он переходит в «отключён», иначе интерфейс
-            # покажет работающее соединение при сломанном. Время последней
-            # успешной синхронизации при этом не меняется — иначе расхождение
-            # между датой и данными не было бы видно.
-            try:
-                if self.persistence and hasattr(self.persistence, "sources"):
-                    source = await self.persistence.sources.load_source(source_id)
-                    if source:
-                        await self._mark_source_failed(source, str(e))
-            except Exception as e2:
-                logger.warning(f"Не удалось обновить ошибку источника: {e2}")
-
-            raise
+        return self._sync.entity_filter(source_id)
 
     async def get_device(self, device_id: UUID) -> Device | None:
         """Получает устройство по ID с использованием кэша.

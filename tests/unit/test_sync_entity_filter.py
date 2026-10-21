@@ -169,7 +169,7 @@ class TestFilterIsOffByDefault:
         rest_client.__aexit__.return_value = False
 
         with patch("adapters.home_assistant.rest_client.HARestClient", return_value=rest_client):
-            devices = await service._fetch_source_devices(source, source.id)
+            devices = await service._sync._fetch(source, source.id)
 
         assert INERT_ENTITY in {d.ha_entity_id for d in devices}, (
             "без флага фильтр применяться не должен: контракт синхронизации "
@@ -210,7 +210,7 @@ class TestFilterIsAbsentWithoutManifest:
         rest_client.__aexit__.return_value = False
 
         with patch("adapters.home_assistant.rest_client.HARestClient", return_value=rest_client):
-            devices = await service._fetch_source_devices(source, source.id)
+            devices = await service._sync._fetch(source, source.id)
 
         assert {d.ha_entity_id for d in devices} == {*MANIFEST_ENTITIES, INERT_ENTITY}, (
             f"без манифеста фильтр применяться не должен: {sorted(d.ha_entity_id for d in devices)}"
@@ -242,7 +242,7 @@ class TestFilterKeepsManifestEntities:
         rest_client.__aexit__.return_value = False
 
         with patch("adapters.home_assistant.rest_client.HARestClient", return_value=rest_client):
-            devices = await service._fetch_source_devices(source, source.id)
+            devices = await service._sync._fetch(source, source.id)
 
         assert {d.ha_entity_id for d in devices} == set(MANIFEST_ENTITIES), (
             f"в базу попало лишнее: {sorted(d.ha_entity_id for d in devices)}. "
@@ -280,7 +280,7 @@ class TestFilterKeepsManifestEntities:
             patch("adapters.home_assistant.rest_client.HARestClient", return_value=rest_client),
             patch.object(service, "parse_devices", wraps=service.parse_devices) as parse,
         ):
-            await service._fetch_source_devices(source, source.id)
+            await service._sync._fetch(source, source.id)
 
         received = parse.call_args[0][0]
         assert INERT_ENTITY not in {s["entity_id"] for s in received}, (
@@ -343,9 +343,9 @@ class TestFilterKeepsKnownDevices:
         rest_client.__aexit__.return_value = False
 
         with patch("adapters.home_assistant.rest_client.HARestClient", return_value=rest_client):
-            parsed = await service._fetch_source_devices(source, source.id)
+            parsed = await service._sync._fetch(source, source.id)
 
-        merged, removed = await service._merge_synced_devices(source.id, parsed)
+        merged, removed = await service._sync._merge(source.id, parsed)
 
         assert removed == [], f"живое устройство помечено исчезнувшим: {removed}"
         assert known.id in {d.id for d in merged}, (

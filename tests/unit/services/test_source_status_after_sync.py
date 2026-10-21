@@ -41,6 +41,7 @@ import pytest
 from core.models.device import Device
 from core.models.ha_source import HASource
 from services.device_service import DeviceService
+from services.source_sync import SourceSynchronizer
 
 
 SOURCE_ID = uuid.UUID("b1100558-5940-4021-93d3-4af039a86372")
@@ -106,6 +107,8 @@ def _service() -> tuple[DeviceService, _Persistence]:
     persistence = _Persistence()
     service = DeviceService.__new__(DeviceService)
     service.persistence = persistence  # noqa: SLF001 — подмена хранилища в тесте
+    # Синхронизация живёт в отдельном классе (B80) и берёт хранилище у сервиса.
+    service._sync = SourceSynchronizer(service)  # noqa: SLF001 — половина сервиса в тесте
     return service, persistence
 
 
@@ -143,7 +146,7 @@ class TestSourceLooksSyncedAfterSync:
         service, persistence = _service()
         source = _source()
 
-        await service._mark_source_synced(source)  # noqa: SLF001
+        await service._sync._mark_synced(source)  # noqa: SLF001
 
         assert source.status == "connected", (
             f"после успешной синхронизации источник остался в состоянии "
@@ -161,7 +164,7 @@ class TestSourceLooksSyncedAfterSync:
         service, _ = _service()
         source = _source()
 
-        await service._mark_source_synced(source, device_count=1502)  # noqa: SLF001
+        await service._sync._mark_synced(source, device_count=1502)  # noqa: SLF001
 
         assert source.device_count == 1502, (
             f"после синхронизации 1502 устройств поле `device_count` осталось "
@@ -178,7 +181,7 @@ class TestSourceLooksSyncedAfterSync:
         service, persistence = _service()
         source = _source()
 
-        await service._mark_source_synced(source, device_count=42)  # noqa: SLF001
+        await service._sync._mark_synced(source, device_count=42)  # noqa: SLF001
 
         saved = persistence.sources.saved[-1]
         assert saved.status == "connected", f"в хранилище ушёл статус `{saved.status}`"
@@ -194,7 +197,7 @@ class TestSourceLooksSyncedAfterSync:
         source = _source()
         source.status = "active"
 
-        await service._mark_source_synced(source)  # noqa: SLF001
+        await service._sync._mark_synced(source)  # noqa: SLF001
 
         # API уже понимает оба значения (`sources.py:79`), но источник после
         # синхронизации обязан иметь один канонический — иначе следующая
@@ -218,7 +221,7 @@ class TestSyncWithoutNetworkReportsHonestly:
         source = _source()
         source.status = "connected"
 
-        await service._mark_source_failed(source, "Не удалось подключиться к HA")  # noqa: SLF001
+        await service._sync._mark_failed(source, "Не удалось подключиться к HA")  # noqa: SLF001
 
         assert source.status == "disconnected", (
             f"после неудачной синхронизации источник остался в состоянии "
@@ -239,7 +242,7 @@ class TestSyncWithoutNetworkReportsHonestly:
         source = _source()
         before = source.last_sync
 
-        await service._mark_source_failed(source, "таймаут")  # noqa: SLF001
+        await service._sync._mark_failed(source, "таймаут")  # noqa: SLF001
 
         assert source.last_sync == before, (
             "отказ обновил время последней успешной синхронизации: оператор увидит "
@@ -262,7 +265,7 @@ async def test_mark_synced_is_actually_called_with_count() -> None:
     # Здесь повторяется порядок вызовов публичного `sync_devices_from_source`,
     # но без обращения к сети: проверка интересуется тем, доходит ли счётчик до
     # источника, а не тем, работает ли чтение из HA.
-    await service._mark_source_synced(source, device_count=len(devices))  # noqa: SLF001
+    await service._sync._mark_synced(source, device_count=len(devices))  # noqa: SLF001
 
     saved: Any = persistence.sources.saved[-1]
     assert saved.device_count == len(devices)
