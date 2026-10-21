@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 
 #: Переменная, включающая раздачу нового интерфейса.
@@ -54,6 +53,10 @@ def should_serve_frontend() -> bool:
 def mount_frontend(app: FastAPI, static_dir: Path | None = None) -> bool:
     """Смонтировать статику фронтенда на ``/``, если она собрана.
 
+    Под ingress Home Assistant страницы и ссылки на файлы должны нести префикс
+    аддона, поэтому используется ``IngressStaticFiles`` (B79): он дописывает
+    префикс в HTML на лету.
+
     Args:
         app: Приложение FastAPI.
         static_dir: Каталог сборки; по умолчанию ``frontend/out``.
@@ -64,5 +67,7 @@ def mount_frontend(app: FastAPI, static_dir: Path | None = None) -> bool:
     directory = static_dir if static_dir is not None else default_frontend_dir()
     if not directory.is_dir():
         return False
-    app.mount("/", StaticFiles(directory=str(directory), html=True), name="spa")
+    from webui.ingress import IngressStaticFiles
+
+    app.mount("/", IngressStaticFiles(directory=str(directory), html=True), name="spa")
     return True

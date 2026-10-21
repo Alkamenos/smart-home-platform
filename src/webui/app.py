@@ -503,6 +503,13 @@ def create_app(
     # другого, а его раздатчик не вызывался ниоткуда, поэтому эндпоинт выведен
     # из эксплуатации (spec 007, FR-025, R-08).
 
+    # B79: аддон Home Assistant открывается через ingress (боковая панель), и
+    # путь приходит с префиксом /api/hassio_ingress/<token>. Middleware снимает
+    # его до маршрутизации. Добавляется последним — значит, работает первым.
+    from .ingress import IngressMiddleware
+
+    app.add_middleware(IngressMiddleware)
+
     return app
 
 
