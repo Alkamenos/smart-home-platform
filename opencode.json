@@ -1,7 +1,12 @@
 {
     "$schema": "https://opencode.ai/config.json",
     "shell": "/bin/zsh",
-    "lsp": true,
+    "lsp": {
+    "python": {
+      "command": ["pyright-langserver", "--stdio"],
+      "extensions": [".py", ".pyi"]
+    }
+  },
     "formatter": {
         "ruff": {
             "command": [
