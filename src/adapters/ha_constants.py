@@ -45,6 +45,11 @@ GLOBAL_ENTITY_FIELDS: dict[str, str] = {
     "exhaust": "exhaust_on",
     "ventilation_feature": "ventilation_enabled",
     "outside_temp": "outside_temperature",
+    # Свет (глобальная цветовая температура): день/ночь — границы, current —
+    # значение, которое читают действия включения и обновляет служба света.
+    "color_temp_day": "color_temp_day",
+    "color_temp_night": "color_temp_night",
+    "color_temp_current": "color_temp_current",
     # Шторы (спека 015).
     "covers_feature": "covers_enabled",
     "my_doma": "my_doma",
@@ -70,7 +75,16 @@ _BOOLEAN_ROLES = frozenset(
     }
 )
 
-_NUMERIC_ROLES = frozenset({"setpoint", "comfort_max", "outside_temp"})
+_NUMERIC_ROLES = frozenset(
+    {
+        "setpoint",
+        "comfort_max",
+        "outside_temp",
+        "color_temp_day",
+        "color_temp_night",
+        "color_temp_current",
+    }
+)
 
 _VENTILATION_RETRIGGER_ROLES: frozenset[str] = frozenset(
     {"enable", "ventilation_feature", "season", "airing", "exhaust", "comfort_max", "setpoint"}

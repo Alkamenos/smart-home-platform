@@ -122,6 +122,10 @@ class SimpleHAWebSocketClient:
         # фильтрует события подписки, а эти сущности в манифест не входят.
         self.climate_entities: dict[str, str] = {}
         self.ventilation_entities: dict[str, str] = {}
+        # Глобальные сущности света: день/ночь и текущая цветовая температура.
+        # Их нет в манифесте, но действия включения читают текущее значение, а
+        # служба света пишет его в Home Assistant.
+        self.lighting_entities: dict[str, str] = {}
         # Флаги штор (спека 015): «кто-то дома», «дома собаки», разрешение
         # закрывать ночью и аварийный флаг. Шторы зависят только от них.
         self.cover_entities: dict[str, str] = {}
@@ -223,6 +227,9 @@ class SimpleHAWebSocketClient:
             if candidate == entity:
                 return role
         for role, candidate in self.ventilation_entities.items():
+            if candidate == entity:
+                return role
+        for role, candidate in getattr(self, "lighting_entities", {}).items():
             if candidate == entity:
                 return role
         for role, candidate in getattr(self, "cover_entities", {}).items():

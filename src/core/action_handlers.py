@@ -47,6 +47,38 @@ def extract_device_id(context: dict[str, Any]) -> str | None:
     return context.get("target_device_id") or context.get("entity_id") or context.get("device_id")
 
 
+def _global_color_temp(context: dict[str, Any]) -> int | None:
+    """Текущая цветовая температура дома для включения света.
+
+    Порядок: текущее значение (``color_temp_current``) → дневная или ночная
+    граница по ``daylight``. Значение приходит из Home Assistant числом; если
+    его нет, глобальная температура не навязывается — лампа останется при своей.
+
+    Args:
+        context: Контекст перехода.
+
+    Returns:
+        Целое значение в Кельвинах либо ``None``.
+    """
+    candidates = [
+        context.get("color_temp_current"),
+        context.get("color_temp_day")
+        if context.get("daylight")
+        else context.get("color_temp_night"),
+        context.get("color_temp_night")
+        if context.get("daylight")
+        else context.get("color_temp_day"),
+    ]
+    for candidate in candidates:
+        if candidate is None or isinstance(candidate, bool):
+            continue
+        try:
+            return int(round(float(candidate)))
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     """
     Create a CommandIntent to turn on a light.
@@ -71,6 +103,12 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     color_temp_kelvin = context.get("color_temp_kelvin")
     rgb_color = context.get("rgb_color")
 
+    # Глобальная цветовая температура: поведение `lighting` включает флаг
+    # `use_global_color_temp`, и тогда температуру берём из общего значения дома.
+    # Явный параметр устройства сильнее — им можно закрепить особую лампу.
+    if color_temp_kelvin is None and context.get("use_global_color_temp"):
+        color_temp_kelvin = _global_color_temp(context)
+
     # Яркость и цвет задаются явно, а не «как помнит лампа»: без этого свет,
     # горевший ночником (красным на 3 %), включается потом тем же красным,
     # потому что прибор восстанавливает последние настройки (требование
@@ -82,7 +120,10 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     elif brightness is not None:
         data["brightness"] = brightness
     if color_temp_kelvin is not None:
-        data["color_temp_kelvin"] = color_temp_kelvin
+        try:
+            data["color_temp_kelvin"] = int(round(float(color_temp_kelvin)))
+        except (TypeError, ValueError):
+            data["color_temp_kelvin"] = color_temp_kelvin
     elif rgb_color is not None:
         data["rgb_color"] = rgb_color
 
@@ -98,16 +139,26 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     )
 
 
-def turn_off_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+def turn_off_light(
+    state: Any, context: dict[str, Any]
+) -> CommandIntent | list[CommandIntent] | None:
     """
     Create a CommandIntent to turn off a light.
+
+    Для лампы с ночником (параметр ``prepare_for_night``) перед выключением
+    ставится ночной режим — 3 % красного. Прибор запоминает последнее состояние
+    и при следующем включении восстанавливает его: без этой подготовки ночник
+    сначала вспыхивал бы прошлой яркой яркостью (замечание владельца 2026-10-21).
+    Если свет включат днём, действие включения явно ставит нужную яркость и
+    цвет — прошлое состояние не переживёт команду.
 
     Args:
         state: Current FSM state (not used for this action).
         context: Context dictionary containing entity_id and other parameters.
 
     Returns:
-        CommandIntent to turn off the light, or None if entity_id is missing.
+        CommandIntent to turn off the light, a pair «ночной режим → выключение»
+        для лампы с ночником, or None if entity_id is missing.
     """
     # Use target_device_id as primary source, fallback to entity_id
     entity_id = extract_device_id(context)
@@ -124,7 +175,7 @@ def turn_off_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
 
     logger.info(f"Creating turn_off_light intent for {entity_id}")
 
-    return CommandIntent(
+    off_intent = CommandIntent(
         bypass_lockout=bypass_lockout,
         device_id=entity_id,
         domain="light",
@@ -133,6 +184,28 @@ def turn_off_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
         priority=priority,
         source=source,
     )
+    if not context.get("prepare_for_night"):
+        return off_intent
+
+    # Последнее состояние перед выключением — ночник. Следующее включение
+    # восстановит 3 % красного, а не прошлую яркую яркость.
+    night_intent = CommandIntent(
+        bypass_lockout=bypass_lockout,
+        device_id=entity_id,
+        domain="light",
+        service="turn_on",
+        data={
+            "brightness_pct": NIGHTLIGHT_BRIGHTNESS_PCT,
+            "rgb_color": list(NIGHTLIGHT_RGB_COLOR),
+            "transition": 0,
+        },
+        priority=priority,
+        source="lighting_prepare_night",
+        skip_if={"state": "on", "brightness_pct": NIGHTLIGHT_BRIGHTNESS_PCT},
+        requires_state="on",
+    )
+    logger.info(f"Prepare {entity_id} for night before turn_off")
+    return [night_intent, off_intent]
 
 
 def turn_on_night_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:

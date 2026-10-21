@@ -198,6 +198,7 @@ class HAAdapter:
         # до первого события платформа не знает ни уставки, ни сезона.
         self.climate_entities: dict[str, str] = {}
         self.ventilation_entities: dict[str, str] = {}
+        self.lighting_entities: dict[str, str] = {}
         self.cover_entities: dict[str, str] = {}
         # Был ли уже первый пересмотр настроек после запуска платформы. Первый
         # помечается одноразовым признаком ``_startup_reapply``: восстановленному автомату
@@ -1666,6 +1667,19 @@ class HAAdapter:
         """
         await self._store_globals(self.ventilation_entities)
 
+    async def _refresh_lighting_globals(self) -> None:
+        """Прочитать глобальные значения света при подключении.
+
+        Действие включения читает текущую цветовую температуру
+        (``color_temp_current``), а служба света — границы «день/ночь». Без
+        чтения при подключении лампа до первого события от этих сущностей
+        включалась бы с прошлой температурой.
+
+        Returns:
+            Ничего.
+        """
+        await self._store_globals(self.lighting_entities)
+
     async def _refresh_cover_globals(self) -> None:
         """Прочитать флаги штор при подключении (спека 015).
 
@@ -1835,9 +1849,11 @@ class HAAdapter:
         if client is not None:
             client.climate_entities = dict(self.climate_entities)
             client.ventilation_entities = dict(self.ventilation_entities)
+            client.lighting_entities = dict(self.lighting_entities)
             client.cover_entities = dict(self.cover_entities)
         await self._refresh_climate_globals()
         await self._refresh_ventilation_globals()
+        await self._refresh_lighting_globals()
         await self._refresh_cover_globals()
         await self._reconcile_sensor_states()
         # Первый пересмотр штор: они не слушают датчики вовсе, а флаги дома могут

@@ -175,6 +175,8 @@ class Container:
         self._day_cycle: DayCycleService | None = None
         self._deco_watcher: DecorativeLightWatcher | None = None
         self._ventilation_watchdog: Any | None = None
+        #: Служба глобальной цветовой температуры света (день → вечер → ночь).
+        self._light_color_temperature: Any | None = None
         #: Обход дома (BACKLOG F6): проблемы и реестр показаний.
         self._house_health: Any | None = None
         #: Чистка мусора во вспомогательных элементах (BACKLOG B77).
@@ -416,9 +418,21 @@ class Container:
                 role = "covers_feature"
             adapter.cover_entities[role] = entity
 
+        # Глобальная цветовая температура света: день/ночь — границы, current —
+        # значение, которое читают действия включения и обновляет служба света.
+        for field_name in (
+            "color_temp_day_entity",
+            "color_temp_night_entity",
+            "color_temp_current_entity",
+        ):
+            entity = getattr(rules.lighting, field_name, None)
+            if entity:
+                adapter.lighting_entities[field_name.removesuffix("_entity")] = entity
+
         logger.info(
             f"Глобальные сущности: климат {adapter.climate_entities}, "
-            f"вентиляция {adapter.ventilation_entities}, шторы {adapter.cover_entities}"
+            f"вентиляция {adapter.ventilation_entities}, свет {adapter.lighting_entities}, "
+            f"шторы {adapter.cover_entities}"
         )
 
     @property
@@ -746,6 +760,7 @@ class Container:
         self._start_day_cycle()
         self._start_deco_watcher()
         self._start_ventilation_watchdog()
+        self._start_light_color_temperature()
         self._start_ac_protection()
         _ = self.house_health  # обход дома: собрать и запустить (BACKLOG F6)
         self._start_sensor_health()
@@ -1091,6 +1106,33 @@ class Container:
             return
         self._ventilation_watchdog.start()
         logger.info(f"Сторож вентиляции: {self._ventilation_watchdog.describe()}")
+
+    def _start_light_color_temperature(self) -> None:
+        """Запустить службу глобальной цветовой температуры света.
+
+        Днём свет холодный, после заката плавно теплеет к ``color_temp_warm_at``
+        (по умолчанию 21:00). Служба пишет текущее значение в helper и обновляет
+        горящие лампы через диспетчер: ручная блокировка и приоритеты работают
+        как у остальной автоматики.
+
+        Returns:
+            Ничего.
+        """
+        from core.services.light_color_temperature import LightColorTemperatureService
+
+        self._light_color_temperature = LightColorTemperatureService(
+            adapter=self.adapter,
+            dispatcher=self.dispatcher,
+            manifest=self.manifest,
+        )
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("Служба цветовой температуры не запущена: нет работающего цикла")
+            self._light_color_temperature = None
+            return
+        self._light_color_temperature.start()
+        logger.info(f"Цветовая температура света: {self._light_color_temperature.describe()}")
 
     def _start_location_state(self) -> None:
         """Подписать наблюдение за локациями на изменения состояний (спека 016).

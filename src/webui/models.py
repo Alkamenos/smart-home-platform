@@ -65,6 +65,29 @@ class AutomationDomainRules(BaseModel):
             "Совпадает с ядерной моделью: None означает «настройка не задана»"
         ),
     )
+    color_temp_day_entity: str | None = Field(
+        default=None,
+        description=(
+            "Сущность «температура света днём»; поле объявлено и здесь, иначе "
+            "правка манифеста через интерфейс вычеркнула бы его"
+        ),
+    )
+    color_temp_night_entity: str | None = Field(
+        default=None,
+        description="Сущность «температура света ночью»; объявлена, чтобы не потерялась",
+    )
+    color_temp_current_entity: str | None = Field(
+        default=None,
+        description="Сущность текущей температуры света; объявлена, чтобы не потерялась",
+    )
+    color_temp_warm_at: str = Field(
+        default="21:00",
+        description="Час максимально тёплого света; объявлен, чтобы не потерялся",
+    )
+    color_temp_update_minutes: float = Field(
+        default=5.0,
+        description="Период пересчёта температуры света; объявлен, чтобы не потерялся",
+    )
     model_config = {"extra": "allow"}
 
 

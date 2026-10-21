@@ -31,7 +31,8 @@ rooms:
       priority: 10
       params:
         brightness_pct: 100
-        color_temp_kelvin: 3000
+        use_global_color_temp: true
+        prepare_for_night: true
     - template: night_light
       priority: 20
       params: {}
@@ -50,9 +51,6 @@ rooms:
     - template: cover_modes
       priority: 10
       params: {}
-  # Ниже — приборы «только показ» (поведений нет): платформа ими не управляет,
-  # но владелец видит их на панели дома и в обходе. Автоматика добавляется
-  # отдельно, когда решено, что именно должно управляться.
   - id: climate.termostat_gostinaia
     type: climate
     name: Термостат гостиной
@@ -115,8 +113,7 @@ rooms:
     behaviors: []
 - id: sauna
   name: Сауна
-  # Отдельная комната (решение владельца 2026-10-19). В доме у неё только пар:
-  # датчика температуры/влажности сауны в Home Assistant нет.
+  sensors: {}
   devices:
   - id: switch.par_v_saune
     type: switch
@@ -201,7 +198,9 @@ rooms:
     behaviors:
     - template: lighting
       priority: 10
-      params: {}
+      params:
+        brightness_pct: 100
+        use_global_color_temp: true
   - id: fan.base_smart_2
     type: fan
     name: Рекуператор кабинета
@@ -249,11 +248,11 @@ rooms:
     behaviors:
     - template: lighting
       priority: 10
-      params: {}
+      params:
+        brightness_pct: 100
+        use_global_color_temp: true
 - id: kukhnia
   name: Кухня
-  # Камера на кухне — исключение из правила «камеры относятся к локациям»
-  # (требование владельца 2026-10-18). Датчик дыма живёт здесь же.
   sensors:
     battery: sensor.datchik_dyma_battery
   devices:
@@ -264,11 +263,6 @@ rooms:
   - id: light.svet_nad_rabochei_poverkhnostiu
     type: light
     name: Свет над рабочей поверхностью
-    # Решение владельца 2026-10-19: «кнопки это только интерфейс, управлять
-    # должна платформа». Свет включают кнопкой (двойное нажатие → автоматизация
-    # дома), но гасит его платформа: ручное состояние живёт срок оверрайда, а
-    # модификатор «мы спим» и тихие часы гасят сразу. Датчика движения на кухне
-    # нет, поэтому включение по движению здесь не работает — только ручное.
     behaviors:
     - template: lighting
       priority: 10
@@ -277,14 +271,13 @@ locations:
 - id: ulitsa
   name: Улица
   kind: outdoor
+  parent: null
   sensors:
     temperature: sensor.temperatura_na_ulitse_srednee
     rain: binary_sensor.datchik_dozhdia_water_leak
     illuminance: sensor.datchik_osveshchennosti_illuminance
     battery: sensor.datchik_dozhdia_battery
   devices:
-  # Калитки — на улице (решение владельца 2026-10-19); основная — восток.
-  # Камеры относятся к локациям; кухня и гостиная — исключения.
   - id: light.kalitka_vostok_ulitsa
     type: light
     name: Калитка (основная, восток)
@@ -309,15 +302,18 @@ locations:
     type: camera
     name: Камера (улица)
     behaviors: []
+  stale_after_sec: null
 - id: parkovka
   name: Парковка
   kind: outdoor
   parent: ulitsa
+  sensors: {}
   devices:
   - id: light.fonar_parkovka
     type: light
     name: Фонарь (парковка)
     behaviors: []
+  stale_after_sec: null
 - id: zona_vorot
   name: Зона ворот
   kind: outdoor
@@ -342,8 +338,9 @@ locations:
     type: light
     name: Лампа на воротах
     behaviors: []
+  stale_after_sec: null
 - id: sad
-  name: Сад
+  name: ???
   kind: garden
   parent: ulitsa
   sensors:
@@ -381,7 +378,6 @@ locations:
     type: light
     name: Уличная гирлянда
     behaviors: []
-  # Полив: клапаны A/B пока здесь — зоны полива ещё не разложены владельцем.
   - id: switch.nasos
     type: switch
     name: Насос садовый
@@ -426,11 +422,11 @@ locations:
     type: valve
     name: Клапан B4
     behaviors: []
+  stale_after_sec: null
 - id: teplitsa
   name: Теплица
   kind: greenhouse
   parent: sad
-  # Теплица — локация в саду (требование владельца 2026-10-19).
   sensors:
     temperature:
     - sensor.temperatura_v_teplitse_ogurtsy_temperature
@@ -473,22 +469,26 @@ locations:
     soil_moisture: sensor.0xa4c138ef3971344e_soil_moisture
     battery: sensor.0xa4c138ef3971344e_battery
     soil_temperature: sensor.0xa4c138ef3971344e_temperature
+  devices: []
   stale_after_sec: 86400
 - id: les
   name: Лес
   kind: forest
   parent: ulitsa
+  sensors: {}
   devices:
   - id: light.fonar_les
     type: light
     name: Фонарь (лес)
     behaviors: []
+  stale_after_sec: null
 - id: gazon
   name: Газон
   kind: lawn
   parent: ulitsa
-  # Место заведено по списку владельца; приборы появятся, когда полив будет
-  # разложен по зонам (клапаны A/B пока в саду).
+  sensors: {}
+  devices: []
+  stale_after_sec: null
 - id: konteiner
   name: Контейнер
   kind: outdoor
@@ -508,11 +508,11 @@ locations:
     type: light
     name: Подсветка контейнера
     behaviors: []
+  stale_after_sec: null
 - id: terassa
   name: Терраса
   kind: terrace
-  # Терраса — локация: она вне отапливаемого контура, автоматика работает
-  # одинаково в любом месте (B93). Владелец может поменять вид в редакторе.
+  parent: null
   sensors:
     motion:
     - binary_sensor.main_motion
@@ -550,6 +550,7 @@ locations:
     type: light
     name: Подсветка ступеней
     behaviors: []
+  stale_after_sec: null
 battery_types:
   sensor.0xa4c138ef3971344e_battery: AAA
   sensor.datchik_dozhdia_battery: AAA
@@ -575,8 +576,10 @@ battery_types:
   sensor.ulitsa_ulitsa_battery: AAA
 automation_rules:
   global_manual_lockout_min: 60
+  manual_command_sources: []
   time_zone: Asia/Yekaterinburg
   lighting:
+    manual_lockout_min: null
     quiet_from: '23:00'
     quiet_to: 06:30
     night_motion_rooms:
@@ -588,27 +591,36 @@ automation_rules:
     sleep_modifier: input_boolean.sleep_mode
     night_off_at: '23:00'
     morning_at: 07:00
+    color_temp_day_entity: input_number.temperatura_sveta_dnem
+    color_temp_night_entity: input_number.temperatura_sveta_nochiu
+    color_temp_current_entity: input_number.tekushchaia_temperatura
+    color_temp_warm_at: '21:00'
+    color_temp_update_minutes: 5
     battery_watch_entities:
     - sensor.datchik_temperatury_terassa_battery
     - sensor.datchik_temperatury_sad_battery
   climate:
+    manual_lockout_min: null
+    ac_min_outside_temp: 5.0
+    ac_entities:
+    - climate.esphome_web_0d22a4_ac_name
+    ac_gate_entity: null
     setpoint_entity: input_number.temperatura
     thermostat_entity: climate.termostat_gostinaia
     comfort_max_entity: input_number.maksimalno_komfortnaia_temperatura
     season_entity: input_boolean.zima
     feature_entity: input_boolean.feature_climate
-    ac_min_outside_temp: 5.0
-    ac_entities:
-    - climate.esphome_web_0d22a4_ac_name
     setpoint_min: 5.0
     setpoint_max: 30.0
   ventilation:
+    manual_lockout_min: null
     feature_entity: input_boolean.feature_ventilation
     enable_entity: input_boolean.ventiliatsiia
     airing_entity: input_boolean.provetrivanie
     exhaust_entity: input_boolean.provetrivanie_vytyazhka
     outside_temp_entity: sensor.temperatura_na_ulitse_srednee
   cover:
+    manual_lockout_min: null
     feature_entity: input_boolean.feature_covers
     my_doma_entity: input_boolean.my_doma
     sobaki_doma_entity: input_boolean.sobaki_doma
