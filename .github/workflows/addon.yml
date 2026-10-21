@@ -1,0 +1,53 @@
+name: Add-on image
+
+# Образы аддона собираются по тегу: версия аддона (config.yaml) и тег образа
+# поднимаются вместе. Ветка main образ не публикует — иначе «последняя версия»
+# в магазине менялась бы без версии аддона.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Образ платформы (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/alkamenos/smart-home-platform:${{ github.ref_name }}
+
+      - name: Обёртки аддона (amd64, aarch64)
+        # Имена тегов повторяют arch из config.yaml: Supervisor подставляет в
+        # image ровно amd64/aarch64, а Docker-платформа для aarch64 — arm64.
+        run: |
+          set -eu
+          for pair in amd64:amd64 aarch64:arm64; do
+            addon_arch="${pair%%:*}"
+            docker_arch="${pair##*:}"
+            docker buildx build \
+              --platform "linux/${docker_arch}" \
+              --build-arg "BUILD_VERSION=${{ github.ref_name }}" \
+              --tag "ghcr.io/alkamenos/smart-home-platform-addon-${addon_arch}:${{ github.ref_name }}" \
+              --tag "ghcr.io/alkamenos/smart-home-platform-addon-${addon_arch}:latest" \
+              --push behavioral_platform
+          done

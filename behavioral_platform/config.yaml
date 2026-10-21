@@ -1,0 +1,43 @@
+name: Behavioral Platform
+version: "1.0.0"
+slug: behavioral_platform
+description: >-
+  Поведенческая автоматика дома: автоматы состояний, обход дома и панель
+  Home Assistant. Работает без длинного токена — через Supervisor.
+url: https://github.com/Alkamenos/smart-home-platform
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: false
+
+# Доступ к API Home Assistant через прокси Supervisor: Home Assistant сам
+# подставляет SUPERVISOR_TOKEN, длинный токен владельца не нужен (B79).
+homeassistant_api: true
+
+# Конфигурация (манифест) и данные (состояние, ключ шифрования, журнал) живут в
+# addon_config: он попадает в резервные копии Home Assistant вместе с аддоном.
+map:
+  - addon_config:rw
+
+ports:
+  8125/tcp: 8125
+ports_description:
+  8125/tcp: Веб-интерфейс платформы
+
+# Supervisor перезапускает аддон, если /health перестал отвечать.
+watchdog: "http://[HOST]:[PORT:8125]/health"
+
+options:
+  log_level: info
+  shadow_mode: false
+  timezone: Asia/Yekaterinburg
+schema:
+  log_level: list(debug|info|warning|error)
+  shadow_mode: bool
+  timezone: str
+
+# Образ собирается CI (см. .github/workflows/addon.yml) на основе образа
+# платформы; {arch} Supervisor заменяет на amd64/aarch64.
+image: "ghcr.io/alkamenos/smart-home-platform-addon-{arch}"
