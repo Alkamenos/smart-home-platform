@@ -1240,37 +1240,10 @@ class FSMEngine:
         #
         # Настоящий переход отменяет прежний таймер ниже, в ветке выполненного
         # перехода: там состояние действительно меняется.
-        if entity_id not in self._definitions:
-            self._record_rejection(entity_id, event, REASON_UNKNOWN_ENTITY)
-            self._publish_rejection(entity_id, event, None, REASON_UNKNOWN_ENTITY, trace_id)
+        prepared = self._prepare_trigger(entity_id, event, respect_debounce, trace_id, log)
+        if prepared is None:
             return False
-
-        definition = self._definitions[entity_id]
-
-        if entity_id not in self._states:
-            log.error(f"No state found for entity {entity_id}")
-            self._record_rejection(entity_id, event, REASON_NO_STATE)
-            self._publish_rejection(entity_id, event, None, REASON_NO_STATE, trace_id)
-            return False
-
-        current_state = self._states[entity_id]
-        now = asyncio.get_event_loop().time()
-
-        # Check debounce. События вне датчиков (расписание суток, ручные команды)
-        # отсечкой не отбрасываются: иначе расписание, наступившее сразу после
-        # движения, молча пропадало бы, и свет горел бы до утра.
-        if respect_debounce and entity_id in self._last_transition_time:
-            elapsed = now - self._last_transition_time[entity_id]
-            if elapsed < definition.debounce_sec:
-                log.debug(
-                    f"Entity {entity_id}: Debounce active ({elapsed:.3f}s < {definition.debounce_sec}s), "
-                    f"ignoring event '{event}'"
-                )
-                self._record_rejection(entity_id, event, REASON_DEBOUNCED)
-                self._publish_rejection(
-                    entity_id, event, current_state.current_state, REASON_DEBOUNCED, trace_id
-                )
-                return False
+        definition, current_state, now = prepared
 
         # Find matching transitions
         matching_transitions = [
@@ -1283,52 +1256,12 @@ class FSMEngine:
             log.debug(
                 f"Entity {entity_id}: No transitions for event '{event}' from state '{current_state.current_state}'"
             )
-            self._record_rejection(entity_id, event, REASON_NO_TRANSITION)
-            self._publish_rejection(
+            self._reject(
                 entity_id, event, current_state.current_state, REASON_NO_TRANSITION, trace_id
             )
             return False
 
-        # Merge contexts
-        merged_context = sanitise_stale_params(
-            current_state.context, self._definition_params(entity_id)
-        )
-        # Параметры поведения видны и условиям, а не только действиям. Раньше
-        # они доезжали только до действий (`_enrich_context_for_action`), и
-        # условие читало зашитое в своё имя значение: у `humidity_above_60`
-        # порог 60 перебивал `humidity_threshold` из манифеста, то есть
-        # настройка порога вентиляции не имела силы (Known Issue #67).
-        merged_context.update(self._definition_params(entity_id))
-        definition_room = self._definitions.get(entity_id)
-        if definition_room is not None and definition_room.room:
-            merged_context.setdefault("room", definition_room.room)
-        # Устройство автомата — тоже в контекст, и по той же причине, что и
-        # параметры поведения: условие блокировки (`is_manual_override_enabled`)
-        # ищет, к какому устройству относится ручное действие, и без этого поля
-        # видела пустой контекст и запрещала переход на защите от локаута.
-        # Раньше это поле доезжало только до действий.
-        if definition_room is not None and definition_room.target_device_id:
-            merged_context.setdefault("target_device_id", definition_room.target_device_id)
-        # События суточного расписания — правило безопасности, а не удобство
-        # автоматики: выключение по часам обязано обойти блокировку человека.
-        # Иначе «не горит всю ночь» нарушается ровно в те вечера, когда человек
-        # вмешивался в свет (проверено в боре 2026-10-09).
-        if event in SAFETY_EVENTS:
-            merged_context["bypass_lockout"] = True
-        # Комнаты без окон (`always_on_motion_rooms`: санузел, контейнер) — там
-        # свет по движению включается всегда: днём там так же темно, и другого
-        # света нет. Поэтому ручная блокировка не отменяет включение по движению:
-        # человек погасил свет и ушёл, а следующему он нужен. Иначе комната
-        # молчит час после каждого ручного выключения (боевой разбор 2026-10-15:
-        # свет в санузле не зажёгся по движению, потому что утром его погасили
-        # сами).
-        windowless_rooms = {
-            str(item) for item in merged_context.get("always_on_motion_rooms") or ()
-        }
-        if event in MOTION_EVENTS and str(merged_context.get("room") or "") in windowless_rooms:
-            merged_context["bypass_lockout"] = True
-        if external_ctx:
-            merged_context.update(external_ctx)
+        merged_context = self._transition_context(entity_id, event, current_state, external_ctx)
 
         # Причины отказов по условиям: отсутствие данных и «значение не подходят»
         # неразличимы в счётчике, если не различать их здесь.
@@ -1340,19 +1273,9 @@ class FSMEngine:
 
         # Process transitions (first valid one wins)
         for transition in matching_transitions:
-            # Отсутствие данных проверяется до вызова условия: условие остаётся
-            # функцией «да/нет», а отказ получает собственное имя.
-            missing = self._guard_rejection_reason(transition.guard, entity_id, merged_context)
-            if missing is None and not self._evaluate_guard(
-                transition.guard, entity_id, merged_context, log
-            ):
-                # Условие может назвать причину сама (`may_turn_on` знает, что
-                # отказало из-за ночного окна), но словарь причин ограничен:
-                # неизвестное имя не должно плодить метки в показателях.
-                missing = (
-                    self._guard_denial_reason(transition.guard, current_state, merged_context)
-                    or REASON_GUARD_FAILED
-                )
+            missing = self._transition_denial(
+                transition, entity_id, current_state, merged_context, log
+            )
 
             if missing == REASON_NOT_APPLICABLE:
                 # Переход к прибору не относится (у обогревателя нет охлаждения):
@@ -1365,19 +1288,6 @@ class FSMEngine:
 
             if missing is not None:
                 guard_denials.setdefault(missing, str(transition.guard))
-                if _is_diagnostic_entity(entity_id):
-                    # Климат и вентиляция разбираются утром по журналу: отказ
-                    # пишется на КАЖДОМ событии с входом, из которого он вырос.
-                    log.warning(
-                        f"[ДИАГНОСТИКА] {entity_id}: '{current_state.current_state}' → "
-                        f"'{transition.to_state}' по '{event}' — условие "
-                        f"{transition.guard}: ОТКАЗ ({missing}); вход: "
-                        f"{_diagnostic_context(merged_context)}"
-                    )
-                log.debug(
-                    f"Entity {entity_id}: Guard '{transition.guard}' failed for transition "
-                    f"'{current_state.current_state}' -> '{transition.to_state}' ({missing})"
-                )
                 continue
 
             if _is_diagnostic_entity(entity_id):
@@ -1419,27 +1329,206 @@ class FSMEngine:
             return True
 
         log.debug(f"Entity {entity_id}: No valid transitions for event '{event}'")
-        # Причина отказа выбирается по тому, чего не хватило: отсутствие данных
-        # и неподходящее значение — разные ситуации, и оператор должен видеть
-        # какую именно. Если отказов не было (все переходы прошли), причина
-        # прежняя.
-        # Причина выбирается из названных самими условиями: отсутствие данных
-        # важнее прочих (это поломка данных, а не штатная работа), дальше —
-        # названная причина вроде ночного окна, и только потом общее
-        # «условие не прошло». Раньше список понимал только первые два, и
-        # ночной отказ приходил как безликое `guard_failed`.
-        if not guard_denials and not_applicable:
-            # Все подходящие переходы оказались неприменимы к прибору: честное
-            # имя — «нет подходящего перехода», а не отказ условия (B66).
-            reason = REASON_NO_TRANSITION
-        elif REASON_GUARD_DATA_MISSING in guard_denials:
-            reason = REASON_GUARD_DATA_MISSING
-        else:
-            named = next((name for name in guard_denials if name in GUARD_DENIAL_REASONS), None)
-            reason = named or REASON_GUARD_FAILED
-        self._record_rejection(entity_id, event, reason)
-        self._publish_rejection(entity_id, event, current_state.current_state, reason, trace_id)
+        reason = self._no_transition_reason(guard_denials, not_applicable)
+        self._reject(entity_id, event, current_state.current_state, reason, trace_id)
         return False
+
+    def _prepare_trigger(
+        self,
+        entity_id: str,
+        event: str,
+        respect_debounce: bool,
+        trace_id: str,
+        log: Any,
+    ) -> tuple[FSMDefinition, State, float] | None:
+        """Проверить, можно ли разбирать событие, и записать отказ, если нельзя.
+
+        Здесь три причины «события сейчас нет»: автомат неизвестен, у автомата
+        нет состояния и включена отсечка дребезга. Все они записываются и
+        публикуются одинаково — через `_reject`.
+
+        Args:
+            entity_id: Идентификатор автомата.
+            event: Имя события.
+            respect_debounce: Учитывать ли отсечку дребезга.
+            trace_id: Идентификатор трассировки.
+            log: Журнал с привязанным trace_id.
+
+        Returns:
+            Определение, текущее состояние и момент времени; `None`, если
+            события для этого автомата сейчас нет.
+        """
+        if entity_id not in self._definitions:
+            self._reject(entity_id, event, None, REASON_UNKNOWN_ENTITY, trace_id)
+            return None
+
+        definition = self._definitions[entity_id]
+
+        if entity_id not in self._states:
+            log.error(f"No state found for entity {entity_id}")
+            self._reject(entity_id, event, None, REASON_NO_STATE, trace_id)
+            return None
+
+        current_state = self._states[entity_id]
+        now = asyncio.get_event_loop().time()
+
+        # Check debounce. События вне датчиков (расписание суток, ручные команды)
+        # отсечкой не отбрасываются: иначе расписание, наступившее сразу после
+        # движения, молча пропадало бы, и свет горел бы до утра.
+        if respect_debounce and entity_id in self._last_transition_time:
+            elapsed = now - self._last_transition_time[entity_id]
+            if elapsed < definition.debounce_sec:
+                log.debug(
+                    f"Entity {entity_id}: Debounce active ({elapsed:.3f}s < {definition.debounce_sec}s), "
+                    f"ignoring event '{event}'"
+                )
+                self._reject(
+                    entity_id, event, current_state.current_state, REASON_DEBOUNCED, trace_id
+                )
+                return None
+
+        return definition, current_state, now
+
+    def _reject(
+        self,
+        entity_id: str,
+        event: str,
+        state: str | None,
+        reason: str,
+        trace_id: str,
+    ) -> None:
+        """Записать отказ в счётчики и опубликовать его.
+
+        Args:
+            entity_id: Идентификатор автомата.
+            event: Имя события.
+            state: Состояние на момент отказа (может быть неизвестно).
+            reason: Причина отказа.
+            trace_id: Идентификатор трассировки.
+
+        Returns:
+            Ничего.
+        """
+        self._record_rejection(entity_id, event, reason)
+        self._publish_rejection(entity_id, event, state, reason, trace_id)
+
+    def _transition_context(
+        self,
+        entity_id: str,
+        event: str,
+        current_state: State,
+        external_ctx: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Собрать контекст перехода: состояние, параметры поведения, событие.
+
+        Параметры поведения и устройство нужны не только действиям, но и
+        условиям — см. комментарии ниже: без них условие читало зашитое в своё
+        имя значение и не видело, к какому прибору относится ручное действие.
+
+        Args:
+            entity_id: Идентификатор автомата.
+            event: Имя события.
+            current_state: Текущее состояние автомата.
+            external_ctx: Внешний контекст события (может быть пустым).
+
+        Returns:
+            Контекст перехода.
+        """
+        # Merge contexts
+        merged_context = sanitise_stale_params(
+            current_state.context, self._definition_params(entity_id)
+        )
+        # Параметры поведения видны и условиям, а не только действиям. Раньше
+        # они доезжали только до действий (`_enrich_context_for_action`), и
+        # условие читало зашитое в своё имя значение: у `humidity_above_60`
+        # порог 60 перебивал `humidity_threshold` из манифеста, то есть
+        # настройка порога вентиляции не имела силы (Known Issue #67).
+        merged_context.update(self._definition_params(entity_id))
+        definition_room = self._definitions.get(entity_id)
+        if definition_room is not None and definition_room.room:
+            merged_context.setdefault("room", definition_room.room)
+        # Устройство автомата — тоже в контекст, и по той же причине, что и
+        # параметры поведения: условие блокировки (`is_manual_override_enabled`)
+        # ищет, к какому устройству относится ручное действие, и без этого поля
+        # видела пустой контекст и запрещала переход на защите от локаута.
+        # Раньше это поле доезжало только до действий.
+        if definition_room is not None and definition_room.target_device_id:
+            merged_context.setdefault("target_device_id", definition_room.target_device_id)
+        # События суточного расписания — правило безопасности, а не удобство
+        # автоматики: выключение по часам обязано обойти блокировку человека.
+        # Иначе «не горит всю ночь» нарушается ровно в те вечера, когда человек
+        # вмешивался в свет (проверено в боре 2026-10-09).
+        if event in SAFETY_EVENTS:
+            merged_context["bypass_lockout"] = True
+        # Комнаты без окон (`always_on_motion_rooms`: санузел, контейнер) — там
+        # свет по движению включается всегда: днём там так же темно, и другого
+        # света нет. Поэтому ручная блокировка не отменяет включение по движению:
+        # человек погасил свет и ушёл, а следующему он нужен. Иначе комната
+        # молчит час после каждого ручного выключения (боевой разбор 2026-10-15:
+        # свет в санузле не зажёгся по движению, потому что утром его погасили
+        # сами).
+        windowless_rooms = {
+            str(item) for item in merged_context.get("always_on_motion_rooms") or ()
+        }
+        if event in MOTION_EVENTS and str(merged_context.get("room") or "") in windowless_rooms:
+            merged_context["bypass_lockout"] = True
+        if external_ctx:
+            merged_context.update(external_ctx)
+        return merged_context
+
+    def _transition_denial(
+        self,
+        transition: Transition,
+        entity_id: str,
+        current_state: State,
+        merged_context: dict[str, Any],
+        log: Any,
+    ) -> str | None:
+        """Проверить условие перехода и назвать причину отказа.
+
+        Отсутствие данных проверяется до вызова условия: условие остаётся
+        функцией «да/нет», а отказ получает собственное имя.
+
+        Args:
+            transition: Проверяемый переход.
+            entity_id: Идентификатор автомата.
+            current_state: Текущее состояние автомата.
+            merged_context: Контекст перехода.
+            log: Журнал с привязанным trace_id.
+
+        Returns:
+            `None`, если переход разрешён; иначе причина отказа, в том числе
+            `REASON_NOT_APPLICABLE` для переходов, не относящихся к прибору.
+        """
+        missing = self._guard_rejection_reason(transition.guard, entity_id, merged_context)
+        if missing is None and not self._evaluate_guard(
+            transition.guard, entity_id, merged_context, log
+        ):
+            # Условие может назвать причину сама (`may_turn_on` знает, что
+            # отказало из-за ночного окна), но словарь причин ограничен:
+            # неизвестное имя не должно плодить метки в показателях.
+            missing = (
+                self._guard_denial_reason(transition.guard, current_state, merged_context)
+                or REASON_GUARD_FAILED
+            )
+
+        if missing is None or missing == REASON_NOT_APPLICABLE:
+            return missing
+
+        if _is_diagnostic_entity(entity_id):
+            # Климат и вентиляция разбираются утром по журналу: отказ
+            # пишется на КАЖДОМ событии с входом, из которого он вырос.
+            log.warning(
+                f"[ДИАГНОСТИКА] {entity_id}: '{current_state.current_state}' → "
+                f"'{transition.to_state}' по '{transition.trigger}' — условие "
+                f"{transition.guard}: ОТКАЗ ({missing}); вход: "
+                f"{_diagnostic_context(merged_context)}"
+            )
+        log.debug(
+            f"Entity {entity_id}: Guard '{transition.guard}' failed for transition "
+            f"'{current_state.current_state}' -> '{transition.to_state}' ({missing})"
+        )
+        return missing
 
     async def _commit_transition(
         self,
@@ -1628,6 +1717,33 @@ class FSMEngine:
                 f"Entity {entity_id}: Scheduled timeout transition in {timeout_sec}s "
                 f"for state '{transition.to_state}'"
             )
+
+    @staticmethod
+    def _no_transition_reason(guard_denials: dict[str, str], not_applicable: int) -> str:
+        """Назвать причину, по которой ни один переход не подошёл.
+
+        Причина выбирается по тому, чего не хватило: отсутствие данных и
+        неподходящее значение — разные ситуации, и оператор должен видеть какую
+        именно. Если отказов не было (все переходы прошли), причина прежняя.
+        Отсутствие данных важнее прочих (это поломка данных, а не штатная
+        работа), дальше — названная причина вроде ночного окна, и только потом
+        общее «условие не прошло».
+
+        Args:
+            guard_denials: Названные причины отказов по условиям.
+            not_applicable: Сколько переходов оказалось неприменимо к прибору.
+
+        Returns:
+            Имя причины отказа.
+        """
+        if not guard_denials and not_applicable:
+            # Все подходящие переходы оказались неприменимы к прибору: честное
+            # имя — «нет подходящего перехода», а не отказ условия (B66).
+            return REASON_NO_TRANSITION
+        if REASON_GUARD_DATA_MISSING in guard_denials:
+            return REASON_GUARD_DATA_MISSING
+        named = next((name for name in guard_denials if name in GUARD_DENIAL_REASONS), None)
+        return named or REASON_GUARD_FAILED
 
     def _restored_state_age(self, entity_id: str) -> float:
         """Сколько секунд восстановленное состояние уже пролежало.
