@@ -189,6 +189,10 @@ class HAAdapter:
         )
 
         self._manual_lockout_middleware = manual_lockout_middleware
+        #: Пользователь, которому принадлежит токен платформы (B92). Узнаётся из
+        #: возврата собственной команды: её контекст помечен нашим `context.id`, а
+        #: `user_id` — тот, кому принадлежит токен. Отдельного запроса не нужно.
+        self._own_user_id: str | None = None
         self._event_router = event_router
         # Сущность Home Assistant «мы спим»; задаётся правилами освещения в
         # манифесте. Значение читает служба суточного цикла при старте.
@@ -696,11 +700,28 @@ class HAAdapter:
         # `user_id`, что и действия из приложения, и без этой проверки
         # засчитывалась бы ручным действием: первая же автоматическая команда
         # включала блокировку против самой себя (живой запуск 2026-10-08).
-        own_action = self._is_own_context(context.get("ha_context_id")) or self._is_recent_command(
-            entity_id
-        )
-        human_action = bool(user_id) or bool(automation_id)
-        if human_action and self._manual_lockout_middleware and not own_action:
+        own_context = self._is_own_context(context.get("ha_context_id"))
+        own_user_id = getattr(self, "_own_user_id", None)
+        if own_context and user_id and own_user_id is None:
+            # Свой пользователь узнаётся из возврата собственной команды: контекст
+            # помечен нашим `context.id`, а `user_id` — тот, кому принадлежит
+            # токен (B92). Первый же обмен даёт точное правило без лишнего запроса.
+            self._own_user_id = str(user_id)
+            logger.warning(f"HAAdapter: свои команды идут от пользователя {self._own_user_id}")
+            own_user_id = self._own_user_id
+        own_action = own_context or self._is_recent_command(entity_id)
+        # B92: у платформы свой пользователь (B45), поэтому чужой `user_id` —
+        # доказательство человека, даже если его действие пришло в 20-секундном
+        # окне после нашей команды. Прежде такое действие считалось эхом, и
+        # сторож мог повторить своё решение против человека. Своего пользователя
+        # ещё не знаем — остаётся прежнее правило, иначе первая же команда
+        # включала бы блокировку против себя.
+        if own_user_id is None:
+            human_user = bool(user_id) and not own_action
+        else:
+            human_user = bool(user_id) and str(user_id) != own_user_id
+        human_action = human_user or (bool(automation_id) and not own_action)
+        if human_action and self._manual_lockout_middleware:
             # Диагностика, а не догадка: если команда платформы всё-таки
             # засчиталась ручным действием, утренний разбор должен видеть, почему
             # (чей пользователь или какая автоматизация, какой контекст,
@@ -715,7 +736,7 @@ class HAAdapter:
                 f"{'была' if self._is_recent_command(entity_id) else 'не найдена'}"
             )
             self._manual_lockout_middleware.record_manual_control(entity_id)
-        elif own_action:
+        elif own_action and not human_user:
             logger.debug(
                 f"HAAdapter: изменение {entity_id} вызвано командой платформы, "
                 f"ручным действием не считается"
@@ -832,7 +853,7 @@ class HAAdapter:
         # вернуться к автоматике через срок оверрайда (BACKLOG B57). Раньше такие
         # изменения до автомата не доходили: ручное состояние умел только UI-путь,
         # поэтому включённая руками гирлянда не возвращалась к автоматике.
-        if human_action and not own_action:
+        if human_action:
             await self._route_manual_event(entity_id, new_state, log)
 
         # Переключатели вентиляции (владелец, фиче-флаг, сезон, проветривание и
