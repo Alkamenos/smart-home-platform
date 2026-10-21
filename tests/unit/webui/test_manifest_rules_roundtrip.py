@@ -32,6 +32,11 @@ MANIFEST = {
             "always_on_motion_rooms": ["sanuzel"],
             "sleep_modifier": "input_boolean.sleep_mode",
             "battery_watch_entities": ["sensor.battery"],
+            "color_temp_day_entity": "input_number.temperatura_sveta_dnem",
+            "color_temp_night_entity": "input_number.temperatura_sveta_nochiu",
+            "color_temp_current_entity": "input_number.tekushchaia_temperatura",
+            "color_temp_warm_at": "21:00",
+            "color_temp_update_minutes": 5,
         },
         "climate": {
             "setpoint_entity": "input_number.temperatura",
@@ -77,6 +82,11 @@ def test_lighting_rules_should_survive_roundtrip() -> None:
     assert lighting["morning_at"] == "07:00"
     assert lighting["night_motion_rooms"] == ["sanuzel", "konteiner"]
     assert lighting["sleep_modifier"] == "input_boolean.sleep_mode"
+    assert lighting["color_temp_day_entity"] == "input_number.temperatura_sveta_dnem"
+    assert lighting["color_temp_night_entity"] == "input_number.temperatura_sveta_nochiu"
+    assert lighting["color_temp_current_entity"] == "input_number.tekushchaia_temperatura"
+    assert lighting["color_temp_warm_at"] == "21:00"
+    assert lighting["color_temp_update_minutes"] == 5
 
 
 def test_climate_rules_should_survive_roundtrip() -> None:
