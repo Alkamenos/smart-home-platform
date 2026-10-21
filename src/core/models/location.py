@@ -32,6 +32,24 @@ UNAVAILABLE_VALUES = frozenset({"unavailable", "unknown", ""})
 #: ``detected``/``clear``, а контакт — ``open``/``closed``.
 ON_VALUES = frozenset({"on", "true", "1", "open", "opened", "detected"})
 
+#: Роль и суффикс батарейки. Батарейные датчики отчитываются раз в сутки и реже,
+#: поэтому «молчит» для батарейки — ложная тревога: её здоровье — это заряд, а не
+#: регулярность (B90, то же правило, что в обходе дома).
+BATTERY_ROLE = "battery"
+BATTERY_SUFFIX = "_battery"
+
+
+def is_battery_reading(reading: SensorReading) -> bool:
+    """Показание батарейки: его молчание не считается проблемой.
+
+    Args:
+        reading: Показание датчика.
+
+    Returns:
+        True, если это заряд батарейки.
+    """
+    return reading.role == BATTERY_ROLE or reading.entity_id.endswith(BATTERY_SUFFIX)
+
 
 class SensorReading(BaseModel):
     """Последнее показание датчика, как его запомнила платформа.
@@ -154,7 +172,9 @@ def build_snapshot(
 
     for reading in readings:
         age_sec = (now - reading.at).total_seconds()
-        stale = age_sec > stale_after_sec
+        # Батарейка отчитывается раз в сутки и реже: «молчит» для неё — ложная
+        # тревога (B90). Здоровье батарейки — это заряд, а не регулярность.
+        stale = age_sec > stale_after_sec and not is_battery_reading(reading)
         available = reading.available and not _is_unavailable(reading.value)
         grouped.setdefault(reading.role, []).append(
             Reading(

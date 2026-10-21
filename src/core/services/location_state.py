@@ -33,6 +33,7 @@ from core.models.location import (
     LocationSnapshot,
     SensorReading,
     build_snapshot,
+    is_battery_reading,
 )
 from core.models.manifest import (
     Manifest,
@@ -411,6 +412,10 @@ class LocationStateService:
         for location_id, readings in self._readings.items():
             location = self._locations[location_id]
             for reading in readings.values():
+                if is_battery_reading(reading):
+                    # Батарейка отчитывается раз в сутки: её молчание — норма
+                    # (B90), и в список молчащих она попадать не должна.
+                    continue
                 if (now - reading.at).total_seconds() > location.stale_after_sec:
                     silent.append(reading.entity_id)
         return {
