@@ -1405,108 +1405,17 @@ class FSMEngine:
                 context_patch = {**context_patch, "light_off_at": time.time()}
 
             new_context = _without_transient({**merged_context, **context_patch})
-
-            # Таймер прежнего состояния снимается здесь — то есть на
-            # выполненном переходе, а не на каждом событии. Отмена означает
-            # «ожидание прежнего состояния больше не действует», и только
-            # сменившееся состояние делает его недействующим.
-            await self._cancel_timers(entity_id, log)
-
-            # Create new state
-            new_state = State(
-                current_state=transition.to_state, entered_at=now, context=new_context
-            )
-
-            # Update state
-            self._states[entity_id] = new_state
-            self._last_transition_time[entity_id] = now
-            self.note_transition(entity_id)
-
-            # Persist state if persistence is enabled.
-            # Асинхронный путь обязателен: save_state делает fsync, и вызов
-            # прямо из корутины перехода останавливал event loop на время
-            # записи — при нескольких автоматах это складывалось в задержки
-            # на WebSocket и срабатывания сторожа.
-            #
-            # `entered_at` передаётся настенным временем: по нему после
-            # перезапуска восстанавливается остаток отложенного перехода. Без
-            # него состояние восстанавливалось, а таймер нет (Known Issue #78).
-            if self._persistence is not None:
-                wall_entered_at = time.time()
-                saver = getattr(self._persistence, "save_state_async", None)
-                if saver is not None:
-                    await saver(entity_id, transition.to_state, new_context, wall_entered_at)
-                else:
-                    self._persistence.save_state(
-                        entity_id, transition.to_state, new_context, wall_entered_at
-                    )
-
-            log.info(
-                f"Entity {entity_id}: Transition '{current_state.current_state}' -> '{transition.to_state}' "
-                f"triggered by '{event}'"
-                + (f" (guard: {transition.guard})" if transition.guard else "")
-                + (f" (action: {transition.action})" if transition.action else "")
-            )
-
-            # Record the decision (T005, FR-005)
-            action_name = transition.action if isinstance(transition.action, str) else None
-            outcome = "none"
-            reason_code = None
-            if action_name:
-                # Determine on/off from action name (T007)
-                if "_off" in action_name.lower():
-                    outcome = "off"
-                    reason_code = "action_off"
-                elif "_on" in action_name.lower() or action_name.lower().startswith("turn_on"):
-                    outcome = "on"
-                    reason_code = "action_on"
-                else:
-                    outcome = "on"  # Assume on for unknown actions
-                    reason_code = "action"
-            self._record_decision(
+            await self._commit_transition(
                 entity_id=entity_id,
-                outcome=outcome,
-                reason_code=reason_code,
-                reason_text=None,  # Will be determined
-                trigger=event,
+                definition=definition,
+                event=event,
+                current_state=current_state,
+                transition=transition,
+                new_context=new_context,
+                now=now,
+                trace_id=trace_id,
+                log=log,
             )
-
-            # Publish after the new state is written, so a subscriber reading the
-            # engine always observes the state the event announces (R-02).
-            self._publish_transition(
-                entity_id, event, current_state.current_state, transition.to_state, trace_id
-            )
-
-            # Таймер взводится по новому состоянию, а не по сработавшему
-            # переходу: `timeout_sec` означает «сколько можно находиться в
-            # состоянии», и шаблоны объявляют его на исходящем переходе
-            # (`lighting.yaml`: ON_MOTION --[timeout]--> OFF, 30 с). Прежний
-            # код смотрел на сработавший переход, где таймера нет, поэтому
-            # таймауты не срабатывали никогда, а `expected_timeout_sec` видел
-            # ожидание, которого движок не выполнял (Known Issue #66).
-            #
-            # Таймер прежнего состояния снимается: состояние сменилось, его
-            # ожидание больше не действует. `timeout_sec` сработавшего перехода
-            # учитывается тоже — иначе сломалась бы форма объявления «таймер на
-            # входящем переходе», на которой написаны существующие тесты.
-            declared = [
-                value
-                for value in (
-                    self._incoming_timeout(definition, transition),
-                    self._outgoing_timeout(entity_id, transition.to_state, new_context),
-                )
-                if value is not None
-            ]
-            timeout_sec = max(declared) if declared else None
-            if timeout_sec is not None:
-                self._timers[entity_id] = asyncio.create_task(
-                    self._timeout_handler(entity_id, timeout_sec, trace_id)
-                )
-                log.debug(
-                    f"Entity {entity_id}: Scheduled timeout transition in {timeout_sec}s "
-                    f"for state '{transition.to_state}'"
-                )
-
             return True
 
         log.debug(f"Entity {entity_id}: No valid transitions for event '{event}'")
@@ -1531,6 +1440,194 @@ class FSMEngine:
         self._record_rejection(entity_id, event, reason)
         self._publish_rejection(entity_id, event, current_state.current_state, reason, trace_id)
         return False
+
+    async def _commit_transition(
+        self,
+        *,
+        entity_id: str,
+        definition: FSMDefinition,
+        event: str,
+        current_state: State,
+        transition: Transition,
+        new_context: dict[str, Any],
+        now: float,
+        trace_id: str,
+        log: Any,
+    ) -> None:
+        """Записать выполненный переход: состояние, сохранение, публикация, таймер.
+
+        Порядок обязателен: сначала снимаются таймеры прежнего состояния (только
+        на состоявшемся переходе — см. комментарий в `trigger`), затем пишется
+        новое состояние, и только потом публикуется событие — подписчик, читающий
+        движок, обязан видеть то состояние, о котором ему сообщают (R-02).
+
+        Args:
+            entity_id: Идентификатор автомата.
+            definition: Описание автомата.
+            event: Событие, вызвавшее переход.
+            current_state: Состояние до перехода.
+            transition: Сработавший переход.
+            new_context: Контекст нового состояния.
+            now: Момент перехода на монотонных часах.
+            trace_id: Идентификатор трассировки.
+            log: Журнал с привязанным trace_id.
+
+        Returns:
+            Ничего.
+        """
+        # Таймер прежнего состояния снимается здесь — то есть на
+        # выполненном переходе, а не на каждом событии. Отмена означает
+        # «ожидание прежнего состояния больше не действует», и только
+        # сменившееся состояние делает его недействующим.
+        await self._cancel_timers(entity_id, log)
+
+        # Create new state
+        new_state = State(current_state=transition.to_state, entered_at=now, context=new_context)
+
+        # Update state
+        self._states[entity_id] = new_state
+        self._last_transition_time[entity_id] = now
+        self.note_transition(entity_id)
+
+        await self._persist_transition(entity_id, transition.to_state, new_context)
+
+        log.info(
+            f"Entity {entity_id}: Transition '{current_state.current_state}' -> '{transition.to_state}' "
+            f"triggered by '{event}'"
+            + (f" (guard: {transition.guard})" if transition.guard else "")
+            + (f" (action: {transition.action})" if transition.action else "")
+        )
+
+        self._record_transition_decision(entity_id, event, transition.action)
+
+        # Publish after the new state is written, so a subscriber reading the
+        # engine always observes the state the event announces (R-02).
+        self._publish_transition(
+            entity_id, event, current_state.current_state, transition.to_state, trace_id
+        )
+
+        self._schedule_transition_timeout(
+            entity_id, definition, transition, new_context, trace_id, log
+        )
+
+    async def _persist_transition(
+        self, entity_id: str, to_state: str, new_context: dict[str, Any]
+    ) -> None:
+        """Сохранить состояние, если сохранение включено.
+
+        Асинхронный путь обязателен: save_state делает fsync, и вызов прямо из
+        корутины перехода останавливал event loop на время записи — при
+        нескольких автоматах это складывалось в задержки на WebSocket и
+        срабатывания сторожа.
+
+        `entered_at` передаётся настенным временем: по нему после перезапуска
+        восстанавливается остаток отложенного перехода. Без него состояние
+        восстанавливалось, а таймер нет (Known Issue #78).
+
+        Args:
+            entity_id: Идентификатор автомата.
+            to_state: Новое состояние.
+            new_context: Контекст нового состояния.
+
+        Returns:
+            Ничего.
+        """
+        if self._persistence is None:
+            return
+        wall_entered_at = time.time()
+        saver = getattr(self._persistence, "save_state_async", None)
+        if saver is not None:
+            await saver(entity_id, to_state, new_context, wall_entered_at)
+        else:
+            self._persistence.save_state(entity_id, to_state, new_context, wall_entered_at)
+
+    def _record_transition_decision(
+        self, entity_id: str, event: str, action: str | Callable[..., Any] | None
+    ) -> None:
+        """Записать решение о переходе (T005, FR-005).
+
+        Вид решения (включение/выключение) выводится из имени действия: так
+        журнал решений остаётся человекочитаемым без разбора интентов.
+
+        Args:
+            entity_id: Идентификатор автомата.
+            event: Событие, вызвавшее переход.
+            action: Действие перехода (имя или функция).
+
+        Returns:
+            Ничего.
+        """
+        # Record the decision (T005, FR-005)
+        action_name = action if isinstance(action, str) else None
+        outcome = "none"
+        reason_code = None
+        if action_name:
+            # Determine on/off from action name (T007)
+            if "_off" in action_name.lower():
+                outcome = "off"
+                reason_code = "action_off"
+            elif "_on" in action_name.lower() or action_name.lower().startswith("turn_on"):
+                outcome = "on"
+                reason_code = "action_on"
+            else:
+                outcome = "on"  # Assume on for unknown actions
+                reason_code = "action"
+        self._record_decision(
+            entity_id=entity_id,
+            outcome=outcome,
+            reason_code=reason_code,
+            reason_text=None,  # Will be determined
+            trigger=event,
+        )
+
+    def _schedule_transition_timeout(
+        self,
+        entity_id: str,
+        definition: FSMDefinition,
+        transition: Transition,
+        new_context: dict[str, Any],
+        trace_id: str,
+        log: Any,
+    ) -> None:
+        """Взвести отложенный переход по новому состоянию.
+
+        Таймер взводится по новому состоянию, а не по сработавшему переходу:
+        `timeout_sec` означает «сколько можно находиться в состоянии», и шаблоны
+        объявляют его на исходящем переходе. Прежний код смотрел на сработавший
+        переход, где таймера нет, поэтому таймауты не срабатывали никогда, а
+        `expected_timeout_sec` видел ожидание, которого движок не выполнял
+        (Known Issue #66). `timeout_sec` сработавшего перехода учитывается тоже —
+        иначе сломалась бы форма «таймер на входящем переходе», на которой
+        написаны существующие тесты.
+
+        Args:
+            entity_id: Идентификатор автомата.
+            definition: Описание автомата.
+            transition: Сработавший переход.
+            new_context: Контекст нового состояния.
+            trace_id: Идентификатор трассировки.
+            log: Журнал с привязанным trace_id.
+
+        Returns:
+            Ничего.
+        """
+        declared = [
+            value
+            for value in (
+                self._incoming_timeout(definition, transition),
+                self._outgoing_timeout(entity_id, transition.to_state, new_context),
+            )
+            if value is not None
+        ]
+        timeout_sec = max(declared) if declared else None
+        if timeout_sec is not None:
+            self._timers[entity_id] = asyncio.create_task(
+                self._timeout_handler(entity_id, timeout_sec, trace_id)
+            )
+            log.debug(
+                f"Entity {entity_id}: Scheduled timeout transition in {timeout_sec}s "
+                f"for state '{transition.to_state}'"
+            )
 
     def _restored_state_age(self, entity_id: str) -> float:
         """Сколько секунд восстановленное состояние уже пролежало.
