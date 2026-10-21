@@ -4,6 +4,35 @@
 
 ## Последние значимые изменения
 
+### 2026-10-21: глобальная цветовая температура света и тихий ночник (B98)
+
+Свет в доме получил общую температуру: днём — 6000 К (дневная граница
+`input_number.temperatura_sveta_dnem`), после заката линейно теплеет и к 21:00
+доходит до 2000 К (ночная граница `input_number.temperatura_sveta_nochiu`);
+после 21:00 остаётся тёплым. Текущее значение служба пишет в
+`input_number.tekushchaia_temperatura` раз в 5 минут и сразу обновляет горящие
+лампы через диспетчер: ручная блокировка и приоритеты работают как у остальной
+автоматики. При включении лампа с `use_global_color_temp: true` берёт текущее
+значение из helper-а; явный `color_temp_kelvin` устройства сильнее.
+
+Вторая часть — ночник больше не вспыхивает ярким. Причина была в самих лампах:
+`color_power_on_behavior: previous` возвращал прошлую яркость до команды 3 %.
+Теперь у света с ночником `prepare_for_night: true`: перед выключением уходит
+ночной режим (3 % красного) и только затем выключение. Следующее включение
+восстанавливает 3 % красного; если свет включают днём, действие включения явно
+ставит `brightness_pct: 100` и общую температуру.
+
+Ограничения: только комнатные лампы с поддержкой `color_temp` (стол, кабинет,
+торшер); ночник остаётся красным, уличный декор не трогается. Файлы:
+`src/core/services/light_color_temperature.py`, `src/core/action_handlers.py`,
+`src/core/models/manifest.py`, `src/core/container.py`, `src/adapters/*`,
+`src/webui/models.py`, `src/features/CONTRACT.yaml`, манифест.
+Живая проверка 18:15: helper 6000 → 5851, команда столу `color_temp_kelvin:
+5851`, `brightness: 255`, `transition: 300`. Тесты:
+`tests/unit/core/test_light_color_temperature.py`,
+`tests/unit/core/test_light_explicit_brightness_color.py`,
+`tests/unit/webui/test_manifest_rules_roundtrip.py`.
+
 ### 2026-10-21: ручной свет в режиме «мы спим» гаснет через 5 минут без движения (B97)
 
 Требование владельца: если «мы спим» и в санузле включили свет, он должен
