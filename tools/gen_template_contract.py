@@ -1,4 +1,10 @@
-"""Генератор src/features/CONTRACT.yaml из кода. Запуск: python /tmp/gen_contract.py"""
+"""Генератор src/features/CONTRACT.yaml из кода.
+
+Запуск: ``python tools/gen_template_contract.py`` — перезаписать контракт;
+``python tools/gen_template_contract.py --check`` — только проверить, что файл
+совпадает с кодом (код возврата 1, если устарел). Проверка ничего не пишет: так
+её можно ставить в CI и не бояться, что она затрёт ручные правки.
+"""
 
 import json
 import pathlib
@@ -30,7 +36,48 @@ PLATFORM_EVENTS: dict[str, str] = {
         "прибор разошёлся с решением; шлёт сторож платформы "
         "(services/watchdog.py, DEVICE_DIVERGED_TRIGGER)"
     ),
+    "sleep_started": "модификатор «мы спим» включился; шлёт контейнер (modifier events)",
+    "sunset_started": "солнце ушло за горизонт; шлёт контейнер по состоянию sun.sun",
+    "sunrise_started": "солнце взошло; шлёт контейнер по состоянию sun.sun",
+    "day_started": "начался день по утреннему времени дома; шлёт дневной цикл",
+    "quiet_hours_started": "начались тихие часы по времени дома; шлёт дневной цикл",
+    "manual_switch_on": (
+        "человек включил прибор; шлёт HAAdapter через _route_manual_event "
+        "(приложение и автоматизация/кнопка, B94) и интерфейс платформы "
+        "(_MANUAL_FSM_EVENTS)"
+    ),
+    "manual_switch_off": (
+        "человек выключил прибор; шлёт HAAdapter через _route_manual_event и "
+        "интерфейс платформы (_MANUAL_FSM_EVENTS)"
+    ),
 }
+
+#: Эталонный манифест дома: по нему считается, где какой шаблон используется.
+MANIFEST_PATH = pathlib.Path("instances/leonids_house_prod/manifest.yaml")
+
+
+def _instantiated_places() -> dict[str, list[str]]:
+    """Шаблон → места манифеста, где он используется приборами.
+
+    Раньше список мест был зашит в генератор (`kitchen`, `living_room`, …) и
+    разошёлся с домом: контракт утверждал, что шаблон работает в комнате,
+    которой нет. Теперь он считается по поведениям приборов манифеста.
+
+    Returns:
+        Словарь ``имя шаблона`` → отсортированные идентификаторы мест.
+    """
+    if not MANIFEST_PATH.exists():
+        return {}
+    from core.models.manifest import load_manifest
+
+    manifest = load_manifest(str(MANIFEST_PATH))
+    found: dict[str, list[str]] = {}
+    for place in manifest.all_places:
+        for device in getattr(place, "devices", []) or []:
+            for behavior in device.behaviors:
+                found.setdefault(behavior.template, []).append(place.id)
+    return {name: sorted(set(ids)) for name, ids in found.items()}
+
 
 CONTRACT_PATH = pathlib.Path("src/features/CONTRACT.yaml")
 
@@ -87,9 +134,13 @@ GAPS = {
         "motion_cleared публикуется платформой, но перехода по нему нет — "
         "движение кончилось, свет горит до таймаута. Это сценарий «свет с "
         "задержкой», а не дефект; отдельная задача на выбор поведения.",
-        "manual_switch_on и manual_switch_off нигде не порождаются. Ручной путь "
-        "управления устройством в платформе отсутствует как класс (пункт 3 "
-        "веб-плана), поэтому и manual_override не имеет источника.",
+        "manual_switch_on и manual_switch_off доставляют HAAdapter "
+        "(_route_manual_event: действие из приложения и автоматизация или кнопка, "
+        "B94) и интерфейс платформы (_MANUAL_FSM_EVENTS). manual_override "
+        "объявлен, но источника в проде не имеет.",
+        "device_state_diverged порождает сторож платформы: он читает фактическое "
+        "состояние прибора и, если оно противоречит решению, автомат повторяет "
+        "решение.",
     ],
     "night_light": [
         "schedule_end не порождается — расписание не выключает ночной свет.",
@@ -135,10 +186,13 @@ GAPS = {
         "Решение принимается только по флагам дома и модификатору «мы спим»: "
         "часов платформа не считает, поэтому «ночь» задаёт владелец сущностью "
         "sleep_modifier, а не расписание в коде.",
-        "Единственный триггер — settings_changed. Смену флагов дома доносит "
-        "HAAdapter (route_settings_change), а первый пересмотр делается при "
-        "подключении: без него штора не приняла бы решение до первого "
-        "переключения флага, которого может не быть часами.",
+        "Смену флагов дома доносит HAAdapter (route_settings_change), а первый "
+        "пересмотр делается при подключении: без него штора не приняла бы "
+        "решение до первого переключения флага, которого может не быть часами.",
+        "Второй триггер — device_state_diverged: сторож платформы видит, что "
+        "положение прибора противоречит решению, и автомат повторяет решение. "
+        "Команда идёт общим путём (посредник и блокировка человека), поэтому "
+        "штору, которую человек только что тронул, повтор не тронет.",
     ],
     "generic_cover": [
         "Ни одного из семи действий в реестре нет — шаблон неисполним целиком. "
@@ -158,22 +212,13 @@ GAPS = {
         "Вне объёма варианта (a).",
     ],
 }
-IN_MANIFEST = {
-    "lighting": ["kitchen", "living_room", "bedroom", "bathroom"],
-    "night_light": ["kitchen", "living_room", "bedroom", "bathroom"],
-    "climate_control": [],
-    "deco_light": [],
-    "humidity_ventilation": ["bathroom"],
-    "generic_cover": [],
-    "generic_switch": [],
-    "smart_lock": [],
-    "speed_control": [],
-}
 HEADER = """# Контракт шаблонов поведения
 #
 # Файл сгенерирован: правьте шаблоны и реестр, затем перегенерируйте, иначе
 # tests/contract/test_template_contract.py упадёт. Разделы `gaps` заполняются
-# руками — они не выводятся из кода.
+# руками (они живут в tools/gen_template_contract.py), а `params` переносятся из
+# этого файла. Проверить расхождение без перезаписи:
+#   python tools/gen_template_contract.py --check
 #
 # Зачем он нужен: платформа публикует события датчиков, но из них шаблоны
 # слушают единицы, а триггеры шаблонов порождаются ещё реже. По этой таблице
@@ -232,6 +277,7 @@ lines += [f"  - {e}" for e in uncovered]
 lines += ["", "templates:"]
 
 existing = _existing_params()
+instantiated = _instantiated_places()
 
 for path in sorted(pathlib.Path("src/features").glob("*.yaml")):
     name = path.stem
@@ -244,7 +290,7 @@ for path in sorted(pathlib.Path("src/features").glob("*.yaml")):
     reachable = all(a in registered for a in acts) and bool(acts)
     lines.append(f"  {name}:")
     lines.append(f"    reachable: {str(reachable).lower()}")
-    rooms = IN_MANIFEST.get(name, [])
+    rooms = instantiated.get(name, [])
     lines.append(f"    in_manifest: [{', '.join(rooms)}]")
     lines.append(f"    actions: [{', '.join(acts)}]")
     lines.append(f"    guards: [{', '.join(guards)}]")
@@ -279,7 +325,22 @@ for path in sorted(pathlib.Path("src/features").glob("*.yaml")):
 
 # Путь вывода можно задать аргументом: иначе проверка, что регенерация ничего
 # не теряет, вынуждена была бы переписывать файл в дереве.
-target = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else CONTRACT_PATH
-target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+args = [value for value in sys.argv[1:] if not value.startswith("--")]
+check_only = "--check" in sys.argv[1:]
+target = pathlib.Path(args[0]) if args else CONTRACT_PATH
+rendered = "\n".join(lines) + "\n"
+
+if check_only:
+    current = target.read_text(encoding="utf-8") if target.exists() else ""
+    if current != rendered:
+        print(
+            f"контракт устарел: {target}. Перегенерируйте без --check и проверьте "
+            f"диф: разделы gaps и params пишутся руками"
+        )
+        sys.exit(1)
+    print(f"контракт совпадает с кодом: {target}")
+    sys.exit(0)
+
+target.write_text(rendered, encoding="utf-8")
 print(f"записано: {target}")
 print("сгенерировано, строк:", len(lines))
