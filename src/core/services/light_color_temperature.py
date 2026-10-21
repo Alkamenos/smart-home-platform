@@ -47,20 +47,22 @@ DEFAULT_INTERVAL_MINUTES = 5.0
 TRANSITION_FEATURE = 32
 
 
-def _lighting_devices(manifest: Any) -> list[str]:
-    """Лампы, которым положена глобальная температура.
+def _lighting_devices(manifest: Any) -> list[tuple[str, int]]:
+    """Лампы, которым положена глобальная температура, и их приоритет.
 
     Берутся только устройства с шаблоном ``lighting`` и явным признаком
     ``use_global_color_temp``. Ночник (красный) и уличный декор остаются при
-    своих настройках.
+    своих настройках. Приоритет поведения нужен команде температуры: с тем же
+    приоритетом она не вытесняет включение/выключение света, но и не оказывается
+    ниже уже активного намерения того же поведения.
 
     Args:
         manifest: Манифест дома.
 
     Returns:
-        Список ``entity_id`` ламп без повторов.
+        Список пар «entity_id, приоритет» без повторов.
     """
-    devices: list[str] = []
+    devices: list[tuple[str, int]] = []
     seen: set[str] = set()
     for room in getattr(manifest, "rooms", []) or []:
         for device in getattr(room, "devices", []) or []:
@@ -73,7 +75,7 @@ def _lighting_devices(manifest: Any) -> list[str]:
                 entity_id = getattr(device, "id", None)
                 if entity_id and entity_id not in seen:
                     seen.add(entity_id)
-                    devices.append(entity_id)
+                    devices.append((entity_id, int(getattr(behavior, "priority", 50) or 50)))
     return devices
 
 
@@ -128,6 +130,11 @@ class LightColorTemperatureService:
             day_kelvin=day_kelvin,
             night_kelvin=night_kelvin,
             warm_at=warm_at,
+        )
+        logger.info(
+            f"Цветовая температура света: {target} К "
+            f"(день {day_kelvin:g}, ночь {night_kelvin:g}, "
+            f"солнце {'над горизонтом' if daylight else 'под горизонтом' if daylight is False else 'неизвестно'})"
         )
         target = await self._clamp_to_helper(target)
         await self._write_current(target)
@@ -309,7 +316,7 @@ class LightColorTemperatureService:
         Returns:
             Ничего.
         """
-        for device_id in _lighting_devices(self._manifest):
+        for device_id, priority in _lighting_devices(self._manifest):
             snapshot = await self._snapshot(device_id)
             if not snapshot or str(snapshot.get("state")).lower() != "on":
                 continue
@@ -331,7 +338,7 @@ class LightColorTemperatureService:
                 domain="light",
                 service="turn_on",
                 data=data,
-                priority=5,
+                priority=priority,
                 source="light_color_temperature",
                 skip_if={"state": "on", "color_temp_kelvin": value},
             )
