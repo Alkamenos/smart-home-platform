@@ -308,6 +308,16 @@ templates:
         range: "2000-6500"
         effective: true
         note: "Цветовая температура включения, К. Сильнее rgb_color, если заданы оба; задавать явно, иначе лампа возвращает прошлый цвет."
+      use_global_color_temp:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "Брать текущую цветовую температуру из общего значения дома (служба света пишет его в input_number). Явный color_temp_kelvin сильнее."
+      prepare_for_night:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "Перед выключением поставить ночной режим (3 % красного), чтобы при следующем включении ночник не вспыхнул прошлой яркой яркостью."
       motion_timeout_sec:
         type: int
         range: "30-3600"
