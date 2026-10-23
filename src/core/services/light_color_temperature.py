@@ -341,6 +341,7 @@ class LightColorTemperatureService:
                 priority=priority,
                 source="light_color_temperature",
                 skip_if={"state": "on", "color_temp_kelvin": value},
+                conflict_free=True,
             )
             try:
                 await self._dispatcher.submit(intent)

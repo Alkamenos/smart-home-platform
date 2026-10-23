@@ -14,7 +14,7 @@ import asyncio
 import contextlib
 import os
 from dataclasses import dataclass
-from datetime import time as dt_time
+from datetime import datetime as dt_datetime, time as dt_time
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
@@ -934,10 +934,19 @@ class Container:
             # дефект 2026-10-13: гирлянда вернулась через минуту после отбоя).
             return getattr(getattr(adapter, "_ws_client", None), "asleep", None)
 
+        from core.guards.context import HOUSE_TZ
         from core.services.deco_light_watcher import DecorativeLightWatcher
 
+        def _now() -> dt_datetime:
+            # Часы дома, а не контейнера: контейнер живёт в UTC, и «до полудня»
+            # по UTC сдвинуло бы границу утра на пять часов.
+            return dt_datetime.now(HOUSE_TZ)
+
         self._deco_watcher = DecorativeLightWatcher(
-            engine=self.fsm, daylight_supplier=_daylight, sleeping_supplier=_sleeping
+            engine=self.fsm,
+            daylight_supplier=_daylight,
+            sleeping_supplier=_sleeping,
+            now_supplier=_now,
         )
         # Как сторож и суточный цикл: в синхронной сборке (тесты, Container.build()
         # без цикла событий) запуск пропускается — фоновая задача без работающего

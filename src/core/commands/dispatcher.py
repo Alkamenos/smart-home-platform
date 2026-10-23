@@ -122,6 +122,16 @@ class CommandIntent(BaseModel):
     таймеру отклонила бы команду включения, хотя прибор как раз только что
     включился (в бою 2026-10-11 так и вышло).
     """
+    conflict_free: bool = False
+    """Команда меняет атрибут, а не состояние, и не участвует в спорах за прибор.
+
+    Глобальная цветовая температура — непрерывная величина: она не включает и не
+    выключает лампу, а подправляет оттенок у уже горящей. Держать её в очереди
+    приоритетов нельзя: включение света оставляет намерение на час, и температура
+    всё это время отклонялась («Ignored light_color_temperature (10) because
+    websocket (50) is active», боевая находка 2026-10-23). Ручная блокировка при
+    этом продолжает действовать — её отсекает посредник до этой ветки.
+    """
 
     def refresh(self) -> None:
         """Extend the intent's life by resetting ``last_updated`` to now."""
@@ -240,6 +250,27 @@ class CommandDispatcher:
                 processed_intent = result
 
             device_id = processed_intent.device_id
+
+            # Атрибутная коррекция (цветовая температура) не спорит за прибор:
+            # она не меняет состояние, а подправляет оттенок горящей лампы.
+            # Приоритетную очередь она не трогает и своё намерение не удерживает,
+            # иначе включение света оставляло бы устройство занятым на час.
+            if processed_intent.conflict_free:
+                if processed_intent.skip_if and await self._already_in_state(processed_intent):
+                    return True
+                logger.info(
+                    f"Accepted attribute intent from {processed_intent.source} "
+                    f"for device {device_id}"
+                )
+                return (
+                    await self._ha_adapter.call_service(
+                        domain=processed_intent.domain,
+                        service=processed_intent.service,
+                        entity_id=device_id,
+                        data=processed_intent.data,
+                    )
+                    is not False
+                )
 
             async with self._lock:
                 existing_intent = self._active_intents.get(device_id)

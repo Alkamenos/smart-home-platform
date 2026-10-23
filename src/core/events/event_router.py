@@ -161,15 +161,24 @@ class EventRouter:
         self._fsm_to_room.clear()
         self._room_climate_fsms.clear()
         self._device_to_fsms.clear()
-        for room in self._manifest.rooms:
-            # Collect all FSM entity IDs for devices in this room
+        # Места — это и комнаты, и локации (улица, сад, контейнер, теплица).
+        # После перестройки мест в дерево (B93) приборы и датчики переехали из
+        # комнат в локации, а маршрутизация осталась «только по комнатам»:
+        # датчик движения контейнера события присылал, но автомат света их не
+        # получал, и свет в контейнере не включался (боевая находка 2026-10-23).
+        places: list[Any] = [
+            *self._manifest.rooms,
+            *(getattr(self._manifest, "locations", None) or []),
+        ]
+        for place in places:
+            # Collect all FSM entity IDs for devices in this place
             room_fsm_ids: list[str] = []
             climate_fsm_ids: list[str] = []
-            for device in room.devices:
+            for device in place.devices:
                 device_fsms = self._engine.get_entities_by_device(device.id)
                 room_fsm_ids.extend(device_fsms)
                 for fsm_id in device_fsms:
-                    self._fsm_to_room[fsm_id] = room.id
+                    self._fsm_to_room[fsm_id] = place.id
                 # Прибор вентиляции может сам снять назначенный режим: у боевого
                 # рекуператора «Приток MAX» держится около пяти минут. Событие
                 # прибора приходит в момент отката, и это единственный повод,
@@ -183,16 +192,16 @@ class EventRouter:
                     self._device_to_fsms[device.id] = ventilation_fsms
                 if getattr(device, "type", None) == "climate":
                     climate_fsm_ids.extend(device_fsms)
-            self._room_climate_fsms[room.id] = climate_fsm_ids
+            self._room_climate_fsms[place.id] = climate_fsm_ids
 
             if not room_fsm_ids:
                 continue
 
-            # Each sensor in room routes to all devices in that room
-            for sensor_type, sensor_id in iter_role_entities(room.sensors):
+            # Each sensor in place routes to all devices in that place
+            for sensor_type, sensor_id in iter_role_entities(place.sensors):
                 events = self.SENSOR_EVENT_MAP.get(sensor_type, [])
                 if not events:
-                    logger.warning(f"Unknown sensor type '{sensor_type}' in room '{room.id}'")
+                    logger.warning(f"Unknown sensor type '{sensor_type}' in place '{place.id}'")
                     continue
 
                 # Роль датчика запоминается отдельно от маршрута: по ней

@@ -33,6 +33,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 from loguru import logger
@@ -62,10 +64,12 @@ class DecorativeLightWatcher:
         daylight_supplier: Any,
         interval_minutes: float = 15.0,
         sleeping_supplier: Any = None,
+        now_supplier: Callable[[], datetime] | None = None,
     ) -> None:
         self.engine = engine
         self._daylight = daylight_supplier
         self._sleeping_supplier = sleeping_supplier
+        self._now_supplier = now_supplier
         self.interval_minutes = interval_minutes
         self._task: asyncio.Task[None] | None = None
 
@@ -94,6 +98,30 @@ class DecorativeLightWatcher:
                 await self.engine.trigger(entity_id, event, respect_debounce=False)
             except Exception:  # noqa: BLE001 — одно устройство не мешает остальным
                 logger.warning(f"Сверка вечернего света: {entity_id} не обработал {event}")
+
+    def _now(self) -> datetime:
+        """Текущее время в часах дома.
+
+        Returns:
+            Момент времени; в тестах подменяется.
+        """
+        if self._now_supplier is not None:
+            return self._now_supplier()
+        return datetime.now().astimezone()
+
+    def _is_pre_dawn(self) -> bool:
+        """Темнота сейчас — предрассветная, а не вечерняя.
+
+        Сверка знает только «светло/темно», а темно бывает и вечером, и утром.
+        Утром перед рассветом решение «темно, не спим, гирлянда выключена —
+        включить» включало вечерний свет за час до восхода: боевая находка
+        2026-10-23, гирлянда горела с 08:04 до 08:09. До полудня темнота —
+        это утро; вечерний свет в это время не нужен.
+
+        Returns:
+            True, если сейчас утро (до полудня).
+        """
+        return self._now().hour < 12
 
     def _sleeping(self) -> bool | None:
         """Спит ли дом по модификатору.
@@ -146,6 +174,8 @@ class DecorativeLightWatcher:
         if state is None:
             # Автомата нет: доставлять некому, но и молчать нельзя — журнал
             # покажет расхождение. Событие выбирается по времени суток.
+            if not daylight and self._is_pre_dawn():
+                return None
             return "sunrise_started" if daylight else "sunset_started"
         is_on = state.current_state.upper().startswith("ON")
         if daylight:
@@ -156,6 +186,11 @@ class DecorativeLightWatcher:
             return None
         if sleeping and self._stops_on_sleep(entity_id):
             return "sleep_started" if is_on else None
+        if self._is_pre_dawn():
+            # Темно, но это утро перед рассветом: «вернуть вечерний свет»
+            # означало бы включить гирлянду перед восходом (боевая находка
+            # 2026-10-23). Гасить нечего — лампа выключена.
+            return None
         return "sunset_started" if not is_on else None
 
     async def _run(self) -> None:
