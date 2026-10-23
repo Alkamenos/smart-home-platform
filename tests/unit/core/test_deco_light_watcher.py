@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -35,6 +36,15 @@ from core.services.deco_light_watcher import DecorativeLightWatcher
 
 GARLAND = "light.girlianda_terassa"
 NIGHT_LIGHT = "light.group_nochnoe_osveshcheni"
+
+#: Часы дома (Екатеринбург, +05): сверка должна считать «утро» по ним, а не по UTC.
+HOME_TZ = timezone(timedelta(hours=5))
+
+#: Вечер по умолчанию: существующие проверки описывают именно вечер.
+EVENING = datetime(2026, 10, 23, 20, 0, tzinfo=HOME_TZ)
+
+#: Утро перед рассветом — ровно момент боевой находки 2026-10-23.
+PRE_DAWN = datetime(2026, 10, 23, 8, 4, tzinfo=HOME_TZ)
 
 
 class _RecordingDispatcher:
@@ -105,7 +115,7 @@ def _manifest() -> Manifest:
 
 
 def _build(
-    daylight: bool | None, sleeping: bool = False
+    daylight: bool | None, sleeping: bool = False, at: datetime | None = None
 ) -> tuple[FSMEngine, DecorativeLightWatcher, _RecordingDispatcher]:
     """Собрать движок, сверку и помнящий команды диспетчер.
 
@@ -128,8 +138,12 @@ def _build(
     dispatcher = _RecordingDispatcher()
     engine.set_command_dispatcher(dispatcher)  # type: ignore[arg-type]
     FSMFactory(engine=engine, registry=registry, event_bus=None).create_and_register(_manifest())
+    moment = at or EVENING
     watcher = DecorativeLightWatcher(
-        engine=engine, daylight_supplier=lambda: daylight, sleeping_supplier=lambda: sleeping
+        engine=engine,
+        daylight_supplier=lambda: daylight,
+        sleeping_supplier=lambda: sleeping,
+        now_supplier=lambda: moment,
     )
     return engine, watcher, dispatcher
 
@@ -173,6 +187,37 @@ class TestLostSunsetIsCaught:
             f"утром вечерний свет должен погаснуть: {dispatcher.intents}"
         )
         assert engine.get_state("light.girlianda_terassa_deco_light_10") is not None
+
+
+class TestPreDawnIsNotEvening:
+    """Перед рассветом вечерний свет не возвращают.
+
+    Боевой случай 2026-10-23: в 08:04 (темно, но восход в 08:09) сверка
+    решила «темно, не спим, гирлянда выключена — включить» и зажгла гирлянду
+    на пять минут. Темнота до полудня — это утро, а не вечер.
+    """
+
+    @pytest.mark.asyncio
+    async def test_dark_before_dawn_does_not_turn_garland_on(self) -> None:
+        """Утром гирлянда не включается, хотя признак «темно» ещё стоит."""
+        _, watcher, dispatcher = _build(daylight=False, at=PRE_DAWN)
+
+        await watcher.check_once()
+
+        assert GARLAND not in dispatcher.devices(), (
+            f"сверка включила вечерний свет перед рассветом: {dispatcher.devices()}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_dark_evening_still_turns_garland_on(self) -> None:
+        """Вечером то же состояние света по-прежнему включает гирлянду."""
+        _, watcher, dispatcher = _build(daylight=False, at=EVENING)
+
+        await watcher.check_once()
+
+        assert GARLAND in dispatcher.devices(), (
+            f"вечером сверка должна включить гирлянду: {dispatcher.devices()}"
+        )
 
 
 class TestQuietWhenNothingToDo:

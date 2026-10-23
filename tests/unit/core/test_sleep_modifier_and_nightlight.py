@@ -172,6 +172,10 @@ class TestNightlightIsDimAndRed:
         assert list(intent.data.get("rgb_color") or []) == [255, 0, 0], (
             f"цвет ночника: {intent.data}"
         )
+        assert intent.data.get("transition") == 0, (
+            f"ночник включается плавным переходом от прошлой яркости — видна "
+            f"яркая вспышка: {intent.data}"
+        )
 
     def test_nightlight_template_has_five_minute_timeout(self) -> None:
         """Ночник: 300 с — удержание по движению, 3600 с — срок оверрайда.

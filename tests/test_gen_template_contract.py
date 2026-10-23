@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -35,11 +36,17 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
     Returns:
         Результат запуска.
     """
+    # Кодировка задана явно с обеих сторон: на Windows локаль — cp1251, а
+    # генератор печатает по-русски. Без этого проверка падала на mojibake
+    # («контракт совпадает» превращалось в «РєРѕРЅС‚СЂР°РєС‚...»), хотя
+    # контракт был в порядке.
     return subprocess.run(
         [sys.executable, "tools/gen_template_contract.py", *args],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         timeout=120,
     )
 

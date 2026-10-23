@@ -28,6 +28,7 @@ from core import (
     DeviceConfig,
     FSMDefinition,
     InstanceConfig,
+    LocationConfig,
     Manifest,
     RoomConfig,
 )
@@ -112,8 +113,75 @@ def create_test_manifest() -> Manifest:
     )
 
 
+def create_location_manifest() -> Manifest:
+    """Манифест с прибором и датчиком в локации, а не в комнате.
+
+    После перестройки мест контейнер, сад и теплица стали локациями (B93).
+    Датчик движения контейнера обязан будить автомат света контейнера так же,
+    как датчик комнаты — автомат комнаты; иначе свет не включается, хотя
+    событие приходит.
+    """
+    return Manifest(
+        version=1,
+        instance=InstanceConfig(
+            id="test-instance",
+            name="Test Instance",
+            owner="test-owner",
+            created_at="2024-01-01T00:00:00Z",
+        ),
+        rooms=[],
+        locations=[
+            LocationConfig(
+                id="konteiner",
+                name="Контейнер",
+                kind="outdoor",
+                sensors={"motion": "binary_sensor.konteiner_motion"},
+                devices=[
+                    DeviceConfig(
+                        id="light.konteiner",
+                        type="light",
+                        behaviors=[
+                            BehaviorConfig(template="lighting", priority=10, params={}),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+        automation_rules=AutomationRules(
+            lighting=AutomationDomainRules(
+                motion_enabled=True,
+                schedule_enabled=True,
+                manual_lockout_min=5,
+            ),
+            global_manual_lockout_min=0,
+        ),
+        dashboard=Dashboard(title="Test Dashboard"),
+    )
+
+
 class TestEventRouterMapping:
     """Tests for EventRouter mapping building from room.sensors."""
+
+    def test_motion_sensor_in_location_routes_to_its_device(self) -> None:
+        """Датчик локации будит автомат прибора этой локации."""
+        manifest = create_location_manifest()
+        engine = MockFSMEngine()
+        definition = FSMDefinition(
+            entity_id="light.konteiner_lighting_10",
+            initial_state="OFF",
+            states=("OFF", "ON_MOTION"),
+            transitions=(),
+            target_device_id="light.konteiner",
+        )
+        engine.register_definition(definition)
+
+        router = EventRouter(manifest, engine)
+
+        mapping = router.get_mapping("binary_sensor.konteiner_motion")
+        assert ("light.konteiner_lighting_10", "motion_detected") in mapping, (
+            f"датчик движения локации не доходит до автомата света: маршруты {mapping}"
+        )
+        assert ("light.konteiner_lighting_10", "motion_cleared") in mapping
 
     def test_build_mapping_motion_sensor(self) -> None:
         """Motion sensor in room.sensors creates motion_detected and motion_cleared mappings."""
