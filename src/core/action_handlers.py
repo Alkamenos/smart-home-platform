@@ -249,12 +249,6 @@ def turn_on_night_light(state: Any, context: dict[str, Any]) -> CommandIntent | 
     else:
         data["rgb_color"] = list(NIGHTLIGHT_RGB_COLOR)
 
-    # Переход нулевой: без него лампа плавно едет от прошлой яркости к 3 % —
-    # человек видит короткую яркую вспышку, хотя ночник «включается тускло».
-    # Замечание владельца 2026-10-21/23: ночник начинал включаться с яркого
-    # света. Явный ноль сильнее привычки прибора к плавным переходам.
-    data["transition"] = 0
-
     # Всё, что уйдёт в Home Assistant, печатается целиком: утром по журналу
     # должно быть видно, каким именно светом включён ночник.
     logger.info(f"Creating turn_on_night_light intent for {entity_id} data={data}")
