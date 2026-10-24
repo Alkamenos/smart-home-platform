@@ -240,6 +240,51 @@ class TestNightlightIsDimAndRed:
             f"отбой из ручного состояния не передаёт ночные настройки: {manual}"
         )
 
+    def test_repeat_motion_checks_sleep_modifier(self) -> None:
+        """Повторное движение не продлевает ночник, если «мы спим» уже выключено.
+
+        Боевой случай 24.10: модификатор выключили, а ночник остался в ON_NIGHT
+        и каждое движение снова зажигало красный свет.
+        """
+        from pathlib import Path
+
+        import yaml
+
+        template = yaml.safe_load(Path("src/features/night_light.yaml").read_text(encoding="utf-8"))
+
+        repeat = next(
+            transition
+            for transition in template["transitions"]
+            if transition["from_state"] == "ON_NIGHT" and transition["trigger"] == "motion_detected"
+        )
+
+        assert repeat.get("guard") == "modifier_is_on", (
+            f"движение продлевает ночник без проверки «мы спим»: {repeat}"
+        )
+
+    def test_sleep_off_turns_nightlight_off(self) -> None:
+        """Выключили «мы спим» — ночник гаснет, а не ждёт движения."""
+        from pathlib import Path
+
+        import yaml
+
+        template = yaml.safe_load(Path("src/features/night_light.yaml").read_text(encoding="utf-8"))
+
+        exit_transition = next(
+            transition
+            for transition in template["transitions"]
+            if transition["from_state"] == "ON_NIGHT"
+            and transition["trigger"] == "settings_changed"
+        )
+
+        assert exit_transition["to_state"] == "OFF", (
+            f"смена настроек не гасит ночник: {exit_transition}"
+        )
+        assert exit_transition["guard"] == "modifier_is_off", (
+            f"ночник гасится по любой смене настроек, а не только по «не спим»: {exit_transition}"
+        )
+        assert exit_transition["action"] == "turn_off_night_light"
+
     def test_nightlight_requires_sleep_modifier(self) -> None:
         """Включение ночника обусловлено модификатором, а не только движением.
 
