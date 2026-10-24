@@ -85,8 +85,19 @@ transitions:
   - from_state: "ON_NIGHT"
     to_state: "ON_NIGHT"
     trigger: "motion_detected"
+    guard: "modifier_is_on"
     action: "turn_on_night_light"
     timeout_sec: 300.0
+
+  # «Мы спим» выключили, а ночник ещё горит — гасим. Без этого автомат
+  # оставался в ON_NIGHT, и каждое движение снова зажигало красный свет уже
+  # среди бодрствования (боевая находка 2026-10-24: ночник горел при
+  # выключенном модификаторе).
+  - from_state: "ON_NIGHT"
+    to_state: "OFF"
+    trigger: "settings_changed"
+    guard: "modifier_is_off"
+    action: "turn_off_night_light"
 
   # Пять минут без движения — ночник гаснет (требование владельца: «выключается
   # через 5 мин при отсутствии движения»). Действие именно выключение, а не
