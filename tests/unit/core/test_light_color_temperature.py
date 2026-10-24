@@ -234,12 +234,17 @@ def _adapter(current: str = "6000") -> _Adapter:
     )
 
 
-def _service(adapter: _Adapter, dispatcher: _Dispatcher) -> LightColorTemperatureService:
+def _service(
+    adapter: _Adapter,
+    dispatcher: _Dispatcher,
+    night_mode_supplier: Any = None,
+) -> LightColorTemperatureService:
     """Собрать службу с фиксированным временем 19:30.
 
     Args:
         adapter: Адаптер-двойник.
         dispatcher: Диспетчер-двойник.
+        night_mode_supplier: Признак ночного режима; по умолчанию нет.
 
     Returns:
         Служба.
@@ -249,6 +254,7 @@ def _service(adapter: _Adapter, dispatcher: _Dispatcher) -> LightColorTemperatur
         dispatcher=dispatcher,
         manifest=_manifest(),
         now_supplier=lambda _tz: NOW,
+        night_mode_supplier=night_mode_supplier,
     )
 
 
@@ -385,3 +391,67 @@ class TestService:
         await _service(adapter, dispatcher).check_once()
 
         assert dispatcher.intents[0].data["color_temp_kelvin"] == 4000
+
+
+class TestTemperatureAlwaysApplies:
+    """Актуальный оттенок дома важнее ручной блокировки.
+
+    Владелец, 2026-10-24: «если лампа уже включена, даже с блокировкой, то
+    актуальная температура всё равно должна применяться» и «при включении любой
+    лампы она должна использовать температуру, актуальную для этого времени».
+    """
+
+    @pytest.mark.asyncio
+    async def test_manual_on_gets_temperature_immediately(self) -> None:
+        """Лампу включили руками — оттенок поправляется сразу, а не через 5 минут."""
+        adapter = _adapter()
+        dispatcher = _Dispatcher()
+
+        await _service(adapter, dispatcher).apply_to_device("light.table")
+
+        assert len(dispatcher.intents) == 1, "после ручного включения команда не ушла"
+        intent = dispatcher.intents[0]
+        assert intent.device_id == "light.table"
+        assert intent.data["color_temp_kelvin"] == 4000
+        assert intent.data["brightness"] == 180, "яркость человека команда не меняет"
+        assert intent.data["transition"] == 5, (
+            f"поправка должна быть быстрой, а не пятиминутной: {intent.data}"
+        )
+        assert intent.bypass_lockout is True, (
+            "ручная блокировка не должна оставлять лампу на прошлом оттенке"
+        )
+
+    @pytest.mark.asyncio
+    async def test_periodic_update_bypasses_manual_lockout(self) -> None:
+        """Даже уже горящая лампа получает оттенок при активной блокировке."""
+        adapter = _adapter()
+        dispatcher = _Dispatcher()
+
+        await _service(adapter, dispatcher).check_once()
+
+        assert dispatcher.intents, "служба не отправила температуру горящей лампе"
+        assert dispatcher.intents[0].bypass_lockout is True
+
+    @pytest.mark.asyncio
+    async def test_night_light_is_not_made_white(self) -> None:
+        """Красный ночник не перекрашивается в общий белый."""
+        adapter = _adapter()
+        dispatcher = _Dispatcher()
+        service = _service(adapter, dispatcher, night_mode_supplier=lambda _device: True)
+
+        await service.apply_to_device("light.table")
+        await service.check_once()
+
+        assert dispatcher.intents == [], (
+            f"ночной красный свет перекрашен в общий: {dispatcher.intents}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_device_outside_global_scheme_is_ignored(self) -> None:
+        """Лампа без общей температуры не получает команду."""
+        adapter = _adapter()
+        dispatcher = _Dispatcher()
+
+        await _service(adapter, dispatcher).apply_to_device("light.onoff")
+
+        assert dispatcher.intents == []

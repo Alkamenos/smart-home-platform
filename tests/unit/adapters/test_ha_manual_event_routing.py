@@ -125,6 +125,49 @@ async def test_manual_action_is_logged_with_its_evidence(caplog: Any) -> None:
 
 
 @pytest.mark.asyncio
+async def test_manual_on_applies_current_temperature() -> None:
+    """После ручного включения сразу запрашивается актуальный оттенок.
+
+    Лампа восстанавливает температуру, которая была до выключения; человек
+    включает её вечером и видит дневной холодный свет. Адаптер не ждёт
+    пятиминутного цикла службы и не упирается в ручную блокировку.
+    """
+    engine = _Engine()
+    adapter = _adapter(engine, _Middleware())
+    seen: list[str] = []
+
+    async def apply(device_id: str) -> None:
+        """Запомнить запрос температуры."""
+        seen.append(device_id)
+
+    adapter.on_light_turned_on = apply
+
+    await adapter.on_state_change("light.girlianda_terassa", "on", "off", {"user_id": "leonid"})
+
+    assert seen == ["light.girlianda_terassa"], (
+        f"актуальная температура после включения не запрошена: {seen}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_manual_off_does_not_apply_temperature() -> None:
+    """Выключение человека не повод трогать оттенок."""
+    engine = _Engine()
+    adapter = _adapter(engine, _Middleware())
+    seen: list[str] = []
+
+    async def apply(device_id: str) -> None:
+        """Запомнить запрос температуры."""
+        seen.append(device_id)
+
+    adapter.on_light_turned_on = apply
+
+    await adapter.on_state_change("light.girlianda_terassa", "off", "on", {"user_id": "leonid"})
+
+    assert seen == []
+
+
+@pytest.mark.asyncio
 async def test_manual_off_from_ha_reaches_fsm() -> None:
     """Выключение человеком уходит автомату как `manual_switch_off`."""
     engine = _Engine()
