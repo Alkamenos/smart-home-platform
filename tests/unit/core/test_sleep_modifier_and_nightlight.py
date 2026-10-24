@@ -228,6 +228,18 @@ class TestNightlightIsDimAndRed:
             f"после отбоя должно действовать штатное удержание: {entry}"
         )
 
+        manual = next(
+            transition
+            for transition in template["transitions"]
+            if transition["trigger"] == "sleep_started" and transition["from_state"] == "ON_MANUAL"
+        )
+        assert manual["to_state"] == "ON_NIGHT", (
+            f"отбой не выводит ручное состояние в ночник: {manual}"
+        )
+        assert manual["action"] == "turn_on_night_light", (
+            f"отбой из ручного состояния не передаёт ночные настройки: {manual}"
+        )
+
     def test_nightlight_requires_sleep_modifier(self) -> None:
         """Включение ночника обусловлено модификатором, а не только движением.
 
