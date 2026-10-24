@@ -340,6 +340,7 @@ templates:
     guards: [modifier_is_on, is_night_time, device_is_off]
     triggers:
       motion_detected: sensor
+      sleep_started: platform
       timeout: engine
       manual_switch_off: platform
       day_started: platform

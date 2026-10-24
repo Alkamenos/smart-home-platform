@@ -115,7 +115,11 @@ _TIMEOUT_OVERRIDE_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _timeout_from_params(yaml_transition: YAMLTransition, params: dict | None) -> float | None:
+def _timeout_from_params(
+    yaml_transition: YAMLTransition,
+    params: dict | None,
+    timeout_params_declared: bool = False,
+) -> float | None:
     """Определяет таймаут перехода с учётом параметра поведения.
 
     ``timeout_sec`` в шаблоне — это значение по умолчанию, а не приговор: если
@@ -128,9 +132,16 @@ def _timeout_from_params(yaml_transition: YAMLTransition, params: dict | None) -
     ``timeout_sec`` — это верхняя граница ожидания при входе в состояние, и
     подменять её пользовательским «задержкой выключения» неверно.
 
+    Шаблон может сам назвать параметр у каждого настраиваемого таймаута
+    (``timeout_param``). Тогда переходы без имени параметра закреплены: иначе
+    общий ``motion_timeout_sec`` переписал бы и ручной таймер «мы спим» (B97),
+    и срок возврата к автоматике. Шаблоны без такого объявления сохраняют
+    прежнее правило «параметр выбирается по имени действия».
+
     Args:
         yaml_transition: Переход из шаблона.
         params: Параметры поведения из манифеста.
+        timeout_params_declared: Шаблон называет параметры у своих таймаутов.
 
     Returns:
         Время ожидания перехода.
@@ -138,12 +149,26 @@ def _timeout_from_params(yaml_transition: YAMLTransition, params: dict | None) -
     default = yaml_transition.timeout_sec
     if yaml_transition.trigger != "timeout" or not params:
         return default
-    # Параметр, которым поведение переопределяет таймер, принадлежит шаблону:
-    # у света это ``motion_timeout_sec``, у вентиляции — ``airing_seconds``
-    # (спека 014, FR-025), у вытяжки — ``exhaust_seconds`` (T085). Вытяжка
-    # объявлена отдельным именем действия: без этого ``airing_seconds``
-    # переопределял бы и таймер вытяжки, и полчаса проветривания задавали бы
-    # срок снятия модификатора вытяжки.
+
+    if timeout_params_declared:
+        key = yaml_transition.timeout_param
+        if not key:
+            return default
+        candidate = params.get(key)
+        if (
+            isinstance(candidate, (int, float))
+            and not isinstance(candidate, bool)
+            and candidate > 0
+        ):
+            return float(candidate)
+        return default
+
+    # Прежнее правило: параметр, которым поведение переопределяет таймер, зависит
+    # от имени действия. У света это ``motion_timeout_sec``, у вентиляции —
+    # ``airing_seconds`` (спека 014, FR-025), у вытяжки — ``exhaust_seconds``
+    # (T085). Вытяжка объявлена отдельным именем действия: без этого
+    # ``airing_seconds`` переопределял бы и таймер вытяжки, и полчаса
+    # проветривания задавали бы срок снятия модификатора вытяжки.
     override_keys = _TIMEOUT_OVERRIDE_KEYS.get(
         yaml_transition.action or "", ("motion_timeout_sec", "airing_seconds")
     )
@@ -396,6 +421,7 @@ class FSMFactory:
         yaml_transition: YAMLTransition,
         schedule_guard_fn=None,
         params: dict | None = None,
+        timeout_params_declared: bool = False,
     ) -> Transition:
         """
         Преобразовать YAMLTransition в Transition, резолвя строки в функции.
@@ -404,6 +430,7 @@ class FSMFactory:
             yaml_transition: Валидированная YAML-модель перехода.
             schedule_guard_fn: Опциональная функция guard для расписания.
             params: Параметры поведения из манифеста.
+            timeout_params_declared: Шаблон называет параметры у своих таймаутов.
 
         Returns:
             Transition: Объект перехода для FSM с резолвленными функциями.
@@ -446,7 +473,7 @@ class FSMFactory:
             trigger=yaml_transition.trigger,
             guard=guard_fn,
             action=action_fn,
-            timeout_sec=_timeout_from_params(yaml_transition, params),
+            timeout_sec=_timeout_from_params(yaml_transition, params, timeout_params_declared),
         )
 
     def _yaml_to_fsm_definition(
@@ -462,8 +489,11 @@ class FSMFactory:
         Returns:
             FSMDefinition: Объект определения FSM для двигателя.
         """
+        # Шаблон объявляет параметры у своих таймаутов — значит, остальные
+        # таймауты закреплены в нём и общим параметром не переписываются.
+        timeout_params_declared = any(t.timeout_param for t in yaml_def.transitions)
         transitions = tuple(
-            self._yaml_to_transition(t, schedule_guard_fn, yaml_def.params)
+            self._yaml_to_transition(t, schedule_guard_fn, yaml_def.params, timeout_params_declared)
             for t in yaml_def.transitions
         )
 

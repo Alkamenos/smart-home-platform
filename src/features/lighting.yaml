@@ -93,11 +93,16 @@ transitions:
     action: null
     timeout_sec: 600.0
 
-  # Удержание истекло — выключаем
+  # Удержание истекло — выключаем. Почему `timeout_param` только здесь и ниже:
+  # `motion_timeout_sec` — это «сколько свет держится без движения», и он не
+  # должен переписывать ручные таймеры ON_MANUAL (5 минут в режиме «мы спим»,
+  # 60 минут вне его). Шаблон объявляет параметр у тех таймаутов, которые
+  # действительно настраиваются, остальные остаются закреплёнными.
   - from_state: "ON_HOLD"
     to_state: "OFF"
     trigger: "timeout"
     action: "turn_off_light"
+    timeout_param: "motion_timeout_sec"
     timeout_sec: 600.0
 
   # Повторное «движение снято» в состоянии ожидания: таймер продлевается, свет
@@ -114,6 +119,7 @@ transitions:
     to_state: "OFF"
     trigger: "timeout"
     action: "turn_off_light"
+    timeout_param: "motion_timeout_sec"
     timeout_sec: 600.0
 
   # Суточный цикл платформы: в назначенный час свет гаснет сам, независимо от

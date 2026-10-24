@@ -26,6 +26,10 @@ class YAMLTransition(BaseModel):
         guard: Имя функции-guard'а (строка), которая должна вернуть True.
         action: Имя функции-action (строка), которая будет выполнена.
         timeout_sec: Таймаут в секундах для автоматического перехода по событию 'timeout'.
+        timeout_param: Имя параметра поведения, который переопределяет timeout_sec.
+            Если шаблон объявляет параметр хотя бы у одного таймаута, переходы без
+            этого имени остаются с закреплённым значением: общий параметр не должен
+            переписывать ветки, которые решаются guard'ом.
     """
 
     from_state: str = Field(..., description="Исходное состояние")
@@ -34,6 +38,10 @@ class YAMLTransition(BaseModel):
     guard: str | None = Field(None, description="Имя функции guard для проверки условия")
     action: str | None = Field(None, description="Имя функции action для выполнения")
     timeout_sec: float | None = Field(None, ge=0, description="Таймаут в секундах")
+    timeout_param: str | None = Field(
+        None,
+        description="Имя параметра поведения, переопределяющего таймаут",
+    )
 
     class Config:
         extra = "forbid"
