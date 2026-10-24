@@ -240,10 +240,20 @@ class TestHoldAfterMotionClears:
         holds = [
             transition.timeout_sec
             for transition in definition.transitions
-            if transition.trigger == "timeout" and transition.timeout_sec is not None
+            if transition.from_state in ("ON_MOTION", "ON_HOLD")
+            and transition.trigger == "timeout"
+            and transition.timeout_sec is not None
+        ]
+        manual = [
+            transition.timeout_sec
+            for transition in definition.transitions
+            if transition.from_state == "ON_MANUAL" and transition.trigger == "timeout"
         ]
 
         assert holds, "у автомата нет перехода по таймауту — удержание не чем гасить"
         assert all(value == HOLD_SEC for value in holds), (
             f"срок удержания взят не из манифеста: {holds} вместо {HOLD_SEC}"
+        )
+        assert manual == [300.0, 3600.0], (
+            f"параметр удержания переписал ручные таймеры «мы спим»: {manual}"
         )

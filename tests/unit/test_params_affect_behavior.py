@@ -77,6 +77,27 @@ class TestMotionTimeoutFromParams:
             "пользователь задаёт в манифесте, не имеет силы (#71)"
         )
 
+    def test_should_not_flatten_manual_timeouts(self) -> None:
+        """Общий параметр движения не переписывает ручные таймеры (B97).
+
+        45 минут без движения — это удержание по движению. Таймеры ручного
+        состояния решаются guard'ом «мы спим»: 5 минут в режиме сна и 60 минут
+        вне его. Если общий параметр их перепишет, ночной ручной свет будет
+        гореть 45 минут вместо пяти.
+        """
+        definition = _factory().create_from_manifest(_manifest_with_timeout(2700))
+
+        manual = [
+            transition.timeout_sec
+            for transition in definition[0].transitions
+            if transition.from_state == "ON_MANUAL" and transition.trigger == "timeout"
+        ]
+
+        assert manual == [300.0, 3600.0], f"motion_timeout_sec переписал ручные таймеры: {manual}"
+        assert _timeout_for(definition[0], "ON_HOLD", "timeout") == 2700, (
+            "удержание по движению не взяло значение из манифеста"
+        )
+
     def test_should_fall_back_to_yaml_when_param_absent(self) -> None:
         """Без параметра действует значение шаблона.
 

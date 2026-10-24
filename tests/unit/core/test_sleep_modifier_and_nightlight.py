@@ -198,6 +198,36 @@ class TestNightlightIsDimAndRed:
         assert 300.0 in timeouts, f"нет автоматического удержания 300 с: {timeouts}"
         assert 3600.0 in timeouts, f"нет срока оверрайда 3600 с: {timeouts}"
 
+    def test_sleep_started_turns_nightlight_on(self) -> None:
+        """Отбой включает ночник по общим правилам.
+
+        Лампа помнит последнее состояние: после обычного света это яркий белый,
+        и первый ночной свет включался вспышкой. Включение в момент отбоя
+        записывает в лампу 3 % красного; дальше движение продлевает горение, а
+        пять минут без движения гасят — отдельного короткого режима не нужно
+        (решение владельца 2026-10-24).
+        """
+        from pathlib import Path
+
+        import yaml
+
+        template = yaml.safe_load(Path("src/features/night_light.yaml").read_text(encoding="utf-8"))
+
+        entry = next(
+            transition
+            for transition in template["transitions"]
+            if transition["trigger"] == "sleep_started"
+        )
+
+        assert entry["from_state"] == "OFF", f"отбой приходит не из OFF: {entry}"
+        assert entry["to_state"] == "ON_NIGHT", f"отбой не включает ночник: {entry}"
+        assert entry["action"] == "turn_on_night_light", (
+            f"отбой не передаёт лампе ночные настройки: {entry}"
+        )
+        assert entry["timeout_sec"] == 300.0, (
+            f"после отбоя должно действовать штатное удержание: {entry}"
+        )
+
     def test_nightlight_requires_sleep_modifier(self) -> None:
         """Включение ночника обусловлено модификатором, а не только движением.
 
