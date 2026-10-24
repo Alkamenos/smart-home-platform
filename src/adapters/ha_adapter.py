@@ -224,6 +224,10 @@ class HAAdapter:
         # рассвета никто не услышит, и вечернее освещение не включится.
         self.on_sunset: Callable[[], Awaitable[None]] | None = None
         self.on_sunrise: Callable[[], Awaitable[None]] | None = None
+        # Уведомление о включении лампы человеком: служба температуры сразу
+        # применяет актуальный оттенок, не дожидаясь пятиминутного цикла и не
+        # упираясь в ручную блокировку (требование владельца 2026-10-24).
+        self.on_light_turned_on: Callable[[str], Awaitable[None]] | None = None
         # Контексты команд, которые отправила сама платформа. Home Assistant
         # возвращает `context.id` на каждый вызов сервиса, и изменение состояния
         # несёт тот же идентификатор: по нему собственная команда отличается от
@@ -665,6 +669,16 @@ class HAAdapter:
                 )
             except Exception as e:  # noqa: BLE001 — ручное событие не должно ронять приём
                 log.warning(f"HAAdapter: ручное событие {event} не доставлено {fsm_id}: {e}")
+
+        # Лампа включена человеком и восстановила прошлый оттенок. Общий свет
+        # дома должен примениться сразу, а не через пять минут и не после
+        # часовой блокировки (требование владельца 2026-10-24). Служба сама
+        # отсеет нелампы и ночной режим.
+        if event == "manual_switch_on" and self.on_light_turned_on is not None:
+            try:
+                await self.on_light_turned_on(entity_id)
+            except Exception as e:  # noqa: BLE001 — температура не должна ронять приём
+                log.warning(f"HAAdapter: температура после включения {entity_id} не применена: {e}")
 
     async def on_state_change(
         self,

@@ -12,8 +12,10 @@
 событиями его никто не будит; без службы свет оставался бы на температуре
 включения, пока его не выключат.
 
-Служба не спорит с человеком: команды идут через диспетчер, и ручная блокировка
-(``global_manual_lockout_min``) их отменяет так же, как у остальных действий.
+Общий оттенок — настройка дома, а не спор за состояние: команды идут мимо ручной
+блокировки (``bypass_lockout``), иначе после каждого ручного включения лампа
+оставалась бы на прошлой температуре целый час. Ночной красный режим при этом не
+трогается — служба спрашивает у контейнера, не работает ли лампа ночником.
 """
 
 #  Copyright 2026 Leonid Artemev
@@ -89,6 +91,8 @@ class LightColorTemperatureService:
         manifest: Манифест дома с правилами света.
         interval_minutes: Период пересчёта; по умолчанию из манифеста или 5 мин.
         now_supplier: Источник времени; подменяется в тестах.
+        night_mode_supplier: Признак «лампа сейчас ночник»; такие лампы не
+            трогаем, иначе красный ночной свет станет белым.
     """
 
     def __init__(
@@ -98,6 +102,7 @@ class LightColorTemperatureService:
         manifest: Any,
         interval_minutes: float | None = None,
         now_supplier: Callable[[tzinfo], datetime] | None = None,
+        night_mode_supplier: Callable[[str], bool] | None = None,
     ) -> None:
         self._adapter = adapter
         self._dispatcher = dispatcher
@@ -106,6 +111,7 @@ class LightColorTemperatureService:
         configured = getattr(self._rules, "color_temp_update_minutes", None)
         self.interval_minutes = float(interval_minutes or configured or DEFAULT_INTERVAL_MINUTES)
         self._now = now_supplier or (lambda tz: datetime.now(tz))
+        self._night_mode_supplier = night_mode_supplier
         self._task: asyncio.Task[None] | None = None
 
     async def check_once(self) -> None:
@@ -113,6 +119,16 @@ class LightColorTemperatureService:
 
         Returns:
             Ничего.
+        """
+        target = await self._target_now()
+        await self._write_current(target)
+        await self._apply_to_lights(target)
+
+    async def _target_now(self) -> int:
+        """Актуальная температура для текущего момента.
+
+        Returns:
+            Значение в Кельвинах, ограниченное диапазоном helper-а.
         """
         tz = self._timezone()
         now = self._now(tz)
@@ -136,9 +152,7 @@ class LightColorTemperatureService:
             f"(день {day_kelvin:g}, ночь {night_kelvin:g}, "
             f"солнце {'над горизонтом' if daylight else 'под горизонтом' if daylight is False else 'неизвестно'})"
         )
-        target = await self._clamp_to_helper(target)
-        await self._write_current(target)
-        await self._apply_to_lights(target)
+        return await self._clamp_to_helper(target)
 
     def _timezone(self) -> tzinfo:
         """Часовой пояс дома.
@@ -307,6 +321,58 @@ class LightColorTemperatureService:
         except Exception as exc:  # noqa: BLE001 — helper не должен ронять свет
             logger.warning(f"Цветовая температура: {entity} не записана: {exc}")
 
+    async def apply_to_device(self, device_id: str) -> None:
+        """Сразу применить актуальную температуру к одной лампе.
+
+        Нужно после ручного включения: лампа восстанавливает прошлую
+        температуру, а ручная блокировка не должна мешать общему свету дома
+        (требование владельца 2026-10-24).
+
+        Args:
+            device_id: Лампа, которую только что включили.
+
+        Returns:
+            Ничего.
+        """
+        priority = self._priority_for(device_id)
+        if priority is None or self._is_night_mode(device_id):
+            return
+        snapshot = await self._snapshot(device_id)
+        if not snapshot or str(snapshot.get("state")).lower() != "on":
+            return
+        supported = snapshot.get("supported_color_modes") or []
+        if supported and "color_temp" not in supported:
+            return
+        target = await self._target_now()
+        # После ручного включения ждать пять минут нельзя: человек видит
+        # прошлую температуру. Короткий переход делает поправку заметной сразу.
+        await self._submit(device_id, priority, target, snapshot, transition_sec=5)
+
+    def _priority_for(self, device_id: str) -> int | None:
+        """Приоритет поведения для лампы с общей температурой.
+
+        Args:
+            device_id: Лампа.
+
+        Returns:
+            Приоритет либо ``None``, если лампа не участвует в общей схеме.
+        """
+        for candidate, priority in _lighting_devices(self._manifest):
+            if candidate == device_id:
+                return priority
+        return None
+
+    def _is_night_mode(self, device_id: str) -> bool:
+        """Лампа сейчас работает ночником (её нельзя делать белой).
+
+        Args:
+            device_id: Лампа.
+
+        Returns:
+            True, если это ночной режим.
+        """
+        return bool(self._night_mode_supplier and self._night_mode_supplier(device_id))
+
     async def _apply_to_lights(self, target: int) -> None:
         """Обновить температуру у горящих ламп.
 
@@ -317,6 +383,8 @@ class LightColorTemperatureService:
             Ничего.
         """
         for device_id, priority in _lighting_devices(self._manifest):
+            if self._is_night_mode(device_id):
+                continue
             snapshot = await self._snapshot(device_id)
             if not snapshot or str(snapshot.get("state")).lower() != "on":
                 continue
@@ -325,28 +393,56 @@ class LightColorTemperatureService:
                 continue
             if snapshot.get("min_color_temp_kelvin") is None and not supported:
                 continue
-            value = self._clamp_lamp(target, snapshot)
-            data: dict[str, Any] = {"color_temp_kelvin": value}
-            brightness = snapshot.get("brightness")
-            if brightness is not None:
-                data["brightness"] = brightness
-            features = snapshot.get("supported_features")
-            if isinstance(features, int) and features & TRANSITION_FEATURE:
-                data["transition"] = int(min(self.interval_minutes * 60.0, 300.0))
-            intent = CommandIntent(
-                device_id=device_id,
-                domain="light",
-                service="turn_on",
-                data=data,
-                priority=priority,
-                source="light_color_temperature",
-                skip_if={"state": "on", "color_temp_kelvin": value},
-                conflict_free=True,
-            )
-            try:
-                await self._dispatcher.submit(intent)
-            except Exception as exc:  # noqa: BLE001 — одна лампа не мешает остальным
-                logger.warning(f"Цветовая температура: команда {device_id} не ушла: {exc}")
+            await self._submit(device_id, priority, target, snapshot)
+
+    async def _submit(
+        self,
+        device_id: str,
+        priority: int,
+        target: int,
+        snapshot: dict[str, Any],
+        transition_sec: int | None = None,
+    ) -> None:
+        """Отправить команду температуры.
+
+        Args:
+            device_id: Лампа.
+            priority: Приоритет поведения.
+            target: Значение, К.
+            snapshot: Снимок лампы.
+            transition_sec: Переход в секундах; по умолчанию период службы.
+
+        Returns:
+            Ничего.
+        """
+        value = self._clamp_lamp(target, snapshot)
+        data: dict[str, Any] = {"color_temp_kelvin": value}
+        brightness = snapshot.get("brightness")
+        if brightness is not None:
+            data["brightness"] = brightness
+        features = snapshot.get("supported_features")
+        if isinstance(features, int) and features & TRANSITION_FEATURE:
+            if transition_sec is None:
+                transition_sec = int(min(self.interval_minutes * 60.0, 300.0))
+            data["transition"] = transition_sec
+        intent = CommandIntent(
+            device_id=device_id,
+            domain="light",
+            service="turn_on",
+            data=data,
+            priority=priority,
+            source="light_color_temperature",
+            skip_if={"state": "on", "color_temp_kelvin": value},
+            conflict_free=True,
+            # Общая температура — настройка дома, а не спор за состояние:
+            # ручная блокировка не должна оставлять лампу на прошлом оттенке
+            # (требование владельца 2026-10-24).
+            bypass_lockout=True,
+        )
+        try:
+            await self._dispatcher.submit(intent)
+        except Exception as exc:  # noqa: BLE001 — одна лампа не мешает остальным
+            logger.warning(f"Цветовая температура: команда {device_id} не ушла: {exc}")
 
     @staticmethod
     def _clamp_lamp(target: int, snapshot: dict[str, Any]) -> int:

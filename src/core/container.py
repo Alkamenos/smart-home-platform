@@ -1129,19 +1129,43 @@ class Container:
         """
         from core.services.light_color_temperature import LightColorTemperatureService
 
-        self._light_color_temperature = LightColorTemperatureService(
+        def _night_mode(device_id: str) -> bool:
+            # Красный ночник не делаем белым. Днём автомат ночника может стоять
+            # в ON_MANUAL после ручного включения — это не ночной режим, и
+            # общая температура применяется как обычно.
+            sleeping = getattr(getattr(self.adapter, "_ws_client", None), "asleep", None)
+            for fsm_id in self.fsm.get_entities_by_device(device_id):
+                if "_night_light_" not in fsm_id:
+                    continue
+                state = self.fsm.get_state(fsm_id)
+                if state is None:
+                    continue
+                current = state.current_state.upper()
+                if current == "ON_NIGHT":
+                    return True
+                if current == "ON_MANUAL" and sleeping is True:
+                    return True
+            return False
+
+        service = LightColorTemperatureService(
             adapter=self.adapter,
             dispatcher=self.dispatcher,
             manifest=self.manifest,
+            night_mode_supplier=_night_mode,
         )
+        self._light_color_temperature = service
         try:
             asyncio.get_running_loop()
         except RuntimeError:
             logger.debug("Служба цветовой температуры не запущена: нет работающего цикла")
             self._light_color_temperature = None
             return
-        self._light_color_temperature.start()
-        logger.info(f"Цветовая температура света: {self._light_color_temperature.describe()}")
+        # Ручное включение лампы: поправить оттенок сразу, не дожидаясь цикла.
+        adapter = self.adapter
+        if isinstance(adapter, HAAdapter):
+            adapter.on_light_turned_on = service.apply_to_device
+        service.start()
+        logger.info(f"Цветовая температура света: {service.describe()}")
 
     def _start_location_state(self) -> None:
         """Подписать наблюдение за локациями на изменения состояний (спека 016).
