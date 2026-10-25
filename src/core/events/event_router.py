@@ -74,11 +74,17 @@ def collect_subscribed_entities(manifest: Any) -> list[str]:
                 seen.add(entity_id)
                 entities.append(entity_id)
 
-    # Особые зоны наблюдения (спека 016): у них нет устройств, только датчики.
-    # Без них подписка HA не отдавала бы события погоды и почвы, и снимок локации
-    # оставался бы пустым, хотя датчики в манифесте описаны.
+    # Особые зоны наблюдения (спека 016). Берутся и датчики, и приборы: без
+    # датчиков подписка не отдавала бы погоду и почву, а без приборов —
+    # ручное выключение гирлянды на террасе. Гирлянда живёт в локации, её
+    # события не приходили вовсе, и автомат не узнавал, что человек погасил
+    # свет: сторож через минуту включал его обратно (боевая находка 2026-10-25).
     for location in getattr(manifest, "locations", []) or []:
-        for entity_id in all_sensor_entities(location.sensors):
+        location_entities: list[Any] = [
+            *all_sensor_entities(location.sensors),
+            *(getattr(device, "id", None) for device in (location.devices or [])),
+        ]
+        for entity_id in location_entities:
             if entity_id and entity_id not in seen:
                 seen.add(entity_id)
                 entities.append(entity_id)
