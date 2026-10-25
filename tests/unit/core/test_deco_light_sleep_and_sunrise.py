@@ -228,6 +228,70 @@ class TestSunriseTurnsGarlandOff:
         assert state.current_state == "OFF", "ночное освещение горит до рассвета, не после"
 
 
+class TestManualOffHoldsUntilMorning:
+    """Выключенная вручную гирлянда не включается обратно до утра.
+
+    Владелец, 2026-10-25: «выключил вручную — должно держаться до утра».
+    Прежний часовой оверрайд возвращал ночью ON_DECO, а вечерняя сверка
+    включала гирлянду через 15 минут после ручного выключения.
+    """
+
+    @pytest.mark.asyncio
+    async def test_manual_off_holds_through_sunset_correction(self) -> None:
+        """Ручное выключение и сверка не возвращают свет до рассвета."""
+        engine, watcher, dispatcher = _build(daylight=False)
+        await engine.trigger(GARLAND_FSM, "sunset_started", respect_debounce=False)
+
+        await engine.trigger(GARLAND_FSM, "manual_switch_off", respect_debounce=False)
+
+        assert engine.get_state(GARLAND_FSM).current_state == "OFF_MANUAL", (
+            "ручное выключение должно входить в OFF_MANUAL, а не в ON_MANUAL"
+        )
+
+        dispatcher.intents.clear()
+        watcher._daylight = lambda: False  # noqa: SLF001
+        await watcher.check_once()
+
+        assert engine.get_state(GARLAND_FSM).current_state == "OFF_MANUAL", (
+            "вечерняя сверка вернула выключенную вручную гирлянду"
+        )
+        assert "turn_on" not in dispatcher.services(), (
+            f"сверка отправила включение: {dispatcher.services()}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sunrise_ends_manual_off_and_next_sunset_returns(self) -> None:
+        """Утром ручное «выключено» снимается, вечером свет снова по закату."""
+        engine, _, _ = _build(daylight=False)
+        await engine.trigger(GARLAND_FSM, "sunset_started", respect_debounce=False)
+        await engine.trigger(GARLAND_FSM, "manual_switch_off", respect_debounce=False)
+
+        await engine.trigger(GARLAND_FSM, "sunrise_started", respect_debounce=False)
+
+        assert engine.get_state(GARLAND_FSM).current_state == "OFF", (
+            "утром ручное выключение должно сниматься"
+        )
+
+        await engine.trigger(GARLAND_FSM, "sunset_started", respect_debounce=False)
+
+        assert engine.get_state(GARLAND_FSM).current_state == "ON_DECO", (
+            "следующий закат должен снова включить автоматику"
+        )
+
+    @pytest.mark.asyncio
+    async def test_manual_on_after_manual_off_is_respected(self) -> None:
+        """Человек передумал и включил свет — это возвращает ON_DECO."""
+        engine, _, _ = _build(daylight=False)
+        await engine.trigger(GARLAND_FSM, "sunset_started", respect_debounce=False)
+        await engine.trigger(GARLAND_FSM, "manual_switch_off", respect_debounce=False)
+
+        await engine.trigger(GARLAND_FSM, "manual_switch_on", respect_debounce=False)
+
+        assert engine.get_state(GARLAND_FSM).current_state == "ON_DECO", (
+            "ручное включение после ручного выключения должно вернуть свет"
+        )
+
+
 class TestGarlandStopsOnSleep:
     """Гирлянда гаснет по модификатору «мы спим» — как и объявлено."""
 
