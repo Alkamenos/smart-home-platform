@@ -162,6 +162,22 @@ def create_location_manifest() -> Manifest:
 class TestEventRouterMapping:
     """Tests for EventRouter mapping building from room.sensors."""
 
+    def test_location_devices_are_subscribed_to_home_assistant(self) -> None:
+        """Приборы локаций входят в подписку на события.
+
+        Гирлянда на террасе живёт в локации. Пока её не было в подписке,
+        ручное выключение не доходило до автомата, и сторож включал свет
+        обратно (боевая находка 2026-10-25).
+        """
+        from core.events.event_router import collect_subscribed_entities
+
+        entities = collect_subscribed_entities(create_location_manifest())
+
+        assert "light.konteiner" in entities, f"прибор локации не подписан на события: {entities}"
+        assert "binary_sensor.konteiner_motion" in entities, (
+            f"датчик локации не подписан на события: {entities}"
+        )
+
     def test_motion_sensor_in_location_routes_to_its_device(self) -> None:
         """Датчик локации будит автомат прибора этой локации."""
         manifest = create_location_manifest()
