@@ -177,6 +177,11 @@ class DecorativeLightWatcher:
             if not daylight and self._is_pre_dawn():
                 return None
             return "sunrise_started" if daylight else "sunset_started"
+        # Человек выключил вечерний свет вручную — держим выключенным до утра.
+        # Сверка не имеет права «исправлять» это решение (B103): иначе она
+        # каждые 15 минут видит «темно, а света нет» и зажигает гирлянду снова.
+        if state.current_state.upper() == "OFF_MANUAL":
+            return None
         is_on = state.current_state.upper().startswith("ON")
         if daylight:
             return "sunrise_started" if is_on else None

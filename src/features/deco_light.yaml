@@ -57,6 +57,7 @@ states:
   - "OFF"
   - "ON_DECO"
   - "ON_MANUAL"
+  - "OFF_MANUAL"
 
 transitions:
   # Закат — вечерний свет включается.
@@ -147,21 +148,24 @@ transitions:
     trigger: "day_started"
     action: null
 
-  # --- Ручное состояние: возврат к автоматике через срок оверрайда (B57) ---
+  # --- Ручное состояние ---
   #
-  # Человек включил или выключил свет сам (событие приходит из Home Assistant,
-  # когда состояние меняет пользователь). Автомат запоминает это как ручное
-  # состояние и через 60 минут **возвращается к автоматике** — пересчитывает
-  # решение, а не получает команду «выключить»: ночью это «горит» (ON_DECO),
-  # днём — «выключено», потому что днём декоративный свет автоматика не держит.
-  # Концепция — .ai/02_ARCHITECTURE.md §7.
+  # Включил человек — ON_MANUAL: через 60 минут автомат возвращается к
+  # автоматике (ночью продолжает гореть, днём гасит). Концепция — §7.
+  #
+  # Выключил человек — OFF_MANUAL: держим выключенным **до утра**, а не час.
+  # Вечерняя сверка каждые 15 минут видит «темно, а света нет» и без этого
+  # состояния зажигала бы гирлянду снова; часовой оверрайд возвращал бы её в
+  # ON_DECO ночью. Владелец, 2026-10-25: «выключил вручную — должно держаться
+  # до утра» (боевая находка: гирлянда включалась обратно после ручного
+  # выключения).
   - from_state: "OFF"
     to_state: "ON_MANUAL"
     trigger: "manual_switch_on"
     action: "turn_on_light"
 
   - from_state: "ON_DECO"
-    to_state: "ON_MANUAL"
+    to_state: "OFF_MANUAL"
     trigger: "manual_switch_off"
     action: null
 
@@ -172,7 +176,7 @@ transitions:
     action: null
 
   - from_state: "ON_MANUAL"
-    to_state: "ON_MANUAL"
+    to_state: "OFF_MANUAL"
     trigger: "manual_switch_off"
     action: null
 
@@ -207,6 +211,50 @@ transitions:
     to_state: "OFF"
     trigger: "sleep_started"
     guard: "stops_on_sleep"
+    action: "turn_off_light"
+
+  # --- Ручное выключение держится до утра ---
+  #
+  # Вечерняя сверка и повторный закат не возвращают свет: человек уже сказал
+  # «выключено». Утром состояние снимается, и следующий закат снова включает
+  # автоматику.
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "sunset_started"
+    action: null
+
+  - from_state: "OFF_MANUAL"
+    to_state: "ON_DECO"
+    trigger: "manual_switch_on"
+    action: "turn_on_light"
+
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "manual_switch_off"
+    action: null
+
+  # Ночь кончилась — ручное «выключено» больше не нужно.
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF"
+    trigger: "sunrise_started"
+    action: null
+
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF"
+    trigger: "day_started"
+    action: null
+
+  # «Мы спим» при выключенном вручную свете ничего не меняет: он уже погашен.
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF"
+    trigger: "sleep_started"
+    action: null
+
+  # Прибор включили вне платформы — решение «выключено» повторяем. Если это
+  # сделал человек приложением, придёт manual_switch_on и вернёт ON_DECO.
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "device_state_diverged"
     action: "turn_off_light"
 
   # --- Прибор выключен, а автомат считает вечерний свет горящим: модель уступает прибору (B89) ---
