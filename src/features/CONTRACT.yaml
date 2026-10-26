@@ -191,7 +191,7 @@ templates:
     reachable: true
     in_manifest: [gostinaia, kabinet, spalnia]
     actions: [cover_open, cover_close]
-    guards: [covers_should_open, covers_should_close, device_is_off]
+    guards: [covers_should_open, covers_should_close, device_is_off, device_is_on]
     triggers:
       settings_changed: platform
       device_state_diverged: platform

@@ -32,6 +32,42 @@ import yaml
 DIVERGED = "device_state_diverged"
 
 
+def test_cover_opened_by_hand_is_adopted() -> None:
+    """Обратная правда: открытую вручную штору модель принимает как OPEN.
+
+    Сторож шлёт `_device_is_on`, и переход `CLOSED -> OPEN` обязан стоять до
+    повтора «закрыть», иначе повтор выиграет и платформа снова закроет штору
+    за человеком (B104).
+    """
+    template = yaml.safe_load(Path("src/features/cover_modes.yaml").read_text(encoding="utf-8"))
+    transitions = template["transitions"]
+
+    adoption = [
+        index
+        for index, transition in enumerate(transitions)
+        if transition.get("trigger") == DIVERGED and transition.get("guard") == "device_is_on"
+    ]
+    assert adoption, "cover_modes: перехода «модель принимает OPEN» нет"
+    assert all(transitions[index].get("to_state") == "OPEN" for index in adoption), (
+        "открытая штора должна приводить модель в OPEN"
+    )
+    assert all(transitions[index].get("action") is None for index in adoption), (
+        "принятие факта не должно командовать прибором"
+    )
+
+    repeat = [
+        index
+        for index, transition in enumerate(transitions)
+        if transition.get("trigger") == DIVERGED
+        and transition.get("from_state") == "CLOSED"
+        and transition.get("guard") != "device_is_on"
+    ]
+    assert repeat, "cover_modes: у CLOSED нет повтора решения"
+    assert min(adoption) < min(repeat), (
+        "повтор «закрыть» стоит раньше принятия OPEN — штора снова закроется"
+    )
+
+
 def test_cover_adoption_precedes_the_repeat() -> None:
     """Признание правды объявлено и стоит до повтора решения.
 

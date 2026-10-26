@@ -735,6 +735,18 @@ class HAAdapter:
         else:
             human_user = bool(user_id) and str(user_id) != own_user_id
         human_action = human_user or (bool(automation_id) and not own_action)
+        # Физический пульт шторы не оставляет `user_id` и `parent_id`: для
+        # платформы это «прибор сам поехал». Но движение (`opening`/`closing`)
+        # — достаточное доказательство человека, а не наша команда: свои
+        # команды отсекаются `own_action`. Без этого ручное движение шторы не
+        # включало локкаут, и следующая смена флагов дома отменяла выбор
+        # человека (B104).
+        cover_movement = (
+            entity_id.startswith("cover.")
+            and new_state in ("opening", "closing")
+            and not own_action
+            and not human_action
+        )
         if human_action and self._manual_lockout_middleware:
             # Диагностика, а не догадка: если команда платформы всё-таки
             # засчиталась ручным действием, утренний разбор должен видеть, почему
@@ -745,6 +757,15 @@ class HAAdapter:
             logger.warning(
                 f"HAAdapter: ручное действие — {entity_id}, user={user_id or '-'}, "
                 f"автоматизация={automation_id or '-'}, "
+                f"context={context.get('ha_context_id')}, "
+                f"своя команда этому прибору: "
+                f"{'была' if self._is_recent_command(entity_id) else 'не найдена'}"
+            )
+            self._manual_lockout_middleware.record_manual_control(entity_id)
+        elif cover_movement and self._manual_lockout_middleware:
+            logger.warning(
+                f"HAAdapter: ручное движение шторы — {entity_id}, "
+                f"user={user_id or '-'}, автоматизация={automation_id or '-'}, "
                 f"context={context.get('ha_context_id')}, "
                 f"своя команда этому прибору: "
                 f"{'была' if self._is_recent_command(entity_id) else 'не найдена'}"

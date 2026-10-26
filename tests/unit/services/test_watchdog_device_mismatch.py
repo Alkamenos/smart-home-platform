@@ -295,6 +295,103 @@ async def test_cover_is_compared_by_position() -> None:
     assert (await closed.check_once()).entries[0].mismatch_reason == MISMATCH_DEVICE_OFF_DECISION_ON
 
 
+def _cover_states(state: str, position: int | None) -> dict[str, dict[str, Any]]:
+    """Состояние шторы с положением для массового чтения."""
+    return {COVER_DEVICE: {"state": state, "attributes": {"current_position": position}}}
+
+
+@pytest.mark.asyncio
+async def test_cover_position_zero_wins_over_an_open_label() -> None:
+    """Положение 0 — закрыта, даже если ярлык говорит `open`."""
+    engine = FakeEngine({COVER_FSM: "OPEN"}, {COVER_FSM: COVER_DEVICE})
+    adapter = FakeAdapter(all_states=_cover_states("open", 0))
+
+    entry = (await make_watchdog(engine, adapter).check_once()).entries[0]
+
+    assert entry.device_state == "closed"
+    assert entry.device_position == 0
+    assert entry.mismatch_reason == MISMATCH_DEVICE_OFF_DECISION_ON
+
+
+@pytest.mark.asyncio
+async def test_cover_partial_position_counts_as_open() -> None:
+    """Штора на 45 % — открыта: решение «закрыть» с ней расходится."""
+    engine = FakeEngine({COVER_FSM: "CLOSED"}, {COVER_FSM: COVER_DEVICE})
+    adapter = FakeAdapter(all_states=_cover_states("open", 45))
+
+    entry = (await make_watchdog(engine, adapter).check_once()).entries[0]
+
+    assert entry.device_position == 45
+    assert entry.mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
+
+
+@pytest.mark.asyncio
+async def test_moving_cover_is_not_commanded_midway() -> None:
+    """Пока штора едет, решение не повторяется: мотор не дёргаем."""
+    engine = FakeEngine({COVER_FSM: "OPEN"}, {COVER_FSM: COVER_DEVICE})
+    adapter = FakeAdapter(all_states=_cover_states("closing", 40))
+
+    entry = (await make_watchdog(engine, adapter).check_once()).entries[0]
+
+    assert entry.device_moving is True
+    assert entry.mismatch is False
+    assert engine.triggered == [], "сторож дёрнул мотор посреди хода"
+
+
+@pytest.mark.asyncio
+async def test_cover_opened_by_hand_updates_model() -> None:
+    """Человек открыл штору пультом — модель принимает OPEN, команды нет."""
+    engine = FakeEngine({COVER_FSM: "CLOSED"}, {COVER_FSM: COVER_DEVICE})
+    adapter = FakeAdapter(all_states=_cover_states("open", 100))
+    watchdog = make_watchdog(
+        engine,
+        adapter,
+        manual_override=lambda _device: True,
+        commanded_recently=lambda _device: False,
+    )
+
+    entry = (await watchdog.check_once()).entries[0]
+
+    assert entry.mismatch_reason == MISMATCH_MANUAL_OVERRIDE
+    assert {"_device_is_on": True} in engine.contexts, "модель не узнала, что штора открыта вручную"
+
+
+@pytest.mark.asyncio
+async def test_cover_opened_outside_platform_adopts_open() -> None:
+    """Штору открыли вне платформы — модель уступает прибору и не спорит."""
+    engine = FakeEngine({COVER_FSM: "CLOSED"}, {COVER_FSM: COVER_DEVICE})
+    adapter = FakeAdapter(all_states=_cover_states("open", 100))
+    watchdog = make_watchdog(
+        engine,
+        adapter,
+        commanded_recently=lambda _device: False,
+    )
+
+    entry = (await watchdog.check_once()).entries[0]
+
+    assert entry.mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
+    assert {"_device_is_on": True} in engine.contexts
+    assert all(event == DEVICE_DIVERGED_TRIGGER for _, event, _ in engine.triggered)
+
+
+@pytest.mark.asyncio
+async def test_cover_closed_by_hand_updates_model() -> None:
+    """Человек закрыл штору пультом — модель принимает CLOSED."""
+    engine = FakeEngine({COVER_FSM: "OPEN"}, {COVER_FSM: COVER_DEVICE})
+    adapter = FakeAdapter(all_states=_cover_states("closed", 0))
+    watchdog = make_watchdog(
+        engine,
+        adapter,
+        manual_override=lambda _device: True,
+        commanded_recently=lambda _device: False,
+    )
+
+    entry = (await watchdog.check_once()).entries[0]
+
+    assert entry.mismatch_reason == MISMATCH_MANUAL_OVERRIDE
+    assert {"_device_is_off": True} in engine.contexts
+
+
 @pytest.mark.asyncio
 async def test_unknown_state_is_not_guessed() -> None:
     """Незнакомое состояние автомата не превращается в догадку."""

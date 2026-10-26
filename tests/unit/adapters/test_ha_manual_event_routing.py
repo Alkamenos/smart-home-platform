@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -165,6 +166,56 @@ async def test_manual_off_does_not_apply_temperature() -> None:
     await adapter.on_state_change("light.girlianda_terassa", "off", "on", {"user_id": "leonid"})
 
     assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_physical_cover_movement_is_manual() -> None:
+    """Движение шторы без user/parent — ручное: включается локкаут.
+
+    Пульт шторы не оставляет в Home Assistant ни `user_id`, ни `parent_id`.
+    Без отдельной ветки платформа считала движение своей командой и на
+    следующей смене флагов дома отменяла выбор человека (B104).
+    """
+    engine = _Engine()
+    middleware = _Middleware()
+    adapter = _adapter(engine, middleware)
+
+    await adapter.on_state_change("cover.shtora_v_spalne", "opening", "closed", {})
+
+    assert middleware.recorded == ["cover.shtora_v_spalne"], (
+        f"ручное движение шторы не включило локкаут: {middleware.recorded}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cover_movement_with_user_is_recorded_once() -> None:
+    """Движение из приложения уже опознано по user_id — второй записи нет."""
+    engine = _Engine()
+    middleware = _Middleware()
+    adapter = _adapter(engine, middleware)
+
+    await adapter.on_state_change(
+        "cover.shtora_v_spalne", "opening", "closed", {"user_id": "leonid"}
+    )
+
+    assert middleware.recorded == ["cover.shtora_v_spalne"], (
+        f"ручное действие записано дважды: {middleware.recorded}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_own_cover_movement_is_not_manual() -> None:
+    """Движение после нашей команды — не ручное действие человека."""
+    engine = _Engine()
+    middleware = _Middleware()
+    adapter = _adapter(engine, middleware)
+    adapter._recent_commands["cover.shtora_v_spalne"] = time.monotonic()  # noqa: SLF001
+
+    await adapter.on_state_change("cover.shtora_v_spalne", "opening", "closed", {})
+
+    assert middleware.recorded == [], (
+        f"наша команда засчитана ручным движением: {middleware.recorded}"
+    )
 
 
 @pytest.mark.asyncio

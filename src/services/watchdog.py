@@ -166,6 +166,10 @@ class FsmSnapshotEntry:
             не проверяется зависанием.
         device_state: Фактическое состояние прибора, прочитанное у внешней
             системы; ``None`` — не читали или прибор не ответил.
+        device_position: Положение шторы (0–100), если прибор его отдаёт;
+            ``None`` — не штора или положение неизвестно.
+        device_moving: Прибор в движении (``opening``/``closing``): команду
+            посреди хода не повторяем.
         mismatch_reason: Названное расхождение «автомат ↔ прибор»; ``None`` —
             расхождения нет.
     """
@@ -178,6 +182,8 @@ class FsmSnapshotEntry:
     stuck: bool
     expected_timeout_sec: float | None
     device_state: str | None = None
+    device_position: int | None = None
+    device_moving: bool = False
     mismatch_reason: str | None = None
 
     @property
@@ -255,6 +261,8 @@ class FsmSnapshot:
                         "expected_timeout_sec": entry.expected_timeout_sec,
                         "stuck": entry.stuck,
                         "device_state": entry.device_state,
+                        "device_position": entry.device_position,
+                        "device_moving": entry.device_moving,
                         "mismatch": entry.mismatch_reason,
                     }
                     for entry in self.entries
@@ -455,6 +463,27 @@ def _state_of(states: dict[str, dict[str, Any]], entity_id: str) -> str | None:
     if value is None:
         return None
     return str(value).strip().lower()
+
+
+def _position_of(states: dict[str, dict[str, Any]], entity_id: str) -> int | None:
+    """Положение шторы из массового чтения (``current_position``).
+
+    Args:
+        states: Сущность → словарь состояния.
+        entity_id: Сущность прибора.
+
+    Returns:
+        Положение 0–100 либо ``None``, если прибор его не отдаёт.
+    """
+    item = states.get(entity_id) or {}
+    attributes = item.get("attributes") or {}
+    value = attributes.get("current_position")
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
 
 
 def _group_members(states: dict[str, dict[str, Any]], devices: set[str]) -> dict[str, set[str]]:
@@ -793,7 +822,16 @@ class WatchdogService:
             actual = _state_of(states, entry.device) if states else None
             if actual is None:
                 actual = await self._read_device_state(reader, entry.device)
+            position = _position_of(states, entry.device)
+            moving = actual in {"opening", "closing"}
+            if position is not None and not moving and str(entry.device or "").startswith("cover."):
+                # Положение точнее ярлыка: 0 — закрыта, любое другое — открыта.
+                actual = "closed" if position <= 0 else "open"
             reason = _device_mismatch_reason(expected, actual)
+            if moving:
+                # Штора едет: итоговое положение ещё не наступило. Повтор
+                # посреди хода дёргал бы мотор; дождёмся остановки.
+                reason = None
             # Расхождение называет только тот автомат, чьё решение совпало с
             # итогом прибора: повторять решение «выключить» лампе, которую
             # решено держать горящей, нечего.
@@ -815,7 +853,15 @@ class WatchdogService:
                     f"{entry.entity_id} в состоянии {entry.state}, прибор {actual!r} "
                     f"({reason})"
                 )
-            enriched.append(replace(entry, device_state=actual, mismatch_reason=reason))
+            enriched.append(
+                replace(
+                    entry,
+                    device_state=actual,
+                    device_position=position,
+                    device_moving=moving,
+                    mismatch_reason=reason,
+                )
+            )
         return tuple(enriched)
 
     async def _read_all_states(self, reader: Any) -> dict[str, dict[str, Any]]:
@@ -868,10 +914,24 @@ class WatchdogService:
         if not callable(trigger):
             return
         for entry in entries:
+            if entry.device_moving:
+                # Штора ещё едет: итоговое положение неизвестно, повтор
+                # посреди хода только дёргал бы мотор.
+                self._divergence_attempts.pop(entry.entity_id, None)
+                continue
             if not entry.mismatch_is_fault:
                 # Прибор согласился или уступил человеку — счётчик повторов
                 # начинается заново: следующий отказ снова получит повторы.
                 self._divergence_attempts.pop(entry.entity_id, None)
+                if (
+                    str(entry.device or "").startswith("cover.")
+                    and entry.mismatch_reason
+                    in (MISMATCH_MANUAL_OVERRIDE, MISMATCH_DEVICE_ON_DECISION_OFF)
+                    and not self._commanded_recently(entry.device)
+                ):
+                    # Штору открыли без нас: команду не повторяем, но модель
+                    # обязана узнать правду, иначе останется в старом CLOSED.
+                    await self._tell_device_truth(entry, trigger)
                 continue
             attempts = self._divergence_attempts.get(entry.entity_id, 0)
             if attempts >= DIVERGENCE_REASSERT_ATTEMPTS:
@@ -922,6 +982,11 @@ class WatchdogService:
         значит факт. Вентиляция не здесь — у неё свой сторож, который и сообщает
         факт (B54).
 
+        У шторы есть и обратная правда: она открыта, а решение — закрыть. Тогда
+        отправляется ``_device_is_on``, и шаблон принимает фактическое `OPEN`.
+        Ручное движение шторы тоже приводит модель к прибору, но только если мы
+        сами ей не командовали: иначе это наша команда ещё в пути.
+
         Args:
             entry: Запись снимка с фактическим состоянием прибора.
             trigger: Вызов движка, принимающий (entity_id, событие, контекст).
@@ -932,15 +997,28 @@ class WatchdogService:
         # Решение по виду расхождения, а не по сырому состоянию: «прибор не
         # работает» у каждого семейства своё, а вид один. Непрочитанный прибор сюда
         # не попадает вовсе — у него другой вид расхождения.
-        if entry.mismatch_reason != MISMATCH_DEVICE_OFF_DECISION_ON:
+        device = str(entry.device or "")
+        is_cover = device.startswith("cover.")
+        if entry.mismatch_reason == MISMATCH_DEVICE_OFF_DECISION_ON:
+            context = {"_device_is_off": True}
+        elif entry.mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF and is_cover:
+            context = {"_device_is_on": True}
+        elif entry.mismatch_reason == MISMATCH_MANUAL_OVERRIDE and is_cover:
+            if entry.device_state in DEVICE_OFF_STATES:
+                context = {"_device_is_off": True}
+            elif entry.device_state in DEVICE_ON_STATES:
+                context = {"_device_is_on": True}
+            else:
+                return
+        else:
             return
-        if not str(entry.device or "").startswith(("light.", "cover.")):
+        if not device.startswith(("light.", "cover.")):
             return
         try:
             await trigger(
                 entry.entity_id,
                 DEVICE_DIVERGED_TRIGGER,
-                {"_device_is_off": True},
+                context,
                 respect_debounce=False,
             )
         except Exception as exc:  # noqa: BLE001 — признание правды не должно ронять проверку
