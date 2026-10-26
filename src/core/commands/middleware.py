@@ -88,25 +88,41 @@ class ManualLockoutMiddleware(Middleware):
         self._control_tracker = control_tracker
 
     def _get_lockout_minutes(self, domain: str) -> int:
+        """Срок ручной блокировки для домена.
+
+        Явный срок домена сильнее глобального: если владелец написал
+        ``ventilation.manual_lockout_min: 15``, это значение должно действовать,
+        а не молча проигрывать глобальным 60 (B76 A8). Глобальное значение —
+        запасное для доменов без своего срока (например, шторы).
+
+        Args:
+            domain: Домен прибора.
+
+        Returns:
+            Срок в минутах; 0 — блокировка выключена.
         """
-        Get the lockout duration in minutes for a given domain.
-        ...
-        """
-        # Global lockout — getattr с default всё равно возвращает Any,
-        # поэтому явно приводим к int.
+        # Значение домена: None/0 означает «своего срока нет».
+        if domain == "light":
+            domain_value = self._automation_rules.lighting.manual_lockout_min
+        elif domain in ("climate", "thermostat"):
+            domain_value = self._automation_rules.climate.manual_lockout_min
+        elif domain in ("fan", "ventilation"):
+            domain_value = self._automation_rules.ventilation.manual_lockout_min
+        else:
+            # Шторы и прочие домены своего срока не имеют: сначала глобальный,
+            # затем исторический запасной — срок освещения.
+            domain_value = None
+
+        if isinstance(domain_value, int) and domain_value > 0:
+            return domain_value
+
         global_lockout = getattr(self._automation_rules, "global_manual_lockout_min", None)
         if isinstance(global_lockout, int) and global_lockout > 0:
             return global_lockout
 
-        # Domain-specific: "or 0" превращает None в 0 и satisfies mypy
-        if domain == "light":
-            return self._automation_rules.lighting.manual_lockout_min or 0
-        elif domain in ("climate", "thermostat"):
-            return self._automation_rules.climate.manual_lockout_min or 0
-        elif domain in ("fan", "ventilation"):
-            return self._automation_rules.ventilation.manual_lockout_min or 0
-        else:
-            return self._automation_rules.lighting.manual_lockout_min or 0
+        # Совсем нет глобального: прежнее поведение для незнакомых доменов —
+        # срок освещения (иначе блокировка молча исчезла бы).
+        return self._automation_rules.lighting.manual_lockout_min or 0
 
     def _is_manual_source(self, source: str) -> bool:
         """

@@ -72,6 +72,25 @@ def middleware(automation_rules, control_tracker):
     )
 
 
+def test_domain_lockout_overrides_global() -> None:
+    """Явный срок домена сильнее глобального (B76 A8).
+
+    `ventilation.manual_lockout_min: 15` раньше молча проигрывал глобальным
+    60 минутам, потому что посредник проверял global первым.
+    """
+    rules = AutomationRules(
+        lighting=LightingAutomation(manual_lockout_min=60),
+        climate=ClimateAutomation(manual_lockout_min=30),
+        ventilation=VentilationAutomation(manual_lockout_min=15),
+        global_manual_lockout_min=90,
+    )
+    middleware = ManualLockoutMiddleware(rules, ControlTracker())
+
+    assert middleware._get_lockout_minutes("fan") == 15  # noqa: SLF001
+    assert middleware._get_lockout_minutes("light") == 60  # noqa: SLF001
+    assert middleware._get_lockout_minutes("cover") == 90  # noqa: SLF001
+
+
 class TestManualLockoutMiddleware:
     """Tests for ManualLockoutMiddleware."""
 
