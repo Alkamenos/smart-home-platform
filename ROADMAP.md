@@ -333,8 +333,8 @@ gantt
 - File: `cli.py`
 - Fix: Add end-to-end CLI tests
 - Source: `specs/015-cover-control/` (спека 015, US1–US3)
-- Платформа отправляет только «открыть»/«закрыть» (`cover.open_cover` /
-- Пока не закрыто: чтение позиции (`current_position`/`moving`) и учёт ручного
+- Платформа отправляет «открыть»/«закрыть» (`cover.open_cover` /
+- **Сделано:** сторож читает `current_position`/`moving`: 0 — закрыта, любое
 
 ### Low Priority
 - File: `tools/dashboard_generator.py`
