@@ -70,7 +70,7 @@ def make_definition(timeout_sec: float | None = 30.0) -> FSMDefinition:
         Transition(
             from_state="on",
             to_state="standby",
-            trigger="motion_cleared",
+            trigger="timeout",
             timeout_sec=timeout_sec,
         ),
         Transition(from_state="standby", to_state="off", trigger="timeout"),

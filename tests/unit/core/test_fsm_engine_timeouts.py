@@ -104,12 +104,52 @@ class TestExpectedTimeoutSec:
         assert engine.expected_timeout_sec(FSM_ID) is None
 
     def test_should_return_timeout_of_outgoing_timed_transition_when_in_state(self) -> None:
-        """Из состояния берётся таймаут ведущего из него перехода."""
+        """Из состояния берётся таймаут перехода по `timeout`."""
         engine = make_engine()
-        engine.register_definition(timed_definition(), restore_state=False)
-        engine.reset_state(FSM_ID, "on")
+        engine.register_definition(
+            FSMDefinition(
+                entity_id=FSM_ID,
+                initial_state="on",
+                states=("on", "standby"),
+                transitions=(
+                    Transition(
+                        from_state="on",
+                        to_state="standby",
+                        trigger="timeout",
+                        timeout_sec=30.0,
+                    ),
+                ),
+            ),
+            restore_state=False,
+        )
 
         assert engine.expected_timeout_sec(FSM_ID) == 30.0
+
+    def test_should_ignore_entry_timeout_without_timeout_trigger(self) -> None:
+        """Таймаут входного перехода — не срок жизни состояния.
+
+        Форма ночника: `OFF --sleep_started--> ON_NIGHT, timeout_sec=300`.
+        Сторож не должен считать `OFF` зависшим через пять минут.
+        """
+        engine = make_engine()
+        engine.register_definition(
+            FSMDefinition(
+                entity_id=FSM_ID,
+                initial_state="off",
+                states=("off", "on"),
+                transitions=(
+                    Transition(
+                        from_state="off",
+                        to_state="on",
+                        trigger="sleep_started",
+                        timeout_sec=300.0,
+                    ),
+                ),
+            ),
+            restore_state=False,
+        )
+
+        assert engine.expected_timeout_sec(FSM_ID) is None
 
     def test_should_return_maximum_when_several_timed_transitions_leave_state(self) -> None:
         """При нескольких таймингованных переходах берётся самый долгий."""
@@ -123,13 +163,13 @@ class TestExpectedTimeoutSec:
                     Transition(
                         from_state="off",
                         to_state="on",
-                        trigger="motion_detected",
+                        trigger="timeout",
                         timeout_sec=10.0,
                     ),
                     Transition(
                         from_state="off",
                         to_state="standby",
-                        trigger="presence",
+                        trigger="timeout",
                         timeout_sec=90.0,
                     ),
                     Transition(
@@ -195,11 +235,10 @@ class TestExpectedTimeoutSec:
             # `ON_MOTION --[timeout]--> OFF, 30 с` (Known Issue #66), и именно
             # она ломалась.
             #
-            # `expected_timeout_sec` при этом возвращает 30.0: он читает все
-            # исходящие переходы без фильтра по триггеру. Расхождение с
-            # движком на этой форме описания остаётся и вынесено в отдельную
-            # задачу, а не исправлено здесь молча.
-            assert engine.expected_timeout_sec(FSM_ID) == 30.0
+            # `expected_timeout_sec` тоже смотрит только на trigger=timeout:
+            # у `on` такого перехода без срока нет, поэтому None — как и у
+            # движка (Known Issue #66 закрыт 2026-10-26).
+            assert engine.expected_timeout_sec(FSM_ID) is None
             assert FSM_ID not in engine._timers
             await engine.shutdown()
 

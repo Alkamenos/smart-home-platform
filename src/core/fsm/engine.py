@@ -860,7 +860,8 @@ class FSMEngine:
             state: Имя состояния.
 
         Returns:
-            Максимум ``timeout_sec`` среди переходов из состояния либо None.
+            Максимум ``timeout_sec`` среди переходов по триггеру ``timeout`` либо
+            None.
         """
         definition = self._definitions.get(entity_id)
         if definition is None:
@@ -873,10 +874,16 @@ class FSMEngine:
         current = self._states.get(entity_id)
         context = current.context if current is not None and current.current_state == state else {}
 
+        # Только переход по триггеру `timeout` взводит таймер состояния. У
+        # входных переходов `timeout_sec` — верхняя граница ожидания события, а
+        # не срок жизни состояния. Без фильтра сторож считал `OFF` ночника
+        # зависшим через 300 с после `sleep_started` (боевая находка 2026-10-26):
+        # в снимке появлялся ложный `problem_count`.
         timeouts = [
             transition.timeout_sec
             for transition in definition.transitions
             if transition.from_state == state
+            and transition.trigger == "timeout"
             and transition.timeout_sec is not None
             and transition.timeout_sec > 0
             and (
