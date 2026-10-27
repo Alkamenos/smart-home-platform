@@ -32,6 +32,28 @@ import yaml
 DIVERGED = "device_state_diverged"
 
 
+def test_manual_cover_events_have_transitions() -> None:
+    """Ручное движение шторы не должно давать отказ `no_transition`.
+
+    Событие уже записано адаптером как ручной локкаут (B104); автомату нужен
+    переход, чтобы журнал не выглядел как дефект.
+    """
+    template = yaml.safe_load(Path("src/features/cover_modes.yaml").read_text(encoding="utf-8"))
+    transitions = template["transitions"]
+
+    missing = [
+        (state, trigger)
+        for state in ("OPEN", "CLOSED")
+        for trigger in ("manual_switch_on", "manual_switch_off")
+        if not any(
+            transition.get("from_state") == state and transition.get("trigger") == trigger
+            for transition in transitions
+        )
+    ]
+
+    assert not missing, f"cover_modes: нет переходов ручного движения: {missing}"
+
+
 def test_cover_opened_by_hand_is_adopted() -> None:
     """Обратная правда: открытую вручную штору модель принимает как OPEN.
 

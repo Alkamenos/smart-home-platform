@@ -195,6 +195,8 @@ templates:
     triggers:
       settings_changed: platform
       device_state_diverged: platform
+      manual_switch_on: platform
+      manual_switch_off: platform
     unproduced_triggers: []
     gaps:
       - Позицию прибора платформа не отслеживает: она просит открыть или закрыть, а состояние шторы в Home Assistant не читает. Поэтому в CLOSED автомат уверен по собственной команде, а не по прибору; ручное движение человеком автоматику не отменяет (ручного пути в платформе пока нет — тот же пробел, что и у света).

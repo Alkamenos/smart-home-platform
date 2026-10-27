@@ -88,6 +88,32 @@ transitions:
     guard: "device_is_on"
     action: null
 
+  # --- Ручное движение: событие получает переход, а не отказ ---
+  #
+  # Человек двинул штору из приложения или пульта. Состояние автомата само по
+  # себе не меняем: ручной локкаут уже записал адаптер (B104), а фактическое
+  # положение приведёт сторож. Без этих переходов каждое движение давало в
+  # журнале `no_transition` — шум, который выглядел как дефект.
+  - from_state: "OPEN"
+    to_state: "OPEN"
+    trigger: "manual_switch_on"
+    action: null
+
+  - from_state: "OPEN"
+    to_state: "OPEN"
+    trigger: "manual_switch_off"
+    action: null
+
+  - from_state: "CLOSED"
+    to_state: "CLOSED"
+    trigger: "manual_switch_on"
+    action: null
+
+  - from_state: "CLOSED"
+    to_state: "CLOSED"
+    trigger: "manual_switch_off"
+    action: null
+
   # --- Прибор разошёлся с решением: решение повторяется (B64) ---
   #
   # Сторож шлёт `device_state_diverged`, когда положение прибора противоречит
