@@ -79,6 +79,7 @@ registered_actions:  # реестр после register_all_actions
   - release_device
   - turn_off_light
   - turn_off_night_light
+  - turn_on_dim_light
   - turn_on_light
   - turn_on_night_light
 
@@ -91,6 +92,7 @@ registered_guards:  # реестр после register_all_guards
   - covers_should_open
   - device_is_off
   - device_is_on
+  - dims_when_idle
   - exhaust_should_stop
   - has_usable_reading
   - humidity_above_60
@@ -286,8 +288,8 @@ templates:
   lighting:
     reachable: true
     in_manifest: [gostevaia_spalnia, gostinaia, kabinet, konteiner, kukhnia, sanuzel, spalnia]
-    actions: [turn_on_light, turn_off_light]
-    guards: [may_turn_on, is_manual_override_enabled, modifier_is_on, modifier_is_off, device_is_off]
+    actions: [turn_on_light, turn_on_dim_light, turn_off_light]
+    guards: [may_turn_on, dims_when_idle, is_manual_override_enabled, modifier_is_on, modifier_is_off, device_is_off]
     triggers:
       motion_detected: sensor
       manual_switch_on: platform
@@ -296,9 +298,11 @@ templates:
       quiet_hours_started: platform
       day_started: platform
       sleep_started: platform
-      manual_override: НЕТ ПРОИСХОДИТЕЛЯ
       manual_switch_off: platform
+      sunrise_started: platform
+      settings_changed: platform
       device_state_diverged: platform
+      manual_override: НЕТ ПРОИСХОДИТЕЛЯ
     unproduced_triggers: [manual_override]
     gaps:
       - motion_cleared публикуется платформой, но перехода по нему нет — движение кончилось, свет горит до таймаута. Это сценарий «свет с задержкой», а не дефект; отдельная задача на выбор поведения.
@@ -335,6 +339,16 @@ templates:
         range: "30-3600"
         effective: true
         note: "Задержка выключения. Переопределяет timeout_sec только у переходов с триггером timeout (factory.py:_timeout_from_params); у остальных переходов timeout_sec — верхняя граница ожидания, и подменять её неверно."
+      dim_when_idle:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "Вечером без движения не выключать свет, а оставлять минимальную яркость (решение владельца 2026-10-27). Условие dims_when_idle: только после полудня и при солнце под горизонтом; утром свет гаснет как раньше."
+      dim_brightness_pct:
+        type: int
+        range: "1-100"
+        effective: true
+        note: "Яркость вечернего света без движения, по умолчанию 3 %. Не ночник: цвет берётся из общей температуры дома, красный не ставится."
   night_light:
     reachable: true
     in_manifest: [gostinaia]

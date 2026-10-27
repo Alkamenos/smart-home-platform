@@ -70,6 +70,7 @@ REGISTERED_GUARDS = (
     "may_turn_on",
     "modifier_is_on",
     "modifier_is_off",
+    "dims_when_idle",
     "humidity_above_60",
     "humidity_below_60",
     "below_setpoint",

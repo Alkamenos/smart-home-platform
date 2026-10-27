@@ -100,6 +100,7 @@ from core.guards.covers import (
     make_covers_should_open as make_covers_should_open,
 )
 from core.guards.lighting import (
+    make_dims_when_idle as make_dims_when_idle,
     make_is_manual_override_enabled as make_is_manual_override_enabled,
     make_may_stay_idle as make_may_stay_idle,
     make_may_turn_on as make_may_turn_on,
@@ -202,6 +203,7 @@ def build_guards(
         "may_turn_on": make_may_turn_on(),
         "modifier_is_on": make_modifier_is_on(),
         "modifier_is_off": make_modifier_is_off(),
+        "dims_when_idle": make_dims_when_idle(),
         "below_setpoint": make_below_setpoint(),
         "at_or_above_setpoint": make_at_or_above_setpoint(),
         "climate_is_enabled": make_climate_is_enabled(),

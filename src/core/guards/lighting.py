@@ -501,3 +501,61 @@ def make_may_stay_idle() -> Callable[[Any, dict[str, Any]], bool]:
 
     may_stay_idle.deny_reason = deny_reason  # type: ignore[attr-defined]
     return may_stay_idle
+
+
+def make_dims_when_idle(
+    now: Callable[[Any], datetime] = _now_in,
+) -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «без движения оставить вечернюю яркость».
+
+    Включается только у лампы с параметром ``dim_when_idle`` и только вечером:
+    после полудня и при солнце под горизонтом. Утром (до полудня) темнота —
+    это предрассветные сумерки, и свет должен гаснуть, а не оставаться на 3 %:
+    иначе он горит минимальной яркостью всё утро (боевая находка 27.10).
+
+    Args:
+        now: Источник времени дома; подменяется в тестах.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def dims_when_idle(state: Any, context: dict[str, Any]) -> bool:
+        """Можно ли оставить свет тусклым вместо выключения.
+
+        Args:
+            state: Текущее состояние автомата (не используется).
+            context: Контекст перехода: ``dim_when_idle`` и ``daylight``.
+
+        Returns:
+            True, если сейчас вечер и свет должен остаться на минимальной яркости.
+        """
+        del state
+        if not context.get("dim_when_idle"):
+            return False
+        if context.get("daylight") is not False:
+            return False
+        current = now(_context_zone(context))
+        return current.hour >= 12
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину, почему свет не остаётся тусклым.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины либо ``None``.
+        """
+        del state
+        if not context.get("dim_when_idle"):
+            return "dim_disabled"
+        if context.get("daylight") is not False:
+            return "not_dark"
+        if now(_context_zone(context)).hour < 12:
+            return "not_evening"
+        return None
+
+    dims_when_idle.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return dims_when_idle

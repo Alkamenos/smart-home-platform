@@ -52,11 +52,12 @@ TRANSITION_FEATURE = 32
 def _lighting_devices(manifest: Any) -> list[tuple[str, int]]:
     """Лампы, которым положена глобальная температура, и их приоритет.
 
-    Берутся только устройства с шаблоном ``lighting`` и явным признаком
-    ``use_global_color_temp``. Ночник (красный) и уличный декор остаются при
-    своих настройках. Приоритет поведения нужен команде температуры: с тем же
-    приоритетом она не вытесняет включение/выключение света, но и не оказывается
-    ниже уже активного намерения того же поведения.
+    Берутся устройства с шаблоном ``lighting`` или ``deco_light`` и явным
+    признаком ``use_global_color_temp``. Ночник (красный) и уличный декор без
+    этого признака остаются при своих настройках. Приоритет поведения нужен
+    команде температуры: с тем же приоритетом она не вытесняет включение/
+    выключение света, но и не оказывается ниже уже активного намерения того же
+    поведения.
 
     Args:
         manifest: Манифест дома.
@@ -69,7 +70,7 @@ def _lighting_devices(manifest: Any) -> list[tuple[str, int]]:
     for room in getattr(manifest, "rooms", []) or []:
         for device in getattr(room, "devices", []) or []:
             for behavior in getattr(device, "behaviors", []) or []:
-                if getattr(behavior, "template", None) != "lighting":
+                if getattr(behavior, "template", None) not in ("lighting", "deco_light"):
                     continue
                 params = getattr(behavior, "params", None) or {}
                 if not params.get("use_global_color_temp"):

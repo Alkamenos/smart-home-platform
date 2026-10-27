@@ -139,6 +139,9 @@ KNOWN_BEHAVIOR_PARAM_KEYS: frozenset[str] = frozenset(
         # прошлой яркой яркостью при следующем включении ночника.
         "use_global_color_temp",
         "prepare_for_night",
+        # Вечерняя яркость без движения (B104): свет не гаснет, а тускнеет.
+        "dim_when_idle",
+        "dim_brightness_pct",
         "schedule",
         "target_temp",
         # Параметры вентиляции (спека 014, data-model.md §5).

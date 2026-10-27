@@ -54,6 +54,7 @@ states:
   - "ON_MOTION"
   - "ON_HOLD"
   - "ON_MANUAL"
+  - "DIM"
 
 transitions:
   # Из OFF можно перейти в ON_MOTION при обнаружении движения днем
@@ -93,6 +94,18 @@ transitions:
     action: null
     timeout_sec: 600.0
 
+  # Вечером без движения свет не гаснет, а остаётся тусклым (B104): движение
+  # снова даст полную яркость, а 3 % — это вечерняя подсветка, не ночник.
+  # Условие `dims_when_idle` проверяет параметр и время: утром (до полудня)
+  # темнота — предрассветная, и переход не срабатывает, свет гаснет как раньше.
+  - from_state: "ON_HOLD"
+    to_state: "DIM"
+    trigger: "timeout"
+    guard: "dims_when_idle"
+    action: "turn_on_dim_light"
+    timeout_param: "motion_timeout_sec"
+    timeout_sec: 600.0
+
   # Удержание истекло — выключаем. Почему `timeout_param` только здесь и ниже:
   # `motion_timeout_sec` — это «сколько свет держится без движения», и он не
   # должен переписывать ручные таймеры ON_MANUAL (5 минут в режиме «мы спим»,
@@ -113,6 +126,16 @@ transitions:
     action: null
     timeout_sec: 600.0
 
+  # Из ON_MOTION можно перейти в DIM по таймауту (если движение не возобновилось
+  # и состояние ожидания не успел отработать)
+  - from_state: "ON_MOTION"
+    to_state: "DIM"
+    trigger: "timeout"
+    guard: "dims_when_idle"
+    action: "turn_on_dim_light"
+    timeout_param: "motion_timeout_sec"
+    timeout_sec: 600.0
+
   # Из ON_MOTION можно перейти в OFF по таймауту (если движение не возобновилось
   # и состояние ожидания не успел отработать)
   - from_state: "ON_MOTION"
@@ -129,6 +152,18 @@ transitions:
   #
   # Переход разрешён и из состояния ожидания: человек ушёл, свет держится на
   # удержании — значит в час X гасить надо и его.
+  - from_state: "ON_MOTION"
+    to_state: "DIM"
+    trigger: "quiet_hours_started"
+    guard: "dims_when_idle"
+    action: "turn_on_dim_light"
+
+  - from_state: "ON_HOLD"
+    to_state: "DIM"
+    trigger: "quiet_hours_started"
+    guard: "dims_when_idle"
+    action: "turn_on_dim_light"
+
   - from_state: "ON_MOTION"
     to_state: "OFF"
     trigger: "quiet_hours_started"
@@ -189,6 +224,65 @@ transitions:
     to_state: "OFF"
     trigger: "sleep_started"
     action: "turn_off_light"
+
+  # --- Вечерняя яркость: движение возвращает полный свет (B104) ---
+  #
+  # DIM — не ночник: 3 % с общей температурой дома. Ночник (красный) живёт в
+  # отдельном шаблоне и здесь не трогается. Полную яркость после DIM даём
+  # только когда это разрешено обычным условием: при «мы спим» яркий свет не
+  # включается, ночник работает сам.
+  - from_state: "DIM"
+    to_state: "ON_MOTION"
+    trigger: "motion_detected"
+    guard: "may_turn_on"
+    action: "turn_on_light"
+
+  - from_state: "DIM"
+    to_state: "DIM"
+    trigger: "motion_cleared"
+    action: null
+
+  - from_state: "DIM"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    action: "turn_on_light"
+
+  - from_state: "DIM"
+    to_state: "OFF"
+    trigger: "manual_switch_off"
+    action: "turn_off_light"
+
+  # В час отбоя вечерняя яркость не гаснет: она и есть ночная подсветка до
+  # момента «мы спим». Гасим только по сну/утру.
+  - from_state: "DIM"
+    to_state: "DIM"
+    trigger: "quiet_hours_started"
+    action: null
+
+  - from_state: "DIM"
+    to_state: "OFF"
+    trigger: "sleep_started"
+    action: "turn_off_light"
+
+  - from_state: "DIM"
+    to_state: "OFF"
+    trigger: "day_started"
+    action: "turn_off_light"
+
+  - from_state: "DIM"
+    to_state: "OFF"
+    trigger: "sunrise_started"
+    action: "turn_off_light"
+
+  - from_state: "DIM"
+    to_state: "DIM"
+    trigger: "settings_changed"
+    action: null
+
+  - from_state: "DIM"
+    to_state: "DIM"
+    trigger: "device_state_diverged"
+    action: null
 
   # Из ON_MOTION — ручное состояние
   - from_state: "ON_MOTION"

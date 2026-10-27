@@ -18,6 +18,25 @@ NIGHTLIGHT_BRIGHTNESS_PCT = 3
 #: Цвет ночника — чистый красный: убирает голубую часть спектра, которая будит.
 NIGHTLIGHT_RGB_COLOR: tuple[int, int, int] = (255, 0, 0)
 
+#: Яркость вечернего света без движения, если манифест не задал свою.
+DIM_BRIGHTNESS_PCT = 3
+
+
+def _light_domain(entity_id: str) -> str:
+    """Домен команды: лампа или выключатель.
+
+    В манифесте встречаются светильники, которые Home Assistant отдаёт как
+    `switch.*` (подсветка зеркала). Для них нельзя звать `light.turn_on`:
+    сервис другого домена прибор не включит.
+
+    Args:
+        entity_id: Сущность прибора.
+
+    Returns:
+        ``"switch"`` для выключателей, иначе ``"light"``.
+    """
+    return "switch" if entity_id.startswith("switch.") else "light"
+
 
 def _global_color_temp(context: dict[str, Any]) -> int | None:
     """Текущая цветовая температура дома для включения света.
@@ -70,6 +89,7 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
 
     priority = context.get("priority", 50)
     source = context.get("source", "lighting")
+    domain = _light_domain(entity_id)
     brightness_pct = context.get("brightness_pct")
     brightness = context.get("brightness")
     color_temp_kelvin = context.get("color_temp_kelvin")
@@ -85,21 +105,75 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
     # горевший ночником (красным на 3 %), включается потом тем же красным,
     # потому что прибор восстанавливает последние настройки (требование
     # владельца 2026-10-13). Что именно передать, решает поведение (params
-    # манифеста); пустое значение означает «не трогать эту ось».
+    # манифеста); пустое значение означает «не трогать эту ось». Выключателю
+    # яркость и цвет не передаются: у него только on/off.
     data: dict[str, Any] = {}
-    if brightness_pct is not None:
-        data["brightness_pct"] = brightness_pct
-    elif brightness is not None:
-        data["brightness"] = brightness
+    if domain == "light":
+        if brightness_pct is not None:
+            data["brightness_pct"] = brightness_pct
+        elif brightness is not None:
+            data["brightness"] = brightness
+        if color_temp_kelvin is not None:
+            try:
+                data["color_temp_kelvin"] = int(round(float(color_temp_kelvin)))
+            except (TypeError, ValueError):
+                data["color_temp_kelvin"] = color_temp_kelvin
+        elif rgb_color is not None:
+            data["rgb_color"] = rgb_color
+
+    logger.info(f"Creating turn_on_light intent for {entity_id}")
+
+    return CommandIntent(
+        device_id=entity_id,
+        domain=domain,
+        service="turn_on",
+        data=data,
+        priority=priority,
+        source=source,
+    )
+
+
+def turn_on_dim_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
+    """Включить вечерний свет на минимальной яркости.
+
+    Движение включает полную яркость, а без движения свет не гаснет: он
+    остаётся тусклым (по умолчанию 3 %) с общей температурой дома. Это не
+    ночник: цвет не красный, а тот, что задаёт глобальная кривая.
+
+    Args:
+        state: Текущее состояние автомата (не используется).
+        context: Контекст с ``entity_id`` и параметрами яркости/температуры.
+
+    Returns:
+        Команда включения либо ``None`` без устройства.
+    """
+    entity_id = extract_device_id(context)
+    if not entity_id:
+        logger.warning("turn_on_dim_light: No entity_id in context")
+        return None
+
+    priority = context.get("priority", 50)
+    brightness = context.get("dim_brightness_pct", DIM_BRIGHTNESS_PCT)
+    try:
+        brightness_pct = int(brightness)
+    except (TypeError, ValueError):
+        brightness_pct = DIM_BRIGHTNESS_PCT
+
+    data: dict[str, Any] = {
+        "brightness_pct": brightness_pct,
+        # Плавно, но быстро: 100 % → 3 % не должно выглядеть как вспышка.
+        "transition": 2,
+    }
+    color_temp_kelvin = context.get("color_temp_kelvin")
+    if color_temp_kelvin is None and context.get("use_global_color_temp"):
+        color_temp_kelvin = _global_color_temp(context)
     if color_temp_kelvin is not None:
         try:
             data["color_temp_kelvin"] = int(round(float(color_temp_kelvin)))
         except (TypeError, ValueError):
             data["color_temp_kelvin"] = color_temp_kelvin
-    elif rgb_color is not None:
-        data["rgb_color"] = rgb_color
 
-    logger.info(f"Creating turn_on_light intent for {entity_id}")
+    logger.info(f"Creating turn_on_dim_light intent for {entity_id} data={data}")
 
     return CommandIntent(
         device_id=entity_id,
@@ -107,7 +181,7 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
         service="turn_on",
         data=data,
         priority=priority,
-        source=source,
+        source=context.get("source", "lighting_dim"),
     )
 
 
@@ -141,6 +215,7 @@ def turn_off_light(
 
     priority = context.get("priority", 50)
     source = context.get("source", "lighting")
+    domain = _light_domain(entity_id)
     # Пометку ставит движок для событий расписания: выключение по часам обязано
     # пройти, даже если человек вечером трогал этот свет.
     bypass_lockout = bool(context.get("bypass_lockout", False))
@@ -150,13 +225,14 @@ def turn_off_light(
     off_intent = CommandIntent(
         bypass_lockout=bypass_lockout,
         device_id=entity_id,
-        domain="light",
+        domain=domain,
         service="turn_off",
         data={},
         priority=priority,
         source=source,
     )
-    if not context.get("prepare_for_night"):
+    # Подготовка к ночнику — только для лампы: у выключателя нет яркости/цвета.
+    if domain != "light" or not context.get("prepare_for_night"):
         return off_intent
 
     # Последнее состояние перед выключением — ночник. Следующее включение

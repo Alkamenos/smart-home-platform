@@ -52,6 +52,7 @@ from core.actions.lighting import (
     _global_color_temp,
     turn_off_light,
     turn_off_night_light,
+    turn_on_dim_light,
     turn_on_light,
     turn_on_night_light,
 )
@@ -124,6 +125,7 @@ __all__ = [
     "timer_assumption_flag",
     "turn_off_light",
     "turn_off_night_light",
+    "turn_on_dim_light",
     "turn_on_light",
     "turn_on_night_light",
 ]
@@ -132,6 +134,7 @@ __all__ = [
 # Dictionary of all available action handlers for easy registration
 ACTION_HANDLERS: dict[str, Any] = {
     "turn_on_light": turn_on_light,
+    "turn_on_dim_light": turn_on_dim_light,
     "turn_off_light": turn_off_light,
     "turn_on_night_light": turn_on_night_light,
     "turn_off_night_light": turn_off_night_light,
