@@ -28,6 +28,7 @@ from core.models.manifest import (
 )
 from core.services.light_color_temperature import (
     LightColorTemperatureService,
+    _lighting_devices,
     target_kelvin,
 )
 
@@ -232,6 +233,67 @@ def _adapter(current: str = "6000") -> _Adapter:
             },
         },
     )
+
+
+def test_deco_light_with_global_flag_is_updated_too() -> None:
+    """Декоративный торшер с общей температурой тоже получает обновления.
+
+    Гирлянда без флага остаётся при своём цвете; лампа с обычным освещением и
+    торшер с декоративным поведением должны попасть в список службы.
+    """
+    manifest = Manifest(
+        version=1,
+        instance=InstanceConfig(
+            id="probe", name="Probe", owner="probe", created_at="2026-01-01T00:00:00Z"
+        ),
+        rooms=[
+            RoomConfig(
+                id="gostinaia",
+                name="Гостиная",
+                devices=[
+                    DeviceConfig(
+                        id="light.table",
+                        type="light",
+                        behaviors=[
+                            BehaviorConfig(
+                                template="lighting",
+                                priority=10,
+                                params={"use_global_color_temp": True},
+                            )
+                        ],
+                    ),
+                    DeviceConfig(
+                        id="light.torsher",
+                        type="light",
+                        behaviors=[
+                            BehaviorConfig(
+                                template="deco_light",
+                                priority=10,
+                                params={"off_by": "sleep", "use_global_color_temp": True},
+                            )
+                        ],
+                    ),
+                    DeviceConfig(
+                        id="light.kus",
+                        type="light",
+                        behaviors=[
+                            BehaviorConfig(
+                                template="deco_light",
+                                priority=10,
+                                params={"off_by": "sleep"},
+                            )
+                        ],
+                    ),
+                ],
+            )
+        ],
+        automation_rules=AutomationRules(global_manual_lockout_min=60),
+    )
+
+    assert dict(_lighting_devices(manifest)) == {
+        "light.table": 10,
+        "light.torsher": 10,
+    }
 
 
 def _service(

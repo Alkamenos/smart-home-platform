@@ -363,8 +363,13 @@ class TestManifestRequirementsAreMet:
         # погашения — 5 минут при «мы спим» и стандартный час иначе. Условие
         # «не спим» выбирает второй срок и не пропускает его, пока модификатор
         # включён.
+        #
+        # `dims_when_idle` добавлен 2026-10-27 (B104): вечером без движения свет
+        # не гаснет, а остаётся на 3 %; условие отличает вечер от предрассветной
+        # темноты, чтобы утром свет всё-таки выключался.
         assert guards == {
             "device_is_off",
+            "dims_when_idle",
             "humidity_above_60",
             "humidity_below_60",
             "is_manual_override_enabled",
@@ -394,6 +399,7 @@ class TestManifestRequirementsAreMet:
             "may_dry": "make_may_dry",
             "may_stay_idle": "make_may_stay_idle",
             "device_is_off": "make_device_is_off",
+            "dims_when_idle": "make_dims_when_idle",
         }
         for name in guards:
             assert hasattr(builtin, factories[name]), f"для `{name}` нет реализации"

@@ -442,7 +442,7 @@ class TestSleepStartedTurnsEverythingOff:
 
         by_state = {t["from_state"]: t for t in transitions}
 
-        assert set(by_state) == {"OFF", "ON_MOTION", "ON_HOLD", "ON_MANUAL"}, (
+        assert set(by_state) == {"OFF", "ON_MOTION", "ON_HOLD", "ON_MANUAL", "DIM"}, (
             f"не все состояния гасятся по модификатору: {sorted(by_state)}"
         )
         for from_state, transition in by_state.items():

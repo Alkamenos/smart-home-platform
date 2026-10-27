@@ -31,7 +31,7 @@ def test_handlers_live_in_domain_modules() -> None:
     """Все 31 действие разложены по доменным модулям."""
     modules = {handler.__module__ for handler in ACTION_HANDLERS.values()}
 
-    assert len(ACTION_HANDLERS) == 31, f"реестр потерял действия: {sorted(ACTION_HANDLERS)}"
+    assert len(ACTION_HANDLERS) == 32, f"реестр потерял действия: {sorted(ACTION_HANDLERS)}"
     assert modules == {
         "core.actions.common",
         "core.actions.lighting",
