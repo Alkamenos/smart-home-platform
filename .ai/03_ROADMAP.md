@@ -275,8 +275,9 @@
    - **Сделано:** сторож читает `current_position`/`moving`: 0 — закрыта, любое
      другое положение — открыта; во время хода решение не повторяется. Движение
      шторы без нашей команды (`opening`/`closing`, без `user_id`/`parent_id`)
-     включает ручной локкаут, а модель принимает фактическое OPEN/CLOSED по
-     `_device_is_on`/`_device_is_off` — платформа больше не спорит с человеком.
+     переводит автомат в `MANUAL`: положение держится до следующей смены флага
+     дома. Модель принимает фактическое OPEN/CLOSED по
+     `_device_is_on`/`_device_is_off`; команды штор идут с `bypass_lockout`.
 
 ### Low Priority
 5. Dashboard generator could use templates
