@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from core.guards.builtin import build_guards
@@ -201,3 +202,49 @@ class TestCoversShouldOpen:
         guard = _guard("covers_should_open")
         context = {**_CLOSE, "cover_role": "door"}
         assert guard(None, context) is True
+
+
+class TestManualHoldUntilFlagsChange:
+    """В MANUAL штора стоит там, где её оставил человек (B104)."""
+
+    @staticmethod
+    def _manual(context: dict[str, Any]) -> SimpleNamespace:
+        """Состояние MANUAL с флагами на момент ручного движения."""
+        return SimpleNamespace(current_state="MANUAL", context=dict(context))
+
+    def test_same_flags_do_not_move_the_cover(self) -> None:
+        """Обычная смена настроек без флагов штору не двигает."""
+        state = self._manual(_CLOSE)
+
+        assert _guard("covers_should_close")(state, dict(_CLOSE)) is False
+        assert _guard("covers_should_open")(state, dict(_CLOSE)) is False
+
+    def test_unrelated_setting_does_not_move_the_cover(self) -> None:
+        """Температура/вентиляция — не повод трогать ручное положение."""
+        state = self._manual(_CLOSE)
+        changed = {**_CLOSE, "climate_setpoint": 23.0}
+
+        assert _guard("covers_should_close")(state, changed) is False
+        assert _guard("covers_should_open")(state, changed) is False
+
+    def test_changed_flag_resumes_the_decision(self) -> None:
+        """Сменился флаг «мы спим» — автоматика снова решает."""
+        state = self._manual({**_CLOSE, "sleep_modifier_on": False})
+
+        assert _guard("covers_should_close")(state, dict(_CLOSE)) is True
+
+    def test_emergency_resumes_opening(self) -> None:
+        """Аварийный флаг открывает штору даже из ручного состояния."""
+        state = self._manual(_CLOSE)
+        emergency = {**_CLOSE, "cover_emergency": True}
+
+        assert _guard("covers_should_open")(state, emergency) is True
+
+    def test_deny_reason_names_manual_hold(self) -> None:
+        """Отказ называет причину, а не молчит."""
+        guard = _guard("covers_should_close")
+        state = self._manual(_CLOSE)
+
+        reason = guard.deny_reason(state, dict(_CLOSE))
+
+        assert reason == "manual_position"

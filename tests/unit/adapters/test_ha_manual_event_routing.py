@@ -185,6 +185,9 @@ async def test_physical_cover_movement_is_manual() -> None:
     assert middleware.recorded == ["cover.shtora_v_spalne"], (
         f"ручное движение шторы не включило локкаут: {middleware.recorded}"
     )
+    assert [call[1] for call in engine.calls] == ["manual_switch_on"], (
+        f"автомат не узнал о ручном движении шторы: {engine.calls}"
+    )
 
 
 @pytest.mark.asyncio

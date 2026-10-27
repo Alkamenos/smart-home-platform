@@ -27,10 +27,11 @@
 #   датчиков не слушает вовсе, поэтому без этого события решение не принималось
 #   бы до смены флага, которого может не быть часами.
 #
-# СОСТОЯНИЯ: OPEN (штора открыта) и CLOSED (закрыта). Позицию прибор отдаёт
-# (`current_position`), сторож читает её и движение (`opening`/`closing`).
-# Ручное движение шторы включает локкаут — автоматика не спорит с человеком.
-# Команда по-прежнему «открыть»/«закрыть»: мотор сам доедет до края.
+# СОСТОЯНИЯ: OPEN, CLOSED и MANUAL. Позицию прибор отдаёт (`current_position`),
+# сторож читает её и движение (`opening`/`closing`). Ручное движение переводит
+# автомат в MANUAL: штора стоит там, где её оставил человек, пока не сменится
+# флаг дома (my_doma, собаки, сон, ночное закрытие, авария, фича). Команда
+# по-прежнему «открыть»/«закрыть»: мотор сам доедет до края.
 #
 # ПОЧЕМУ ОДИН ТРИГГЕР: решение шторы зависит только от флагов дома, а не от
 # датчиков и не от часов — платформа часов не считает, «ночь» задаёт модификатор
@@ -42,6 +43,7 @@ debounce_sec: 0.5
 states:
   - "OPEN"
   - "CLOSED"
+  - "MANUAL"
 
 transitions:
   # Аварийный случай и обычное «закрываться не нужно» — одна ветка на открытие.
@@ -88,30 +90,70 @@ transitions:
     guard: "device_is_on"
     action: null
 
-  # --- Ручное движение: событие получает переход, а не отказ ---
+  # --- Ручное движение: штора стоит там, где её оставил человек (B104) ---
   #
-  # Человек двинул штору из приложения или пульта. Состояние автомата само по
-  # себе не меняем: ручной локкаут уже записал адаптер (B104), а фактическое
-  # положение приведёт сторож. Без этих переходов каждое движение давало в
-  # журнале `no_transition` — шум, который выглядел как дефект.
+  # Человек двинул штору из приложения или пульта. Уходим в MANUAL: решение
+  # автоматики здесь не действует, пока не сменится флаг дома. Часовой локкаут
+  # для штор больше не нужен — состояние хранит выбор человека явно.
   - from_state: "OPEN"
-    to_state: "OPEN"
+    to_state: "MANUAL"
     trigger: "manual_switch_on"
     action: null
 
   - from_state: "OPEN"
-    to_state: "OPEN"
+    to_state: "MANUAL"
     trigger: "manual_switch_off"
     action: null
 
   - from_state: "CLOSED"
-    to_state: "CLOSED"
+    to_state: "MANUAL"
     trigger: "manual_switch_on"
     action: null
 
   - from_state: "CLOSED"
-    to_state: "CLOSED"
+    to_state: "MANUAL"
     trigger: "manual_switch_off"
+    action: null
+
+  # Новое ручное движение в MANUAL перезапускает удержание и запоминает
+  # актуальные флаги дома: отсчёт «до следующей смены» идёт от него.
+  - from_state: "MANUAL"
+    to_state: "MANUAL"
+    trigger: "manual_switch_on"
+    action: null
+
+  - from_state: "MANUAL"
+    to_state: "MANUAL"
+    trigger: "manual_switch_off"
+    action: null
+
+  # Сменился флаг дома — автоматика снова решает. Условия сами проверяют, что
+  # флаги действительно изменились: иначе обычная смена температуры двигала бы
+  # штору (B104).
+  - from_state: "MANUAL"
+    to_state: "OPEN"
+    trigger: "settings_changed"
+    guard: "covers_should_open"
+    action: "cover_open"
+
+  - from_state: "MANUAL"
+    to_state: "CLOSED"
+    trigger: "settings_changed"
+    guard: "covers_should_close"
+    action: "cover_close"
+
+  # Флаги сменились, но решения «открыть/закрыть» нет (фича выключена, штора
+  # над дверью при людях и т.п.) — остаёмся в ручном положении.
+  - from_state: "MANUAL"
+    to_state: "MANUAL"
+    trigger: "settings_changed"
+    action: null
+
+  # Сторож в MANUAL не сверяет решение (его нет), но событие не должно быть
+  # отказом `no_transition`.
+  - from_state: "MANUAL"
+    to_state: "MANUAL"
+    trigger: "device_state_diverged"
     action: null
 
   # --- Прибор разошёлся с решением: решение повторяется (B64) ---

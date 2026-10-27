@@ -41,6 +41,11 @@ def _cover_intent(context: dict[str, Any], service: str, source: str) -> Command
         data={},
         priority=context.get("priority", 50),
         source=source,
+        # Ручное положение шторы держит отдельное состояние MANUAL, а не
+        # часовой локкаут (B104). Смена флагов дома — новое решение владельца:
+        # она должна пройти сразу, иначе «до следующей смены флагов» означало
+        # бы «через час».
+        bypass_lockout=True,
     )
 
 

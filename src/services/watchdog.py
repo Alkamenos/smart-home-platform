@@ -815,10 +815,12 @@ class WatchdogService:
 
         enriched: list[FsmSnapshotEntry] = []
         for entry in entries:
-            expected = expected_by_device.get(entry.device)
-            if expected is None:
+            if not entry.device:
                 enriched.append(entry)
                 continue
+            # Фактическое состояние читаем и тогда, когда решения нет (IDLE,
+            # MANUAL): снимок должен показывать положение ручной шторы, даже
+            # если автоматика намеренно её не сверяет.
             actual = _state_of(states, entry.device) if states else None
             if actual is None:
                 actual = await self._read_device_state(reader, entry.device)
@@ -827,6 +829,19 @@ class WatchdogService:
             if position is not None and not moving and str(entry.device or "").startswith("cover."):
                 # Положение точнее ярлыка: 0 — закрыта, любое другое — открыта.
                 actual = "closed" if position <= 0 else "open"
+            expected = expected_by_device.get(entry.device)
+            if expected is None:
+                # Решения нет (ручная штора, IDLE): сверять нечего, но факт
+                # прибора в снимке остаётся.
+                enriched.append(
+                    replace(
+                        entry,
+                        device_state=actual,
+                        device_position=position,
+                        device_moving=moving,
+                    )
+                )
+                continue
             reason = _device_mismatch_reason(expected, actual)
             if moving:
                 # Штора едет: итоговое положение ещё не наступило. Повтор

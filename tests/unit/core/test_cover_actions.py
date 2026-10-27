@@ -45,6 +45,10 @@ class TestCoverActions:
         assert intent is not None
         assert (intent.domain, intent.service) == ("cover", "open_cover")
         assert intent.data == {}, f"в команду открытия ушло {intent.data!r}: лишний ключ → 400"
+        assert intent.bypass_lockout is True, (
+            "смена флагов дома должна проходить мимо часового локкаута: "
+            "ручное положение держит состояние MANUAL"
+        )
 
     def test_close_cover_sends_close_service_without_data(self) -> None:
         """Закрытие: домен ``cover``, услуга ``close_cover``, данных нет."""

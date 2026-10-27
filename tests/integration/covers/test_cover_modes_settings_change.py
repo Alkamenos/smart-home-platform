@@ -318,3 +318,39 @@ class TestCoverModesFollowHomeFlags:
 
         assert _state(engine, SPALNIA_FSM) == "OPEN"
         assert dispatcher.intents == []
+
+
+class TestManualPositionHoldsUntilFlagsChange:
+    """Ручное положение шторы держится до смены флагов дома (B104)."""
+
+    @pytest.mark.asyncio
+    async def test_unrelated_settings_keep_manual_position(self) -> None:
+        """Обычная смена настроек не двигает штору из MANUAL."""
+        engine, router, dispatcher = _build()
+
+        await engine.trigger(SPALNIA_FSM, "manual_switch_off", {**_BASE}, respect_debounce=False)
+        assert _state(engine, SPALNIA_FSM) == "MANUAL"
+
+        dispatcher.intents.clear()
+        await router.route_settings_change({**_BASE})
+
+        assert _state(engine, SPALNIA_FSM) == "MANUAL", (
+            "обычная смена настроек вернула автоматику поверх ручного положения"
+        )
+        assert dispatcher.by_device(SPALNIA) == []
+
+    @pytest.mark.asyncio
+    async def test_changed_flag_resumes_the_decision(self) -> None:
+        """Сменился флаг «мы спим» — автоматика закрывает штору."""
+        engine, router, dispatcher = _build()
+
+        await engine.trigger(SPALNIA_FSM, "manual_switch_off", {**_BASE}, respect_debounce=False)
+        assert _state(engine, SPALNIA_FSM) == "MANUAL"
+
+        dispatcher.intents.clear()
+        await router.route_settings_change({**_BASE, "sleep_modifier_on": True})
+
+        assert _state(engine, SPALNIA_FSM) == "CLOSED"
+        assert dispatcher.by_device(SPALNIA) == ["close_cover"], (
+            "смена флага не вернула автоматику: ручное положение стало вечным"
+        )

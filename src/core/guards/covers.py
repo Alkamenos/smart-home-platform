@@ -10,6 +10,40 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+#: Флаги дома, от которых зависит решение штор. Ручное положение в `MANUAL`
+#: держится, пока ни один из них не сменился (B104).
+COVER_FLAGS = (
+    "my_doma",
+    "sobaki_doma",
+    "covers_close_night",
+    "cover_emergency",
+    "covers_enabled",
+    "sleep_modifier_on",
+)
+
+
+def _manual_flags_changed(state: Any, context: dict[str, Any]) -> bool:
+    """Сменились ли флаги дома с момента ручного движения шторы.
+
+    В ручном состоянии `MANUAL` штора стоит там, где её оставил человек:
+    обычные `settings_changed` (температура, вентиляция и прочее) не должны
+    её двигать. Решение снова действует только когда изменился хотя бы один
+    флаг, от которого это решение зависит.
+
+    Args:
+        state: Текущее состояние автомата (у него есть контекст с прежними
+            значениями флагов).
+        context: Контекст перехода с текущими значениями.
+
+    Returns:
+        True, если флаги сменились или состояние не ручное.
+    """
+    current = str(getattr(state, "current_state", "")).upper()
+    if current != "MANUAL":
+        return True
+    previous = getattr(state, "context", None) or {}
+    return any(previous.get(key) != context.get(key) for key in COVER_FLAGS)
+
 
 def _cover_close_reason(context: dict[str, Any]) -> str | None:
     """Почему штора не должна закрываться сейчас (спека 015).
@@ -67,13 +101,14 @@ def make_covers_should_close() -> Callable[[Any, dict[str, Any]], bool]:
         """Проверить, должна ли штора быть закрыта.
 
         Args:
-            state: Состояние автомата (не используется).
+            state: Состояние автомата; в `MANUAL` помнит прежние флаги.
             context: Контекст перехода.
 
         Returns:
             True, если штору пора закрыть.
         """
-        del state
+        if not _manual_flags_changed(state, context):
+            return False
         return _cover_close_reason(context) is None
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
@@ -86,7 +121,8 @@ def make_covers_should_close() -> Callable[[Any, dict[str, Any]], bool]:
         Returns:
             Имя причины либо ``None``.
         """
-        del state
+        if not _manual_flags_changed(state, context):
+            return "manual_position"
         return _cover_close_reason(context)
 
     covers_should_close.deny_reason = deny_reason  # type: ignore[attr-defined]
@@ -108,13 +144,14 @@ def make_covers_should_open() -> Callable[[Any, dict[str, Any]], bool]:
         """Проверить, должна ли штора быть открыта.
 
         Args:
-            state: Состояние автомата (не используется).
+            state: Состояние автомата; в `MANUAL` помнит прежние флаги.
             context: Контекст перехода.
 
         Returns:
             True, если штору пора открыть.
         """
-        del state
+        if not _manual_flags_changed(state, context):
+            return False
         if context.get("cover_emergency") is True:
             return True
         if context.get("covers_enabled") is False:
@@ -131,7 +168,8 @@ def make_covers_should_open() -> Callable[[Any, dict[str, Any]], bool]:
         Returns:
             Имя причины либо ``None``.
         """
-        del state
+        if not _manual_flags_changed(state, context):
+            return "manual_position"
         if context.get("cover_emergency") is True:
             return None
         if context.get("covers_enabled") is False:

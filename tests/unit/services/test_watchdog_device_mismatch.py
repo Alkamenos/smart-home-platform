@@ -339,6 +339,19 @@ async def test_moving_cover_is_not_commanded_midway() -> None:
 
 
 @pytest.mark.asyncio
+async def test_manual_cover_position_is_still_reported() -> None:
+    """У ручной шторы решения нет, но положение в снимке обязано быть."""
+    engine = FakeEngine({COVER_FSM: "MANUAL"}, {COVER_FSM: COVER_DEVICE})
+    adapter = FakeAdapter(all_states=_cover_states("open", 84))
+
+    entry = (await make_watchdog(engine, adapter).check_once()).entries[0]
+
+    assert entry.device_state == "open"
+    assert entry.device_position == 84
+    assert entry.mismatch is False, "ручную штору автоматика не сверяет"
+
+
+@pytest.mark.asyncio
 async def test_cover_opened_by_hand_updates_model() -> None:
     """Человек открыл штору пультом — модель принимает OPEN, команды нет."""
     engine = FakeEngine({COVER_FSM: "CLOSED"}, {COVER_FSM: COVER_DEVICE})
@@ -400,7 +413,10 @@ async def test_unknown_state_is_not_guessed() -> None:
 
     snapshot = await make_watchdog(engine, adapter).check_once()
 
-    assert snapshot.entries[0].device_state is None
+    # Факт прибора теперь читается и без решения (снимок должен показывать
+    # положение ручной шторы/неизвестного состояния), но расхождение не
+    # выдумывается: сверять не с чем.
+    assert snapshot.entries[0].device_state == "on"
     assert snapshot.entries[0].mismatch is False
 
 
