@@ -103,6 +103,12 @@ def target_kelvin(
     if daylight is True:
         return int(round(day))
 
+    # ``sun.sun`` приходит из Home Assistant в UTC. Кривая же задаёт
+    # ``warm_at`` по часам дома, поэтому закат приводим к поясу ``now``: иначе
+    # 21:00 трактуется как 21:00 UTC и самое тёплое наступает в 02:00 по дому.
+    if sunset is not None and now.tzinfo is not None:
+        sunset = sunset.astimezone(now.tzinfo)
+
     if sunset is None:
         # Солнце не прочитано: грубая, но предсказуемая кривая по часам.
         if now.time() < time(7, 0):

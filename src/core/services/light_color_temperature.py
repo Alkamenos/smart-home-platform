@@ -264,6 +264,10 @@ class LightColorTemperatureService:
         next_setting = _parse_datetime(sun.get("next_setting"), tz)
         if next_setting is None:
             return None
+        # HA отдаёт ``next_setting`` в UTC. Для кривой важен закат **по часам
+        # дома**: иначе ``warm_at`` (21:00) строится в UTC, и самое тёплое
+        # наступает в 02:00 по дому (боевая находка 29.10).
+        next_setting = next_setting.astimezone(tz)
         if daylight is False:
             return next_setting - timedelta(days=1)
         return next_setting
