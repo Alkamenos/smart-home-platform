@@ -3,7 +3,9 @@
 # (.dockerignore) — собираются здесь.
 FROM node:lts-slim AS frontend
 WORKDIR /frontend
-RUN corepack enable
+# Node 26+ больше не поставляет corepack. Ставим pnpm явно — версия совпадает
+# с packageManager в frontend/package.json (pnpm@10.0.0).
+RUN npm install -g pnpm@10.0.0
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
