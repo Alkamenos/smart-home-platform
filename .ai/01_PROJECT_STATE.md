@@ -4,6 +4,19 @@
 
 ## Последние значимые изменения
 
+### 2026-10-29: свет над кроватью в декоративном сценарии (B108)
+
+- В комнату `spalnia` добавлена фактическая лампа `light.svet_nad_krovatiu_1`
+  (группа `light.svet_nad_krovatiu` сейчас `unavailable`, не используется):
+  `deco_light`, `off_by: sleep`, `brightness_pct: 100`,
+  `use_global_color_temp: true`.
+- Включается по закату, гаснет по «мы спим»/рассвету/утру; общая температура
+  применяется. Валидатор манифеста — 0; `/ready: true`, 26 автоматов; автомат
+  `light.svet_nad_krovatiu_1_deco_light_10` создан и ждёт заката.
+- Код не менялся: правка только в gitignored `deploy/docker/config/manifest.yaml`.
+
+Разбор — `BACKLOG.md` (B108).
+
 ### 2026-10-29: 21:00 — по часам дома, а не по UTC (B107)
 
 - Home Assistant отдаёт `sun.sun.next_setting` в UTC; служба строила `warm_at`
