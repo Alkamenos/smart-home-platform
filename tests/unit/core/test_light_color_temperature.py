@@ -11,7 +11,7 @@ helper Home Assistant и обновляет горящие лампы; при в
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import UTC, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -361,6 +361,44 @@ class TestCurve:
             warm_at=time(21, 0),
         )
         assert value == 2000
+
+    def test_warm_at_uses_house_timezone_when_sunset_is_utc(self) -> None:
+        """21:00 — по часам дома, даже если закат из HA пришёл в UTC.
+
+        HA отдаёт ``next_setting`` в UTC. Если строить ``warm_at`` в поясе
+        заката, кривая заканчивается в 21:00 UTC — в 02:00 по дому. Вчера в
+        21:00 helper был 4385 K вместо 2000 K (боевая находка 29.10).
+        """
+        sunset_utc = datetime(2026, 10, 28, 12, 40, tzinfo=UTC)  # 17:40 дома
+        at_20 = target_kelvin(
+            datetime(2026, 10, 28, 20, 0, tzinfo=TZ),
+            daylight=False,
+            sunset=sunset_utc,
+            day_kelvin=6000,
+            night_kelvin=2000,
+            warm_at=time(21, 0),
+        )
+        at_21 = target_kelvin(
+            datetime(2026, 10, 28, 21, 0, tzinfo=TZ),
+            daylight=False,
+            sunset=sunset_utc,
+            day_kelvin=6000,
+            night_kelvin=2000,
+            warm_at=time(21, 0),
+        )
+
+        assert at_20 == 3200, "в 20:00 кривая ещё не должна быть у ночи"
+        assert at_21 == 2000, "в 21:00 по дому уже самый тёплый свет"
+
+    def test_sunset_from_ha_utc_is_converted_to_house_timezone(self) -> None:
+        """Закат HA (UTC) приводится к часам дома до вычитания суток."""
+        sunset = LightColorTemperatureService._sunset(
+            {"next_setting": "2026-10-29T12:40:00+00:00"},
+            False,
+            TZ,
+        )
+
+        assert sunset == datetime(2026, 10, 28, 17, 40, tzinfo=TZ)
 
     def test_after_midnight_is_warm(self) -> None:
         """Ночью после 21:00 и до рассвета — тёплый."""
