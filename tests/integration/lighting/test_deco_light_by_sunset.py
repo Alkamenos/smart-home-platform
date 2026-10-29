@@ -149,6 +149,20 @@ async def _fire(engine: FSMEngine, dispatcher: _RecordingDispatcher, event: str)
     await deliver_to_automata(engine, event)
 
 
+def _state(engine: FSMEngine, fsm_id: str) -> str | None:
+    """Текущее состояние автомата.
+
+    Args:
+        engine: Движок автоматов.
+        fsm_id: Идентификатор автомата.
+
+    Returns:
+        Имя состояния либо ``None``.
+    """
+    found = engine.get_state(fsm_id)
+    return found.current_state if found is not None else None
+
+
 class TestGarlandFollowsSunsetAndSleep:
     """Гирлянда: закат включает, «мы спим» выключает."""
 
@@ -405,6 +419,73 @@ class TestDecoTemplateIsComplete:
         assert not (used - set(ACTION_HANDLERS)), (
             f"действия не зарегистрированы: {sorted(used - set(ACTION_HANDLERS))}"
         )
+
+
+class TestExternalOffHoldsUntilNextCycle:
+    """Внешнее/физическое выключение декоративного света держится до утра."""
+
+    @pytest.mark.asyncio
+    async def test_external_off_does_not_return_with_the_evening_watcher(self) -> None:
+        """Прибор погасили вне платформы: это ручное выключение, не возвращаем.
+
+        Раньше переход `device_is_off` вёл в `OFF`, и сверка через 15 минут
+        зажигала гирлянду снова. Теперь он ведёт в `OFF_MANUAL`: до утра/следующего
+        заката свет остаётся погашенным.
+        """
+        engine, dispatcher = _engine(GARLAND, "sleep")
+        fsm = f"{GARLAND}_deco_light_10"
+
+        await _fire(engine, dispatcher, "sunset_started")
+        assert _state(engine, fsm) == "ON_DECO"
+
+        dispatcher.intents.clear()
+        await engine.trigger(
+            fsm,
+            "device_state_diverged",
+            {"_device_is_off": True},
+            respect_debounce=False,
+        )
+
+        assert _state(engine, fsm) == "OFF_MANUAL", (
+            "внешнее выключение должно стать ручным, иначе сверка вернёт свет"
+        )
+        assert "turn_on" not in dispatcher.services()
+
+        await _fire(engine, dispatcher, "sunset_started")
+        assert _state(engine, fsm) == "OFF_MANUAL", "вечерняя сверка вернула свет"
+        assert "turn_on" not in dispatcher.services()
+
+        await _fire(engine, dispatcher, "day_started")
+        assert _state(engine, fsm) == "OFF", "утро должно снять ручное выключение"
+
+        await _fire(engine, dispatcher, "sunset_started")
+        assert _state(engine, fsm) == "ON_DECO", "следующий цикл снова включает свет"
+
+    @pytest.mark.asyncio
+    async def test_external_off_from_manual_on_also_holds(self) -> None:
+        """Включили вручную, погасили физически — тоже держим до утра."""
+        engine, dispatcher = _engine(GARLAND, "sleep")
+        fsm = f"{GARLAND}_deco_light_10"
+
+        await _fire(engine, dispatcher, "manual_switch_on")
+        assert _state(engine, fsm) == "ON_MANUAL"
+
+        dispatcher.intents.clear()
+        await engine.trigger(
+            fsm,
+            "device_state_diverged",
+            {"_device_is_off": True},
+            respect_debounce=False,
+        )
+
+        assert _state(engine, fsm) == "OFF_MANUAL", (
+            "физическое выключение из ON_MANUAL должно стать ручным"
+        )
+        assert "turn_on" not in dispatcher.services()
+
+        await _fire(engine, dispatcher, "sunset_started")
+        assert _state(engine, fsm) == "OFF_MANUAL"
+        assert "turn_on" not in dispatcher.services()
 
 
 class TestSunsetEventIsRaisedOnlyOnChange:
