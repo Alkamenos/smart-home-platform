@@ -204,3 +204,33 @@ class TestEveningDim:
 
         assert _state(engine) == "OFF", "до полудня вечерняя яркость не включается"
         assert _last_intent(dispatcher).service == "turn_off"
+
+    @pytest.mark.asyncio
+    async def test_quiet_hours_does_not_change_a_just_lit_light(self) -> None:
+        """В 23:00 свет над столом не меняется — только таймаут даёт 3 %.
+
+        Боевая находка 30.10: движение в 22:59:58 включало полный свет, а
+        `quiet_hours_started` в 23:00:02 принудительно переводил его в DIM.
+        Человек ещё в комнате, поэтому 23:00 для такой лампы — пустое событие.
+        """
+        engine, router, dispatcher, context = _build(EVENING)
+        await router.route_state_change(MOTION, "on", "off", context=context)
+        assert _state(engine) == "ON_MOTION"
+        await asyncio.sleep(GAP_SEC)
+
+        dispatcher.intents.clear()
+        await engine.trigger(
+            FSM,
+            "quiet_hours_started",
+            respect_debounce=False,
+        )
+
+        assert _state(engine) == "ON_MOTION", "23:00 не должно менять только что включённый свет"
+        assert dispatcher.intents == [], "23:00 не должно отправлять команду свету"
+
+        await asyncio.sleep(GAP_SEC)
+        await router.route_state_change(MOTION, "off", "on", context=context)
+        await asyncio.sleep(GAP_SEC)
+        await engine.trigger(FSM, "timeout")
+
+        assert _state(engine) == "DIM", "3 % должны прийти по таймауту, а не в 23:00"
