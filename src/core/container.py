@@ -371,12 +371,7 @@ class Container:
             return
         for field_name in (
             "setpoint_entity",
-            # Термостат — источник истины для уставки и зеркало слайдера:
-            # синхронизатору нужно знать имя сущности, но его цель живёт в
-            # атрибуте, поэтому в контекст событий поле не попадает.
-            "thermostat_entity",
             "comfort_max_entity",
-            "season_entity",
             "feature_entity",
             "ac_gate_entity",
         ):
@@ -384,6 +379,28 @@ class Container:
             entity = getattr(rules.climate, field_name, None)
             if entity:
                 adapter.climate_entities[role] = entity
+
+        # Сезон нужен и климату, и вентиляции: это свойство дома, а не
+        # климатического домена (аудит B76, A5).
+        season = getattr(rules, "season_entity", None)
+        if season:
+            adapter.climate_entities["season"] = season
+
+        # Термостат — свойство комнаты, а не дома (аудит B76, A6). Уставка
+        # дома одна, поэтому синхронизатор берёт первый объявленный термостат;
+        # второй — уже конфликт настройки, а не повод молча выбрать любой.
+        thermostats: list[str] = []
+        for room in self.manifest.rooms:
+            entity = getattr(room, "thermostat_entity", None)
+            if entity:
+                thermostats.append(entity)
+        if thermostats:
+            if len(thermostats) > 1:
+                logger.warning(
+                    "Термостатов в комнатах больше одного: "
+                    f"{thermostats}; синхронизация уставки идёт с {thermostats[0]}"
+                )
+            adapter.climate_entities["thermostat"] = thermostats[0]
 
         for field_name in (
             "feature_entity",

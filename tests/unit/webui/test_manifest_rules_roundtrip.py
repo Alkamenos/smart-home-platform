@@ -19,10 +19,17 @@ from webui.models import ManifestModel
 MANIFEST = {
     "instance": {"id": "p", "name": "P", "owner": "p", "created_at": ""},
     "version": 1,
-    "rooms": [],
+    "rooms": [
+        {
+            "id": "gostinaia",
+            "name": "Гостиная",
+            "thermostat_entity": "climate.termostat_gostinaia",
+        }
+    ],
     "automation_rules": {
         "global_manual_lockout_min": 60,
         "time_zone": "Asia/Yekaterinburg",
+        "season_entity": "input_boolean.zima",
         "sleep_modifier": "input_boolean.sleep_mode",
         "schedule": {
             "night_off_at": "23:00",
@@ -45,11 +52,7 @@ MANIFEST = {
         "climate": {
             "setpoint_entity": "input_number.temperatura",
             "comfort_max_entity": "input_number.maksimalno_komfortnaia_temperatura",
-            "season_entity": "input_boolean.zima",
             "ac_gate_entity": "input_boolean.ispolzovat_konditsioner",
-            "thermostat_entity": "climate.termostat_gostinaia",
-            "setpoint_min": 5.0,
-            "setpoint_max": 30.0,
         },
         "ventilation": {
             "enable_entity": "input_boolean.ventiliatsiia",
@@ -92,9 +95,10 @@ def test_lighting_rules_should_survive_roundtrip() -> None:
 
 
 def test_house_rules_should_survive_roundtrip() -> None:
-    """Расписание, «мы спим» и батарейки живут на уровне дома и не теряются."""
+    """Сезон, расписание, «мы спим» и батарейки живут на уровне дома."""
     rules = _rules()
 
+    assert rules["season_entity"] == "input_boolean.zima"
     assert rules["sleep_modifier"] == "input_boolean.sleep_mode"
     assert rules["schedule"]["night_off_at"] == "23:00"
     assert rules["schedule"]["morning_at"] == "07:00"
@@ -105,14 +109,24 @@ def test_house_rules_should_survive_roundtrip() -> None:
     assert "battery_watch_entities" not in rules["lighting"]
 
 
+def test_room_thermostat_should_survive_roundtrip() -> None:
+    """Термостат комнаты не теряется и не уезжает в правила климата (B76/A6)."""
+    rooms = ManifestModel(**MANIFEST).model_dump()["rooms"]
+    rules = _rules()
+
+    assert rooms[0]["thermostat_entity"] == "climate.termostat_gostinaia"
+    assert "thermostat_entity" not in rules["climate"]
+
+
 def test_climate_rules_should_survive_roundtrip() -> None:
-    """Сущности климата (уставка, комфорт, сезон) не теряются."""
+    """Сущности климата (уставка, комфорт) не теряются."""
     climate = _rules()["climate"]
 
     assert climate["setpoint_entity"] == "input_number.temperatura"
     assert climate["comfort_max_entity"] == "input_number.maksimalno_komfortnaia_temperatura"
-    assert climate["season_entity"] == "input_boolean.zima"
-    assert climate["setpoint_min"] == 5.0
+    assert "season_entity" not in climate
+    assert "setpoint_min" not in climate
+    assert "setpoint_max" not in climate
 
 
 def test_ventilation_rules_should_survive_roundtrip() -> None:

@@ -430,13 +430,8 @@ class TestMayHeat:
         """Уставка вне диапазона получает свою причину, а не «данных нет»."""
         guard = _guard("may_heat")
 
-        assert (
-            guard(None, _ctx(19.0, climate_setpoint=95.0, setpoint_min=5.0, setpoint_max=30.0))
-            is False
-        )
-        reason = guard.deny_reason(
-            None, _ctx(19.0, climate_setpoint=95.0, setpoint_min=5.0, setpoint_max=30.0)
-        )
+        assert guard(None, _ctx(19.0, climate_setpoint=95.0)) is False
+        reason = guard.deny_reason(None, _ctx(19.0, climate_setpoint=95.0))
 
         assert reason == "setpoint_unavailable", (
             f"уставка вне диапазона — это «уставка негодна», а не «данных нет»: "

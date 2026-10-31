@@ -485,7 +485,7 @@ class HAAdapter:
         thermostat = self.climate_entities.get("thermostat")
         setpoint_entity = self.climate_entities.get("setpoint")
         if not thermostat or not setpoint_entity:
-            # Термостат не задан в правилах — синхронизировать не с кем.
+            # Термостат не задан в комнате — синхронизировать не с кем.
             return
 
         if entity_id == thermostat:

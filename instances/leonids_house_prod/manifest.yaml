@@ -12,6 +12,7 @@ rooms:
     temperature: sensor.datchik_temperatury_gostinnaia_temperature
     humidity: sensor.datchik_temperatury_gostinnaia_humidity
     battery: sensor.datchik_temperatury_gostinnaia_battery
+  thermostat_entity: climate.termostat_gostinaia
   devices:
   - id: switch.obogrevatel_gostinnaia
     type: climate
@@ -578,6 +579,7 @@ automation_rules:
   global_manual_lockout_min: 60
   manual_command_sources: []
   time_zone: Asia/Yekaterinburg
+  season_entity: input_boolean.zima
   sleep_modifier: input_boolean.sleep_mode
   schedule:
     night_off_at: '23:00'
@@ -608,12 +610,8 @@ automation_rules:
     - climate.esphome_web_0d22a4_ac_name
     ac_gate_entity: null
     setpoint_entity: input_number.temperatura
-    thermostat_entity: climate.termostat_gostinaia
     comfort_max_entity: input_number.maksimalno_komfortnaia_temperatura
-    season_entity: input_boolean.zima
     feature_entity: input_boolean.feature_climate
-    setpoint_min: 5.0
-    setpoint_max: 30.0
   ventilation:
     manual_lockout_min: null
     feature_entity: input_boolean.feature_ventilation

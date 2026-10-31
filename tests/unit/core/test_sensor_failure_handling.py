@@ -198,7 +198,7 @@ class TestSetpointOutOfRange:
         """
         guard = _may_heat()
 
-        ctx = _ctx(19.0, climate_setpoint=95.0, setpoint_min=5.0, setpoint_max=30.0)
+        ctx = _ctx(19.0, climate_setpoint=95.0)
 
         assert guard(None, ctx) is False, (
             "уставка вне диапазона — это «уставка негодна»: греть по ней значит "
@@ -215,7 +215,7 @@ class TestSetpointOutOfRange:
 
         reason = guard.deny_reason(
             None,
-            _ctx(19.0, climate_setpoint=95.0, setpoint_min=5.0, setpoint_max=30.0),
+            _ctx(19.0, climate_setpoint=95.0),
         )
 
         assert reason == "setpoint_unavailable"

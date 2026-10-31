@@ -121,8 +121,6 @@ class TestSilentSensorStaysQuiet:
             external_ctx={
                 "temperature": 19.0,
                 "climate_setpoint": 95.0,
-                "setpoint_min": 5.0,
-                "setpoint_max": 30.0,
             },
             respect_debounce=False,
         )

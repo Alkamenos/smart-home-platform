@@ -219,7 +219,10 @@ _DOMAIN_RULE_NAMES: dict[str, tuple[str, ...]] = {
         "night_motion_rooms",
         "always_on_motion_rooms",
     ),
-    "climate": ("setpoint_min", "setpoint_max"),
+    # A7: диапазон уставки задан схемой шаблона (target_temp, 5–35), а не
+    # манифестом. Второй набор setpoint_min/max не читался и только вводил
+    # в заблуждение.
+    "climate": (),
     "ventilation": ("manual_lockout_min", "airing_entity", "exhaust_entity"),
 }
 

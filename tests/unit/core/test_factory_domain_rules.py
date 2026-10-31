@@ -33,7 +33,7 @@ from core.models.manifest import (
 
 
 def _rules() -> AutomationRules:
-    """Правила дома с заполненными доменами климата и вентиляции.
+    """Правила дома с заполненными доменами освещения и вентиляции.
 
     Returns:
         Модель правил автоматизации.
@@ -46,10 +46,6 @@ def _rules() -> AutomationRules:
                 "quiet_to": "06:30",
                 "night_motion_rooms": ["sanuzel"],
                 "always_on_motion_rooms": ["sanuzel", "konteiner"],
-            },
-            "climate": {
-                "setpoint_min": 5.0,
-                "setpoint_max": 30.0,
             },
             "ventilation": {
                 "manual_lockout_min": 15,
@@ -131,8 +127,8 @@ class TestTemplateToDomainMapping:
 class TestDomainDefaultsReachParams:
     """Доменные значения попадают в параметры поведения."""
 
-    def test_climate_defaults_are_applied(self) -> None:
-        """Границы уставки доезжают в параметры поведения климата.
+    def test_climate_does_not_carry_setpoint_range(self) -> None:
+        """Границы уставки не дублируются в параметрах из манифеста (B76/A7).
 
         Returns:
             Ничего.
@@ -142,29 +138,11 @@ class TestDomainDefaultsReachParams:
 
         merged = _apply_domain_defaults(behavior, rules)
 
-        assert merged.params["setpoint_min"] == 5.0, (
-            "границы уставки задаются в правилах дома и обязаны доехать до "
-            "поведения: иначе проверка FR-034 работает с нулями"
+        assert "setpoint_min" not in merged.params, (
+            "диапазон уставки уже задан схемой шаблона (target_temp, 5–35); "
+            "второй набор в манифесте не читался и только вводил в заблуждение"
         )
-        assert merged.params["setpoint_max"] == 30.0
-
-    def test_explicit_param_wins_over_domain_default(self) -> None:
-        """Явный параметр устройства главнее доменного значения.
-
-        Returns:
-            Ничего.
-        """
-        rules = _rules()
-        behavior = BehaviorConfig(
-            template="climate_control", priority=10, params={"setpoint_min": 10.0}
-        )
-
-        merged = _apply_domain_defaults(behavior, rules)
-
-        assert merged.params["setpoint_min"] == 10.0, (
-            "явный параметр устройства главнее доменного: обратный порядок "
-            "молча перетирал бы настройку, которую задал владелец"
-        )
+        assert "setpoint_max" not in merged.params
 
     def test_time_zone_reaches_every_domain(self) -> None:
         """Часовой пояс дома доезжает и до климата, и до вентиляции.

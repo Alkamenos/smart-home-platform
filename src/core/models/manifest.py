@@ -125,6 +125,14 @@ class RoomConfig(BaseModel):
     parent: str | None = None
     """Место верхнего уровня, в которое входит эта комната (id)."""
     sensors: SensorMap = Field(default_factory=dict)
+    thermostat_entity: str | None = None
+    """Термостат этой комнаты (``climate.*``), если он есть.
+
+    Термостат — свойство комнаты, а не дома: в гостиной стоит штатный
+    термостат, который держит свою уставку (аудит B76, A6). Платформа
+    синхронизирует его с общей уставкой дома, но не приписывает его другим
+    комнатам.
+    """
     devices: list[DeviceConfig] = Field(default_factory=list)
 
     @field_validator("sensors")
@@ -135,6 +143,24 @@ class RoomConfig(BaseModel):
             if not entity.strip():
                 raise ValueError(f"Sensor '{sensor_type}' has empty entity_id")
         return v
+
+    @field_validator("thermostat_entity")
+    @classmethod
+    def validate_thermostat_id(cls, value: str | None) -> str | None:
+        """Отвергнуть пустое имя термостата.
+
+        Пустая строка даёт пустую подписку и синхронизацию «ни с чем», а
+        выглядит как настроенная комната.
+
+        Args:
+            value: Значение поля.
+
+        Returns:
+            Значение без изменений либо ``None``.
+        """
+        if value is not None and not value.strip():
+            raise ValueError("имя термостата не может быть пустым")
+        return value
 
 
 class LocationConfig(BaseModel):
@@ -243,25 +269,11 @@ class AutomationDomainRules(BaseModel):
     # и второе место, где ту же логику можно сломать, только вредит. Платформа
     # читает — и потому обязана знать, откуда читать.
     setpoint_entity: str | None = None
-    thermostat_entity: str | None = None
-    """Основной термостат дома (`climate.*`), задающий уставку.
-
-    Требование владельца 2026-10-12: изменение цели термостата должно менять
-    уставку дома, а изменение уставки — писаться в термостат. У климат-сущности
-    цель живёт в атрибуте `temperature`, а не в состоянии: состояние климата —
-    это режим (heat/off), и читать его как уставку нельзя.
-    """
     """Сущность целевой температуры (например ``input_number.temperatura``)."""
     comfort_max_entity: str | None = None
     """Сущность потолка комфорта, выше которого в комнате жарко."""
-    season_entity: str | None = None
-    """Сущность сезона: зимой кондиционер включать нельзя."""
     feature_entity: str | None = None
     """Признак «фича включена»; при выключенном платформа только наблюдает."""
-    setpoint_min: float = 5.0
-    """Нижняя граница допустимой уставки."""
-    setpoint_max: float = 30.0
-    """Верхняя граница допустимой уставки."""
 
     # ─── Вентиляция (спека 014) ───
     enable_entity: str | None = None
@@ -307,7 +319,6 @@ class AutomationDomainRules(BaseModel):
     @field_validator(
         "setpoint_entity",
         "comfort_max_entity",
-        "season_entity",
         "feature_entity",
         "enable_entity",
         "airing_entity",
@@ -349,29 +360,6 @@ class AutomationDomainRules(BaseModel):
         """
         if value is not None and value < 0:
             raise ValueError("срок ручной блокировки не может быть отрицательным")
-        return value
-
-    @field_validator("setpoint_max")
-    @classmethod
-    def _check_setpoint_range(cls, value: float, info: Any) -> float:
-        """Проверить, что границы уставки заданы в правильном порядке.
-
-        Обратный порядок означал бы, что любая уставка «вне диапазона» и
-        отказ по ней приходят в запутанном виде, а владелец не понимает, что
-        исправлять.
-
-        Args:
-            value: Значение поля.
-            info: Контекст валидации с остальными полями.
-
-        Returns:
-            Значение без изменений.
-        """
-        lower = (info.data or {}).get("setpoint_min")
-        if lower is not None and value <= lower:
-            raise ValueError(
-                f"верхняя граница уставки ({value}) должна быть больше нижней ({lower})"
-            )
         return value
 
 
@@ -433,7 +421,9 @@ class AutomationClimateRules(AutomationDomainRules):
     """Правила климата: к общим полям домена добавляются поля кондиционера.
 
     Отдельный класс, а не поля в общем: иначе поля кондиционера оказывались бы в
-    любом домене — включая освещение (аудит B76, A10).
+    любом домене — включая освещение (аудит B76, A10). Диапазон уставки здесь не
+    задаётся: он живёт в схеме шаблона (``target_temp``, 5–35), чтобы не было
+    второго источника истины (B76/A7).
     """
 
     ac_min_outside_temp: float = 5.0
@@ -499,6 +489,13 @@ class AutomationRules(BaseModel):
     """Часовой пояс дома. Обязателен для правил «светло ли сейчас»: дом живёт
     в своём поясе, а контейнер — в UTC, и без этого окно дня смещается на
     несколько часов."""
+    season_entity: str | None = None
+    """Сущность сезона (например, ``input_boolean.zima``).
+
+    Сезон нужен и климату (зимой кондиционер включать нельзя), и вентиляции
+    (приток по погоде), поэтому это поле дома, а не одного домена (аудит B76,
+    A5). Платформа читает его как ``is_winter``.
+    """
     sleep_modifier: str | None = None
     """Сущность Home Assistant «мы спим» (например, ``input_boolean.sleep_mode``).
 
@@ -520,6 +517,24 @@ class AutomationRules(BaseModel):
     """Шторы дома (спека 015): общие флаги и правила закрытия."""
     locations: LocationRules = Field(default_factory=LocationRules)
     """Наблюдение за локациями (спека 016): порог молчания, окно присутствия."""
+
+    @field_validator("sleep_modifier", "season_entity")
+    @classmethod
+    def _reject_blank_house_entity(cls, value: str | None) -> str | None:
+        """Отвергнуть пустую сущность уровня дома.
+
+        Пустая строка даёт пустую подписку, и отказ выглядит как штатная
+        работа. Ошибка загрузки честнее — она указывает строку.
+
+        Args:
+            value: Значение поля.
+
+        Returns:
+            Значение без изменений либо ``None``.
+        """
+        if value is not None and not value.strip():
+            raise ValueError("имя сущности не может быть пустым")
+        return value
 
     @field_validator("climate", mode="before")
     @classmethod

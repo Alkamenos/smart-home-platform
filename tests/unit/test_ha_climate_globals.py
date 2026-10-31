@@ -510,15 +510,13 @@ class TestClimateEntitiesDeclared:
 
         rules = AutomationRules.model_validate(
             {
+                "season_entity": "input_boolean.zima",
                 "climate": {
                     "setpoint_entity": "input_number.temperatura",
                     "comfort_max_entity": "input_number.maksimalno_komfortnaia_temperatura",
-                    "season_entity": "input_boolean.zima",
                     "feature_entity": "input_boolean.feature_climate",
                     "ac_gate_entity": "input_boolean.ispolzovat_konditsioner",
-                    "setpoint_min": 5.0,
-                    "setpoint_max": 30.0,
-                }
+                },
             }
         )
 
@@ -526,7 +524,9 @@ class TestClimateEntitiesDeclared:
             "правила климата обязаны принимать имя сущности уставки: иначе "
             "платформе неоткуда взять цель обогрева"
         )
-        assert rules.climate.setpoint_max == 30.0
+        assert rules.season_entity == "input_boolean.zima", (
+            "сезон нужен и климату, и вентиляции — это поле дома (B76/A5)"
+        )
 
     def test_empty_entity_name_is_rejected(self) -> None:
         """Пустая сущность — ошибка, а не «молча не работает».
@@ -541,8 +541,8 @@ class TestClimateEntitiesDeclared:
         with pytest.raises(ValidationError):
             AutomationRules.model_validate({"climate": {"setpoint_entity": ""}})
 
-    def test_setpoint_range_must_be_ordered(self) -> None:
-        """Границы уставки обязаны быть в правильном порядке.
+    def test_empty_house_entity_is_rejected(self) -> None:
+        """Пустой сезон дома — ошибка, а не «молча не работает».
 
         Returns:
             Ничего.
@@ -552,7 +552,24 @@ class TestClimateEntitiesDeclared:
         from core.models.manifest import AutomationRules
 
         with pytest.raises(ValidationError):
-            AutomationRules.model_validate({"climate": {"setpoint_min": 30.0, "setpoint_max": 5.0}})
+            AutomationRules.model_validate({"season_entity": ""})
+
+    def test_manifest_does_not_duplicate_setpoint_range(self) -> None:
+        """Диапазон уставки живёт в схеме шаблона, а не в манифесте (B76/A7).
+
+        Returns:
+            Ничего.
+        """
+        from core.models.manifest import AutomationClimateRules, AutomationRules
+
+        rules = AutomationRules.model_validate(
+            {"climate": {"setpoint_min": 30.0, "setpoint_max": 5.0}}
+        )
+
+        assert "setpoint_min" not in AutomationClimateRules.model_fields
+        assert "setpoint_max" not in AutomationClimateRules.model_fields
+        assert "setpoint_min" not in rules.climate.model_dump()
+        assert "setpoint_max" not in rules.climate.model_dump()
 
 
 class TestGlobalsAreSubscribed:

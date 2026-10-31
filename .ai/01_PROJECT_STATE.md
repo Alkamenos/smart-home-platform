@@ -4,6 +4,28 @@
 
 ## Последние значимые изменения
 
+### 2026-10-31: сезон, термостат и границы уставки (B76 A5–A7)
+
+- `climate.season_entity` переехал на уровень дома —
+  `automation_rules.season_entity`; контейнер отдаёт его адаптеру общей ролью
+  `season`, поэтому климат и вентиляция получают один `is_winter`.
+- `climate.thermostat_entity` стал свойством комнаты —
+  `RoomConfig.thermostat_entity`; в манифесте он стоит у `gostinaia`. Контейнер
+  берёт первый термостат комнаты и предупреждает, если их несколько.
+- `climate.setpoint_min/max` убраны из модели и манифеста: они не читались,
+  а диапазон уставки уже задан схемой шаблона (`target_temp`, 5–35) и условием
+  `_setpoint_value`. `_DOMAIN_RULE_NAMES` больше не переносит их в параметры.
+- Эталон и боевой манифест мигрированы; на уровне дома теперь
+  `season_entity`, `sleep_modifier`, `schedule`, `sensor_health`.
+- Тесты: `test_container_house_globals` (сезон/термостат), обновлены
+  `test_factory_domain_rules`, `test_ha_climate_globals`,
+  `test_manifest_rules_roundtrip` и климатические условия. Полный прогон —
+  **3371 passed / 19 skipped**, `ruff` и `mypy` чистые.
+- Образ пересобран, контейнер healthy, `/ready: true`; сразу после пересоздания
+  синхронизация источника обновлена (1601 устройство).
+
+Разбор — `BACKLOG.md` (B76, A5–A7).
+
 ### 2026-10-31: поля дома вынесены из `lighting` (B76 A2–A4)
 
 - `lighting.battery_watch_entities` переехал в

@@ -50,6 +50,13 @@ class RoomConfig(BaseModel):
     sensors: SensorMap = Field(
         default_factory=dict, description="Room sensors: роль → сущность или список"
     )
+    thermostat_entity: str | None = Field(
+        default=None,
+        description=(
+            "Термостат этой комнаты (climate.*), если он есть. Поле объявлено и "
+            "здесь: иначе правка манифеста через интерфейс вычеркнула бы его"
+        ),
+    )
     devices: list[DeviceConfig] = Field(default_factory=list, description="Room devices")
 
     model_config = {"extra": "allow"}
@@ -170,6 +177,13 @@ class AutomationRules(BaseModel):
         ),
     )
     time_zone: str | None = Field(default=None, description="Часовой пояс дома")
+    season_entity: str | None = Field(
+        default=None,
+        description=(
+            "Сущность сезона (например, input_boolean.zima). Нужна климату и "
+            "вентиляции, поэтому живёт на уровне дома (аудит B76, A5)"
+        ),
+    )
     sleep_modifier: str | None = Field(
         default=None,
         description=(
