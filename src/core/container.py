@@ -1585,14 +1585,14 @@ class Container:
         logger.info(f"Наблюдение за батарейками: {batteries}")
 
     def house_timezone(self) -> Any:
-        """Часовой пояс дома из правил автоматизации.
+        """Часовой пояс дома из метаданных экземпляра.
 
         Returns:
             ``ZoneInfo`` дома либо пояс процесса, если не задан.
         """
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-        name = getattr(self.manifest.automation_rules, "time_zone", None)
+        name = getattr(self.manifest.instance, "time_zone", None)
         if name:
             try:
                 return ZoneInfo(name)

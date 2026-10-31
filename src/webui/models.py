@@ -19,6 +19,10 @@ class InstanceConfig(BaseModel):
     name: str = Field(..., description="Human-readable instance name")
     owner: str = Field(default="Unknown", description="Instance owner")
     created_at: str = Field(default="", description="Creation timestamp")
+    time_zone: str | None = Field(
+        default=None,
+        description="Часовой пояс дома; объявлен, чтобы не потерялся при правке",
+    )
 
 
 class BehaviorConfig(BaseModel):
@@ -163,8 +167,9 @@ class AutomationRules(BaseModel):
 
     Поля повторяют каноническую модель ядра: пропущенное поле при сохранении
     манифеста через интерфейс молча терялось бы — так уже произошло с
-    ``time_zone``, ``cover`` и ``locations``. ``extra: allow`` страхует от
-    повторов при добавлении новых разделов в ядре.
+    ``cover`` и ``locations``. Часовой пояс живёт в ``InstanceConfig`` и объявлен
+    там отдельно. ``extra: allow`` страхует от повторов при добавлении новых
+    разделов в ядре.
     """
 
     global_manual_lockout_min: int = Field(default=60, description="Global manual lockout minutes")
@@ -176,7 +181,6 @@ class AutomationRules(BaseModel):
             "интерфейс вычеркнула бы его (аудит 2026-10-16, К-10)"
         ),
     )
-    time_zone: str | None = Field(default=None, description="Часовой пояс дома")
     season_entity: str | None = Field(
         default=None,
         description=(

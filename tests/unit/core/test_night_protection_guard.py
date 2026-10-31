@@ -279,7 +279,11 @@ class TestHouseRulesReachTheGuard:
         manifest = Manifest(
             version=1,
             instance=InstanceConfig(
-                id="probe", name="Probe", owner="probe", created_at="2026-01-01T00:00:00Z"
+                id="probe",
+                name="Probe",
+                owner="probe",
+                created_at="2026-01-01T00:00:00Z",
+                time_zone="Asia/Yekaterinburg",
             ),
             rooms=[
                 RoomConfig(
@@ -296,7 +300,6 @@ class TestHouseRulesReachTheGuard:
                 )
             ],
             automation_rules=AutomationRules(
-                time_zone="Asia/Yekaterinburg",
                 lighting=AutomationDomainRules(
                     quiet_from="23:00", quiet_to="06:30", night_motion_rooms=["sanuzel"]
                 ),

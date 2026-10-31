@@ -243,7 +243,11 @@ def _domain_rules_for_template(automation_rules: Any, template_name: str) -> Any
     return getattr(automation_rules, domain, None)
 
 
-def _apply_domain_rules_to_behavior(behavior: Any, automation_rules: Any) -> Any:
+def _apply_domain_rules_to_behavior(
+    behavior: Any,
+    automation_rules: Any,
+    time_zone: str | None = None,
+) -> Any:
     """Перенести доменные значения в параметры поведения.
 
     Явный параметр устройства главнее доменного: иначе настройка, которую задал
@@ -252,6 +256,7 @@ def _apply_domain_rules_to_behavior(behavior: Any, automation_rules: Any) -> Any
     Args:
         behavior: Поведение из манифеста.
         automation_rules: Правила автоматизации дома.
+        time_zone: Часовой пояс дома из метаданных экземпляра (B76/A9).
 
     Returns:
         Поведение с дополненными параметрами либо исходное без изменений.
@@ -259,7 +264,6 @@ def _apply_domain_rules_to_behavior(behavior: Any, automation_rules: Any) -> Any
     domain = TEMPLATE_DOMAINS.get(behavior.template)
     domain_rules = _domain_rules_for_template(automation_rules, behavior.template)
     defaults: dict[str, Any] = {}
-    time_zone = getattr(automation_rules, "time_zone", None)
     if time_zone:
         defaults["time_zone"] = time_zone
     for name in _DOMAIN_RULE_NAMES.get(domain or "", ()):
@@ -540,17 +544,20 @@ class FSMFactory:
     def _with_house_rules(
         behavior: BehaviorConfig,
         automation_rules: Any,
+        time_zone: str | None = None,
     ) -> BehaviorConfig:
         """Дописать в поведение правила дома, которых в нём нет.
 
-        Окно тишины, список ночных комнат и часовой пояс задаются один раз для
-        всего дома — в ``automation_rules``. Условия читают их из параметров
-        поведения, поэтому значения переносятся сюда, но **только отсутствующие**:
-        явный параметр в конкретном устройстве всегда главнее.
+        Окно тишины и список ночных комнат задаются один раз для всего дома —
+        в ``automation_rules``; часовой пояс — в метаданных экземпляра. Условия
+        читают их из параметров поведения, поэтому значения переносятся сюда,
+        но **только отсутствующие**: явный параметр в конкретном устройстве
+        всегда главнее.
 
         Args:
             behavior: Поведение из манифеста.
             automation_rules: Правила автоматизации дома.
+            time_zone: Часовой пояс дома из ``instance`` (B76/A9).
 
         Returns:
             Новое поведение с дополненными параметрами.
@@ -558,7 +565,6 @@ class FSMFactory:
         domain = TEMPLATE_DOMAINS.get(behavior.template)
         domain_rules = _domain_rules_for_template(automation_rules, behavior.template)
         defaults: dict[str, Any] = {}
-        time_zone = getattr(automation_rules, "time_zone", None)
         if time_zone:
             defaults["time_zone"] = time_zone
         for name in _DOMAIN_RULE_NAMES.get(domain or "", ()):
@@ -778,7 +784,11 @@ class FSMFactory:
                 try:
                     definitions = self.create_from_behavior(
                         device_id,
-                        self._with_house_rules(behavior, manifest.automation_rules),
+                        self._with_house_rules(
+                            behavior,
+                            manifest.automation_rules,
+                            getattr(manifest.instance, "time_zone", None),
+                        ),
                         room_id,
                     )
                 except Exception as exc:  # noqa: BLE001 — одно устройство не должно ронять дом

@@ -1,7 +1,7 @@
 """Веб-модель манифеста не теряет поля при сохранении (спека 017, FR-027).
 
-Регресс: модель веб-слоя не описывала ``automation_rules.time_zone``, ``cover``
-и ``locations``, и правка манифеста через интерфейс молча вычёркивала их из
+Регресс: модель веб-слоя не описывала ``time_zone`` экземпляра, ``cover`` и
+``locations``, и правка манифеста через интерфейс молча вычёркивала их из
 файла. ``time_zone`` без этого уезжает в UTC (день/ночь считаются неверно),
 ``cover`` и ``locations`` теряют правила дома. Тест держит полноту модели.
 
@@ -15,7 +15,13 @@ from webui.models import ManifestModel
 
 
 MANIFEST = {
-    "instance": {"id": "probe", "name": "Probe", "owner": "probe", "created_at": ""},
+    "instance": {
+        "id": "probe",
+        "name": "Probe",
+        "owner": "probe",
+        "created_at": "",
+        "time_zone": "Asia/Yekaterinburg",
+    },
     "version": 1,
     "rooms": [],
     "locations": [
@@ -28,7 +34,6 @@ MANIFEST = {
     ],
     "automation_rules": {
         "global_manual_lockout_min": 60,
-        "time_zone": "Asia/Yekaterinburg",
         "cover": {"feature_entity": "input_boolean.feature_covers"},
         "locations": {"stale_after_sec": 3600, "presence_window_sec": 600},
         "lighting": {"motion_enabled": True},
@@ -37,11 +42,11 @@ MANIFEST = {
 
 
 def test_manifest_model_should_keep_automation_rules_sections() -> None:
-    """`time_zone`, `cover` и `locations` переживают разбор и выгрузку."""
+    """`time_zone` экземпляра, `cover` и `locations` переживают разбор."""
     dumped = ManifestModel(**MANIFEST).model_dump()
 
+    assert dumped["instance"]["time_zone"] == "Asia/Yekaterinburg"
     rules = dumped["automation_rules"]
-    assert rules["time_zone"] == "Asia/Yekaterinburg"
     assert rules["cover"]["feature_entity"] == "input_boolean.feature_covers"
     assert rules["locations"]["stale_after_sec"] == 3600
     assert rules["locations"]["presence_window_sec"] == 600

@@ -40,7 +40,6 @@ def _rules() -> AutomationRules:
     """
     return AutomationRules.model_validate(
         {
-            "time_zone": "Asia/Yekaterinburg",
             "lighting": {
                 "quiet_from": "23:00",
                 "quiet_to": "06:30",
@@ -166,16 +165,21 @@ class TestDomainDefaultsReachParams:
         )
 
 
-def _apply_domain_defaults(behavior: BehaviorConfig, rules: AutomationRules) -> BehaviorConfig:
+def _apply_domain_defaults(
+    behavior: BehaviorConfig,
+    rules: AutomationRules,
+    time_zone: str | None = "Asia/Yekaterinburg",
+) -> BehaviorConfig:
     """Перенести доменные значения в параметры поведения.
 
     Args:
         behavior: Поведение из манифеста.
         rules: Правила дома.
+        time_zone: Часовой пояс дома из ``instance``.
 
     Returns:
         Поведение с дополненными параметрами.
     """
     from core.fsm.factory import _apply_domain_rules_to_behavior
 
-    return _apply_domain_rules_to_behavior(behavior, rules)
+    return _apply_domain_rules_to_behavior(behavior, rules, time_zone)

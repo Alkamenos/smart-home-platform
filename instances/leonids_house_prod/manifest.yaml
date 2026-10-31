@@ -3,6 +3,7 @@ instance:
   name: Leonid's House
   owner: Leo
   created_at: '2024-01-15'
+  time_zone: Asia/Yekaterinburg
 version: 1
 rooms:
 - id: gostinaia
@@ -578,7 +579,6 @@ battery_types:
 automation_rules:
   global_manual_lockout_min: 60
   manual_command_sources: []
-  time_zone: Asia/Yekaterinburg
   season_entity: input_boolean.zima
   sleep_modifier: input_boolean.sleep_mode
   schedule:

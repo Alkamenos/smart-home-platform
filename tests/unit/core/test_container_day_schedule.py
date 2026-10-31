@@ -28,11 +28,14 @@ def _manifest() -> Manifest:
     return Manifest(
         version=1,
         instance=InstanceConfig(
-            id="probe", name="Probe", owner="probe", created_at="2026-01-01T00:00:00Z"
+            id="probe",
+            name="Probe",
+            owner="probe",
+            created_at="2026-01-01T00:00:00Z",
+            time_zone="Asia/Yekaterinburg",
         ),
         rooms=[],
         automation_rules=AutomationRules(
-            time_zone="Asia/Yekaterinburg",
             schedule=HouseSchedule(night_off_at="22:15", morning_at="06:45"),
         ),
     )

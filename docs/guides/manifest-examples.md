@@ -52,7 +52,6 @@ automation_rules:
     away_mode_enabled: true
     manual_lockout_min: 90
   ventilation:
-    humidity_based: true
     manual_lockout_min: 15
 ```
 

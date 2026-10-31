@@ -17,7 +17,13 @@ from webui.models import ManifestModel
 
 
 MANIFEST = {
-    "instance": {"id": "p", "name": "P", "owner": "p", "created_at": ""},
+    "instance": {
+        "id": "p",
+        "name": "P",
+        "owner": "p",
+        "created_at": "",
+        "time_zone": "Asia/Yekaterinburg",
+    },
     "version": 1,
     "rooms": [
         {
@@ -28,7 +34,6 @@ MANIFEST = {
     ],
     "automation_rules": {
         "global_manual_lockout_min": 60,
-        "time_zone": "Asia/Yekaterinburg",
         "season_entity": "input_boolean.zima",
         "sleep_modifier": "input_boolean.sleep_mode",
         "schedule": {

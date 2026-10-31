@@ -57,7 +57,6 @@ def automation_rules():
             manual_lockout_min=30,
         ),
         ventilation=VentilationAutomation(
-            humidity_based=True,
             manual_lockout_min=15,
         ),
         global_manual_lockout_min=0,  # Default: use domain-specific settings

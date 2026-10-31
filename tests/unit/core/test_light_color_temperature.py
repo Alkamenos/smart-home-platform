@@ -46,7 +46,11 @@ def _manifest() -> Manifest:
     return Manifest(
         version=1,
         instance=InstanceConfig(
-            id="probe", name="Probe", owner="probe", created_at="2026-01-01T00:00:00Z"
+            id="probe",
+            name="Probe",
+            owner="probe",
+            created_at="2026-01-01T00:00:00Z",
+            time_zone="Asia/Yekaterinburg",
         ),
         rooms=[
             RoomConfig(
@@ -93,7 +97,6 @@ def _manifest() -> Manifest:
             )
         ],
         automation_rules=AutomationRules(
-            time_zone="Asia/Yekaterinburg",
             lighting=AutomationDomainRules(
                 color_temp_day_entity="input_number.temperatura_sveta_dnem",
                 color_temp_night_entity="input_number.temperatura_sveta_nochiu",

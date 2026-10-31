@@ -161,7 +161,7 @@ class LightColorTemperatureService:
         Returns:
             Зона из манифеста либо UTC, если пояс не задан или неизвестен.
         """
-        name = getattr(self._manifest.automation_rules, "time_zone", None) or "UTC"
+        name = getattr(self._manifest.instance, "time_zone", None) or "UTC"
         try:
             return ZoneInfo(name)
         except Exception:  # noqa: BLE001 — неизвестный пояс не должен ронять свет
