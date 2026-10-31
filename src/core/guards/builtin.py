@@ -357,11 +357,12 @@ def _day_range(automation_rules: Any) -> str:
     override = os.environ.get("DAY_TIME_RANGE")
     if override:
         return override
-    lighting = getattr(automation_rules, "lighting", None)
-    morning = getattr(lighting, "morning_at", None)
-    night_off = getattr(lighting, "night_off_at", None)
+    schedule = getattr(automation_rules, "schedule", None)
+    morning = getattr(schedule, "morning_at", None)
+    night_off = getattr(schedule, "night_off_at", None)
     if morning and night_off:
         return f"{morning}-{night_off}"
+    lighting = getattr(automation_rules, "lighting", None)
     quiet_from = getattr(lighting, "quiet_from", None)
     quiet_to = getattr(lighting, "quiet_to", None)
     if quiet_from and quiet_to:

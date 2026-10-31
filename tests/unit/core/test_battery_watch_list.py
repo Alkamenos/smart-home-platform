@@ -19,12 +19,12 @@ from __future__ import annotations
 
 from core.container import Container
 from core.models.manifest import (
-    AutomationDomainRules,
     AutomationRules,
     InstanceConfig,
     LocationConfig,
     Manifest,
     RoomConfig,
+    SensorHealthRules,
 )
 
 
@@ -46,7 +46,7 @@ def _manifest(
     rules = AutomationRules()
     if watch_entities is not None:
         rules = AutomationRules(
-            lighting=AutomationDomainRules(battery_watch_entities=list(watch_entities))
+            sensor_health=SensorHealthRules(battery_watch_entities=list(watch_entities))
         )
     return Manifest(
         version=1,

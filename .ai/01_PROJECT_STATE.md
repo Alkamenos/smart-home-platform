@@ -4,6 +4,25 @@
 
 ## Последние значимые изменения
 
+### 2026-10-31: поля дома вынесены из `lighting` (B76 A2–A4)
+
+- `lighting.battery_watch_entities` переехал в
+  `automation_rules.sensor_health.battery_watch_entities`; `Container`
+  больше не перебирает домены в поисках батареек.
+- Суточный цикл дома — `automation_rules.schedule` (`night_off_at`,
+  `morning_at`): его читают `Container._start_day_cycle()` и `_day_range()`,
+  запасной вариант остаётся прежним — окно тишины `lighting.quiet_from/quiet_to`.
+- Общий флаг «мы спим» — `automation_rules.sleep_modifier`; контейнер передаёт
+  его адаптеру оттуда, а не из `lighting`.
+- Эталон `instances/leonids_house_prod/manifest.yaml` и боевой
+  `deploy/docker/config/manifest.yaml` (gitignored) мигрированы: новые поля на
+  уровне `automation_rules`, старые из `lighting` убраны.
+- Тесты: обновлены проверки батареек, суточного окна, чистки helper-ов и
+  веб-раундтрипа; добавлен `test_container_day_schedule`. Полный прогон —
+  **3365 passed / 19 skipped**, `ruff` и `mypy` чистые.
+
+Разбор — `BACKLOG.md` (B76, A2–A4).
+
 ### 2026-10-30: 23:00 больше не меняет свет над столом (B110)
 
 - Наша ошибка из B106: в 23:00 `quiet_hours_started` принудительно переводил

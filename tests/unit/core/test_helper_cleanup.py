@@ -137,7 +137,7 @@ class FakeManifest:
             Словарь с упомянутыми сущностями.
         """
         return {
-            "automation_rules": {"lighting": {"sleep_modifier": self._entities}},
+            "automation_rules": {"sensor_health": {"battery_watch_entities": self._entities}},
             "rooms": [{"id": "gostinnaia", "name": "Гостиная"}],
         }
 

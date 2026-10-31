@@ -125,6 +125,32 @@ class AutomationClimateRules(AutomationDomainRules):
     )
 
 
+class HouseSchedule(BaseModel):
+    """Суточный цикл дома: когда дом засыпает и просыпается."""
+
+    night_off_at: str | None = Field(
+        default=None,
+        description="Час принудительного выключения света, заданного автоматикой (HH:MM)",
+    )
+    morning_at: str | None = Field(
+        default=None,
+        description="Час снятия ночного режима и начала дня (HH:MM)",
+    )
+
+
+class SensorHealthRules(BaseModel):
+    """Здоровье датчиков дома: батарейки вне манифеста."""
+
+    battery_watch_entities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Батарейки датчиков вне манифеста, за которыми следит платформа. "
+            "Поле объявлено и здесь: иначе правка манифеста через интерфейс "
+            "вычеркнула бы его"
+        ),
+    )
+
+
 class AutomationRules(BaseModel):
     """Global automation rules.
 
@@ -144,6 +170,21 @@ class AutomationRules(BaseModel):
         ),
     )
     time_zone: str | None = Field(default=None, description="Часовой пояс дома")
+    sleep_modifier: str | None = Field(
+        default=None,
+        description=(
+            "Сущность «мы спим» (например, input_boolean.sleep_mode). Флаг общий "
+            "для света, штор и вентиляции, поэтому живёт на уровне дома"
+        ),
+    )
+    schedule: HouseSchedule = Field(
+        default_factory=HouseSchedule,
+        description="Суточный цикл дома (аудит B76, A3)",
+    )
+    sensor_health: SensorHealthRules = Field(
+        default_factory=SensorHealthRules,
+        description="Здоровье датчиков дома (аудит B76, A2)",
+    )
     lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
     climate: AutomationClimateRules = Field(default_factory=AutomationClimateRules)
     ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)

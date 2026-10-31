@@ -16,11 +16,13 @@ from core.models.manifest import (
     ClimateAutomation,
     Dashboard,
     DeviceConfig,
+    HouseSchedule,
     InstanceConfig,
     LightingAutomation,
     LocationConfig,
     Manifest,
     RoomConfig,
+    SensorHealthRules,
     VentilationAutomation,
     load_manifest,
 )
@@ -83,6 +85,8 @@ __all__ = [
     "Dashboard",
     "BehaviorConfig",
     "AutomationDomainRules",
+    "HouseSchedule",
+    "SensorHealthRules",
     # Plugin system
     "PluginLoader",
     "PluginInfo",

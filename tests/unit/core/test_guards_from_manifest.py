@@ -48,12 +48,19 @@ class _Rules:
             {
                 "quiet_from": quiet_from,
                 "quiet_to": quiet_to,
+            },
+        )
+        schedule = type(
+            "Schedule",
+            (),
+            {
                 "morning_at": morning_at,
                 "night_off_at": night_off_at,
             },
         )
         self.global_manual_lockout_min = lockout
         self.lighting = lighting()
+        self.schedule = schedule()
 
 
 class _Registry:

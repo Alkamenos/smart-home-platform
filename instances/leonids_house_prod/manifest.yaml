@@ -578,6 +578,14 @@ automation_rules:
   global_manual_lockout_min: 60
   manual_command_sources: []
   time_zone: Asia/Yekaterinburg
+  sleep_modifier: input_boolean.sleep_mode
+  schedule:
+    night_off_at: '23:00'
+    morning_at: '07:00'
+  sensor_health:
+    battery_watch_entities:
+    - sensor.datchik_temperatury_terassa_battery
+    - sensor.datchik_temperatury_sad_battery
   lighting:
     manual_lockout_min: null
     quiet_from: '23:00'
@@ -588,17 +596,11 @@ automation_rules:
     always_on_motion_rooms:
     - sanuzel
     - konteiner
-    sleep_modifier: input_boolean.sleep_mode
-    night_off_at: '23:00'
-    morning_at: 07:00
     color_temp_day_entity: input_number.temperatura_sveta_dnem
     color_temp_night_entity: input_number.temperatura_sveta_nochiu
     color_temp_current_entity: input_number.tekushchaia_temperatura
     color_temp_warm_at: '21:00'
     color_temp_update_minutes: 5
-    battery_watch_entities:
-    - sensor.datchik_temperatury_terassa_battery
-    - sensor.datchik_temperatury_sad_battery
   climate:
     manual_lockout_min: null
     ac_min_outside_temp: 5.0

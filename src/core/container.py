@@ -327,7 +327,7 @@ class Container:
                 # Платформа читает состояние и по нему решает, можно ли
                 # включать яркий свет; без имени сущности условие его просто
                 # не найдёт и решит по солнцу.
-                sleep_modifier = self.manifest.automation_rules.lighting.sleep_modifier
+                sleep_modifier = self.manifest.automation_rules.sleep_modifier
                 if sleep_modifier:
                     self._adapter.sleep_modifier_entity = sleep_modifier
                     # Включение модификатора гасит свет: клиент адаптера ловит
@@ -815,9 +815,10 @@ class Container:
     def _start_day_cycle(self) -> None:
         """Запустить суточный цикл: гасить свет по часам, поднимать дом утром.
 
-        Расписание берётся из правил освещения манифеста (`night_off_at`,
-        `morning_at`) и живёт в часах дома: контейнер работает в UTC, и «23:00»
-        здесь — это 23:00 дома, иначе свет гаснет в час ночи по-контейнерски.
+        Расписание берётся из раздела дома ``automation_rules.schedule``
+        (`night_off_at`, `morning_at`) и живёт в часах дома: контейнер работает в
+        UTC, и «23:00» здесь — это 23:00 дома, иначе свет гаснет в час ночи
+        по-контейнерски.
 
         Как и сторож, не запускается без работающего цикла событий: фоновая
         задача без него завершилась бы сразу и оставила бы висящее задание.
@@ -825,11 +826,11 @@ class Container:
         from core.scheduling.daily import DailyClock
         from core.services.day_cycle import DayCycleService
 
-        rules = self.manifest.automation_rules.lighting
+        schedule = self.manifest.automation_rules.schedule
         events: dict[Any, str] = {}
         for value, name in (
-            (getattr(rules, "night_off_at", None), "quiet_hours_started"),
-            (getattr(rules, "morning_at", None), "day_started"),
+            (getattr(schedule, "night_off_at", None), "quiet_hours_started"),
+            (getattr(schedule, "morning_at", None), "day_started"),
         ):
             if not value:
                 continue
@@ -1530,11 +1531,10 @@ class Container:
                 if entity not in batteries:
                     batteries.append(entity)
 
-        rules = self.manifest.automation_rules
-        for domain in (rules.lighting, rules.climate, rules.ventilation):
-            for entity in getattr(domain, "battery_watch_entities", None) or ():
-                if entity not in batteries:
-                    batteries.append(entity)
+        health = self.manifest.automation_rules.sensor_health
+        for entity in health.battery_watch_entities:
+            if entity not in batteries:
+                batteries.append(entity)
         return batteries
 
     def _start_sensor_health(self) -> None:

@@ -23,15 +23,19 @@ MANIFEST = {
     "automation_rules": {
         "global_manual_lockout_min": 60,
         "time_zone": "Asia/Yekaterinburg",
+        "sleep_modifier": "input_boolean.sleep_mode",
+        "schedule": {
+            "night_off_at": "23:00",
+            "morning_at": "07:00",
+        },
+        "sensor_health": {
+            "battery_watch_entities": ["sensor.battery"],
+        },
         "lighting": {
             "quiet_from": "23:00",
             "quiet_to": "06:30",
-            "night_off_at": "23:00",
-            "morning_at": "07:00",
             "night_motion_rooms": ["sanuzel", "konteiner"],
             "always_on_motion_rooms": ["sanuzel"],
-            "sleep_modifier": "input_boolean.sleep_mode",
-            "battery_watch_entities": ["sensor.battery"],
             "color_temp_day_entity": "input_number.temperatura_sveta_dnem",
             "color_temp_night_entity": "input_number.temperatura_sveta_nochiu",
             "color_temp_current_entity": "input_number.tekushchaia_temperatura",
@@ -73,20 +77,32 @@ def _rules() -> dict:
 
 
 def test_lighting_rules_should_survive_roundtrip() -> None:
-    """Тихие часы, ночные комнаты и расписание света не теряются."""
+    """Тихие часы и настройки света не теряются."""
     lighting = _rules()["lighting"]
 
     assert lighting["quiet_from"] == "23:00"
     assert lighting["quiet_to"] == "06:30"
-    assert lighting["night_off_at"] == "23:00"
-    assert lighting["morning_at"] == "07:00"
     assert lighting["night_motion_rooms"] == ["sanuzel", "konteiner"]
-    assert lighting["sleep_modifier"] == "input_boolean.sleep_mode"
+    assert lighting["always_on_motion_rooms"] == ["sanuzel"]
     assert lighting["color_temp_day_entity"] == "input_number.temperatura_sveta_dnem"
     assert lighting["color_temp_night_entity"] == "input_number.temperatura_sveta_nochiu"
     assert lighting["color_temp_current_entity"] == "input_number.tekushchaia_temperatura"
     assert lighting["color_temp_warm_at"] == "21:00"
     assert lighting["color_temp_update_minutes"] == 5
+
+
+def test_house_rules_should_survive_roundtrip() -> None:
+    """Расписание, «мы спим» и батарейки живут на уровне дома и не теряются."""
+    rules = _rules()
+
+    assert rules["sleep_modifier"] == "input_boolean.sleep_mode"
+    assert rules["schedule"]["night_off_at"] == "23:00"
+    assert rules["schedule"]["morning_at"] == "07:00"
+    assert rules["sensor_health"]["battery_watch_entities"] == ["sensor.battery"]
+    assert "night_off_at" not in rules["lighting"]
+    assert "morning_at" not in rules["lighting"]
+    assert "sleep_modifier" not in rules["lighting"]
+    assert "battery_watch_entities" not in rules["lighting"]
 
 
 def test_climate_rules_should_survive_roundtrip() -> None:

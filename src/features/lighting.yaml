@@ -34,7 +34,7 @@
 #   - ON_HOLD: Горит, движения нет, ждём `motion_timeout_sec`
 #   - ON_MANUAL: Горит по решению человека
 #
-# МОДИФИКАТОР «МЫ СПИМ» (automation_rules.lighting.sleep_modifier в манифесте):
+# МОДИФИКАТОР «МЫ СПИМ» (automation_rules.sleep_modifier в манифесте):
 #   - включение сущности шлёт событие sleep_started — свет гаснет во всех
 #     состояниях, включая ручное (входит в SAFETY_EVENTS, обход локаута);
 #   - пока модификатор включён, guard may_turn_on не даёт включать яркий свет
