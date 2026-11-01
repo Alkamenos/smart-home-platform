@@ -37,6 +37,8 @@ class _Client:
         #: Числовые переключатели: порог «жарко» и уставка комнаты.
         self.comfort_max: float | None = None
         self.climate_setpoint: float | None = None
+        #: Флаг разрешения на автоматическое включение планового света.
+        self.scheduled_light_enabled: bool | None = None
 
     def global_role(self, entity: str) -> str | None:
         """Роль глобальной сущности по её идентификатору.
@@ -55,6 +57,7 @@ class _Client:
             "input_boolean.provetrivanie_vytyazhka": "exhaust",
             "input_number.maksimalno_komfortnaia_temperatura": "comfort_max",
             "input_number.temperatura": "setpoint",
+            "input_boolean.vkliuchat_osnovnoe_osveshchenie": "scheduled_feature",
             "sensor.datchik_temperatury_kabinet_temperature": None,
         }.get(entity)
 
@@ -145,6 +148,32 @@ async def test_setpoint_change_reevaluates_ventilation_immediately() -> None:
     assert context["climate_setpoint"] == 22.0, (
         "роутер получил старую уставку: правило «вентиляция стоит ниже уставки» "
         "(FR-049) решит по прежней цели"
+    )
+
+
+@pytest.mark.asyncio
+async def test_scheduled_light_feature_reevaluates_light_immediately() -> None:
+    """Смена флага основного света доносится до автоматов сразу.
+
+    Returns:
+        Ничего.
+    """
+    adapter, route, client = _build()
+    client.scheduled_light_enabled = True
+
+    await adapter.on_state_change(
+        "input_boolean.vkliuchat_osnovnoe_osveshchenie",
+        "off",
+        "on",
+        {},
+    )
+
+    route.assert_awaited_once()
+    context: dict[str, Any] = route.await_args.args[0]
+    assert context["scheduled_light_enabled"] is True
+    assert context["_changed_role"] == "scheduled_feature", (
+        "без признака изменившейся роли шаблон не отличит смену своего флага "
+        "от чужой настройки дома"
     )
 
 

@@ -16,6 +16,8 @@ from pydantic import ValidationError
 from core.container import Container
 from core.models.manifest import (
     AutomationRules,
+    BehaviorConfig,
+    DeviceConfig,
     InstanceConfig,
     Manifest,
     RoomConfig,
@@ -74,6 +76,46 @@ def test_season_is_bound_from_house_rules() -> None:
     adapter = _bind(_container([], AutomationRules(season_entity="input_boolean.zima")))
 
     assert adapter.climate_entities["season"] == "input_boolean.zima"
+
+
+def test_scheduled_light_feature_is_bound_from_house_rules() -> None:
+    """Разрешение на плановый свет берётся с уровня дома."""
+    rules = AutomationRules(
+        scheduled_light_feature_entity="input_boolean.vkliuchat_osnovnoe_osveshchenie"
+    )
+    adapter = _bind(_container([], rules))
+
+    assert (
+        adapter.lighting_entities["scheduled_feature"]
+        == "input_boolean.vkliuchat_osnovnoe_osveshchenie"
+    )
+
+
+def test_scheduled_light_fsm_is_known_to_watcher() -> None:
+    """Сверка получает имя автомата планового света, чтобы не повторять закат."""
+    room = RoomConfig(
+        id="sad",
+        name="Сад",
+        devices=[
+            DeviceConfig(
+                id="light.vse_fonari",
+                type="light",
+                name="Основное освещение",
+                behaviors=[
+                    BehaviorConfig(
+                        template="scheduled_light",
+                        priority=10,
+                        params={"off_by": "sleep"},
+                    )
+                ],
+            )
+        ],
+    )
+    container = _container([room], AutomationRules())
+
+    assert container._scheduled_light_entities() == {  # noqa: SLF001
+        "light.vse_fonari_scheduled_light_10"
+    }
 
 
 def test_thermostat_is_bound_from_room() -> None:
