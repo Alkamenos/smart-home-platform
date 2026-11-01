@@ -142,7 +142,12 @@ class LovelaceGenerator:
         if getattr(manifest.dashboard, "show_platform", True):
             views.insert(0, self._platform_view())
         title = str(getattr(manifest.dashboard, "title", "") or "").strip()
-        return {"title": title, "views": views}
+        if not title:
+            # В списке панелей Home Assistant дашборд должен называться домом,
+            # а не пустой строкой. Раньше запасное имя подставлял только
+            # HTTP-маршрут, и файл, собранный CLI, оставался без названия.
+            title = str(getattr(getattr(manifest, "instance", None), "name", "") or "").strip()
+        return {"title": title or "Дом", "views": views}
 
     def _platform_view(self) -> dict[str, Any]:
         """Собрать представление платформы: «что требует внимания».
