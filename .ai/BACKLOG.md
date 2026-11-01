@@ -245,7 +245,7 @@ US4 — кода.
 | B5 | Known Issue #9 — `params.motion_sensor` (диагноз оказался неверным) | PROJECT_STATE | ✅ 2026-10-07: мёртвой была не доставка по `motion_sensor`, а вся доставка событий HA — `hasattr(engine, "event_bus")` давал `False` на настоящем движке. Публичное свойство `event_bus` + удаление запасной ветки `engine.trigger()`; 13 проверок на живых объектах |
 | B6 | Known Issue #10 — MockAdapter не маршрутизирует state change | PROJECT_STATE | ⬜ |
 | B7 | Known Issue #12 — `Task was destroyed` при остановке контейнера | PROJECT_STATE | ⬜ |
-| B8 | Dashboard Generator: CLI `shp generate-dashboard` (enhancement 19, Phase 9.75 остаток) | ROADMAP 9.75 | ⬜ |
+| B8 | Dashboard Generator: CLI `shp generate-dashboard` (enhancement 19, Phase 9.75 остаток) | ROADMAP 9.75 | ✅ 01.11: `smart_home.cli.commands.generate_dashboard`; манифест по умолчанию — эталон боевого дома, `-o` пишет файл, без него YAML в stdout; пустое название заменяется именем дома. 18 представлений / 40 карточек на эталоне. 10 тестов |
 | B9 | Tech Debt Low #5 — dashboard generator → Jinja2 | ROADMAP | ⬜ |
 | B10 | Битая автофикстура `tests/conftest.py::webui_server` | Known Issue #13 (остаток Q6) | ✅ 2026-10-03: удалена (не запрашивалась ни одним тестом, процесс всегда падал с кодом 3 на несуществующей цели `src.webui.app:app`); попутно починены таргеты `make run-webui`/`run-webui-prod` с той же битой целью — переведены на фабрику `src.webui.app:create_app`, проверено запуском |
 | B11 | Убрать отслеживаемые `.pyc` из индекса git — байткод в репозитории маскирует устаревшие импорты (именно так проявился двойной модуль `webui`/`src.webui` в specs/007) | найдено 2026-10-02 при F3 | ✅ 2026-10-03: 117 файлов убраны из индекса; правило `__pycache__/` уже было в `.gitignore` и работало — файлы были отслеживаемы до его добавления, поэтому правка правил не потребовалась (в отличие от исходной формулировки задачи) |
@@ -1740,6 +1740,35 @@ sensor.griadki_batareika, topic: `behavioral/location/gryadki/battery/attributes
 панелей на них не было, только собственные (устройство, интеграция). Имена
 Zigbee-устройств вида `0xa4c138ef3971344e Батарея` — это имена самого дома, их не
 трогали; в тексте сводки технический префикс убирается.
+
+### B8 — CLI генерации дашборда (сделано 01.11)
+
+**Источник:** ROADMAP 9.75, enhancement 19. **Статус:** ✅ Сделано 01.11.
+**Приоритет:** 🟡 Medium.
+
+**Что было.** Генератор дашборда и публикация в Home Assistant готовы раньше
+(B79): `GET /api/v1/system/dashboard` и `POST …/publish`. Но обещанной в плане
+команды `shp generate-dashboard` не существовало — собрать панель можно было
+только из запущенного контейнера через интерфейс.
+
+**Как сделано.** `src/smart_home/cli/commands/generate_dashboard.py`:
+
+- манифест по умолчанию — эталон боевого дома
+  `instances/leonids_house_prod/manifest.yaml` (боевой том в git не хранится);
+- `-o/--output` пишет YAML в файл и создаёт каталоги; без него в stdout идёт
+  только YAML, без служебных строк — вывод можно перенаправлять;
+- ошибки названы: файла нет, YAML битый, манифест не прошёл проверку, в доме
+  нет ни комнат, ни локаций;
+- запасное название (имя дома при пустом `dashboard.title`) перенесено в сам
+  `LovelaceGenerator`, а не в HTTP-маршрут: теперь файл из CLI и ответ API
+  совпадают.
+
+**Проверено.** На эталонном манифесте — 18 представлений, 40 карточек; все типы
+карточек `entities`/`markdown`, то есть Home Assistant их знает. Тесты —
+`tests/cli/test_generate_dashboard.py` (10): stdout, файл, вложенные каталоги,
+счётчики, типы карточек, пустое название, три вида ошибок, манифест по
+умолчанию. Полный прогон — **3410 passed / 19 skipped**; `ruff`, `format`,
+`mypy` чистые.
 
 ### B79 — Режим запуска внутри Home Assistant (аддон) и генерация дашбордов
 

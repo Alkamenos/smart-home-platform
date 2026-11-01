@@ -172,7 +172,7 @@
     * Run `shp bulk-import discover --manifest instances/<name>/manifest.yaml`
     * Review generated manifest in CLI or web UI
     * Save to instances/<name>/manifest.yaml
-- [ ] Dashboard Generator for Platform Management
+- [x] Dashboard Generator for Platform Management
   - Detail: `.ai/enhancements/19-dashboard-generator.md`
   - Priority: MEDIUM
   - Effort: 1 day
@@ -180,6 +180,7 @@
     * Run `shp generate-dashboard --output lovelace_platform.yaml`
     * Import generated dashboard into HA
     * Real-time visibility into platform operations
+  - Done: 2026-11-01 — CLI `shp generate-dashboard` (B8): манифест по умолчанию — эталон боевого дома, `-o` пишет файл, без него YAML в stdout; 10 тестов. Генератор и публикация в HA сделаны раньше (B79).
 ## Phase 9.8: Critical Production Fixes [COMPLETED: 2026-09-29]
 [x] CRITICAL Docker Entrypoint & Bootstrap Fix
   - Files: deploy/docker/Dockerfile, src/main.py, pyproject.toml
