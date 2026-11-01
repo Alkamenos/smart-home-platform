@@ -50,6 +50,7 @@ GLOBAL_ENTITY_FIELDS: dict[str, str] = {
     "color_temp_day": "color_temp_day",
     "color_temp_night": "color_temp_night",
     "color_temp_current": "color_temp_current",
+    "scheduled_feature": "scheduled_light_enabled",
     # Шторы (спека 015).
     "covers_feature": "covers_enabled",
     "my_doma": "my_doma",
@@ -72,6 +73,7 @@ _BOOLEAN_ROLES = frozenset(
         "sobaki_doma",
         "night_close",
         "emergency",
+        "scheduled_feature",
     }
 )
 
@@ -85,6 +87,9 @@ _NUMERIC_ROLES = frozenset(
         "color_temp_current",
     }
 )
+
+#: Роли света, смена которых должна немедленно пересмотреть автоматы.
+_LIGHTING_RETRIGGER_ROLES = frozenset({"scheduled_feature"})
 
 _VENTILATION_RETRIGGER_ROLES: frozenset[str] = frozenset(
     {"enable", "ventilation_feature", "season", "airing", "exhaust", "comfort_max", "setpoint"}

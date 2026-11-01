@@ -443,6 +443,140 @@ def make_stops_on_sunrise() -> Callable[[Any, dict[str, Any]], bool]:
     return stops_on_sunrise
 
 
+def make_scheduled_light_can_start() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «плановому свету разрешено включиться по закату».
+
+    Флаг ``scheduled_light_feature_entity`` — это разрешение владельца, а не
+    состояние группы. Пока он выключен, платформа не включает основное уличное
+    освещение автоматически; ручное управление при этом работает всегда.
+    Неизвестное состояние флага не считается выключенным: платформа только
+    поднялась и ещё не прочитала Home Assistant, а решать вслепую нельзя.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def scheduled_light_can_start(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить старт по закату, если флаг включён и дом не спит."""
+        del state
+        if context.get("scheduled_light_enabled") is not True:
+            return False
+        return context.get("sleep_modifier_on") is not True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа: флаг выключен, данных нет или «мы спим»."""
+        del state
+        enabled = context.get("scheduled_light_enabled")
+        if enabled is None:
+            return "guard_data_missing"
+        if enabled is not True:
+            return "scheduled_light_disabled"
+        if context.get("sleep_modifier_on") is True:
+            return "sleep_modifier"
+        return None
+
+    scheduled_light_can_start.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return scheduled_light_can_start
+
+
+def make_scheduled_light_is_disabled() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «автоматическое включение планового света запрещено».
+
+    Нужно для пустого перехода ``OFF --sunset_started--> OFF``: сверка
+    вечернего света повторяет закат каждые 15 минут, и без такого перехода
+    выключенный флажок давал бы отказ на каждом проходе. Пустой переход
+    фиксирует штатное решение «сегодня автоматика не включается».
+
+    Returns:
+        Функция ``(state, context) -> bool``.
+    """
+
+    def scheduled_light_is_disabled(state: Any, context: dict[str, Any]) -> bool:
+        """Вернуть True, если флаг автоматики явно выключен."""
+        del state
+        return context.get("scheduled_light_enabled") is False
+
+    return scheduled_light_is_disabled
+
+
+def make_scheduled_light_should_turn_on() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «включить плановый свет после смены флага».
+
+    Смена флага после заката должна включать свет сразу, если владелец не спит
+    и на улице темно. Смена любого другого флага дома не должна трогать свет:
+    иначе ручное включение при выключенном флажке гасилось бы чужой настройкой.
+    Поэтому переход требует одноразового признака ``_changed_role`` или
+    ``_startup_reapply`` (первый пересмотр после запуска).
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def scheduled_light_should_turn_on(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить включение по смене флага, если сейчас вечер и не спим."""
+        del state
+        if context.get("scheduled_light_enabled") is not True:
+            return False
+        if context.get("sleep_modifier_on") is True:
+            return False
+        if context.get("daylight") is not False:
+            return False
+        changed_role = context.get("_changed_role")
+        return changed_role == "scheduled_feature" or context.get("_startup_reapply") is True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину, почему смена флага не включила свет."""
+        del state
+        enabled = context.get("scheduled_light_enabled")
+        if enabled is None:
+            return "guard_data_missing"
+        if enabled is not True:
+            return "scheduled_light_disabled"
+        if context.get("sleep_modifier_on") is True:
+            return "sleep_modifier"
+        daylight = context.get("daylight")
+        if daylight is None:
+            return "guard_data_missing"
+        if daylight is not False:
+            return "daylight"
+        return None
+
+    scheduled_light_should_turn_on.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return scheduled_light_should_turn_on
+
+
+def make_scheduled_light_should_turn_off() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «погасить плановый свет после выключения флага».
+
+    Требование владельца: если флаг выключили, пока фонари горят, платформа
+    их гасит. Условие требует смены именно этого флага (или первого пересмотра
+    после запуска), чтобы обычный ``settings_changed`` от чужой настройки не
+    выключал свет, включённый вручную при выключенном флажке.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def scheduled_light_should_turn_off(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить выключение, если флаг выключен и изменился именно он."""
+        del state
+        if context.get("scheduled_light_enabled") is not False:
+            return False
+        changed_role = context.get("_changed_role")
+        return changed_role == "scheduled_feature" or context.get("_startup_reapply") is True
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа: флаг не выключен или данных нет."""
+        del state
+        enabled = context.get("scheduled_light_enabled")
+        if enabled is None:
+            return "guard_data_missing"
+        return None
+
+    scheduled_light_should_turn_off.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return scheduled_light_should_turn_off
+
+
 def make_may_stay_idle() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «комната остаётся в покое — и это объяснимо».
 

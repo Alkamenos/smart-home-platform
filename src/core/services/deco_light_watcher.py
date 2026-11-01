@@ -33,7 +33,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Any
 
@@ -65,11 +65,19 @@ class DecorativeLightWatcher:
         interval_minutes: float = 15.0,
         sleeping_supplier: Any = None,
         now_supplier: Callable[[], datetime] | None = None,
+        scheduled_light_feature_supplier: Any = None,
+        scheduled_light_entities: Iterable[str] = (),
     ) -> None:
         self.engine = engine
         self._daylight = daylight_supplier
         self._sleeping_supplier = sleeping_supplier
         self._now_supplier = now_supplier
+        self._scheduled_light_feature_supplier = scheduled_light_feature_supplier
+        # Автоматы, которые включаются по закату только с разрешения флага
+        # дома. Для них сверка не должна повторять закат, когда флаг выключен:
+        # иначе каждые 15 минут в журнале появлялось бы «вечерний свет не
+        # соответствует решению», а автомат делал бы пустой self-переход.
+        self._scheduled_light_entities = frozenset(scheduled_light_entities)
         self.interval_minutes = interval_minutes
         self._task: asyncio.Task[None] | None = None
 
@@ -88,6 +96,11 @@ class DecorativeLightWatcher:
 
         sleeping = self._sleeping()
         for entity_id in self.engine.entities_with_trigger("sunset_started"):
+            if (
+                entity_id in self._scheduled_light_entities
+                and self._scheduled_light_enabled() is not True
+            ):
+                continue
             event = self._correction(entity_id, daylight=daylight, sleeping=sleeping)
             if event is None:
                 continue
@@ -98,6 +111,17 @@ class DecorativeLightWatcher:
                 await self.engine.trigger(entity_id, event, respect_debounce=False)
             except Exception:  # noqa: BLE001 — одно устройство не мешает остальным
                 logger.warning(f"Сверка вечернего света: {entity_id} не обработал {event}")
+
+    def _scheduled_light_enabled(self) -> bool | None:
+        """Разрешено ли автоматическое включение планового света.
+
+        Returns:
+            ``True`` — разрешено, ``False`` — запрещено, ``None`` — состояние
+            флага не прочитано или поставщик не задан.
+        """
+        supplier = self._scheduled_light_feature_supplier
+        value = supplier() if callable(supplier) else supplier
+        return value if isinstance(value, bool) else None
 
     def _now(self) -> datetime:
         """Текущее время в часах дома.

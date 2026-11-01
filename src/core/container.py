@@ -446,6 +446,13 @@ class Container:
             if entity:
                 adapter.lighting_entities[field_name.removesuffix("_entity")] = entity
 
+        # Разрешение на автоматическое включение планового света. Флаг живёт
+        # на уровне дома: владелец решает, можно ли автоматике включать
+        # основное уличное освещение по закату.
+        scheduled_feature = getattr(rules, "scheduled_light_feature_entity", None)
+        if scheduled_feature:
+            adapter.lighting_entities["scheduled_feature"] = scheduled_feature
+
         logger.info(
             f"Глобальные сущности: климат {adapter.climate_entities}, "
             f"вентиляция {adapter.ventilation_entities}, свет {adapter.lighting_entities}, "
@@ -952,6 +959,14 @@ class Container:
             # дефект 2026-10-13: гирлянда вернулась через минуту после отбоя).
             return getattr(getattr(adapter, "_ws_client", None), "asleep", None)
 
+        def _scheduled_light_feature() -> Any:
+            # Разрешение владельца на автоматическое включение планового света.
+            return getattr(
+                getattr(adapter, "_ws_client", None),
+                "scheduled_light_enabled",
+                None,
+            )
+
         from core.guards.context import HOUSE_TZ
         from core.services.deco_light_watcher import DecorativeLightWatcher
 
@@ -965,6 +980,8 @@ class Container:
             daylight_supplier=_daylight,
             sleeping_supplier=_sleeping,
             now_supplier=_now,
+            scheduled_light_feature_supplier=_scheduled_light_feature,
+            scheduled_light_entities=self._scheduled_light_entities(),
         )
         # Как сторож и суточный цикл: в синхронной сборке (тесты, Container.build()
         # без цикла событий) запуск пропускается — фоновая задача без работающего
@@ -978,6 +995,28 @@ class Container:
             return
         self._deco_watcher.start()
         logger.info(f"Сверка вечернего света: {self._deco_watcher.describe()}")
+
+    def _scheduled_light_entities(self) -> set[str]:
+        """Имена автоматов, включающихся по закату только с разрешения флага.
+
+        Сверка вечернего света перебирает все автоматы с триггером
+        ``sunset_started``. Плановому свету она не должна повторять закат при
+        выключенном флаге: это штатное решение, а не расхождение. Список
+        собирается по манифесту тем же правилом имён, что и фабрика автоматов.
+
+        Returns:
+            Множество идентификаторов автоматов ``scheduled_light``.
+        """
+        from core.fsm.naming import fsm_entity_id
+
+        entities: set[str] = set()
+        for place in self.manifest.all_places:
+            for device in getattr(place, "devices", []) or []:
+                for behavior in device.behaviors:
+                    if behavior.template != "scheduled_light":
+                        continue
+                    entities.add(fsm_entity_id(device.id, behavior.template, behavior.priority))
+        return entities
 
     def _manifest_rules(self) -> Any:
         """Правила дома для встроенных условий.

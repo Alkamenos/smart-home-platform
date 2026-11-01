@@ -130,6 +130,10 @@ def turn_on_light(state: Any, context: dict[str, Any]) -> CommandIntent | None:
         data=data,
         priority=priority,
         source=source,
+        # Плановый свет включает владелец своим флагом, а не удобство
+        # автоматики: ручная блокировка не должна отменять его решение.
+        # Остальные шаблоны флаг не задают, и поведение для них прежнее.
+        bypass_lockout=bool(context.get("bypass_lockout", False)),
     )
 
 

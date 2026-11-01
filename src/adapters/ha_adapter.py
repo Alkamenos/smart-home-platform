@@ -32,6 +32,7 @@ import aiohttp
 from adapters.ha_constants import (
     _BOOLEAN_ROLES as _BOOLEAN_ROLES,
     _COVER_RETRIGGER_ROLES as _COVER_RETRIGGER_ROLES,
+    _LIGHTING_RETRIGGER_ROLES as _LIGHTING_RETRIGGER_ROLES,
     _NUMERIC_ROLES as _NUMERIC_ROLES,
     _VENTILATION_RETRIGGER_ROLES as _VENTILATION_RETRIGGER_ROLES,
     COMMAND_ECHO_WINDOW_SEC as COMMAND_ECHO_WINDOW_SEC,
@@ -823,6 +824,13 @@ class HAAdapter:
             **context,
             "trace_id": trace_id,
         }
+        if setpoint_role is not None:
+            # Какая именно глобальная сущность изменилась. Шаблоны,
+            # реагирующие на смену настроек, должны отличать «владелец
+            # переключил мой флаг» от любого другого settings_changed: иначе
+            # ручное включение при выключенном флажке гасилось бы сменой
+            # чужого флага дома.
+            event_context["_changed_role"] = setpoint_role
 
         payload = {
             "entity_id": entity_id,
@@ -965,7 +973,11 @@ class HAAdapter:
         if role_of is None:
             return False
         role = role_of(entity_id)
-        return role in _VENTILATION_RETRIGGER_ROLES or role in _COVER_RETRIGGER_ROLES
+        return (
+            role in _VENTILATION_RETRIGGER_ROLES
+            or role in _COVER_RETRIGGER_ROLES
+            or role in _LIGHTING_RETRIGGER_ROLES
+        )
 
     async def _route_settings_change_if_possible(self) -> None:
         """Разослать ``settings_changed`` один раз при подключении.

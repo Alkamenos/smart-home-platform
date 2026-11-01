@@ -152,6 +152,11 @@ REASON_COVERS_DOGS_ONLY: Final[str] = "covers_dogs_only"
 REASON_COVER_EMERGENCY: Final[str] = "cover_emergency"
 #: Фиче-флаг штор выключен: платформа шторы не трогает.
 REASON_COVERS_DISABLED: Final[str] = "covers_disabled"
+#: Автоматическое включение планового света выключено флагом дома. Это не
+#: поломка и не «светло»: владелец просто не разрешил автоматике включать
+#: основное уличное освещение по закату. Отказ должен читаться отдельно от
+#: сработавшей автоматики и от ручного управления.
+REASON_SCHEDULED_LIGHT_DISABLED: Final[str] = "scheduled_light_disabled"
 
 #: Переход не относится к этому прибору: у обогревателя нет охлаждения, и
 #: условие охлаждения говорит это прямо. Такой переход движок пропускает
@@ -199,6 +204,7 @@ GUARD_DENIAL_REASONS: Final[frozenset[str]] = frozenset(
         REASON_COVERS_DOGS_ONLY,
         REASON_COVER_EMERGENCY,
         REASON_COVERS_DISABLED,
+        REASON_SCHEDULED_LIGHT_DISABLED,
         REASON_NOT_APPLICABLE,
         REASON_MOTION_ECHO,
     }
@@ -239,6 +245,7 @@ REASON_TEXT: Final[dict[str, str]] = {
     REASON_COVERS_DOGS_ONLY: "дома собаки — закрываются только спальня и кабинет",
     REASON_COVER_EMERGENCY: "аварийный флаг: шторы открываются",
     REASON_COVERS_DISABLED: "шторы отключены флажком дома",
+    REASON_SCHEDULED_LIGHT_DISABLED: "автоматическое включение света выключено флажком дома",
     # Коды действий (T007)
     "action_on": "включено по расписанию",
     "action_off": "выключено по расписанию",

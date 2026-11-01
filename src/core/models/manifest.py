@@ -509,6 +509,15 @@ class AutomationRules(BaseModel):
     2026-10-09). Сущности нет или её состояние неизвестно — модификатора
     нет, и решает солнце/окно тишины, а не «спим». Флаг общий для света, штор и
     вентиляции, поэтому живёт на уровне дома (аудит B76, A4)."""
+    scheduled_light_feature_entity: str | None = None
+    """Разрешение на автоматическое включение планового света.
+
+    Флаг живёт в Home Assistant и принадлежит дому, а не отдельной лампе:
+    владелец сам решает, разрешать ли автоматике включать основное уличное
+    освещение по закату. Пока флаг выключен, платформа не включает группу
+    автоматически, но ручное управление работает всегда. Имя сущности —
+    например ``input_boolean.vkliuchat_osnovnoe_osveshchenie``.
+    """
     schedule: HouseSchedule = Field(default_factory=HouseSchedule)
     """Суточный цикл дома: события ``quiet_hours_started`` и ``day_started``."""
     sensor_health: SensorHealthRules = Field(default_factory=SensorHealthRules)
@@ -521,7 +530,11 @@ class AutomationRules(BaseModel):
     locations: LocationRules = Field(default_factory=LocationRules)
     """Наблюдение за локациями (спека 016): порог молчания, окно присутствия."""
 
-    @field_validator("sleep_modifier", "season_entity")
+    @field_validator(
+        "sleep_modifier",
+        "season_entity",
+        "scheduled_light_feature_entity",
+    )
     @classmethod
     def _reject_blank_house_entity(cls, value: str | None) -> str | None:
         """Отвергнуть пустую сущность уровня дома.

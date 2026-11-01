@@ -173,6 +173,10 @@ class SimpleHAWebSocketClient:
         self.exhaust_on: bool | None = None
         self.ventilation_enabled: bool | None = None
         self.outside_temperature: float | None = None
+        # Разрешение автоматике включать плановый свет (основное уличное
+        # освещение) по закату. None — сущность не прочитана; это не «не
+        # разрешено», поэтому до первого чтения автоматика не решает.
+        self.scheduled_light_enabled: bool | None = None
         # Размер фильтра при последнем наблюдении. Нужен, чтобы изменение
         # состава подписки было видно в журнале, а не только в памяти кода.
         self._filter_size_last_seen: int = 0

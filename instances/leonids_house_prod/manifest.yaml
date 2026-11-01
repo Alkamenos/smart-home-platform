@@ -355,7 +355,12 @@ locations:
   - id: light.vse_fonari
     type: light
     name: Основное освещение сада
-    behaviors: []
+    behaviors:
+    - template: scheduled_light
+      priority: 10
+      params:
+        off_by: sleep
+        bypass_lockout: true
   - id: light.group_nochnoe_osveshcheni
     type: light
     name: Ночное освещение
@@ -581,6 +586,7 @@ automation_rules:
   manual_command_sources: []
   season_entity: input_boolean.zima
   sleep_modifier: input_boolean.sleep_mode
+  scheduled_light_feature_entity: input_boolean.vkliuchat_osnovnoe_osveshchenie
   schedule:
     night_off_at: '23:00'
     morning_at: '07:00'

@@ -195,6 +195,14 @@ class AutomationRules(BaseModel):
             "для света, штор и вентиляции, поэтому живёт на уровне дома"
         ),
     )
+    scheduled_light_feature_entity: str | None = Field(
+        default=None,
+        description=(
+            "Разрешение автоматического включения планового света (например, "
+            "input_boolean.vkliuchat_osnovnoe_osveshchenie). Пока флаг выключен, "
+            "платформа не включает группу по закату; ручное управление работает"
+        ),
+    )
     schedule: HouseSchedule = Field(
         default_factory=HouseSchedule,
         description="Суточный цикл дома (аудит B76, A3)",

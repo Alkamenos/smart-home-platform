@@ -199,6 +199,7 @@ TEMPLATE_DOMAINS: dict[str, str] = {
     "lighting": "lighting",
     "night_light": "lighting",
     "deco_light": "lighting",
+    "scheduled_light": "lighting",
     "climate_control": "climate",
     "humidity_ventilation": "ventilation",
     "ventilation_modes": "ventilation",

@@ -127,6 +127,10 @@ KNOWN_BEHAVIOR_PARAM_KEYS: frozenset[str] = frozenset(
         "hysteresis",
         "managed_by_hardware",
         "off_by",
+        # Плановый свет (B111): команды шаблона обходят ручную блокировку.
+        # Параметр добавлен в белый список, чтобы после удаления из манифеста
+        # он не остался в сохранённом контексте и не обходил блокировку вечно.
+        "bypass_lockout",
         "humidity_threshold",
         "motion_timeout_sec",
         "brightness",
