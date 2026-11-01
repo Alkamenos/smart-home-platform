@@ -125,6 +125,38 @@ class TestTimerExpiryIsAnEmergency:
         )
         assert (steps[1].domain, steps[1].service) == ("switch", "turn_off")
 
+    def test_timer_step_carries_only_value(self) -> None:
+        """В данные ``number.set_value`` не попадает ничего, кроме ``value``.
+
+        Живая находка 01.11: шаг обнуления таймера нёс ещё и ``timer_unit``, и
+        Home Assistant отверг вызов целиком: ``extra keys not allowed @
+        data['timer_unit']``. Обнуление не прошло, а вместе с ним платформа
+        пропустила и выключение прибора — обогреватель остался включённым.
+        """
+        steps = _action("heater_emergency_off")(None, {"entity_id": HEATER, "heater_timer": TIMER})
+
+        assert steps[0].data == {"value": 0}, (
+            f"в number.set_value уходят лишние поля: {steps[0].data}. Home Assistant "
+            "принимает только value; лишний ключ уносит весь вызов"
+        )
+
+    def test_timer_step_is_best_effort_but_switch_is_required(self) -> None:
+        """Сбой обнуления таймера не отменяет выключение прибора.
+
+        Порядок «таймер, затем прибор» нужен, чтобы таймер не включил обогрев
+        снова. Но если обнуление не удалось, выключение всё равно обязательно:
+        оставить обогреватель включённым — худший из возможных исходов.
+        """
+        steps = _action("heater_emergency_off")(None, {"entity_id": HEATER, "heater_timer": TIMER})
+
+        assert steps[0].best_effort is True, (
+            "шаг обнуления таймера считается обязательным: его сбой снова "
+            "отменит выключение обогревателя"
+        )
+        assert steps[1].best_effort is False, (
+            "выключение прибора должно оставаться обязательным шагом"
+        )
+
 
 class TestTimeoutTransitionIsWiredToTheEmergencyAction:
     """Переход по таймеру ведёт в аварийное выключение."""
