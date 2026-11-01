@@ -2911,6 +2911,43 @@ healthy, `/ready` — true, 22 автомата.
 `tests/unit/core/test_event_router_device_change.py` (3),
 `tests/unit/test_ha_adapter_device_change_routing.py` (2).
 
+### B111 — Плановый свет: основное уличное освещение по флагу (сделано 01.11)
+
+**Источник:** владелец, 01.11: «фонари включаются вручную; сделай в HA флаг
+“Включать основное освещение”, и если он true — по закату включать все
+фонари». **Статус:** ✅ Сделано 01.11. **Приоритет:** 🟡 Medium.
+
+**Решение.** Отдельный шаблон `scheduled_light`, не `deco_light`: основное
+освещение — не декор, у него другой сценарий. Флаг
+`automation_rules.scheduled_light_feature_entity` — разрешение автоматике,
+а не состояние группы; ручное управление работает всегда. Платформа управляет
+только группой `light.vse_fonari`, отдельные фонари не трогает.
+
+**Сценарий:**
+- закат + флаг включён + не спим → включить группу;
+- выключение по «мы спим», запасной вариант — рассвет и `day_started`;
+- флаг выключили, пока свет горит → погасить;
+- флаг включили после заката → включить сразу, если не спим;
+- ручное выключение держится до рассвета/утра/«мы спим»;
+- смена чужой настройки дома не трогает ручное включение при выключенном флаге.
+
+**Реализация.** `src/features/scheduled_light.yaml`; условия
+`scheduled_light_can_start`, `scheduled_light_is_disabled`,
+`scheduled_light_should_turn_on`, `scheduled_light_should_turn_off`; роль
+адаптера `scheduled_feature` → контекст `scheduled_light_enabled`; причина
+отказа `scheduled_light_disabled`. Команды шаблона помечены
+`bypass_lockout: true`: флаг владельца и «мы спим» — его решение, а не
+удобство автоматики, и ручная блокировка не должна отменять выключение.
+В HA создан helper `input_boolean.vkliuchat_osnovnoe_osveshchenie`
+(«Включать основное освещение»). Боевой и эталонный манифесты обновлены.
+
+**Тесты:** `tests/unit/core/test_scheduled_light.py` (14 сценариев),
+`test_container_house_globals`, `test_ha_ventilation_gate_retrigger`,
+`test_deco_light_watcher`, контракт шаблонов. Полный прогон —
+**3392 passed / 19 skipped**; `ruff` и `mypy` чистые. Образ пересобран,
+контейнер healthy, `/ready: true`, 27 автоматов; автомат
+`light.vse_fonari_scheduled_light_10` создан в `OFF`.
+
 ### B110 — 23:00 не меняет свет над столом (сделано 30.10)
 
 **Источник:** владелец, 30.10, 23:03: «что произошло со светом в 23:00? свет
