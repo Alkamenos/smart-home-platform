@@ -1113,6 +1113,16 @@ class FSMEngine:
                     log.debug(f"Submitting CommandIntent {index + 1}/{len(intents)}: {intent}")
                     sent = await self._dispatcher.submit(intent)
                     if not sent:
+                        if intent.best_effort:
+                            # Вспомогательный шаг: без него основное действие
+                            # всё равно нужно выполнить. Пример — обнуление
+                            # таймера перед выключением обогревателя.
+                            log.warning(
+                                f"Command step {index + 1}/{len(intents)} not sent "
+                                f"({intent.source} → {intent.device_id}); "
+                                "continuing: step is best effort"
+                            )
+                            continue
                         # Дальше идти нельзя: шаг с таймером без включённого
                         # прибора Home Assistant запишет без ошибки, а греть
                         # никто не будет — отказ будет выглядеть как успех.

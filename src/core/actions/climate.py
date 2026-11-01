@@ -487,9 +487,18 @@ def _heater_off_steps(
         "number",
         "set_value",
         source,
-        data={"value": 0, "timer_unit": "s"},
+        # Только `value`: `timer_unit` — сведения для журнала, а не параметр
+        # сервиса. В `data` он даёт `extra keys not allowed`, Home Assistant
+        # отвергает весь вызов, и обнуление таймера не происходит (живая
+        # находка 01.11 — вместе с ним пропадало и выключение прибора).
+        data={"value": 0},
         target_entity_id=timer,
     )
+    if zero_step is not None:
+        # Обнуление — подготовка, а не цель: если оно не удалось, прибор всё
+        # равно нужно выключить. Оставить обогреватель включённым хуже, чем
+        # оставить таймер, который потом попробует включить его снова.
+        zero_step.best_effort = True
     return [step for step in (zero_step, off_step) if step is not None]
 
 
