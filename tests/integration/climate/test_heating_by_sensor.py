@@ -310,6 +310,67 @@ ENGINE_EVENTS: set[str] = {"timeout"} | {
 }
 
 
+class TestHysteresisBandHoldsHeating:
+    """Полоса гистерезиса держит обогрев до цели и не пишет отказ."""
+
+    @pytest.mark.asyncio
+    async def test_band_keeps_heating_until_setpoint(self) -> None:
+        """21.6 при цели 22 — ещё греем; 22.0 — выключаем.
+
+        Раньше выключение стояло на нижней границе полосы (21.5), то есть
+        гистерезис был простым сдвигом цели: обогреватель гас на 21.5 и снова
+        включался с 21.4. Короткие циклы — ровно то, от чего полоса защищает.
+
+        Returns:
+            Ничего.
+        """
+        engine, router, dispatcher = _build()
+        fsm = "switch.obogrevatel_spalnia_climate_control_10"
+
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="20.5",
+            old_state="20.0",
+            context=_context("20.5"),
+        )
+        assert engine.get_state(fsm).current_state == "HEATING"
+        dispatcher.intents.clear()
+
+        # Дальше зовём движок напрямую без дебаунса: показания в тесте идут
+        # в одну миллисекунду, а в доме между ними проходят минуты. Снимать
+        # дебаунс у датчика ради теста нельзя — он существует против дребезга.
+        await engine.trigger(
+            fsm,
+            "temperature_changed",
+            {**_context("21.6"), "temperature": 21.6},
+            respect_debounce=False,
+        )
+
+        assert not dispatcher.intents, (
+            f"обогреватель выключен внутри полосы гистерезиса: {dispatcher.services()}"
+        )
+        assert engine.get_state(fsm).current_state == "HEATING", (
+            "внутри полосы автомат обязан остаться в нагреве до цели"
+        )
+        counts = engine.rejection_counts()
+        assert "guard_failed" not in counts and "no_transition" not in counts, (
+            f"показание в полосе записано как отказ: {counts} — каждое такое "
+            "показание шумит в журнале и прячет настоящие проблемы"
+        )
+
+        await engine.trigger(
+            fsm,
+            "temperature_changed",
+            {**_context("22.0"), "temperature": 22.0},
+            respect_debounce=False,
+        )
+
+        assert "turn_off" in dispatcher.services(), (
+            f"цель достигнута, а обогреватель не выключен: {dispatcher.services()}"
+        )
+        assert engine.get_state(fsm).current_state == "IDLE"
+
+
 class TestCoolingBranchDoesNotApplyToHeater:
     """Ветка охлаждения к обогревателю не относится (B66)."""
 

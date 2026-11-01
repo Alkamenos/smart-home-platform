@@ -183,7 +183,11 @@ class TestHeaterStaysOffInsideDeadZone:
         assert guard(None, _ctx(21.4, climate_setpoint=SETPOINT)) is True
 
     def test_at_or_above_setpoint_is_the_mirror(self) -> None:
-        """Условие выключения — зеркало условия включения.
+        """Условие выключения — не зеркало с тем же порогом, а верх полосы.
+
+        Включение и выключение не могут стоять на одной границе: тогда
+        «мёртвая зона» нулевая, и обогреватель дрожит на одном значении.
+        Включаемся ниже `цель − гистерезис`, выключаемся только на цели.
 
         Returns:
             Ничего.
@@ -192,6 +196,15 @@ class TestHeaterStaysOffInsideDeadZone:
 
         assert guard(None, _ctx(22.0, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS)) is True, (
             "достигнута цель — обогреватель выключается"
+        )
+        assert (
+            guard(
+                None, _ctx(SETPOINT - HYSTERESIS, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS)
+            )
+            is False
+        ), (
+            "на нижней границе полосы цель ещё не достигнута: выключение здесь "
+            "сделало бы гистерезис простым сдвигом цели"
         )
         assert guard(None, _ctx(20.5, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS)) is False
 
@@ -504,6 +517,27 @@ class TestMayStopHeating:
             "полградуса — значит перегревать комнату"
         )
 
+    def test_lower_edge_of_band_keeps_heating(self) -> None:
+        """Нижняя граница полосы — ещё не цель: выключать рано.
+
+        Гистерезис существует ради мёртвой зоны `[цель − гистерезис, цель]`.
+        Если выключаться на её нижней границе, полосы нет вовсе: обогреватель
+        гаснет на 21.5 при цели 22 и тут же включается от 21.4 — те самые
+        короткие циклы, от которых гистерезис и защищает.
+        """
+        guard = _guard("may_stop_heating")
+
+        assert (
+            guard(
+                None, _ctx(SETPOINT - HYSTERESIS, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS)
+            )
+            is False
+        ), "на нижней границе полосы обогрев должен продолжаться до цели"
+        assert (
+            guard(None, _ctx(SETPOINT - 0.1, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS))
+            is False
+        ), "внутри полосы обогрев не выключается"
+
     def test_still_cold_keeps_heating(self) -> None:
         """Ещё холодно — выключать нельзя."""
         guard = _guard("may_stop_heating")
@@ -523,6 +557,65 @@ class TestMayStopHeating:
         assert guard(None, _ctx("unavailable", climate_setpoint=SETPOINT)) is False, (
             "без показания нельзя утверждать, что цель достигнута: выключение "
             "по догадке оставит комнату холодной"
+        )
+
+
+class TestMayKeepHeating:
+    """`may_keep_heating` — внутри полосы обогрев продолжается без команды.
+
+    Без этого перехода показание в полосе не находило ни одного перехода:
+    `may_stop_heating` уже не пускает, `may_heat` ещё не пускает — и каждое
+    показание датчика писало отказ «нет такого перехода». Шум, из-за которого
+    утренний разбор не видит настоящих проблем.
+    """
+
+    def test_inside_band_keeps_heating(self) -> None:
+        """Между нижней границей и целью автомат остаётся в HEATING."""
+        guard = _guard("may_keep_heating")
+
+        assert (
+            guard(
+                None, _ctx(SETPOINT - HYSTERESIS, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS)
+            )
+            is True
+        )
+        assert (
+            guard(None, _ctx(SETPOINT - 0.1, climate_setpoint=SETPOINT, hysteresis=HYSTERESIS))
+            is True
+        )
+
+    def test_still_cold_keeps_heating(self) -> None:
+        """Ниже полосы обогрев тоже продолжается."""
+        guard = _guard("may_keep_heating")
+
+        assert guard(None, _ctx(20.0, climate_setpoint=SETPOINT)) is True
+
+    def test_at_target_no_longer_keeps(self) -> None:
+        """На цели продолжать незачем — первым сработает выключение."""
+        guard = _guard("may_keep_heating")
+
+        assert guard(None, _ctx(SETPOINT, climate_setpoint=SETPOINT)) is False
+        assert guard(None, _ctx(SETPOINT + 0.5, climate_setpoint=SETPOINT)) is False
+
+    def test_without_data_denies(self) -> None:
+        """Без показания продолжать нельзя — причину называет движок."""
+        guard = _guard("may_keep_heating")
+
+        assert guard(None, _ctx("unavailable", climate_setpoint=SETPOINT)) is False
+        assert guard.deny_reason(None, _ctx("unavailable", climate_setpoint=SETPOINT)) == (  # type: ignore[attr-defined]
+            "guard_data_missing"
+        )
+
+    def test_disabled_climate_denies(self) -> None:
+        """Выключенный владельцем климат остаётся названной причиной."""
+        guard = _guard("may_keep_heating")
+
+        assert guard(None, _ctx(20.0, climate_setpoint=SETPOINT, climate_enabled=False)) is False
+        assert (
+            guard.deny_reason(  # type: ignore[attr-defined]
+                None, _ctx(20.0, climate_setpoint=SETPOINT, climate_enabled=False)
+            )
+            == "climate_disabled"
         )
 
 
@@ -553,6 +646,16 @@ class TestClimateGuardsDeclareRequiredData:
 
         assert guards["may_stop_heating"].requires == ("temperature",)
 
+    def test_may_keep_heating_requires_temperature(self) -> None:
+        """`may_keep_heating` объявляет потребность в показании.
+
+        Returns:
+            Ничего.
+        """
+        guards = _guards()
+
+        assert guards["may_keep_heating"].requires == ("temperature",)
+
     def test_setpoint_is_not_declared_as_measurement(self) -> None:
         """Уставку объявлять нельзя: любое число прошло бы как измерение.
 
@@ -561,7 +664,7 @@ class TestClimateGuardsDeclareRequiredData:
         """
         guards = _guards()
 
-        for name in ("may_heat", "may_stop_heating"):
+        for name in ("may_heat", "may_stop_heating", "may_keep_heating"):
             declared = getattr(guards[name], "requires", ())
             assert "climate_setpoint" not in declared, (
                 "уставка проверяется на допустимость внутри условия: если объявить "

@@ -367,6 +367,10 @@ class TestManifestRequirementsAreMet:
         # `dims_when_idle` добавлен 2026-10-27 (B104): вечером без движения свет
         # не гаснет, а остаётся на 3 %; условие отличает вечер от предрассветной
         # темноты, чтобы утром свет всё-таки выключался.
+        #
+        # `may_keep_heating` добавлен 2026-11-01 (B12): в полосе гистерезиса
+        # обогрев продолжается до цели, и без отдельного условия показание в
+        # полосе не находило перехода — каждое писалось отказом.
         assert guards == {
             "device_is_off",
             "dims_when_idle",
@@ -378,6 +382,7 @@ class TestManifestRequirementsAreMet:
             "may_dry",
             "may_stay_idle",
             "may_heat",
+            "may_keep_heating",
             "may_stop_heating",
             "may_turn_on",
             "modifier_is_off",
@@ -394,6 +399,7 @@ class TestManifestRequirementsAreMet:
             "modifier_is_on": "make_modifier_is_on",
             "modifier_is_off": "make_modifier_is_off",
             "may_heat": "make_may_heat",
+            "may_keep_heating": "make_may_keep_heating",
             "may_stop_heating": "make_may_stop_heating",
             "may_cool": "make_may_cool",
             "may_dry": "make_may_dry",
