@@ -234,14 +234,58 @@ async def test_manual_off_from_ha_reaches_fsm() -> None:
 
 
 @pytest.mark.asyncio
-async def test_change_without_user_is_not_manual() -> None:
-    """Изменение без пользователя (автоматика/платформа) автомат не будит."""
+async def test_physical_light_switch_is_manual() -> None:
+    """Физический выключатель света без user/parent — ручное действие (B89)."""
     engine = _Engine()
+    middleware = _Middleware()
 
-    await _adapter(engine, _Middleware()).on_state_change(
-        "light.girlianda_terassa", "on", "off", {}
+    await _adapter(engine, middleware).on_state_change("light.girlianda_terassa", "off", "on", {})
+
+    assert middleware.recorded == ["light.girlianda_terassa"], (
+        f"физическое выключение света не включило локкаут: {middleware.recorded}"
+    )
+    assert [call[1] for call in engine.calls] == ["manual_switch_off"], (
+        f"автомат не узнал о физическом выключении: {engine.calls}"
     )
 
+
+@pytest.mark.asyncio
+async def test_physical_light_with_integration_user_is_manual() -> None:
+    """Свет от интеграции без parent — тоже ручное действие (B89)."""
+    engine = _Engine()
+    middleware = _Middleware()
+    adapter = _adapter(engine, middleware)
+    adapter._own_user_id = "platform-token"  # noqa: SLF001
+
+    await adapter.on_state_change(
+        "light.girlianda_terassa", "off", "on", {"user_id": "platform-token"}
+    )
+
+    assert middleware.recorded == ["light.girlianda_terassa"]
+    assert [call[1] for call in engine.calls] == ["manual_switch_off"]
+
+
+@pytest.mark.asyncio
+async def test_change_without_user_of_non_light_is_not_manual() -> None:
+    """Физическое изменение не-света пока не считается ручным (B89)."""
+    engine = _Engine()
+
+    await _adapter(engine, _Middleware()).on_state_change("fan.base_smart", "on", "off", {})
+
+    assert engine.calls == []
+
+
+@pytest.mark.asyncio
+async def test_own_light_change_is_not_manual() -> None:
+    """Своя команда света без контекста не превращается в ручную (B89)."""
+    engine = _Engine()
+    middleware = _Middleware()
+    adapter = _adapter(engine, middleware)
+    adapter._recent_commands["light.girlianda_terassa"] = time.monotonic()  # noqa: SLF001
+
+    await adapter.on_state_change("light.girlianda_terassa", "off", "on", {})
+
+    assert middleware.recorded == []
     assert engine.calls == []
 
 

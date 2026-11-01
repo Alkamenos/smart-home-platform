@@ -152,8 +152,8 @@ class TestHAAdapterStateChangeHandling:
         middleware_mock.record_manual_control.assert_called_once_with("light.kitchen")
 
     @pytest.mark.asyncio
-    async def test_on_state_change_without_user_id_no_lockout(self):
-        """No manual lockout recording if user_id is absent."""
+    async def test_on_state_change_without_user_id_physical_light_is_manual(self):
+        """Physical light switch without user_id is a manual action (B89)."""
         hass_mock = MagicMock()
         middleware_mock = MagicMock()
 
@@ -171,7 +171,7 @@ class TestHAAdapterStateChangeHandling:
             context={},
         )
 
-        middleware_mock.record_manual_control.assert_not_called()
+        middleware_mock.record_manual_control.assert_called_once_with("light.kitchen")
 
     @pytest.mark.asyncio
     async def test_on_state_change_routes_via_event_router(self):

@@ -14,8 +14,9 @@ Assistant, а не команду платформы, поэтому у изме
   ручное состояние и вернётся к автоматике через срок оверрайда;
 * **своя** команда платформы человеком не считается, даже если рядом оказался
   чужой `parent_id`;
-* изменение прибора **без контекста** (настенный выключатель) человеком пока не
-  считается: это отдельное решение по наблюдению B91 (до 20.10).
+* изменение прибора **без контекста** (настенный выключатель) для света
+  считается ручным действием (B89); для остальных доменов остаётся наблюдение
+  B91.
 """
 
 #  Copyright 2026 Leonid Artemev
@@ -163,13 +164,13 @@ class TestButtonIsAnInterface:
         assert engine.events == []
 
     @pytest.mark.asyncio
-    async def test_device_change_without_context_is_not_human_yet(self) -> None:
-        """Настенный выключатель (без контекста) ждёт решения по B91."""
+    async def test_device_change_without_context_is_manual_for_light(self) -> None:
+        """Настенный выключатель света без контекста — ручное действие (B89)."""
         adapter, record_manual, engine = _adapter()
 
         await adapter._handle_ws_state_change(  # noqa: SLF001 — предмет проверки
             _event(context_id=None, parent_id=None)
         )
 
-        record_manual.assert_not_called()
-        assert engine.events == []
+        record_manual.assert_called_once_with(DEVICE)
+        assert engine.events == [(f"{DEVICE}_lighting_10", "manual_switch_on")]

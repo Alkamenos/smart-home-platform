@@ -20,9 +20,9 @@
    действие — указание лежит в конверте события, а не в его данных, и именно
    поэтому раньше терялось.
 2. Команда из веб-интерфейса платформы засчитывается как ручное действие.
-3. Событие **без** указания человека ручным не считается: иначе блокировку
-   запускали бы автоматические сценарии сами у себя и система заблокировала бы
-   себя.
+3. Событие **без** указания человека: для света это физический выключатель и
+   ручное действие (B89); для остальных доменов автоматические сценарии не
+   должны блокировать сами себя.
 4. Внутренние служебные команды системы не считаются ручным действием.
 5. После ручного действия автоматическая команда отклоняется на срок из
    манифеста и проходит после его истечения.
@@ -141,13 +141,8 @@ class TestEventWithUserIsManual:
         )
 
     @pytest.mark.asyncio
-    async def test_event_without_user_is_not_manual(self) -> None:
-        """Событие без указания человека ручным действием не является.
-
-        Иначе блокировку запускали бы автоматические сценарии сами у себя:
-        каждое событие, порождённое платформой, считалось бы вмешательством
-        человека, и система заблокировала бы себя.
-        """
+    async def test_event_without_user_is_manual_for_light(self) -> None:
+        """Событие без пользователя у света — физический выключатель (B89)."""
         middleware, tracker = _middleware()
         adapter = HAAdapter(
             mode="pyscript",
@@ -168,8 +163,36 @@ class TestEventWithUserIsManual:
             }
         )
 
-        assert tracker.get_last_manual(DEVICE) is None, (
-            "событие без указания человека засчитано ручным: система заблокирует сама себя"
+        assert tracker.get_last_manual(DEVICE) is not None, (
+            "физическое выключение света не засчитано ручным"
+        )
+
+    @pytest.mark.asyncio
+    async def test_event_without_user_is_not_manual_for_non_light(self) -> None:
+        """Без пользователя у не-света ручное действие не включается."""
+        middleware, tracker = _middleware()
+        adapter = HAAdapter(
+            mode="pyscript",
+            engine=None,
+            hass=MagicMock(),
+            manual_lockout_middleware=middleware,
+        )
+
+        device = "fan.kitchen"
+        message = state_changed_event(device, new_state="on", user_id=None)
+        event = message["event"]
+        data = event["data"]
+        await adapter._handle_ws_state_change(
+            {
+                "entity_id": data["entity_id"],
+                "old_state": data["old_state"],
+                "new_state": data["new_state"],
+                "context": event["context"],
+            }
+        )
+
+        assert tracker.get_last_manual(device) is None, (
+            "событие не-света без человека засчитано ручным"
         )
 
 

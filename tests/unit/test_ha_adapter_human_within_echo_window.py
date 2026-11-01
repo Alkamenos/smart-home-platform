@@ -13,8 +13,8 @@
 * свой `user_id` при недавней команде — эхо платформы, не человек;
 * своего пользователя не знаем — прежнее правило (иначе первая же команда
   включала бы блокировку против себя, боевой случай 2026-10-08);
-* без `user_id` и без автоматизации — действие прибора, человеком не считается
-  (решение по наблюдению B91).
+* без `user_id` и без автоматизации — действие прибора; для света это ручное
+  действие (B89), для остальных доменов — наблюдение B91.
 """
 
 #  Copyright 2026 Leonid Artemev
@@ -170,16 +170,16 @@ class TestHumanInsideEchoWindow:
         assert engine.events == []
 
     @pytest.mark.asyncio
-    async def test_device_change_without_user_is_not_manual(self) -> None:
-        """Действие прибора без пользователя человеком не считается (B91)."""
+    async def test_physical_light_without_user_is_manual(self) -> None:
+        """Физический выключатель света без пользователя — ручное действие (B89)."""
         adapter, record_manual, engine = _adapter(PLATFORM_USER)
 
         await adapter._handle_ws_state_change(  # noqa: SLF001 — предмет проверки
             _event(context_id="01DEVICE", user_id=None)
         )
 
-        record_manual.assert_not_called()
-        assert engine.events == []
+        record_manual.assert_called_once_with(DEVICE)
+        assert engine.events == [(f"{DEVICE}_lighting_10", "manual_switch_on")]
 
 
 class TestOwnUserIsLearned:
