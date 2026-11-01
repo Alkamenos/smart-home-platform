@@ -39,7 +39,7 @@ engine_events:
 
 platform_events:
   # События, которые порождает платформа, а не датчик и не движок.
-  settings_changed: смена глобального переключателя вентиляции; шлёт HAAdapter через EventRouter.route_settings_change
+  settings_changed: смена глобального переключателя вентиляции, штор или планового света; шлёт HAAdapter через EventRouter.route_settings_change
   device_state_diverged: прибор разошёлся с решением; шлёт сторож платформы (services/watchdog.py, DEVICE_DIVERGED_TRIGGER)
   sleep_started: модификатор «мы спим» включился; шлёт контейнер (modifier events)
   sunset_started: солнце ушло за горизонт; шлёт контейнер по состоянию sun.sun
@@ -111,6 +111,10 @@ registered_guards:  # реестр после register_all_guards
   - modifier_is_off
   - modifier_is_on
   - owner_wants_airing
+  - scheduled_light_can_start
+  - scheduled_light_is_disabled
+  - scheduled_light_should_turn_off
+  - scheduled_light_should_turn_on
   - sensor_is_alive
   - should_run_exhaust
   - should_run_max_supply
@@ -379,6 +383,37 @@ templates:
         range: "ЧЧ:ММ-ЧЧ:ММ"
         effective: true
         note: "Окно ночного режима. Сейчас ИНЕРТЕН: читается только валидатором."
+  scheduled_light:
+    reachable: true
+    in_manifest: [sad]
+    actions: [turn_on_light, turn_off_light]
+    guards: [scheduled_light_can_start, scheduled_light_is_disabled, scheduled_light_should_turn_on, device_is_on, scheduled_light_should_turn_off, device_is_off]
+    triggers:
+      sunset_started: platform
+      settings_changed: platform
+      manual_switch_on: platform
+      device_state_diverged: platform
+      sleep_started: platform
+      sunrise_started: platform
+      day_started: platform
+      manual_switch_off: platform
+    unproduced_triggers: []
+    gaps:
+      - Разрешение на автоматическое включение задаёт флаг дома automation_rules.scheduled_light_feature_entity, а не параметр поведения: одно решение владельца не должно дублироваться в каждой группе фонарей.
+      - Смена флага доносится событием settings_changed с одноразовым признаком `_changed_role == "scheduled_feature"`: без него любая настройка дома гасила бы свет, включённый вручную при выключенном флажке.
+      - Закат и рассвет порождает контейнер по sun.sun, а не EventRouter: солнце не входит в манифест. Сверка вечернего света знает список автоматов scheduled_light и при выключенном флажке пропускает их, а прямой sunset_started делает пустой переход OFF→OFF, не отказ.
+      - Ручное выключение держится в OFF_MANUAL до рассвета, утра или «мы спим»; следующий закат снова может включить свет. Это требование владельца 2026-11-01.
+    params:
+      off_by:
+        type: str
+        range: "sleep"
+        effective: true
+        note: "Читает сверка вечернего света: off_by: sleep не даёт вернуть свет после отбоя. Сам шаблон off_by не использует — выключение по сну зашито переходами."
+      bypass_lockout:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "Служебный: команды планового света обходят ручную блокировку. Флаг владельца и «мы спим» — его решение, а не удобство автоматики; иначе выключение флага могло бы не дойти до группы после недавнего ручного управления."
   smart_lock:
     reachable: false
     in_manifest: []

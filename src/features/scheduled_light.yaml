@@ -1,0 +1,286 @@
+# Плановый свет — АБСТРАКТНЫЙ ШАБЛОН
+#
+# Для света, который включается по закату, но только если владелец разрешил
+# автоматике им управлять. Это не декор: шаблон описывает основное уличное
+# освещение, которое человек обычно включает сам, а автоматика лишь помогает
+# не забыть вечером.
+#
+# Отличие от `deco_light`:
+#
+#   - включение по закату разрешает отдельный флаг дома
+#     (`automation_rules.scheduled_light_feature_entity`);
+#   - при выключенном флаге ручное включение работает всегда, а автоматика
+#     молчит;
+#   - выключение — по модификатору «мы спим», с запасным вариантом по рассвету
+#     и утреннему событию;
+#   - выключение флага, пока свет горит, гасит его;
+#   - включение флага после заката включает свет сразу, если дом не спит;
+#   - ручное выключение держится до следующего цикла (до рассвета/утра).
+#
+# ПРИМЕР ИСПОЛЬЗОВАНИЯ в manifest.yaml:
+#   automation_rules:
+#     scheduled_light_feature_entity: input_boolean.vkliuchat_osnovnoe_osveshchenie
+#   ...
+#   - id: light.vse_fonari
+#     type: light
+#     name: Основное освещение сада
+#     behaviors:
+#       - template: scheduled_light
+#         priority: 10
+#         params: {off_by: "sleep"}
+#
+# СОСТОЯНИЯ:
+#   - OFF: автоматика свет не включала
+#   - ON_SCHEDULED: свет включён по закату или по включённому флагу
+#   - ON_MANUAL: человек включил свет сам
+#   - OFF_MANUAL: человек выключил свет сам; держим до утра
+#
+# СОБЫТИЯ (все порождаются платформой):
+#   - sunset_started  — солнце ушло за горизонт;
+#   - sunrise_started — солнце взошло;
+#   - day_started     — начался день по утреннему времени дома;
+#   - sleep_started   — владелец включил модификатор «мы спим»;
+#   - settings_changed — смена флага дома; для этого шаблона важен только
+#                        `_changed_role == "scheduled_feature"`;
+#   - manual_switch_on / manual_switch_off — человек включил или выключил свет;
+#   - device_state_diverged — прибор разошёлся с решением.
+
+initial_state: "OFF"
+# Закат приходит одним событием; дебаунс нужен только от повторной доставки.
+debounce_sec: 0.5
+
+states:
+  - "OFF"
+  - "ON_SCHEDULED"
+  - "ON_MANUAL"
+  - "OFF_MANUAL"
+
+transitions:
+  # --- Закат: включаем только с разрешения владельца ---
+  #
+  # Флаг проверяет guard scheduled_light_can_start. Если он выключен, ниже
+  # стоит пустой переход в OFF: сверка вечернего света повторяет закат каждые
+  # 15 минут, и отказ на каждом проходе был бы шумом.
+  - from_state: "OFF"
+    to_state: "ON_SCHEDULED"
+    trigger: "sunset_started"
+    guard: "scheduled_light_can_start"
+    action: "turn_on_light"
+
+  - from_state: "OFF"
+    to_state: "OFF"
+    trigger: "sunset_started"
+    guard: "scheduled_light_is_disabled"
+    action: null
+
+  # Смена флага после заката: включаем сразу, если темно и не спим. Признак
+  # `_changed_role` не даёт чужой настройке дома включить свет.
+  - from_state: "OFF"
+    to_state: "ON_SCHEDULED"
+    trigger: "settings_changed"
+    guard: "scheduled_light_should_turn_on"
+    action: "turn_on_light"
+
+  # Первый пересмотр после запуска платформы: если свет был выключен, флаг
+  # разрешает, на улице темно и не спим — включаем.
+  - from_state: "OFF"
+    to_state: "OFF"
+    trigger: "settings_changed"
+    action: null
+
+  # --- Ручное включение ---
+  - from_state: "OFF"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    action: "turn_on_light"
+
+  # Прибор включили вне платформы — это ручное действие, уважаем его.
+  - from_state: "OFF"
+    to_state: "ON_MANUAL"
+    trigger: "device_state_diverged"
+    guard: "device_is_on"
+    action: null
+
+  - from_state: "OFF"
+    to_state: "OFF"
+    trigger: "device_state_diverged"
+    action: null
+
+  - from_state: "OFF"
+    to_state: "OFF"
+    trigger: "sleep_started"
+    action: null
+
+  - from_state: "OFF"
+    to_state: "OFF"
+    trigger: "sunrise_started"
+    action: null
+
+  - from_state: "OFF"
+    to_state: "OFF"
+    trigger: "day_started"
+    action: null
+
+  # --- Свет горит по расписанию ---
+  - from_state: "ON_SCHEDULED"
+    to_state: "ON_SCHEDULED"
+    trigger: "sunset_started"
+    action: null
+
+  # Флаг выключили, пока свет горит, — гасим. Условие требует смены именно
+  # этого флага, иначе чужой settings_changed гасил бы свет без причины.
+  - from_state: "ON_SCHEDULED"
+    to_state: "OFF"
+    trigger: "settings_changed"
+    guard: "scheduled_light_should_turn_off"
+    action: "turn_off_light"
+
+  # Любая другая смена настроек не меняет решение.
+  - from_state: "ON_SCHEDULED"
+    to_state: "ON_SCHEDULED"
+    trigger: "settings_changed"
+    action: null
+
+  # «Мы спим» — основной способ выключения; рассвет и утро — запасные.
+  - from_state: "ON_SCHEDULED"
+    to_state: "OFF"
+    trigger: "sleep_started"
+    action: "turn_off_light"
+
+  - from_state: "ON_SCHEDULED"
+    to_state: "OFF"
+    trigger: "sunrise_started"
+    action: "turn_off_light"
+
+  - from_state: "ON_SCHEDULED"
+    to_state: "OFF"
+    trigger: "day_started"
+    action: "turn_off_light"
+
+  # Человек выключил свет — держим до утра, а не до следующей сверки.
+  - from_state: "ON_SCHEDULED"
+    to_state: "OFF_MANUAL"
+    trigger: "manual_switch_off"
+    action: null
+
+  - from_state: "ON_SCHEDULED"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    action: null
+
+  # Прибор погасили вне платформы: это ручное выключение, держим до утра.
+  - from_state: "ON_SCHEDULED"
+    to_state: "OFF_MANUAL"
+    trigger: "device_state_diverged"
+    guard: "device_is_off"
+    action: null
+
+  - from_state: "ON_SCHEDULED"
+    to_state: "ON_SCHEDULED"
+    trigger: "device_state_diverged"
+    action: null
+
+  # --- Свет включён человеком ---
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "sunset_started"
+    action: null
+
+  # Флаг выключили, пока горит ручной свет, — тоже гасим по требованию.
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "settings_changed"
+    guard: "scheduled_light_should_turn_off"
+    action: "turn_off_light"
+
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "settings_changed"
+    action: null
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "sleep_started"
+    action: "turn_off_light"
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "sunrise_started"
+    action: "turn_off_light"
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF"
+    trigger: "day_started"
+    action: "turn_off_light"
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "manual_switch_off"
+    action: null
+
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    action: null
+
+  - from_state: "ON_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "device_state_diverged"
+    guard: "device_is_off"
+    action: null
+
+  - from_state: "ON_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "device_state_diverged"
+    action: null
+
+  # --- Человек выключил свет: держим до следующего цикла ---
+  #
+  # Закат не возвращает свет в тот же вечер. Рассвет, утро или «мы спим»
+  # снимают ручное выключение, и следующий закат снова может включить свет.
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "sunset_started"
+    action: null
+
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "settings_changed"
+    action: null
+
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF"
+    trigger: "sleep_started"
+    action: null
+
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF"
+    trigger: "sunrise_started"
+    action: null
+
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF"
+    trigger: "day_started"
+    action: null
+
+  - from_state: "OFF_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "manual_switch_on"
+    action: "turn_on_light"
+
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "manual_switch_off"
+    action: null
+
+  # Прибор включили вне платформы — это новое ручное действие.
+  - from_state: "OFF_MANUAL"
+    to_state: "ON_MANUAL"
+    trigger: "device_state_diverged"
+    guard: "device_is_on"
+    action: null
+
+  - from_state: "OFF_MANUAL"
+    to_state: "OFF_MANUAL"
+    trigger: "device_state_diverged"
+    action: null
