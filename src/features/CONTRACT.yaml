@@ -104,6 +104,7 @@ registered_guards:  # реестр после register_all_guards
   - may_cool
   - may_dry
   - may_heat
+  - may_keep_heating
   - may_stay_idle
   - may_stop_heating
   - may_turn_on
@@ -153,7 +154,7 @@ templates:
     reachable: true
     in_manifest: [gostevaia_spalnia, gostinaia, kabinet, sanuzel, spalnia]
     actions: [heater_timer_on, heater_off, heater_emergency_off, ac_cool_on, ac_dry_on, ac_off]
-    guards: [may_heat, may_stop_heating, may_cool, may_dry, may_stay_idle]
+    guards: [may_heat, may_stop_heating, may_cool, may_dry, may_stay_idle, may_keep_heating]
     triggers:
       temperature_changed: sensor
       timeout: engine
@@ -172,7 +173,7 @@ templates:
         type: float
         range: "0-5"
         effective: true
-        note: "Ширина мёртвой зоны обогревателя, °C. Читает условие may_heat (guards/builtin.py:_hysteresis_value); по умолчанию 0.5."
+        note: "Ширина мёртвой зоны обогревателя, °C. Включаемся ниже `цель − гистерезис` (may_heat), выключаемся на цели (may_stop_heating), внутри полосы держим нагрев (may_keep_heating); по умолчанию 0.5."
       run_minutes:
         type: float
         range: "1-43200"

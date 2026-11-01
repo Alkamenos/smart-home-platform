@@ -42,6 +42,7 @@ from core.guards.climate import (
     make_may_cool as make_may_cool,
     make_may_dry as make_may_dry,
     make_may_heat as make_may_heat,
+    make_may_keep_heating as make_may_keep_heating,
     make_may_stop_heating as make_may_stop_heating,
 )
 from core.guards.context import (
@@ -173,6 +174,7 @@ GUARD_DATA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "speed_within_limits": ("outside_temperature",),
     "sensor_is_alive": ("outside_temperature",),
     "may_stop_heating": ("temperature",),
+    "may_keep_heating": ("temperature",),
     "has_usable_reading": ("temperature",),
     "may_cool": ("temperature",),
     "may_dry": ("humidity",),
@@ -237,6 +239,7 @@ def build_guards(
         "may_dry": make_may_dry(),
         "may_stay_idle": make_may_stay_idle(),
         "may_stop_heating": make_may_stop_heating(),
+        "may_keep_heating": make_may_keep_heating(),
         "has_usable_reading": make_has_usable_reading(),
     }
     # Требования объявляются здесь, рядом с условием: объявление в стороне

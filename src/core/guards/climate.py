@@ -47,11 +47,14 @@ def make_humidity_below() -> Callable[[Any, dict[str, Any]], bool]:
     return humidity_below
 
 
-def _colder_than_setpoint(context: dict[str, Any]) -> bool | None:
+def _colder_than_setpoint(context: dict[str, Any], *, hysteresis: bool = True) -> bool | None:
     """Холоднее ли в комнате, чем целевая температура, с учётом гистерезиса.
 
     Args:
         context: Контекст перехода.
+        hysteresis: Учитывать ли мёртвую зону. Выключение обогревателя решается
+            без неё: иначе полосы нет, и обогреватель гаснет на её нижней
+            границе — ровно там, где должен ещё греть.
 
     Returns:
         True, если обогревать нужно; False, если не нужно; ``None``, если
@@ -61,7 +64,8 @@ def _colder_than_setpoint(context: dict[str, Any]) -> bool | None:
     setpoint, usable = _setpoint_value(context)
     if temperature is None or not usable or setpoint is None:
         return None
-    return temperature < setpoint - _hysteresis_value(context)
+    offset = _hysteresis_value(context) if hysteresis else 0.0
+    return temperature < setpoint - offset
 
 
 def make_below_setpoint() -> Callable[[Any, dict[str, Any]], bool]:
@@ -120,8 +124,10 @@ def make_at_or_above_setpoint() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «цель достигнута — обогреватель можно выключать».
 
     Зеркало условия включения с одной важной разницей: обогреватель выключается
-    **сразу** при достижении цели, без гистерезиса. Держать его включённым
+    **сразу при достижении цели, без гистерезиса**. Держать его включённым
     ещё полградуса — значит перегревать комнату, которая уже достаточно тёплая.
+    При этом полоса гистерезиса остаётся настоящей: включение — ниже
+    ``цель − гистерезис``, выключение — на цели, между ними обогрев держится.
 
     Args:
         Ничего.
@@ -133,15 +139,11 @@ def make_at_or_above_setpoint() -> Callable[[Any, dict[str, Any]], bool]:
     def at_or_above_setpoint(state: Any, context: dict[str, Any]) -> bool:
         """Разрешить переход, если комната не холоднее цели.
 
-        Args:
-            state: Текущее состояние автомата.
-            context: Контекст перехода.
-
         Returns:
             True, если цель достигнута.
         """
         del state
-        colder = _colder_than_setpoint(context)
+        colder = _colder_than_setpoint(context, hysteresis=False)
         return colder is False
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
@@ -468,11 +470,13 @@ def make_may_heat() -> Callable[[Any, dict[str, Any]], bool]:
     return may_heat
 
 
-def _heating_denial(context: dict[str, Any]) -> str | None:
+def _heating_denial(context: dict[str, Any], *, hysteresis: bool = True) -> str | None:
     """Первая по порядку причина, по которой греть нельзя.
 
     Args:
         context: Контекст перехода.
+        hysteresis: Применять ли мёртвую зону к сравнению с целью. Для решения
+            «продолжать грев» она не нужна: внутри полосы греть ещё нужно.
 
     Returns:
         Имя причины либо ``None``, если обогревать можно.
@@ -483,7 +487,7 @@ def _heating_denial(context: dict[str, Any]) -> str | None:
     if context.get("managed_by_hardware") is True:
         return "managed_by_hardware"
 
-    colder = _colder_than_setpoint(context)
+    colder = _colder_than_setpoint(context, hysteresis=hysteresis)
     if colder is None:
         raw = context.get("climate_setpoint")
         if raw is not None and not isinstance(raw, bool):
@@ -515,10 +519,14 @@ def _not_cold_enough_reason(_state: Any, context: dict[str, Any]) -> str | None:
 def make_may_stop_heating() -> Callable[[Any, dict[str, Any]], bool]:
     """Построить условие «цель достигнута — обогреватель можно выключать».
 
-    Зеркало `may_heat` со стороны выключения: комната не холоднее цели и климат
-    не запрещён. Проверка «климат выключен» здесь лишняя — выключать обогреватель
-    не вредно даже тогда, когда владелец отключил климат, — но оставлена ради
-    симметрии: решение «выключить» принимается по тем же данным, что и «включить».
+    Сравнение идёт **без гистерезиса**: выключаемся на цели, а не на нижней
+    границе мёртвой зоны. Иначе полосы нет, и обогреватель гаснет на
+    ``цель − гистерезис``; следующий же холодный отсчёт включает его снова —
+    короткие циклы, от которых гистерезис и защищает.
+
+    Проверка «климат выключен» здесь лишняя — выключать обогреватель не вредно
+    даже тогда, когда владелец отключил климат, — поэтому её нет: решение
+    «выключить» принимается по температуре.
     """
 
     def may_stop_heating(state: Any, context: dict[str, Any]) -> bool:
@@ -532,7 +540,55 @@ def make_may_stop_heating() -> Callable[[Any, dict[str, Any]], bool]:
             True, если обогреватель пора выключать.
         """
         del state
-        return _colder_than_setpoint(context) is False
+        return _colder_than_setpoint(context, hysteresis=False) is False
 
     may_stop_heating.deny_reason = _not_cold_enough_reason  # type: ignore[attr-defined]
     return may_stop_heating
+
+
+def make_may_keep_heating() -> Callable[[Any, dict[str, Any]], bool]:
+    """Построить условие «обогрев продолжается до цели».
+
+    Нужно для перехода ``HEATING → HEATING``: в полосе гистерезиса
+    (``цель − гистерезис <= температура < цель``) выключаться ещё рано, а
+    ``may_heat`` уже не пускает — он отвечает на вопрос «холодно ли настолько,
+    чтобы начать». Без отдельного условия каждое показание в полосе не находило
+    перехода и писалось отказом: шум, из-за которого не видно настоящих проблем.
+
+    Гистерезис здесь не применяется: полоса — это и есть «ещё греем».
+
+    Args:
+        Ничего.
+
+    Returns:
+        Функция ``(state, context) -> bool`` с ``deny_reason``.
+    """
+
+    def may_keep_heating(state: Any, context: dict[str, Any]) -> bool:
+        """Разрешить остаться в нагреве, пока цель не достигнута.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            True, если греть ещё нужно.
+        """
+        del state
+        return _heating_denial(context, hysteresis=False) is None
+
+    def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
+        """Назвать причину отказа — первую по порядку проверок.
+
+        Args:
+            state: Текущее состояние автомата.
+            context: Контекст перехода.
+
+        Returns:
+            Имя причины отказа либо ``None``, когда греть ещё нужно.
+        """
+        del state
+        return _heating_denial(context, hysteresis=False)
+
+    may_keep_heating.deny_reason = deny_reason  # type: ignore[attr-defined]
+    return may_keep_heating

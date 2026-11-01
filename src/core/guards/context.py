@@ -84,6 +84,7 @@ REGISTERED_GUARDS = (
     "scheduled_light_should_turn_on",
     "scheduled_light_should_turn_off",
     "may_heat",
+    "may_keep_heating",
     "may_stop_heating",
     "has_usable_reading",
     "may_cool",
