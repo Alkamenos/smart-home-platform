@@ -1,285 +1,58 @@
-"""Pydantic models for Smart Home Manifest that match the real structure."""
+"""DTO ? ????????????? WebUI (????? 018, US1).
+
+???????? ?????? ????????? ????? ? ``core.models.manifest``. ????? ????????
+?????? ????????????? ??? ??????????: ?????? ?????? ????????? ???? ??????????
+??????????? ????? ???, ??? ?????????, ? ???, ??? ???????????.
 
 #  Copyright 2026 Leonid Artemev
 #  SPDX-License-Identifier: Apache-2.0
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
-from core.models.manifest import LocationConfig, LocationRules, SensorMap
-
-
-class InstanceConfig(BaseModel):
-    """Instance configuration model."""
-
-    id: str = Field(..., description="Unique instance identifier")
-    name: str = Field(..., description="Human-readable instance name")
-    owner: str = Field(default="Unknown", description="Instance owner")
-    created_at: str = Field(default="", description="Creation timestamp")
-    time_zone: str | None = Field(
-        default=None,
-        description="Часовой пояс дома; объявлен, чтобы не потерялся при правке",
-    )
-
-
-class BehaviorConfig(BaseModel):
-    """Behavior configuration for a device."""
-
-    template: str = Field(..., description="Template name")
-    priority: int = Field(..., description="Priority level")
-    params: dict[str, Any] = Field(default_factory=dict, description="Behavior parameters")
+from core.models.manifest import (
+    AutomationClimateRules as AutomationClimateRules,
+    AutomationDomainRules as AutomationDomainRules,
+    AutomationRules as AutomationRules,
+    BehaviorConfig as BehaviorConfig,
+    Dashboard as DashboardConfig,
+    DeviceConfig as DeviceConfig,
+    HouseSchedule as HouseSchedule,
+    InstanceConfig as InstanceConfig,
+    LocationConfig as LocationConfig,
+    LocationRules as LocationRules,
+    Manifest as ManifestModel,
+    RoomConfig as RoomConfig,
+    SensorHealthRules as SensorHealthRules,
+    SensorMap as SensorMap,
+)
 
 
-class DeviceConfig(BaseModel):
-    """Device configuration within a room."""
-
-    id: str = Field(..., description="Device entity ID")
-    type: str = Field(..., description="Device type")
-    name: str = Field(default="", description="Human-readable device name")
-    behaviors: list[BehaviorConfig] = Field(default_factory=list, description="Device behaviors")
-
-
-class RoomConfig(BaseModel):
-    """Room configuration model."""
-
-    id: str = Field(..., description="Room identifier")
-    name: str = Field(..., description="Human-readable room name")
-    kind: str = Field(default="room", description="Вид места: комната, дом, … (B93)")
-    parent: str | None = Field(
-        default=None, description="Место верхнего уровня, в которое входит комната (B93)"
-    )
-    sensors: SensorMap = Field(
-        default_factory=dict, description="Room sensors: роль → сущность или список"
-    )
-    thermostat_entity: str | None = Field(
-        default=None,
-        description=(
-            "Термостат этой комнаты (climate.*), если он есть. Поле объявлено и "
-            "здесь: иначе правка манифеста через интерфейс вычеркнула бы его"
-        ),
-    )
-    devices: list[DeviceConfig] = Field(default_factory=list, description="Room devices")
-
-    model_config = {"extra": "allow"}
-
-
-class AutomationDomainRules(BaseModel):
-    """Automation rules for a specific domain."""
-
-    manual_lockout_min: int | None = Field(
-        default=None,
-        description=(
-            "Minutes to block automation after manual control. "
-            "Совпадает с ядерной моделью: None означает «настройка не задана»"
-        ),
-    )
-    color_temp_day_entity: str | None = Field(
-        default=None,
-        description=(
-            "Сущность «температура света днём»; поле объявлено и здесь, иначе "
-            "правка манифеста через интерфейс вычеркнула бы его"
-        ),
-    )
-    color_temp_night_entity: str | None = Field(
-        default=None,
-        description="Сущность «температура света ночью»; объявлена, чтобы не потерялась",
-    )
-    color_temp_current_entity: str | None = Field(
-        default=None,
-        description="Сущность текущей температуры света; объявлена, чтобы не потерялась",
-    )
-    color_temp_warm_at: str = Field(
-        default="21:00",
-        description="Час максимально тёплого света; объявлен, чтобы не потерялся",
-    )
-    color_temp_update_minutes: float = Field(
-        default=5.0,
-        description="Период пересчёта температуры света; объявлен, чтобы не потерялся",
-    )
-    model_config = {"extra": "allow"}
-
-
-class AutomationClimateRules(AutomationDomainRules):
-    """Правила климата: к общим полям домена добавляются поля кондиционера.
-
-    Отдельный класс, а не поля в общем: иначе «кондиционер» показывался бы в блоке
-    освещения (замечание владельца 2026-10-15), а правка правил света предлагала бы
-    настраивать кондиционер.
-    """
-
-    ac_min_outside_temp: float = Field(
-        default=5.0,
-        description=(
-            "Ниже этой уличной температуры кондиционер включать нельзя: дренаж "
-            "замёрзнет (требование владельца 2026-10-15). Поле объявлено и здесь: "
-            "иначе правка манифеста через интерфейс вычеркнула бы его"
-        ),
-    )
-    ac_entities: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Кондиционеры под защитой платформы: зимой и без разрешения владельца "
-            "охлаждать нельзя (требование владельца 2026-10-15). Поле объявлено и "
-            "здесь: иначе правка манифеста через интерфейс вычеркнула бы его"
-        ),
-    )
-    ac_gate_entity: str | None = Field(
-        default=None,
-        description=(
-            "Необязательный явный запрет владельца на кондиционер. Нет гейта — "
-            "охлаждение им не запрещается. Поле объявлено и здесь: иначе правка "
-            "манифеста через интерфейс вычеркнула бы его"
-        ),
-    )
-
-
-class HouseSchedule(BaseModel):
-    """Суточный цикл дома: когда дом засыпает и просыпается."""
-
-    night_off_at: str | None = Field(
-        default=None,
-        description="Час принудительного выключения света, заданного автоматикой (HH:MM)",
-    )
-    morning_at: str | None = Field(
-        default=None,
-        description="Час снятия ночного режима и начала дня (HH:MM)",
-    )
-
-
-class SensorHealthRules(BaseModel):
-    """Здоровье датчиков дома: батарейки вне манифеста."""
-
-    battery_watch_entities: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Батарейки датчиков вне манифеста, за которыми следит платформа. "
-            "Поле объявлено и здесь: иначе правка манифеста через интерфейс "
-            "вычеркнула бы его"
-        ),
-    )
-
-
-class AutomationRules(BaseModel):
-    """Global automation rules.
-
-    Поля повторяют каноническую модель ядра: пропущенное поле при сохранении
-    манифеста через интерфейс молча терялось бы — так уже произошло с
-    ``cover`` и ``locations``. Часовой пояс живёт в ``InstanceConfig`` и объявлен
-    там отдельно. ``extra: allow`` страхует от повторов при добавлении новых
-    разделов в ядре.
-    """
-
-    global_manual_lockout_min: int = Field(default=60, description="Global manual lockout minutes")
-    manual_command_sources: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Дополнительные источники команд, которые считать ручными (например, "
-            "telegram). Поле объявлено и здесь: иначе правка манифеста через "
-            "интерфейс вычеркнула бы его (аудит 2026-10-16, К-10)"
-        ),
-    )
-    season_entity: str | None = Field(
-        default=None,
-        description=(
-            "Сущность сезона (например, input_boolean.zima). Нужна климату и "
-            "вентиляции, поэтому живёт на уровне дома (аудит B76, A5)"
-        ),
-    )
-    sleep_modifier: str | None = Field(
-        default=None,
-        description=(
-            "Сущность «мы спим» (например, input_boolean.sleep_mode). Флаг общий "
-            "для света, штор и вентиляции, поэтому живёт на уровне дома"
-        ),
-    )
-    scheduled_light_feature_entity: str | None = Field(
-        default=None,
-        description=(
-            "Разрешение автоматического включения планового света (например, "
-            "input_boolean.vkliuchat_osnovnoe_osveshchenie). Пока флаг выключен, "
-            "платформа не включает группу по закату; ручное управление работает"
-        ),
-    )
-    schedule: HouseSchedule = Field(
-        default_factory=HouseSchedule,
-        description="Суточный цикл дома (аудит B76, A3)",
-    )
-    sensor_health: SensorHealthRules = Field(
-        default_factory=SensorHealthRules,
-        description="Здоровье датчиков дома (аудит B76, A2)",
-    )
-    lighting: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
-    climate: AutomationClimateRules = Field(default_factory=AutomationClimateRules)
-    ventilation: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
-    cover: AutomationDomainRules = Field(default_factory=AutomationDomainRules)
-    locations: LocationRules = Field(
-        default_factory=LocationRules, description="Правила наблюдения за локациями (спека 016)"
-    )
-
-    @field_validator("climate", mode="before")
-    @classmethod
-    def _accept_generic_domain(cls, value: Any) -> Any:
-        """Принять и общие правила домена: поля кондиционера добавляются к ним.
-
-        Args:
-            value: Значение поля ``climate``.
-
-        Returns:
-            Правила климата либо исходное значение.
-        """
-        if isinstance(value, AutomationDomainRules) and not isinstance(
-            value, AutomationClimateRules
-        ):
-            return AutomationClimateRules(**value.model_dump())
-        return value
-
-    model_config = {"extra": "allow"}
-
-
-class DashboardConfig(BaseModel):
-    """Dashboard configuration."""
-
-    title: str = Field(default="", description="Dashboard title")
-    rooms: list[str] = Field(default_factory=list, description="Rooms to show on dashboard")
-    show_sensors: bool = Field(default=True, description="Show sensors on dashboard")
-    show_devices: bool = Field(default=True, description="Show devices on dashboard")
-    show_platform: bool = Field(
-        default=True,
-        description=(
-            "Показывать сводку платформы на дашборде. Поле объявлено и здесь: иначе "
-            "правка манифеста через интерфейс вычеркнула бы его (правило B60)"
-        ),
-    )
-
-
-class ManifestModel(BaseModel):
-    """Main manifest configuration model matching real YAML structure."""
-
-    instance: InstanceConfig = Field(..., description="Instance configuration")
-    version: int = Field(default=1, description="Manifest schema version")
-    rooms: list[RoomConfig] = Field(default_factory=list, description="Rooms in the smart home")
-    locations: list[LocationConfig] = Field(
-        default_factory=list,
-        description="Особые зоны наблюдения (улица, грядки) — спека 016",
-    )
-    battery_types: dict[str, str] = Field(
-        default_factory=dict,
-        description=(
-            "Тип батарейки по сущности (sensor.…_battery → CR2032). Поле объявлено и "
-            "здесь: иначе правка манифеста через интерфейс вычеркнула бы его"
-        ),
-    )
-    automation_rules: AutomationRules = Field(
-        default_factory=AutomationRules, description="Automation rules"
-    )
-    dashboard: DashboardConfig = Field(
-        default_factory=DashboardConfig, description="Dashboard configuration"
-    )
-
-    model_config = {"extra": "allow"}
+__all__ = [
+    "AutomationClimateRules",
+    "AutomationDomainRules",
+    "AutomationInfo",
+    "AutomationRules",
+    "BehaviorConfig",
+    "DashboardConfig",
+    "DeviceConfig",
+    "FSMStateView",
+    "HouseSchedule",
+    "InstanceConfig",
+    "LocationConfig",
+    "LocationRules",
+    "ManifestModel",
+    "RoomConfig",
+    "SensorHealthRules",
+    "SensorMap",
+    "build_all_fsm_state_views",
+    "build_automation_info",
+    "build_fsm_state_view",
+]
 
 
 class FSMStateView(BaseModel):

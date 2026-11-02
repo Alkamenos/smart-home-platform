@@ -17,7 +17,18 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class StrictModel(BaseModel):
+    """Базовая модель манифеста: неизвестные поля — ошибка.
+
+    Опечатка в имени поля должна быть видна сразу, а не превращаться в
+    молчаливо проигнорированную настройку. Явные расширения допускаются только
+    через поле ``extensions``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
 
 #: Привязка роли датчика: одна сущность или несколько.
@@ -83,7 +94,7 @@ def all_sensor_entities(sensors: Mapping[str, SensorBinding] | None) -> list[str
     return result
 
 
-class InstanceConfig(BaseModel):
+class InstanceConfig(StrictModel):
     """Platform instance metadata."""
 
     id: str
@@ -99,7 +110,7 @@ class InstanceConfig(BaseModel):
     """
 
 
-class BehaviorConfig(BaseModel):
+class BehaviorConfig(StrictModel):
     """Behavior template with priority and params."""
 
     template: str
@@ -107,7 +118,7 @@ class BehaviorConfig(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
-class DeviceConfig(BaseModel):
+class DeviceConfig(StrictModel):
     """Device as an actuator inside a room."""
 
     id: str
@@ -116,7 +127,7 @@ class DeviceConfig(BaseModel):
     behaviors: list[BehaviorConfig] = Field(default_factory=list)
 
 
-class RoomConfig(BaseModel):
+class RoomConfig(StrictModel):
     """Room: container for sensors and devices.
 
     Sensors describe room state (inputs).
@@ -170,7 +181,7 @@ class RoomConfig(BaseModel):
         return value
 
 
-class LocationConfig(BaseModel):
+class LocationConfig(StrictModel):
     """Именованная область наблюдения вне комнат (спека 016).
 
     Комнаты манифеста — тоже локации (``kind: room``) и описываются как раньше:
@@ -228,7 +239,7 @@ class LocationConfig(BaseModel):
         return v
 
 
-class AutomationDomainRules(BaseModel):
+class AutomationDomainRules(StrictModel):
     """Domain-specific automation rules.
 
     Поля ночного света объявлены здесь, а не в коде: окно тишины и список
@@ -370,7 +381,7 @@ class AutomationDomainRules(BaseModel):
         return value
 
 
-class LocationRules(BaseModel):
+class LocationRules(StrictModel):
     """Правила наблюдения за локациями (спека 016).
 
     Порог молчания и окно присутствия — параметры дома, а не константы кода:
@@ -391,7 +402,7 @@ class LocationRules(BaseModel):
     """Префикс топиков зеркала (значения и автообнаружение)."""
 
 
-class HouseSchedule(BaseModel):
+class HouseSchedule(StrictModel):
     """Суточный цикл дома: когда дом засыпает и когда просыпается.
 
     Раньше эти часы лежали в правилах освещения, хотя события
@@ -406,7 +417,7 @@ class HouseSchedule(BaseModel):
     """Час снятия ночного режима и начала дня (``HH:MM``)."""
 
 
-class SensorHealthRules(BaseModel):
+class SensorHealthRules(StrictModel):
     """Здоровье датчиков дома: то, что не относится к одному домену.
 
     Наблюдение за батарейками раньше искало поле по всем доменам подряд —
@@ -477,7 +488,7 @@ class AutomationClimateRules(AutomationDomainRules):
         return value
 
 
-class AutomationRules(BaseModel):
+class AutomationRules(StrictModel):
     """Global automation rules and domain-specific overrides."""
 
     global_manual_lockout_min: int = 60
@@ -575,7 +586,7 @@ class AutomationRules(BaseModel):
         return value
 
 
-class Dashboard(BaseModel):
+class Dashboard(StrictModel):
     """Dashboard configuration for Lovelace generation."""
 
     title: str = ""
@@ -591,7 +602,7 @@ class Dashboard(BaseModel):
     """
 
 
-class Manifest(BaseModel):
+class Manifest(StrictModel):
     battery_types: dict[str, str] = Field(default_factory=dict)
     """Тип батарейки по сущности: ``sensor.…_battery`` → ``CR2032``.
 
@@ -609,6 +620,13 @@ class Manifest(BaseModel):
     locations: list[LocationConfig] = Field(default_factory=list)
     automation_rules: AutomationRules = Field(default_factory=AutomationRules)
     dashboard: Dashboard = Field(default_factory=Dashboard)
+    extensions: dict[str, Any] = Field(default_factory=dict)
+    """Явные расширения описания дома.
+
+    Единственное место, где допускаются поля, которых нет в модели. Всё
+    остальное неизвестное отклоняется: опечатка не должна молча выключать
+    настройку.
+    """
 
     @property
     def devices(self) -> list[DeviceConfig]:
@@ -824,7 +842,7 @@ def load_manifest(manifest_path: str | Path) -> Manifest:
 
 
 # Zone в новой архитектуре = Room
-class Zone(BaseModel):
+class Zone(StrictModel):
     """Zone is now an alias for RoomConfig with optional floor."""
 
     id: str

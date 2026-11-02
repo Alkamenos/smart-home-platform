@@ -17,8 +17,6 @@ from loguru import logger
 from core.persistence.atomic import atomic_write_text
 from core.persistence.manifest_store import ManifestStore
 
-from .models import ManifestModel
-
 
 if TYPE_CHECKING:
     from core.container import Container
@@ -184,7 +182,7 @@ def _sync_manifest_store(manifest_store: Any, core_manifest: Any) -> None:
         manifest_store: Хранилище манифеста веб-приложения.
         core_manifest: Ядерная модель манифеста.
     """
-    manifest_store.current = ManifestModel(**core_manifest.model_dump())
+    manifest_store.current = core_manifest
 
 
 def _parse_behaviors_from_form(form_data: Any, behavior_model: Any) -> list[Any]:
@@ -299,7 +297,7 @@ def create_app(
         manifest_path = str(_get_project_root() / "instances" / "leonids_house" / "manifest.yaml")
 
     # Initialize manifest store
-    manifest_store = ManifestStore(manifest_path, ManifestModel)
+    manifest_store = ManifestStore(manifest_path)
     # Хранилище доступно маршрутам правки манифеста (спека 017, US5): правка идёт
     # через тот же экземпляр, что и остальные пути, иначе записи разойдутся.
     app.state.manifest_store = manifest_store
