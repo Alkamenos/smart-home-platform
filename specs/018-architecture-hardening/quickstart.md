@@ -1,0 +1,134 @@
+# Quickstart: проверка архитектурных срезов
+
+**Feature**: `018-architecture-hardening` | **Date**: 2026-11-02
+
+Как убедиться, что срез действительно закрыт, не читая реализацию. Команды — для
+Linux/Windows-разработки; в Windows без `make` используйте прямой вызов
+`.venv\Scripts\python.exe -m pytest`.
+
+## Предварительно
+
+```bash
+python --version        # 3.12+
+uv --version            # для Wave C
+docker --version
+pnpm --version          # frontend
+```
+
+Установка зависимостей:
+
+```bash
+uv sync --frozen        # после Wave C
+# либо текущий путь:
+pip install -e ".[dev,webui]"
+```
+
+## Wave A — одно описание дома
+
+**Автоматически:**
+
+```bash
+pytest tests/contract/test_manifest_roundtrip.py -q
+pytest tests/unit/webui/test_manifest_model_roundtrip.py -q
+```
+
+**Вручную:**
+
+1. Открыть редактирование описания дома.
+2. Добавить поле, которого не было в прежней версии (например, новое поле
+   комнаты), сохранить.
+3. Перезапустить платформу и убедиться, что значение присутствует и работает.
+4. Ввести заведомо неверное значение — сохранение отклонено с путём до поля,
+   старое описание продолжает работать.
+5. Загрузить манифест прежней версии — ошибок нет, данные не потеряны.
+
+**Ожидаемо:** ни одного «сохранилось, но не применилось»; ошибки называют поле.
+
+## Wave B — граница управления
+
+**Автоматически:**
+
+```bash
+pytest tests/contract/test_management_auth.py -q
+```
+
+**Вручную (curl):**
+
+```bash
+# без идентичности → 401
+curl -i -X PUT http://localhost:8125/api/v1/manifest -d '{}'
+# подделанный админ → 403, права не повышены
+curl -i -X PUT http://localhost:8125/api/v1/manifest \
+  -H 'X-Is-Admin: true' -d '{}'
+# состояние остаётся доступным
+curl -i http://localhost:8125/health
+curl -i http://localhost:8125/ready
+```
+
+**Ожидаемо:** изменяющие операции без доверенной идентичности отклонены;
+`/health`, `/ready`, `/metrics` доступны; попытки в журнале с причиной.
+
+## Wave C — воспроизводимая поставка
+
+```bash
+uv lock --check
+uv sync --frozen
+pip-audit
+docker buildx build --target runtime -t probe:local .
+docker run --rm probe:local id -u          # не 0
+docker run --rm probe:local sh -c 'which gcc || true'  # пусто
+```
+
+**Ожидаемо:** lock не меняется; критических уязвимостей нет; процесс не root;
+компилятора в runtime нет.
+
+## Wave D — локальность изменения
+
+```bash
+pytest tests/architecture -q
+pytest tests/unit -q
+pytest tests/integration -q
+```
+
+**Ожидаемо:** нет импортов `core → adapters`; нет параллельных доменных моделей;
+размеры файлов в пределах бюджета; поведение не изменилось.
+
+## Wave E — отказы и контракты
+
+```bash
+pytest tests/contract/test_error_contract.py -q
+pytest tests/unit/services -q
+```
+
+**Вручную:**
+
+1. Отключить датчик температуры — в журнале ожидаемое состояние, дом в
+   безопасном поведении, не исключение.
+2. Внести заведомый дефект в тестовой ветке — ошибка видна как дефект, не как
+   «нет данных».
+3. Смоделировать сбой команды безопасности — отказ назван, не «сделано».
+4. Сравнить ответы об ошибке у двух разных маршрутов — формат один.
+
+**Ожидаемо:** три класса различимы; у каждого отказа есть `trace_id`.
+
+## Wave F — чистота
+
+```bash
+pytest tests/architecture/test_no_dead_services.py -q
+```
+
+**Вручную:** пройти по списку кандидатов из `research.md` (D6): у каждого либо
+есть production-вызов, либо пометка «экспериментально» с условием включения.
+Проверить, что Known Issues, Roadmap и BACKLOG соответствуют коду.
+
+## Полная проверка перед выпуском
+
+```bash
+pytest -q
+ruff check src tests
+ruff format --check src tests
+mypy src
+```
+
+**Ожидаемо:** не менее 3418 passed / 19 skipped, покрытие не ниже 84 %;
+`ruff` и `mypy` чистые; архитектурные проверки входят в общий прогон.
