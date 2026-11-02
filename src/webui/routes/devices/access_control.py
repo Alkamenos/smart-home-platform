@@ -25,18 +25,22 @@ router = APIRouter(prefix="/api/v1/devices", tags=["access-control"])
 
 
 # Dependency для получения текущего пользователя
-def get_current_user(x_user_id: str | None = Header(None)) -> str:
-    """Получает ID текущего пользователя из заголовка.
+def get_current_user(request: Request, x_user_id: str | None = Header(None)) -> str:
+    """Получить пользователя запроса.
 
     Args:
-        x_user_id: ID пользователя из заголовка X-User-ID
+        request: Входящий запрос с идентичностью от middleware.
+        x_user_id: ID пользователя из заголовка (уточнение имени).
 
     Returns:
-        ID пользователя
+        ID пользователя.
 
     Raises:
-        HTTPException: Если пользователь не авторизован
+        HTTPException: Если пользователь не определён.
     """
+    actor = getattr(request.state, "actor", None)
+    if actor is not None and actor.trusted:
+        return x_user_id or actor.subject
     if not x_user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-User-ID header"
@@ -44,15 +48,19 @@ def get_current_user(x_user_id: str | None = Header(None)) -> str:
     return x_user_id
 
 
-def get_is_admin(x_is_admin: str | None = Header(None)) -> bool:
-    """Проверяет является ли пользователь администратором.
+def get_is_admin(request: Request, x_is_admin: str | None = Header(None)) -> bool:
+    """Проверить, является ли пользователь администратором.
 
     Args:
-        x_is_admin: Флаг администратора из заголовка X-Is-Admin
+        request: Входящий запрос с идентичностью от middleware.
+        x_is_admin: Флаг из заголовка (только для встраивания без middleware).
 
     Returns:
-        True если администратор
+        True если администратор.
     """
+    actor = getattr(request.state, "actor", None)
+    if actor is not None:
+        return actor.is_owner
     return (x_is_admin or "").lower() == "true"
 
 

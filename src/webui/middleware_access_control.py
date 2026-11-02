@@ -64,18 +64,21 @@ class DeviceAccessMiddleware(BaseHTTPMiddleware):
         if request.method == "POST" and path == "/api/v1/devices/sources":
             return await call_next(request)
 
-        # Получаем ID пользователя из заголовка
-        user_id = request.headers.get("X-User-ID")
-        is_admin = request.headers.get("X-Is-Admin", "false").lower() == "true"
+        # Идентичность уже определена глобальной границей управления по
+        # источнику; заголовок может уточнить пользователя для доступа к
+        # прибору, но не даёт прав администратора.
+        actor = getattr(request.state, "actor", None)
+        user_id = request.headers.get("X-User-ID") or (actor.subject if actor else "")
+        is_admin = bool(actor is not None and actor.is_owner)
 
         if not user_id:
-            # Если нет ID пользователя, считаем это неавторизованным.
+            # Если нет пользователя, считаем это неавторизованным.
             # Из BaseHTTPMiddleware исключение не превратится в ответ —
             # возвращаем JSON-ответ напрямую.
-            logger.warning(f"Запрос без X-User-ID: {request.method} {request.url.path}")
+            logger.warning(f"Запрос без пользователя: {request.method} {request.url.path}")
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": "Missing X-User-ID header"},
+                content={"detail": "Missing user identity"},
             )
 
         # Проверяем доступ к защищенным endpoints

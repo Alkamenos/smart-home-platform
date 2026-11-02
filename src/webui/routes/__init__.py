@@ -306,13 +306,14 @@ async def _resolve_accessible_device_ids(request: Request) -> set[str] | None:
         HTTPException: 503, если сервис устройств недоступен или фильтрация
             не удалась, — чтобы вызывающий отличал сбой от отсутствия прав.
     """
-    user_id = request.headers.get("X-User-ID")
+    actor = getattr(request.state, "actor", None)
+    user_id = request.headers.get("X-User-ID") or (actor.subject if actor else "")
     if not user_id:
         # Анонимный запрос не получает данных: идентичность неизвестна, а
         # выдавать «видно всё» значило бы считать любого администратором.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-User-ID header",
+            detail="Missing user identity",
         )
 
     device_service = getattr(request.app.state, "device_service", None)
@@ -323,7 +324,14 @@ async def _resolve_accessible_device_ids(request: Request) -> set[str] | None:
             detail="Device service is not available",
         )
 
-    is_admin = request.headers.get("X-Is-Admin", "false").lower() == "true"
+    if actor is None:
+        # Без глобальной границы (юнит-тесты, встраивание) сохраняем прежнее
+        # поведение; в приложении actor всегда выставляется middleware.
+        is_admin = request.headers.get("X-Is-Admin", "false").lower() == "true" or bool(
+            getattr(request.app.state, "default_user_is_admin", False)
+        )
+    else:
+        is_admin = actor.is_owner
     if is_admin:
         return None
 

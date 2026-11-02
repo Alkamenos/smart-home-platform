@@ -26,12 +26,16 @@ def _is_admin(request: Request) -> bool:
         request: Входящий HTTP-запрос.
 
     Returns:
-        True, если запрос помечен как администратор.
+        True, если запрос пришёл из доверенной сети от владельца.
     """
-    header = request.headers.get("X-Is-Admin")
-    if header is not None:
-        return header.lower() == "true"
-    return bool(getattr(request.app.state, "default_user_is_admin", False))
+    actor = getattr(request.state, "actor", None)
+    if actor is None:
+        # Без глобальной границы (юнит-тесты, встраивание) — прежние правила.
+        header = request.headers.get("X-Is-Admin")
+        if header is not None:
+            return header.lower() == "true"
+        return bool(getattr(request.app.state, "default_user_is_admin", False))
+    return actor.is_owner
 
 
 def _user_id(request: Request) -> str:
@@ -41,12 +45,16 @@ def _user_id(request: Request) -> str:
         request: Входящий HTTP-запрос.
 
     Returns:
-        Идентификатор из заголовка либо пользователь по умолчанию.
+        Идентификатор из доверенного источника; заголовок только уточняет имя.
     """
+    actor = getattr(request.state, "actor", None)
+    if actor is None:
+        header = request.headers.get("X-User-ID")
+        if header:
+            return header
+        return str(getattr(request.app.state, "default_user_id", "") or "")
     header = request.headers.get("X-User-ID")
-    if header:
-        return header
-    return str(getattr(request.app.state, "default_user_id", "") or "")
+    return header or actor.subject
 
 
 @router.get("/api/v1/session", response_class=JSONResponse)

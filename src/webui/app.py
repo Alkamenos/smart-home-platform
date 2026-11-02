@@ -504,6 +504,12 @@ def create_app(
     # B79: аддон Home Assistant открывается через ingress (боковая панель), и
     # путь приходит с префиксом /api/hassio_ingress/<token>. Middleware снимает
     # его до маршрутизации. Добавляется последним — значит, работает первым.
+    from .middleware_auth import ManagementAccessMiddleware
+    from .middleware_request_id import RequestIdMiddleware
+
+    app.add_middleware(ManagementAccessMiddleware)
+    app.add_middleware(RequestIdMiddleware)
+
     from .ingress import IngressMiddleware
 
     app.add_middleware(IngressMiddleware)

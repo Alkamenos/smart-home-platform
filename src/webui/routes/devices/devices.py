@@ -81,7 +81,8 @@ def _is_admin_request(request: Request) -> bool:
         True, если запрос помечен как от глобального администратора.
     """
     is_admin: bool = getattr(request.state, "is_admin", False)
-    return is_admin or (request.headers.get("X-Is-Admin", "false").lower() == "true")
+    actor = getattr(request.state, "actor", None)
+    return is_admin or bool(actor is not None and actor.is_owner)
 
 
 async def _require_access_or_403(
