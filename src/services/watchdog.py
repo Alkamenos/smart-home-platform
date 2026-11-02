@@ -77,6 +77,13 @@ MISMATCH_DEVICE_ON_DECISION_OFF = "device_on_decision_off"
 MISMATCH_DEVICE_OFF_DECISION_ON = "device_off_decision_on"
 MISMATCH_DEVICE_UNAVAILABLE = "device_unavailable"
 
+#: Обогреватель включён, а решение — «не греть». Отдельное имя, потому что это
+#: не та же уступка человеку, что у света: включённый без решения обогреватель
+#: греет дом и жжёт энергию, а цена ошибки выше. Боевой повод — 01.11: сбой
+#: обнуления таймера оставил радиатор включённым, и сторож назвал это уступкой
+#: (`device_on_decision_off`), а не проблемой.
+MISMATCH_CLIMATE_ON_DECISION_OFF = "climate_on_decision_off"
+
 #: Расхождение из-за действующего ручного оверрайда: человек вмешался, и
 #: автоматика **обязана** уступить (концепция §7, п. 2). Это не отказ: тревоги
 #: и счётчика проблем оно не порождает, но в журнале и интерфейсе видно — иначе
@@ -97,6 +104,7 @@ MISMATCH_FAULT_REASONS = frozenset(
     {
         MISMATCH_DEVICE_OFF_DECISION_ON,
         MISMATCH_DEVICE_UNAVAILABLE,
+        MISMATCH_CLIMATE_ON_DECISION_OFF,
     }
 )
 
@@ -535,6 +543,27 @@ def _physical_family(device: str, members: dict[str, set[str]]) -> set[str]:
     return family
 
 
+#: Имена шаблонов климата в идентификаторе автомата.
+#:
+#: Идентификатор собирается как ``{устройство}_{шаблон}_{приоритет}``
+#: (`core.fsm.naming`), и по нему видно, что автомат управляет обогревом.
+#: Сторожу нужно это различать: у света «горит без решения» — уступка человеку,
+#: у обогревателя — проблема.
+CLIMATE_FSM_MARKERS = ("_climate_control_", "_climate_hysteresis_")
+
+
+def _is_climate_fsm(entity_id: str) -> bool:
+    """Управляет ли автомат климатом (обогревом или охлаждением).
+
+    Args:
+        entity_id: Идентификатор автомата.
+
+    Returns:
+        True, если в имени автомата есть шаблон климата.
+    """
+    return any(marker in entity_id for marker in CLIMATE_FSM_MARKERS)
+
+
 def _agrees_with_device(own: frozenset[str] | None, aggregate: frozenset[str]) -> bool:
     """Совпадает ли решение автомата с итоговым решением прибора.
 
@@ -862,6 +891,12 @@ class WatchdogService:
                 # называется и «включено не нами», когда о вмешательстве известно
                 # (правило владельца: уступка объяснима и временна).
                 reason = MISMATCH_MANUAL_OVERRIDE
+            if reason == MISMATCH_DEVICE_ON_DECISION_OFF and _is_climate_fsm(entry.entity_id):
+                # У обогревателя «включён без решения» — не уступка, а проблема:
+                # наш собственный отказ выключения выглядит точно так же, а цена
+                # оставленного обогрева выше, чем у лампы. Ручное включение сюда
+                # не попадает: выше оно уже названо `manual_override_active`.
+                reason = MISMATCH_CLIMATE_ON_DECISION_OFF
             if reason is not None:
                 logger.warning(
                     f"Расхождение «автомат ↔ прибор»: {entry.device} — автомат "
@@ -947,6 +982,12 @@ class WatchdogService:
                     # Штору открыли без нас: команду не повторяем, но модель
                     # обязана узнать правду, иначе останется в старом CLOSED.
                     await self._tell_device_truth(entry, trigger)
+                continue
+            if entry.mismatch_reason == MISMATCH_CLIMATE_ON_DECISION_OFF:
+                # Тревога без повтора: человек мог включить обогреватель сам, а
+                # `device_state_diverged` у климата не имеет перехода — повтор
+                # стал бы отказом в журнале без единой команды прибору.
+                self._divergence_attempts.pop(entry.entity_id, None)
                 continue
             attempts = self._divergence_attempts.get(entry.entity_id, 0)
             if attempts >= DIVERGENCE_REASSERT_ATTEMPTS:

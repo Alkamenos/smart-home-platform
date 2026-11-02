@@ -128,6 +128,7 @@ MISMATCH_LABELS = {
     "device_on_decision_off": "горит, хотя решение — выключено",
     "device_off_decision_on": "не горит, хотя решение — включить",
     "device_unavailable": "не отвечает",
+    "climate_on_decision_off": "включён, хотя решение — не греть",
 }
 
 #: Те же виды для штор: про штору «горит» не говорят, у неё положение.
