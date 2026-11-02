@@ -97,12 +97,8 @@ rooms:
 automation_rules:
   global_manual_lockout_min: 60
   lighting:
-    motion_enabled: true
-    schedule_enabled: true
     manual_lockout_min: 60
   climate:
-    safety_lockout_enabled: true
-    away_mode_enabled: true
     manual_lockout_min: 30
   ventilation:
     manual_lockout_min: 15
