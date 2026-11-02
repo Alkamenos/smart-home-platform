@@ -236,11 +236,12 @@ gantt
 - Priority: HIGH
 - Effort: 1-2 days
 - User Stories:
-- [ ] Dashboard Generator for Platform Management
+- ✅ Dashboard Generator for Platform Management
 - Detail: `.ai/enhancements/19-dashboard-generator.md`
 - Priority: MEDIUM
 - Effort: 1 day
 - User Stories:
+- Done: 2026-11-01 — CLI `shp generate-dashboard` (B8): манифест по умолчанию — эталон боевого дома, `-o` пишет файл, без него YAML в stdout; 10 тестов. Генератор и публикация в HA сделаны раньше (B79).
 
 ## ✅ Phase 9.8: Critical Production Fixes
 
