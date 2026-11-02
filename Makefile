@@ -1,6 +1,6 @@
 # Smart Home FSM Platform - Makefile
 
-.PHONY: help test test-verbose test-fast test-block check-fast test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap sync-prod-manifest changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm frontend-install frontend-build frontend-lint frontend-test dev-frontend
+.PHONY: help test test-verbose test-fast test-block check-fast check-architecture test-browser run-webui run-webui-prod lint format clean install install-dev run-mock run-tests watch test-integration test-integration-verbose ai-setup ai-checks sync-roadmap sync-prod-manifest changelog export-fsm export-fsm-mermaid export-fsm-graphviz visualize-fsm frontend-install frontend-build frontend-lint frontend-test dev-frontend
 
 # Default target
 help:
@@ -88,7 +88,7 @@ test-block:
 	pytest --no-cov -m "$(BLOCK)"
 
 # Внутренний цикл целиком: статика и быстрые тесты одной командой.
-check-fast: lint type-check test-fast
+check-fast: lint type-check check-architecture test-fast
 
 # Браузерные тесты нового интерфейса (спека 017): Playwright во фронтенде.
 # Нужны собранный фронт (make frontend-build) и запущенная платформа.
@@ -134,6 +134,10 @@ format:
 
 type-check:
 	@mypy src/
+
+# Архитектурные правила (спека 018): зависимости, размеры, параллельные модели.
+check-architecture:
+	@python -m pytest --no-cov tests/architecture -q
 
 # Development
 clean:
