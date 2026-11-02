@@ -60,6 +60,31 @@ def test_turned_on_by_someone_is_only_information() -> None:
     assert "выключено" in alerts[0].detail
 
 
+def test_heater_left_on_is_a_warning_with_words_about_heating() -> None:
+    """Обогреватель, оставшийся включённым без решения, — тревога.
+
+    Returns:
+        Ничего.
+    """
+    snapshot = SimpleNamespace(
+        entries=(
+            _entry(
+                entity_id="switch.obogrevatel_spalnia_climate_control_10",
+                device="switch.obogrevatel_spalnia",
+                state="IDLE",
+                device_state="on",
+                mismatch_reason="climate_on_decision_off",
+            ),
+        )
+    )
+
+    alerts = alerts_from_watchdog(snapshot)
+
+    assert len(alerts) == 1
+    assert alerts[0].severity == SEVERITY_WARNING, "оставленный обогрев назван уступкой"
+    assert "не греть" in alerts[0].detail, alerts[0].detail
+
+
 def test_real_fault_becomes_a_warning() -> None:
     """Настоящий отказ — «решили включить, а прибор не включился» — тревога.
 

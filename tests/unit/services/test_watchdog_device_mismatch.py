@@ -26,6 +26,7 @@ from core.metrics import MetricsCollector
 from services.watchdog import (
     DEVICE_DIVERGED_TRIGGER,
     DIVERGENCE_REASSERT_ATTEMPTS,
+    MISMATCH_CLIMATE_ON_DECISION_OFF,
     MISMATCH_DEVICE_OFF_DECISION_ON,
     MISMATCH_DEVICE_ON_DECISION_OFF,
     MISMATCH_DEVICE_UNAVAILABLE,
@@ -39,6 +40,8 @@ FSM_ID = "light.group_nochnoe_osveshcheni_deco_light_10"
 DEVICE = "light.group_nochnoe_osveshcheni"
 COVER_FSM = "cover.shtora_v_kabinet_cover_modes_10"
 COVER_DEVICE = "cover.shtora_v_kabinet"
+HEATER_FSM = "switch.obogrevatel_spalnia_climate_control_10"
+HEATER_DEVICE = "switch.obogrevatel_spalnia"
 
 
 @dataclass
@@ -208,6 +211,73 @@ async def test_decision_off_device_on_is_a_yield_not_a_problem() -> None:
     assert entry.mismatch is True
     assert entry.mismatch_is_fault is False, "включённое не нами названо отказом"
     assert snapshot.problem_count == 0, "уступка человеку попала в проблемы дома"
+
+
+@pytest.mark.asyncio
+async def test_heater_on_with_idle_decision_is_a_problem() -> None:
+    """Обогреватель включён, а автомат в `IDLE` — это проблема, не уступка.
+
+    Для света «горит, хотя решение — выключено» остаётся уступкой человеку:
+    включить лампу мог кто угодно, и гасить её за человеком нельзя. У обогревателя
+    цена ошибки другая: включённый без решения прибор греет дом и жжёт энергию.
+    Ручное включение при этом не пропадает: B89 пишет блокировку, и расхождение
+    становится `manual_override_active` (следующий тест).
+
+    Returns:
+        Ничего.
+    """
+    engine = FakeEngine({HEATER_FSM: "IDLE"}, {HEATER_FSM: HEATER_DEVICE})
+    adapter = FakeAdapter({HEATER_DEVICE: "on"})
+
+    snapshot = await make_watchdog(engine, adapter).check_once()
+
+    entry = snapshot.entries[0]
+    assert entry.mismatch_reason == MISMATCH_CLIMATE_ON_DECISION_OFF
+    assert entry.mismatch_is_fault is True, "включённый без решения обогреватель не тревога"
+    assert snapshot.problem_count == 1, "проблема дома не посчитана"
+
+
+@pytest.mark.asyncio
+async def test_heater_on_is_reported_but_not_turned_off() -> None:
+    """Сторож сообщает о включённом обогревателе, но команду не повторяет.
+
+    Повтор «выключить» мог бы погасить обогреватель, который человек включил
+    намеренно. При этом «мы командовали недавно» не должно превращать тревогу в
+    поток команд: у климата нет перехода `device_state_diverged`, и повтор стал
+    бы отказом в журнале без пользы.
+
+    Returns:
+        Ничего.
+    """
+    engine = FakeEngine({HEATER_FSM: "IDLE"}, {HEATER_FSM: HEATER_DEVICE})
+    adapter = FakeAdapter({HEATER_DEVICE: "on"})
+    watchdog = make_watchdog(engine, adapter, commanded_recently=lambda _device: True)
+
+    await watchdog.check_once()
+
+    assert engine.triggered == [], (
+        f"сторож повторил команду обогревателю: {engine.triggered} — человек мог "
+        "включить его сам, а у климата нет перехода для такого повтора"
+    )
+
+
+@pytest.mark.asyncio
+async def test_heater_on_after_manual_override_is_a_yield() -> None:
+    """Ручное включение обогревателя — уступка, а не проблема.
+
+    Returns:
+        Ничего.
+    """
+    engine = FakeEngine({HEATER_FSM: "IDLE"}, {HEATER_FSM: HEATER_DEVICE})
+    adapter = FakeAdapter({HEATER_DEVICE: "on"})
+    watchdog = make_watchdog(engine, adapter, manual_override=lambda _device: True)
+
+    snapshot = await watchdog.check_once()
+
+    entry = snapshot.entries[0]
+    assert entry.mismatch_reason == MISMATCH_MANUAL_OVERRIDE
+    assert entry.mismatch_is_fault is False
+    assert snapshot.problem_count == 0, "ручное включение попало в проблемы дома"
 
 
 @pytest.mark.asyncio
