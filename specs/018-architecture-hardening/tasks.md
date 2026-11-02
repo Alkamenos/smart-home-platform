@@ -94,23 +94,23 @@ description: "Task list for architecture hardening"
 
 ### Tests for User Story 2
 
-- [ ] T024 [P] [US2] Contract-тест матрицы доступа в `tests/contract/test_management_auth.py`
-- [ ] T025 [P] [US2] Contract-тест подделанных `X-User-ID`/`X-Is-Admin` в `tests/contract/test_management_auth.py`
-- [ ] T026 [P] [US2] Тест allowlist `/health`, `/ready`, `/metrics` в `tests/contract/test_management_auth.py`
-- [ ] T027 [P] [US2] Тест проверки `Origin`/`Referer` для изменяющих запросов из браузера в `tests/contract/test_same_origin.py`
+- [X] T024 [P] [US2] Contract-тест матрицы доступа в `tests/contract/test_management_auth.py`
+- [X] T025 [P] [US2] Contract-тест подделанных `X-User-ID`/`X-Is-Admin` в `tests/contract/test_management_auth.py`
+- [X] T026 [P] [US2] Тест allowlist `/health`, `/ready`, `/metrics` в `tests/contract/test_management_auth.py`
+- [X] T027 [P] [US2] Тест проверки `Origin`/`Referer` для изменяющих запросов из браузера в `tests/contract/test_same_origin.py`
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Реализовать `src/webui/security/identity.py`: роль по доверенному источнику, ingress только из доверенного прокси, заголовки клиента не повышают права
-- [ ] T029 [US2] Реализовать `src/webui/security/network.py`: разбор доверенных подсетей и проверка адреса запроса
-- [ ] T030 [US2] Создать глобальный `src/webui/middleware_auth.py` с default deny и явным allowlist
-- [ ] T031 [US2] Подключить middleware в `src/webui/app.py`; убрать доверие заголовкам в `src/webui/middleware_access_control.py`
-- [ ] T032 [US2] Защитить `src/webui/routes/manifest.py`, `src/webui/routes/dashboard.py`, `src/webui/routes/devices/*.py`
-- [ ] T033 [US2] Перевести `src/webui/routes/session.py` на источник и роль (без входа/пароля)
-- [ ] T034 [US2] Обновить `frontend/src/lib/api.ts`: обработка 403 и понятное сообщение «управление доступно только из домашней сети»
-- [ ] T035 [US2] Писать отказы доступа в журнал с источником, операцией, причиной и `trace_id`
-- [ ] T036 [US2] Обновить `deploy/docker/.env.example` и `deploy/README.md`: доверенные подсети, отказ по умолчанию, остаточный риск LAN
-- [ ] T037 [US2] Проверить сценарии `quickstart.md` для Wave B и зафиксировать результат
+- [X] T028 [US2] Реализовать `src/webui/security/identity.py`: роль по доверенному источнику, ingress только из доверенного прокси, заголовки клиента не повышают права
+- [X] T029 [US2] Реализовать `src/webui/security/network.py`: разбор доверенных подсетей и проверка адреса запроса
+- [X] T030 [US2] Создать глобальный `src/webui/middleware_auth.py` с default deny и явным allowlist
+- [X] T031 [US2] Подключить middleware в `src/webui/app.py`; убрать доверие заголовкам в `src/webui/middleware_access_control.py`
+- [X] T032 [US2] Защитить `src/webui/routes/manifest.py`, `src/webui/routes/dashboard.py`, `src/webui/routes/devices/*.py`
+- [X] T033 [US2] Перевести `src/webui/routes/session.py` на источник и роль (без входа/пароля)
+- [X] T034 [US2] Обновить `frontend/src/lib/api.ts`: обработка 403 и понятное сообщение «управление доступно только из домашней сети»
+- [X] T035 [US2] Писать отказы доступа в журнал с источником, операцией, причиной и `trace_id`
+- [X] T036 [US2] Обновить `deploy/docker/.env.example` и `deploy/README.md`: доверенные подсети, отказ по умолчанию, остаточный риск LAN
+- [X] T037 [US2] Проверить сценарии `quickstart.md` для Wave B и зафиксировать результат
 
 **Checkpoint**: ни одна изменяющая операция не доступна анонимно; состояние — по allowlist.
 

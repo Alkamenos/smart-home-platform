@@ -143,7 +143,8 @@ mypy src
 | Setup (T001–T005) | baseline зафиксирован, `tests/architecture` и инвентаризация готовы |
 | Foundational (T006–T010) | классы отказов, идентичность, `trace_id`; тесты зелёные |
 | US1 (T011–T023) | единая модель, `extra=forbid`, `extensions`, удалены `manifest_schema`/`manifest_validator` и дубли WebUI |
-| Полный прогон | **3362 passed / 19 skipped**, покрытие **84 %** |
+| US2 (T024–T037) | доверенная сеть, default deny, заголовки не повышают права, `Origin`, allowlist; пароля нет |
+| Полный прогон | **3371 passed / 19 skipped**, покрытие **84 %** |
 | `ruff` / `mypy` | чисто |
 | Ожидаемое снижение числа тестов | −78 тестов мёртвой схемы, +22 новых проверки |
 
