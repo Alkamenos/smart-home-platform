@@ -111,8 +111,6 @@ def sample_manifest_data():
         "automation_rules": {
             "global_manual_lockout_min": 60,
             "lighting": {
-                "motion_enabled": True,
-                "schedule_enabled": True,
                 "manual_lockout_min": 60,
             },
         },

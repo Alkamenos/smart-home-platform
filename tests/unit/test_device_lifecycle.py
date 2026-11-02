@@ -90,7 +90,7 @@ def manifest() -> Manifest:
             )
         ],
         automation_rules=AutomationRules(
-            lighting=AutomationDomainRules(motion_enabled=True),
+            lighting=AutomationDomainRules(),
             global_manual_lockout_min=0,
         ),
         dashboard=Dashboard(title="Test"),

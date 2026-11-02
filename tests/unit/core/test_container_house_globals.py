@@ -144,7 +144,7 @@ def test_empty_room_thermostat_is_rejected() -> None:
 
 
 def test_thermostat_is_not_taken_from_climate_rules() -> None:
-    """Старое поле climate.thermostat_entity больше не участвует.
+    """Старое поле climate.thermostat_entity отвергается, а не игнорируется.
 
     Args:
         Нет.
@@ -152,9 +152,5 @@ def test_thermostat_is_not_taken_from_climate_rules() -> None:
     Returns:
         Ничего.
     """
-    rules = AutomationRules.model_validate(
-        {"climate": {"thermostat_entity": "climate.old_thermostat"}}
-    )
-    adapter = _bind(_container([], rules))
-
-    assert "thermostat" not in adapter.climate_entities
+    with pytest.raises(ValidationError):
+        AutomationRules.model_validate({"climate": {"thermostat_entity": "climate.old_thermostat"}})

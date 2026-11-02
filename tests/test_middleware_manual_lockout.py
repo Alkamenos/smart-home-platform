@@ -47,13 +47,9 @@ def automation_rules():
     """Create automation rules with manual_lockout settings."""
     return AutomationRules(
         lighting=LightingAutomation(
-            motion_enabled=True,
-            schedule_enabled=True,
             manual_lockout_min=60,
         ),
         climate=ClimateAutomation(
-            safety_lockout_enabled=True,
-            away_mode_enabled=True,
             manual_lockout_min=30,
         ),
         ventilation=VentilationAutomation(

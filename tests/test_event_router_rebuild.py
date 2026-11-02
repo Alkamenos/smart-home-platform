@@ -89,7 +89,7 @@ def _manifest_with_device(device_id: str, room_id: str = "kitchen") -> Manifest:
             ),
         ],
         automation_rules=AutomationRules(
-            lighting=AutomationDomainRules(motion_enabled=True, schedule_enabled=True),
+            lighting=AutomationDomainRules(),
             global_manual_lockout_min=0,
         ),
         dashboard=Dashboard(title="Test Dashboard"),

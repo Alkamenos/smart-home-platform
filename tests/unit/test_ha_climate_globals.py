@@ -560,16 +560,15 @@ class TestClimateEntitiesDeclared:
         Returns:
             Ничего.
         """
+        from pydantic import ValidationError
+
         from core.models.manifest import AutomationClimateRules, AutomationRules
 
-        rules = AutomationRules.model_validate(
-            {"climate": {"setpoint_min": 30.0, "setpoint_max": 5.0}}
-        )
+        with pytest.raises(ValidationError):
+            AutomationRules.model_validate({"climate": {"setpoint_min": 30.0, "setpoint_max": 5.0}})
 
         assert "setpoint_min" not in AutomationClimateRules.model_fields
         assert "setpoint_max" not in AutomationClimateRules.model_fields
-        assert "setpoint_min" not in rules.climate.model_dump()
-        assert "setpoint_max" not in rules.climate.model_dump()
 
 
 class TestGlobalsAreSubscribed:

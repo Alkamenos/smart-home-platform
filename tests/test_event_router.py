@@ -103,8 +103,6 @@ def create_test_manifest() -> Manifest:
         ],
         automation_rules=AutomationRules(
             lighting=AutomationDomainRules(
-                motion_enabled=True,
-                schedule_enabled=True,
                 manual_lockout_min=5,
             ),
             global_manual_lockout_min=0,
@@ -149,8 +147,6 @@ def create_location_manifest() -> Manifest:
         ],
         automation_rules=AutomationRules(
             lighting=AutomationDomainRules(
-                motion_enabled=True,
-                schedule_enabled=True,
                 manual_lockout_min=5,
             ),
             global_manual_lockout_min=0,

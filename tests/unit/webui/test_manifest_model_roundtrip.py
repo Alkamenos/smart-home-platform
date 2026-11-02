@@ -36,7 +36,6 @@ MANIFEST = {
         "global_manual_lockout_min": 60,
         "cover": {"feature_entity": "input_boolean.feature_covers"},
         "locations": {"stale_after_sec": 3600, "presence_window_sec": 600},
-        "lighting": {"motion_enabled": True},
     },
 }
 
