@@ -313,10 +313,14 @@ A2–A12):
 ### ADR-001: Core не зависит от Adapters
 - `core/` не импортирует `adapters/`
 - Связь через `CommandIntent` и протоколы
+- Composition root живёт в `src/app/` (перенос из `core/container.py`), правило проверяется `tests/architecture/test_dependency_rules.py`
 
 ### ADR-002: Манифест — единственный источник конфигурации
 - Никаких хардкоженных значений в коде
 - Все параметры в `manifest.yaml`
+- Доменная модель одна: `core.models.manifest.Manifest`; JSON Schema и проверка выводятся из неё
+- Неизвестные поля отвергаются с путём до поля; явные расширения — только в `extensions`
+- В WebUI нет второй модели манифеста: только DTO представления
 
 ### ADR-003: FSM идентифицируются по схеме `{device}_{template}_{priority}`
 - Это позволяет одному устройству иметь несколько поведений

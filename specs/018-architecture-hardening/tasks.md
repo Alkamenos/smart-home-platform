@@ -31,11 +31,11 @@ description: "Task list for architecture hardening"
 
 **Purpose**: базовая линия и инструменты, без которых нельзя менять код безопасно
 
-- [ ] T001 Зафиксировать baseline в `specs/018-architecture-hardening/baseline.md`: полный прогон (3418/19), покрытие 84 %, размеры крупнейших файлов, матрица импортов
-- [ ] T002 [P] Создать `tests/architecture/__init__.py` и `tests/architecture/ast_helpers.py` — разбор AST для проверок импортов и размеров
-- [ ] T003 [P] Создать `tests/architecture/allowlist.py` — явные исключения для существующих крупных файлов и временных нарушений, с причиной и сроком
-- [ ] T004 [P] Создать `tools/dead_code_inventory.py` — поиск модулей и публичных функций без production-вызовов
-- [ ] T005 [P] Добавить в `Makefile` цель `check-architecture` и включить её в `check-fast`
+- [X] T001 Зафиксировать baseline в `specs/018-architecture-hardening/baseline.md`: полный прогон (3418/19), покрытие 84 %, размеры крупнейших файлов, матрица импортов
+- [X] T002 [P] Создать `tests/architecture/__init__.py` и `tests/architecture/ast_helpers.py` — разбор AST для проверок импортов и размеров
+- [X] T003 [P] Создать `tests/architecture/allowlist.py` — явные исключения для существующих крупных файлов и временных нарушений, с причиной и сроком
+- [X] T004 [P] Создать `tools/dead_code_inventory.py` — поиск модулей и публичных функций без production-вызовов
+- [X] T005 [P] Добавить в `Makefile` цель `check-architecture` и включить её в `check-fast`
 
 **Checkpoint**: baseline зафиксирован, проверки архитектуры запускаются локально.
 
@@ -47,11 +47,11 @@ description: "Task list for architecture hardening"
 
 **⚠️ CRITICAL**: срезы US1–US6 начинаются после этой фазы.
 
-- [ ] T006 [P] Создать `src/core/errors.py`: классы ожидаемого отказа, дефекта и аварии, не зависящие от FastAPI
-- [ ] T007 [P] Создать `src/webui/security/identity.py`: протокол участника (subject, roles, source, trusted) без доверия заголовкам клиента
-- [ ] T008 [P] Создать `src/webui/middleware_request_id.py`: сквозной `trace_id` для запроса, журнала и ответа
-- [ ] T009 [P] Создать `tests/unit/core/test_error_taxonomy.py`: три класса отказов различимы и не маскируют друг друга
-- [ ] T010 [P] Создать `tests/architecture/test_baseline.py`: проверка, что архитектурные тесты входят в общий прогон и не отключены
+- [X] T006 [P] Создать `src/core/errors.py`: классы ожидаемого отказа, дефекта и аварии, не зависящие от FastAPI
+- [X] T007 [P] Создать `src/webui/security/identity.py`: протокол участника (subject, roles, source, trusted) без доверия заголовкам клиента
+- [X] T008 [P] Создать `src/webui/middleware_request_id.py`: сквозной `trace_id` для запроса, журнала и ответа
+- [X] T009 [P] Создать `tests/unit/core/test_error_taxonomy.py`: три класса отказов различимы и не маскируют друг друга
+- [X] T010 [P] Создать `tests/architecture/test_baseline.py`: проверка, что архитектурные тесты входят в общий прогон и не отключены
 
 **Checkpoint**: общие примитивы готовы; можно начинать US1, US2 и US3 параллельно.
 
@@ -65,22 +65,22 @@ description: "Task list for architecture hardening"
 
 ### Tests for User Story 1 (написать первыми, убедиться, что падают)
 
-- [ ] T011 [P] [US1] Contract-тест round-trip всех полей в `tests/contract/test_manifest_roundtrip.py`
-- [ ] T012 [P] [US1] Unit-тест неизвестных полей и `extensions` в `tests/unit/core/test_manifest_unknown_fields.py`
-- [ ] T013 [P] [US1] Unit-тест сохранения через `PUT /api/v1/manifest` канонической моделью в `tests/unit/webui/test_manifest_save_canonical.py`
-- [ ] T014 [P] [US1] Тест совместимости манифеста прежней версии в `tests/contract/test_manifest_backward_compat.py`
+- [X] T011 [P] [US1] Contract-тест round-trip всех полей в `tests/contract/test_manifest_roundtrip.py`
+- [X] T012 [P] [US1] Unit-тест неизвестных полей и `extensions` в `tests/unit/core/test_manifest_unknown_fields.py`
+- [X] T013 [P] [US1] Unit-тест сохранения через `PUT /api/v1/manifest` канонической моделью в `tests/unit/webui/test_manifest_save_canonical.py`
+- [X] T014 [P] [US1] Тест совместимости манифеста прежней версии в `tests/contract/test_manifest_backward_compat.py`
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Задать `extra="forbid"` и явное пространство расширений в `src/core/models/manifest.py`
-- [ ] T016 [US1] Перевести `src/core/persistence/manifest_store.py` на каноническую модель по умолчанию; убрать параметр второй модели
-- [ ] T017 [US1] Удалить доменные дубли из `src/webui/models.py`: оставить только DTO и view-модели
-- [ ] T018 [US1] Обновить `src/webui/app.py`, `src/webui/__init__.py`, `src/webui/routes/overview.py` под каноническую модель
-- [ ] T019 [US1] Перевести `src/webui/routes/manifest.py` на `Manifest.model_json_schema()` и единые ошибки полей
-- [ ] T020 [US1] Удалить `src/core/manifest_schema.py` и `src/core/manifest_validator.py`; перенести нужные проверки в модель
-- [ ] T021 [US1] Удалить или переписать тесты `tests/test_manifest_schema.py`, `tests/test_manifest_validator.py`, `tests/unit/webui/test_manifest_model_roundtrip.py`
-- [ ] T022 [US1] Обновить документацию модели: `.ai/02_ARCHITECTURE.md`, `specs/018-architecture-hardening/data-model.md`
-- [ ] T023 [US1] Проверить сценарии `quickstart.md` для Wave A и зафиксировать результат в `specs/018-architecture-hardening/quickstart.md`
+- [X] T015 [US1] Задать `extra="forbid"` и явное пространство расширений в `src/core/models/manifest.py`
+- [X] T016 [US1] Перевести `src/core/persistence/manifest_store.py` на каноническую модель по умолчанию; убрать параметр второй модели
+- [X] T017 [US1] Удалить доменные дубли из `src/webui/models.py`: оставить только DTO и view-модели
+- [X] T018 [US1] Обновить `src/webui/app.py`, `src/webui/__init__.py`, `src/webui/routes/overview.py` под каноническую модель
+- [X] T019 [US1] Перевести `src/webui/routes/manifest.py` на `Manifest.model_json_schema()` и единые ошибки полей
+- [X] T020 [US1] Удалить `src/core/manifest_schema.py` и `src/core/manifest_validator.py`; перенести нужные проверки в модель
+- [X] T021 [US1] Удалить или переписать тесты `tests/test_manifest_schema.py`, `tests/test_manifest_validator.py`, `tests/unit/webui/test_manifest_model_roundtrip.py`
+- [X] T022 [US1] Обновить документацию модели: `.ai/02_ARCHITECTURE.md`, `specs/018-architecture-hardening/data-model.md`
+- [X] T023 [US1] Проверить сценарии `quickstart.md` для Wave A и зафиксировать результат в `specs/018-architecture-hardening/quickstart.md`
 
 **Checkpoint**: описание дома имеет один источник; US1 можно выпускать отдельно.
 
@@ -97,19 +97,19 @@ description: "Task list for architecture hardening"
 - [ ] T024 [P] [US2] Contract-тест матрицы доступа в `tests/contract/test_management_auth.py`
 - [ ] T025 [P] [US2] Contract-тест подделанных `X-User-ID`/`X-Is-Admin` в `tests/contract/test_management_auth.py`
 - [ ] T026 [P] [US2] Тест allowlist `/health`, `/ready`, `/metrics` в `tests/contract/test_management_auth.py`
-- [ ] T027 [P] [US2] Тест CSRF/Origin для cookie-сессии в `tests/contract/test_session_csrf.py`
+- [ ] T027 [P] [US2] Тест проверки `Origin`/`Referer` для изменяющих запросов из браузера в `tests/contract/test_same_origin.py`
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Реализовать `src/webui/security/identity.py`: ingress только из доверенного диапазона, сессия, bearer-токен
-- [ ] T029 [US2] Реализовать `src/webui/security/session.py`: подписанная HttpOnly-cookie, срок жизни, сравнение постоянного времени
+- [ ] T028 [US2] Реализовать `src/webui/security/identity.py`: роль по доверенному источнику, ingress только из доверенного прокси, заголовки клиента не повышают права
+- [ ] T029 [US2] Реализовать `src/webui/security/network.py`: разбор доверенных подсетей и проверка адреса запроса
 - [ ] T030 [US2] Создать глобальный `src/webui/middleware_auth.py` с default deny и явным allowlist
 - [ ] T031 [US2] Подключить middleware в `src/webui/app.py`; убрать доверие заголовкам в `src/webui/middleware_access_control.py`
 - [ ] T032 [US2] Защитить `src/webui/routes/manifest.py`, `src/webui/routes/dashboard.py`, `src/webui/routes/devices/*.py`
-- [ ] T033 [US2] Реализовать вход/выход и `/api/v1/session` в `src/webui/routes/session.py`
-- [ ] T034 [US2] Добавить страницу входа `frontend/src/app/login/page.tsx` и обработку 401 в `frontend/src/lib/api.ts`
+- [ ] T033 [US2] Перевести `src/webui/routes/session.py` на источник и роль (без входа/пароля)
+- [ ] T034 [US2] Обновить `frontend/src/lib/api.ts`: обработка 403 и понятное сообщение «управление доступно только из домашней сети»
 - [ ] T035 [US2] Писать отказы доступа в журнал с источником, операцией, причиной и `trace_id`
-- [ ] T036 [US2] Обновить `deploy/docker/.env.example` и `deploy/README.md`: пароль/токен, доверенный прокси, отказ по умолчанию
+- [ ] T036 [US2] Обновить `deploy/docker/.env.example` и `deploy/README.md`: доверенные подсети, отказ по умолчанию, остаточный риск LAN
 - [ ] T037 [US2] Проверить сценарии `quickstart.md` для Wave B и зафиксировать результат
 
 **Checkpoint**: ни одна изменяющая операция не доступна анонимно; состояние — по allowlist.
@@ -214,7 +214,7 @@ description: "Task list for architecture hardening"
 
 - [ ] T074 [P] [US6] Прогнать `tools/dead_code_inventory.py` и сохранить отчёт в `specs/018-architecture-hardening/dead-code.md`
 - [ ] T075 [P] [US6] Удалить legacy `src/bootstrap.py` или свести к вызову `src/app/container.py`
-- [ ] T076 [P] [US6] Решить судьбу `src/services/backup_service.py` (owner decision B13/B14): удалить или подключить
+- [ ] T076 [P] [US6] Удалить `src/services/backup_service.py` и `tests/test_backup_service.py`; оставить `deploy.sh backup` как единственный путь
 - [ ] T077 [P] [US6] Удалить или пометить неиспользуемые guard'ы в `src/core/guards/context.py`, `src/core/guards/builtin.py`, `src/features/CONTRACT.yaml`
 - [ ] T078 [P] [US6] Объединить CLI-деревья `src/cli/health_check.py` и `src/smart_home/cli/`
 - [ ] T079 [P] [US6] Пометить `ConfigWatcher` экспериментальным: условие включения, риски, тесты, документация
