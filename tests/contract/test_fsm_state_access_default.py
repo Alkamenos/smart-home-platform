@@ -50,16 +50,16 @@ def anonymous_client() -> TestClient:
     return TestClient(app)
 
 
-class TestAnonymousAccessIsNotFullAccess:
-    """Отсутствие идентичности не должно давать доступ ко всему."""
+class TestTrustedAnonymousIsOwner:
+    """Доверенная сеть без заголовков действует от имени владельца."""
 
-    def test_request_without_headers_does_not_return_200_with_all_states(
+    def test_request_without_headers_returns_same_states_as_owner(
         self, client: TestClient, anonymous_client: TestClient
     ) -> None:
-        """Запрос без заголовков не отдаёт состояния всех устройств.
+        """Пароля нет: граница доверия — сеть, а не заголовок.
 
-        Проверяется сравнением с admin-доступом: если бы анонимный ответ был
-        таким же, дефект считался бы исправленным.
+        Раньше отсутствие заголовка означало отказ; теперь доверенный клиент
+        видит то же, что и владелец. Проверяется сравнением с admin-доступом.
         """
         admin_states = client.get("/api/fsm/state").json()["states"]
         if not admin_states:
@@ -67,11 +67,8 @@ class TestAnonymousAccessIsNotFullAccess:
 
         response = anonymous_client.get("/api/fsm/state")
 
-        assert response.status_code != 200 or not response.json().get("states"), (
-            "анонимный запрос получил 200 с состояниями: доступ «на отказ» "
-            f"(админ видит {len(admin_states)}, аноним — "
-            f"{len(response.json().get('states', []))})"
-        )
+        assert response.status_code == 200, response.text
+        assert len(response.json().get("states", [])) == len(admin_states)
 
 
 class TestFailClosedOnBrokenService:

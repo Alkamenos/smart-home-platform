@@ -22,17 +22,16 @@ from tests.helpers.ha_stub import HAUnavailable, async_value, stub_ha
 class TestIdentityFixture:
     """Идентичность — часть подготовки, а не украшения каждого запроса."""
 
-    def test_request_without_identity_is_rejected(self, isolated_app):
-        """Запрос без идентичности отклоняется, а не проходит вхолостую."""
+    def test_request_without_identity_is_owner(self, isolated_app):
+        """Без заголовков доверенная сеть действует от имени владельца."""
         with TestClient(isolated_app) as client:
             response = client.post(
                 "/api/v1/devices/not-a-real-device/config",
                 json={"location": "кухня"},
             )
-        assert response.status_code == 401, (
-            f"без идентичности ожидался 401, получен {response.status_code}: {response.text}"
+        assert response.status_code not in (401, 403), (
+            f"доверенный клиент без заголовков получил отказ: {response.status_code}"
         )
-        assert response.json()["detail"] == "Missing X-User-ID header"
 
     def test_request_with_identity_passes_middleware(self, isolated_client):
         """С идентичностью запрос доходит до роута (дальше — его собственные коды)."""
@@ -41,21 +40,17 @@ class TestIdentityFixture:
             f"с идентичностью ожидался не 401, получен {response.status_code}"
         )
 
-    def test_device_list_without_identity_returns_empty_not_error(
-        self, isolated_client, synced_device_id
-    ):
-        """`GET /devices` без идентичности даёт 200 `[]` — и это ловушка.
+    def test_device_list_without_identity_is_owner_view(self, isolated_client, synced_device_id):
+        """Без заголовков доверенный клиент видит дом как владелец.
 
-        Список отдаёт только доступное пользователю, поэтому без заголовка он
-        пуст и код успешен. Такой «успех» не является проверкой прав: тест,
-        построенный на нём, проходит, ни разу не проверив доступ. Здесь это
-        зафиксировано явно, чтобы правомерность такой проверки не пришлось
-        угадывать.
+        Пароль не требуется; список устройств не пуст, потому что источник —
+        доверенная сеть, а не аноним из внешнего адреса.
         """
         with TestClient(isolated_client.app) as anonymous:
             response = anonymous.get("/api/v1/devices")
         assert response.status_code == 200
-        assert response.json() == [], "ожидался пустой список для анонимного запроса"
+        ids = [str(d["id"]) for d in response.json()]
+        assert synced_device_id in ids, "владелец доверенной сети не увидел устройство"
 
     def test_admin_can_read_device_list(self, isolated_client, synced_device_id):
         """С идентичностью администратора список содержит устройство."""
@@ -75,10 +70,10 @@ class TestIdentityFixture:
         }
         assert len(user_ids) == 3, f"идентификаторы пользователей должны различаться: {user_ids}"
 
-    def test_admin_header_marks_admin_only(self, admin_headers, viewer_headers):
-        """Административность выражена отдельным заголовком, а не подразумевается."""
+    def test_admin_header_marks_role_explicitly(self, admin_headers, viewer_headers):
+        """Роль выражается явно; отсутствие заголовка — владелец сети."""
         assert admin_headers.get("X-Is-Admin") == "true"
-        assert "X-Is-Admin" not in viewer_headers
+        assert viewer_headers.get("X-Is-Admin") == "false"
 
 
 class TestStorageIsolation:

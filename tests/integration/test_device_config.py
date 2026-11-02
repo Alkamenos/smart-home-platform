@@ -284,20 +284,18 @@ class TestConfigAccessControl:
             f"ожидался 403, получен {response.status_code}: {response.text}"
         )
 
-    def test_request_without_identity_is_rejected(self, isolated_app, configured_device):
-        """Без идентичности запрос отклоняется с 401.
+    def test_request_without_identity_is_owner(self, isolated_app, configured_device):
+        """Без заголовков доверенная сеть действует от имени владельца.
 
-        Контраст с соседним тестом существенен: без идентичности отказ приходит
-        на 401 от middleware, а с идентичностью и недостаточной ролью — 403 от
-        роута. Разные коды означают разные причины, и их смешивать нельзя.
+        Пароль не требуется: граница доверия — сеть. Отказ 403 остаётся для
+        явно пониженной роли (`X-Is-Admin: false`) и для недоверенного адреса.
         """
         with TestClient(isolated_app) as anonymous:
             response = anonymous.put(
                 f"/api/v1/devices/{configured_device}/config", json={"location": "Кухня"}
             )
 
-        assert response.status_code == 401, f"ожидался 401: {response.text}"
-        assert response.json()["detail"] == "Missing X-User-ID header"
+        assert response.status_code == 200, f"ожидался 200: {response.text}"
 
     def test_config_of_unknown_device_returns_404(self, isolated_client):
         """Конфигурация несуществующего устройства — 404."""

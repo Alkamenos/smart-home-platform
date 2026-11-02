@@ -459,13 +459,13 @@ class TestDeviceDeleteAPI:
         assert response.status_code == 403
         assert device["id"] in [d["id"] for d in client.get("/api/v1/devices").json()]
 
-    def test_delete_should_require_identification(self, client, sample_source):
-        """Без идентификации запрос отклоняется защитным слоем."""
+    def test_delete_without_identification_is_owner(self, client, sample_source):
+        """Без заголовков доверенная сеть действует от имени владельца."""
         device = self._applied_device(client, sample_source["id"])
 
-        response = client.delete(f"/api/v1/devices/{device['id']}", headers={"X-User-ID": ""})
+        response = client.delete(f"/api/v1/devices/{device['id']}")
 
-        assert response.status_code in (401, 403)
+        assert response.status_code not in (401, 403), response.text
 
     def test_delete_unknown_device_should_return_404(self, client):
         """Удаление несуществующего устройства — 404."""

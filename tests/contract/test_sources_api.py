@@ -308,11 +308,11 @@ class TestSourceDiscoveryData:
 
         assert response.status_code == 404
 
-    def test_discovery_data_should_require_user_header(self, client, source_id):
-        """Запрос без идентификации отклоняется защитным слоем (FR-009)."""
+    def test_discovery_data_is_available_in_trusted_network(self, client, source_id):
+        """В доверенной сети чтение данных источника не требует заголовка."""
         response = client.get(
             f"/api/v1/devices/sources/{source_id}/discovery-data",
             headers={"X-User-ID": ""},
         )
 
-        assert response.status_code in (401, 403)
+        assert response.status_code == 200, response.text

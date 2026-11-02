@@ -86,23 +86,22 @@ class TestSourceEndpointsRequireAdmin:
         )
 
     @pytest.mark.parametrize(("method", "path", "needs_source"), MUTATING)
-    def test_request_without_identity_is_refused(
+    def test_untrusted_source_is_refused(
         self, client: TestClient, method: str, path: str, needs_source: bool
     ) -> None:
-        """Запрос вообще без идентичности тоже отказ."""
+        """Запрос из недоверенной сети отклоняется, а не меняет дом."""
         url = path
         if needs_source:
             code, source_id = _create_source(client)
             assert code == 201
             url = path.format(sid=source_id)
 
-        response = getattr(client, method)(
-            url, headers=NO_IDENTITY, **({"json": {}} if method == "post" else {})
-        )
+        with TestClient(client.app, client=("203.0.113.9", 12345)) as untrusted:
+            response = getattr(untrusted, method)(url, **({"json": {}} if method == "post" else {}))
 
         assert response.status_code in (401, 403), (
-            f"{method.upper()} {path} без идентичности вернул "
-            f"{response.status_code}, ожидался 401 или 403"
+            f"{method.upper()} {path} из недоверенной сети вернул "
+            f"{response.status_code}, ожидался отказ"
         )
 
 

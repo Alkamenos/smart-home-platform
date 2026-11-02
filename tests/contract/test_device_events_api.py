@@ -238,8 +238,8 @@ class TestAccessDenied:
 
         assert response.status_code == 403
 
-    def test_without_identification_returns_401(self, client, sample_device):
-        """Кейс 8: без заголовков идентификации → 401 (middleware spec 004)."""
+    def test_without_identification_is_owner_of_trusted_network(self, client, sample_device):
+        """Из доверенной сети без заголовков запрос действует от имени владельца."""
         response = client.get(f"/api/v1/devices/{sample_device}/events")
 
-        assert response.status_code == 401
+        assert response.status_code == 200, response.text

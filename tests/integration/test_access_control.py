@@ -362,15 +362,15 @@ class TestAccessValidation:
 
         assert response.status_code == 422, f"ожидался 422: {response.text}"
 
-    def test_access_requires_identity(self, isolated_app, synced_device_id):
-        """Назначение доступа без идентичности отклоняется с 401."""
-        with TestClient(isolated_app) as anonymous:
-            response = anonymous.post(
+    def test_access_from_untrusted_network_is_refused(self, isolated_app, synced_device_id):
+        """Выдача доступа из недоверенной сети отклоняется."""
+        with TestClient(isolated_app, client=("203.0.113.9", 12345)) as untrusted:
+            response = untrusted.post(
                 f"/api/v1/devices/{synced_device_id}/access",
                 json={"user_id": "user_viewer", "role": "viewer"},
             )
 
-        assert response.status_code == 401, f"ожидался 401: {response.text}"
+        assert response.status_code == 403, f"ожидался 403: {response.text}"
 
     def test_revoke_unknown_access_record_returns_404(self, isolated_client, synced_device_id):
         """Отзыв несуществующей записи — 404."""

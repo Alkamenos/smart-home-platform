@@ -72,6 +72,19 @@ def mock_logger():
     return logger
 
 
+@pytest.fixture(autouse=True)
+def _trusted_test_networks(monkeypatch):
+    """Тестовый клиент считается доверенной домашней сетью.
+
+    В бою доверие определяется адресом; TestClient подставляет имя ``testclient``
+    вместо IP, поэтому оно добавляется в список только на время тестов.
+    """
+    monkeypatch.setenv(
+        "TRUSTED_MANAGEMENT_CIDRS",
+        "127.0.0.1/32,::1/128,testclient",
+    )
+
+
 @pytest.fixture
 def temp_dir(tmp_path):
     """Create a temporary directory for file-based tests."""

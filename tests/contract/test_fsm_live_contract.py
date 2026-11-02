@@ -160,23 +160,17 @@ class TestFSMStateAccessControl:
         assert restricted.status_code == 200
         assert len(restricted.json()["states"]) <= len(full_access["states"])
 
-    def test_should_refuse_request_without_identity_header(
-        self, anonymous_client: TestClient
-    ) -> None:
-        """Без заголовка идентичности — 401, а не данные всех устройств.
+    def test_trusted_anonymous_acts_as_owner(self, anonymous_client: TestClient) -> None:
+        """Доверенная сеть без заголовков действует от имени владельца.
 
-        Раньше здесь стояло `test_should_work_without_identity_header`, и его
-        докстринг обещал «показываются только доступные», хотя проверял ровно
-        противоположное: `_resolve_accessible_device_ids` возвращала `None`
-        («без фильтрации») при отсутствии заголовка, то есть анонимный запрос
-        получал состояния всех устройств. Тест закреплял дефект как норму.
+        Пароль не требуется (решение владельца 02.11.2026): граница доверия —
+        сеть. Поэтому «анонимный» клиент TestClient из доверенного адреса
+        видит состояния дома.
         """
         response = anonymous_client.get("/api/fsm/state")
 
-        assert response.status_code == 401, (
-            "анонимный запрос получил 200: дефолт доступа остался «на отказ»"
-        )
-        assert "states" not in response.json()
+        assert response.status_code == 200, response.text
+        assert "states" in response.json()
 
 
 class TestFSMStateAccessIsolation:

@@ -219,16 +219,10 @@ class TestSyncFailure:
 
         assert response.status_code == 404, f"ожидался 404: {response.text}"
 
-    def test_sync_requires_identity(self, isolated_app):
-        """Без идентичности синхронизация отклоняется — это ловушка на 401.
-
-        Раньше тест падал здесь, не доходя до своей проверки, и это выглядело
-        как «тест красный», а не как «в запросе не хватает заголовка».
-        """
+    def test_sync_without_identity_is_owner(self, isolated_app):
+        """Без заголовков доверенная сеть действует от имени владельца."""
         # Источник создаётся от имени администратора: создание источника само
-        # требует прав (`require_admin`), и раньше подготовка проходила только
-        # потому, что этот эндпоинт прав не проверял. Проверяется синхронизация
-        # без идентичности, а не отказ на подготовке.
+        # требует прав (`require_admin`).
         admin = TestClient(isolated_app, headers={"X-User-ID": "admin_user", "X-Is-Admin": "true"})
         source = admin.post(
             "/api/v1/devices/sources",
@@ -243,8 +237,8 @@ class TestSyncFailure:
         with TestClient(isolated_app) as anonymous:
             response = anonymous.post(f"/api/v1/devices/sources/{source.json()['id']}/sync")
 
-        assert response.status_code == 401, (
-            f"ожидался 401 без идентичности, получен {response.status_code}: {response.text}"
+        assert response.status_code not in (401, 403), (
+            f"доверенный клиент без заголовков получил отказ: {response.status_code}"
         )
 
 

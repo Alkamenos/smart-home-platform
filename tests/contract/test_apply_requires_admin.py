@@ -70,14 +70,13 @@ class TestApplyRequiresAdmin:
             "операция меняет манифест и строит автоматику без проверки прав"
         )
 
-    def test_request_without_identity_is_refused(self, admin_client: TestClient) -> None:
-        """Запрос без идентичности — отказ, а не действие от имени «system»."""
-        client = TestClient(admin_client.app)
+    def test_request_from_untrusted_network_is_refused(self, admin_client: TestClient) -> None:
+        """Запрос из недоверенной сети — отказ, а не действие от имени «system»."""
+        with TestClient(admin_client.app, client=("203.0.113.9", 12345)) as client:
+            response = client.post("/api/v1/devices/apply", json=SELECTION)
 
-        response = client.post("/api/v1/devices/apply", json=SELECTION)
-
-        assert response.status_code in (401, 403), (
-            f"анонимный запрос получил {response.status_code}: операция выполнена "
+        assert response.status_code == 403, (
+            f"недоверенный запрос получил {response.status_code}: операция выполнена "
             "от имени несуществующего пользователя «system»"
         )
 

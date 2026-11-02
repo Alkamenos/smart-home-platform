@@ -97,9 +97,12 @@ def _headers(user_id: str, is_admin: bool = False) -> dict[str, str]:
     Returns:
         Заголовки запроса.
     """
-    headers = {"X-User-ID": user_id}
-    if is_admin:
-        headers["X-Is-Admin"] = "true"
+    headers = {
+        "X-User-ID": user_id,
+        # Заголовок может только понизить роль: отсутствие означает владельца
+        # доверенной сети. Для тестов разграничения доступа роль задаётся явно.
+        "X-Is-Admin": "true" if is_admin else "false",
+    }
     return headers
 
 
