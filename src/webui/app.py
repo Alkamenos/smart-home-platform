@@ -19,7 +19,7 @@ from core.persistence.manifest_store import ManifestStore
 
 
 if TYPE_CHECKING:
-    from core.container import Container
+    from app.container import Container
     from services.device_service import DeviceService
 
 
@@ -335,7 +335,7 @@ def create_app(
     # The adapter is already connected in main.py via ctx.adapter.start()
     _container = None
     try:
-        from core.container import Container
+        from app.container import Container
 
         from .routes_discovery import init_discovery_routes
 

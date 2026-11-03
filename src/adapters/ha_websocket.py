@@ -426,7 +426,7 @@ class SimpleHAWebSocketClient:
 
         Импорт метрик ленивый, как в ``_record_disconnect`` адаптера:
         импорт на уровне модуля создаёт цикл
-        ``core.container → ha_adapter → src.core``.
+        ``app.container → ha_adapter → src.core``.
 
         Returns:
             Ничего.

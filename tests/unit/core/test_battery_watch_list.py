@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from core.container import Container
+from app.container import Container
 from core.models.manifest import (
     AutomationRules,
     InstanceConfig,

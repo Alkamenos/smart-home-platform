@@ -28,7 +28,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from core.container import Container, PlatformContext
+from app.container import Container, PlatformContext
 
 
 MANIFEST = "instances/leonids_house/manifest.yaml"

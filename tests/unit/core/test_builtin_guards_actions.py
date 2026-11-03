@@ -228,7 +228,7 @@ class TestGuardsAreActuallyWired:
 
     def test_container_registry_has_every_manifest_guard(self) -> None:
         """Реестр контейнера содержит все guard'ы манифеста."""
-        from core.container import Container
+        from app.container import Container
 
         container = Container()
         registry = container.registry
@@ -241,7 +241,7 @@ class TestGuardsAreActuallyWired:
 
     def test_registered_guard_is_callable(self) -> None:
         """Зарегистрированный guard вызывается движком как функция."""
-        from core.container import Container
+        from app.container import Container
 
         registry = Container().registry
         guard = registry.get_guard("is_day_time")
@@ -253,7 +253,7 @@ class TestGuardsAreActuallyWired:
 
     def test_actions_are_registered_in_container(self) -> None:
         """Новые действия доступны движку по имени."""
-        from core.container import Container
+        from app.container import Container
 
         registry = Container().registry
 
@@ -280,7 +280,7 @@ class TestGuardsAreActuallyWired:
 
         import yaml
 
-        from core.container import Container
+        from app.container import Container
 
         registry = Container().registry
         needed: set[str] = set()

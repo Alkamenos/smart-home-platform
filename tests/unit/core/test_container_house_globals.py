@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from core.container import Container
+from app.container import Container
 from core.models.manifest import (
     AutomationRules,
     BehaviorConfig,

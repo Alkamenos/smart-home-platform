@@ -14,7 +14,7 @@ import uvicorn
 from loguru import logger
 from pydantic import ValidationError
 
-from core.container import Container
+from app.container import Container
 from core.logging_setup import configure_library_logging
 from services.config_watcher import create_watcher, hot_reload_enabled
 

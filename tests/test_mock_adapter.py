@@ -80,7 +80,7 @@ class TestMockAdapterContainerIntegration:
 
     async def test_platform_context_should_start_and_shutdown_when_no_ha_token(self):
         """ctx.adapter.start() + ctx.shutdown() must not raise without HA_TOKEN."""
-        from core.container import Container
+        from app.container import Container
 
         manifest_path = os.path.join(
             os.path.dirname(__file__), "..", "instances", "leonids_house", "manifest.yaml"
@@ -97,7 +97,7 @@ class TestMockAdapterContainerIntegration:
 
     async def test_shutdown_should_be_idempotent_when_called_twice(self):
         """PlatformContext.shutdown() must be safe to repeat in mock mode."""
-        from core.container import Container
+        from app.container import Container
 
         manifest_path = os.path.join(
             os.path.dirname(__file__), "..", "instances", "leonids_house", "manifest.yaml"

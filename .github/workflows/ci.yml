@@ -26,6 +26,7 @@ jobs:
       # могли разойтись с Makefile — как уже случалось с mypy-venv и 3.11/3.12.
       - run: make lint
       - run: make type-check
+      - run: make check-architecture
 
   secret-scan:
     # Секрет-скан всей истории: токены/ключи не доезжают до main.

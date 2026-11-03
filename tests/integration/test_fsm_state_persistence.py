@@ -318,7 +318,7 @@ def intent_device(dispatcher: MagicMock) -> str | None:
 
 def test_manifest_example_is_registered_in_container() -> None:
     """Реальный манифест платформы собирается без ошибок после изменений."""
-    from core.container import Container
+    from app.container import Container
 
     os.environ.pop("HA_TOKEN", None)
     container = Container(manifest_path="instances/leonids_house/manifest.yaml")

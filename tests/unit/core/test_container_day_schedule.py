@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from core.container import Container
+from app.container import Container
 from core.models.manifest import AutomationRules, HouseSchedule, InstanceConfig, Manifest
 
 

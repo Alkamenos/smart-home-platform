@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.container import Container, PlatformContext
+from app.container import Container, PlatformContext
 from core.models.manifest import Manifest
 
 

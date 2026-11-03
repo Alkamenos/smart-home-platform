@@ -53,6 +53,7 @@ from adapters.ha_websocket import (
     _as_float as _as_float,
     _is_number as _is_number,
 )
+from adapters.home_assistant import dashboards as dashboards_api
 
 
 # Use standard logging instead of loguru for consistency with logging_service
@@ -1287,7 +1288,7 @@ class HAAdapter:
         при реально установленном ранее соединении (``_connected_once``);
         неудачные попытки первичного подключения метрикой не считаются.
         Импорт метрик ленивый: импорт на уровне модуля создаёт цикл
-        ``core.container → ha_adapter → src.core``.
+        ``app.container → ha_adapter → src.core``.
 
         Причина запоминается **до** всякой проверки и на стороне адаптера:
         cleanup обнуляет клиента, а ретраи создают нового, поэтому на
@@ -1520,68 +1521,18 @@ class HAAdapter:
         return [state for state in states if isinstance(state, dict)]
 
     async def find_dashboard(self, url_path: str) -> dict[str, Any] | None:
-        """Найти панель по её пути.
-
-        Args:
-            url_path: Путь панели (`behavioral` и подобные).
-
-        Returns:
-            Описание панели либо ``None``: панели нет или дом не ответил.
-        """
-        client = self._ws_client
-        if client is None:
-            return None
-        answer = await client.command("lovelace/dashboards/list")
-        panels = answer.get("result") if isinstance(answer, dict) else None
-        for panel in panels or []:
-            if isinstance(panel, dict) and panel.get("url_path") == url_path:
-                return panel
-        return None
+        """????? ?????? ?? ???? (?????????? ? adapters.home_assistant.dashboards)."""
+        return await dashboards_api.find_dashboard(self._ws_client, url_path)
 
     async def create_dashboard(
         self, url_path: str, title: str, icon: str = "mdi:home-automation"
     ) -> bool:
-        """Создать панель в Home Assistant (BACKLOG B79).
-
-        Панель создаётся **отдельная**, со своим путём: чужие панели владельца
-        платформа не трогает.
-
-        Args:
-            url_path: Путь новой панели.
-            title: Название панели.
-            icon: Значок в списке панелей.
-
-        Returns:
-            True, если панель создана (или уже была).
-        """
-        client = self._ws_client
-        if client is None:
-            return False
-        answer = await client.command(
-            "lovelace/dashboards/create",
-            url_path=url_path,
-            title=title,
-            icon=icon,
-            show_in_sidebar=True,
-            require_admin=False,
-        )
-        return bool(isinstance(answer, dict) and answer.get("success"))
+        """??????? ?????? (?????????? ? adapters.home_assistant.dashboards)."""
+        return await dashboards_api.create_dashboard(self._ws_client, url_path, title, icon)
 
     async def save_dashboard_config(self, url_path: str, config: dict[str, Any]) -> bool:
-        """Записать конфигурацию панели.
-
-        Args:
-            url_path: Путь панели.
-            config: Конфигурация Lovelace.
-
-        Returns:
-            True, если дом принял конфигурацию.
-        """
-        client = self._ws_client
-        if client is None:
-            return False
-        answer = await client.command("lovelace/config/save", url_path=url_path, config=config)
-        return bool(isinstance(answer, dict) and answer.get("success"))
+        """????????? ???????????? ?????? (?????????? ? dashboards)."""
+        return await dashboards_api.save_dashboard_config(self._ws_client, url_path, config)
 
     async def get_entity_registry(self) -> list[dict[str, Any]]:
         """Прочитать реестр сущностей Home Assistant (BACKLOG B77).
@@ -1611,62 +1562,8 @@ class HAAdapter:
         return [item for item in result or [] if isinstance(item, dict)]
 
     async def get_dashboard_entities(self) -> set[str] | None:
-        """Сущности, выведенные на панели Home Assistant (BACKLOG B77).
-
-        Панель — это тоже использование: элемент, который владелец видит и
-        щёлкает руками, нельзя называть мусором только потому, что его нет в
-        манифесте и в журнале. Так нашлись обогрев крыши, полив и подсветка леса —
-        элементы совсем не мёртвые.
-
-        Returns:
-            Множество сущностей; ``None``, если панели прочитать не удалось —
-            тогда молчание панелей ничего не доказывает.
-        """
-        client = self._ws_client
-        if client is None:
-            return None
-
-        configs: list[Any] = []
-        default = await client.command("lovelace/config")
-        if not (isinstance(default, dict) and default.get("success")):
-            logger.warning("HAAdapter: панели Home Assistant не прочитаны")
-            return None
-        configs.append(default.get("result"))
-
-        listing = await client.command("lovelace/dashboards/list")
-        panels = listing.get("result") if isinstance(listing, dict) else None
-        for panel in panels or []:
-            if not isinstance(panel, dict) or not panel.get("url_path"):
-                continue
-            answer = await client.command("lovelace/config", url_path=panel["url_path"])
-            if isinstance(answer, dict) and answer.get("success"):
-                configs.append(answer.get("result"))
-
-        found: set[str] = set()
-        for config in configs:
-            self._collect_entity_ids(config, found)
-        return found
-
-    def _collect_entity_ids(self, node: Any, found: set[str]) -> None:
-        """Собрать идентификаторы сущностей из описания панели.
-
-        Args:
-            node: Узел описания (словарь, список, строка).
-            found: Накопитель идентификаторов.
-
-        Returns:
-            Ничего.
-        """
-        if isinstance(node, str):
-            domain, _, rest = node.partition(".")
-            if rest and domain.isidentifier() and domain.islower():
-                found.add(node)
-        elif isinstance(node, dict):
-            for value in node.values():
-                self._collect_entity_ids(value, found)
-        elif isinstance(node, list):
-            for value in node:
-                self._collect_entity_ids(value, found)
+        """???????? ?? ??????? (?????????? ? dashboards)."""
+        return await dashboards_api.get_dashboard_entities(self._ws_client)
 
     async def _read_entity_state(self, entity: str) -> tuple[str | None, str]:
         """Прочитать состояние одной сущности через REST и назвать причину.

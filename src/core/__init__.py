@@ -6,7 +6,6 @@
 from core.action_handlers import release_device, turn_on_night_light
 from core.commands.dispatcher import CommandDispatcher, CommandIntent
 from core.commands.middleware import ManualLockoutMiddleware, Middleware
-from core.container import Container, PlatformContext
 from core.events.event_bus import EventBus
 from core.fsm.engine import FSMDefinition, FSMEngine, State, Transition
 from core.models.manifest import (
@@ -95,7 +94,4 @@ __all__ = [
     "MiddlewarePlugin",
     "AdapterPlugin",
     "PluginMetadata",
-    # DI Container
-    "Container",
-    "PlatformContext",
 ]

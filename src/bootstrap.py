@@ -10,7 +10,7 @@ all platform components using the DI Container.
 
 from __future__ import annotations
 
-from core.container import Container, PlatformContext
+from app.container import Container, PlatformContext
 
 
 def bootstrap_platform(manifest_path: str) -> PlatformContext:

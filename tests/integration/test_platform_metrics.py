@@ -62,7 +62,7 @@ def isolated_metrics(monkeypatch: pytest.MonkeyPatch) -> Iterator[MetricsCollect
     from core.metrics import MetricsCollector
 
     collector = MetricsCollector(registry=CollectorRegistry())
-    monkeypatch.setattr("core.container.get_metrics_collector", lambda: collector, raising=False)
+    monkeypatch.setattr("app.container.get_metrics_collector", lambda: collector, raising=False)
     monkeypatch.setattr("core.metrics.get_metrics_collector", lambda: collector)
     yield collector
     collector.initialize()
@@ -75,7 +75,7 @@ class MetricsCollectorProtocol:  # noqa: D101 - используется тол�
 @pytest.fixture
 def context(manifest_path: str, isolated_metrics: Any) -> Iterator[Any]:
     """Собранный контейнер платформы."""
-    from core.container import Container
+    from app.container import Container
 
     container = Container(manifest_path=manifest_path)
     yield container.build()
@@ -231,7 +231,7 @@ class TestMetricsAreProcessScoped:
         self, manifest_path: str, isolated_metrics: Any
     ) -> None:
         """Новый сборщик в новом процессе не наследует значения прошлого."""
-        from core.container import Container
+        from app.container import Container
 
         first = Container(manifest_path=manifest_path)
         first.build()
