@@ -27,9 +27,11 @@
 
 - `Container` и `PlatformContext` вынесены из `core` в `src/app/`: ядро больше
   не импортирует адаптеры, конституция IV теперь выполняется буквально.
-- `HAAdapter` делегирует работу с панелями в
-  `src/adapters/home_assistant/dashboards.py`; `PlatformContext` живёт в
-  `src/app/context.py`.
+- `HAAdapter` разделён по ответственностям: панели
+  (`dashboards.py`), команды и эхо (`commands.py`), единицы измерения и
+  уставка (`units.py`), discovery (`discovery.py`), ручные события
+  (`manual_events.py`). Файл уменьшился **2431 → 1909 строк**; транспорт
+  соединения пока остаётся в фасаде.
 - Модели снимка сторожа и виды расхождений вынесены в
   `src/services/watchdog_models.py`; `WatchdogService` остаётся фасадом,
   старые импорты сохранены.

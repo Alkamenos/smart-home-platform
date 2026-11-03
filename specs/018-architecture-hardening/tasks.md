@@ -177,10 +177,12 @@ description: "Task list for architecture hardening"
 > Composition root перенесён в `src/app/`, добавлены исполняемые проверки
 > зависимостей/моделей/размеров, `PlatformContext` вынесен в `src/app/context.py`,
 > панели HA — в `src/adapters/home_assistant/dashboards.py`. Дополнительно
-> модели снимка сторожа вынесены в `src/services/watchdog_models.py`
-> (`watchdog.py` 1434 → 1243 строк). Полное разделение `HAAdapter` (T055),
-> `FSMEngine` (T056), фабрик Container (T057) и `DeviceService` (T058),
-> сокращение крупных модулей на 50 % (T059) остаются следующей волной.
+> `HAAdapter` разделён по ответственностям (команды, единицы, discovery,
+> ручные события; 2431 → 1909 строк), модели снимка сторожа вынесены в
+> `src/services/watchdog_models.py` (`watchdog.py` 1434 → 1243).
+> Остались: транспорт соединения внутри `HAAdapter` (T055), `FSMEngine` (T056),
+> фабрики Container (T057), `DeviceService` (T058) и сокращение крупных
+> модулей на 50 % (T059).
 
 ---
 
