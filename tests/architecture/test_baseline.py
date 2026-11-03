@@ -48,11 +48,13 @@ def test_import_allowlist_points_to_existing_files() -> None:
 
 def test_parallel_model_allowlist_is_honest() -> None:
     """Временные дубли моделей существуют и имеют причину."""
-    for relative, reason in PARALLEL_MODEL_ALLOWLIST.items():
+    for key, reason in PARALLEL_MODEL_ALLOWLIST.items():
+        relative, _, class_name = key.partition(":")
         assert (PROJECT_ROOT / relative).exists(), (
             f"исключение параллельной модели ссылается на несуществующий файл: {relative}"
         )
-        assert reason.strip(), f"у исключения {relative} нет причины"
+        assert reason.strip(), f"у исключения {key} нет причины"
+        assert class_name, f"у исключения {key} не назван класс"
 
 
 def test_no_absolute_paths_in_allowlist() -> None:

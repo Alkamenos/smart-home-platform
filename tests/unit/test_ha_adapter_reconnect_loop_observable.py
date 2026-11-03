@@ -142,7 +142,7 @@ class TestReconnectLoopIsObservable:
         """
         adapter_source = _source()
         container_source = (
-            Path(__file__).resolve().parents[2] / "src" / "core" / "container.py"
+            Path(__file__).resolve().parents[2] / "src" / "app" / "context.py"
         ).read_text(encoding="utf-8")
 
         assert "stop() called, cancelling reconnect task" in adapter_source

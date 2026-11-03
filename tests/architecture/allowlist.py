@@ -19,14 +19,16 @@ SIZE_BUDGET = 800
 #: на время рефакторинга. Цель Wave D — сократить каждый не менее чем на 50 %;
 #: после этого запись удаляется.
 LEGACY_SIZE_ALLOWLIST: dict[str, int] = {
-    "src/adapters/ha_adapter.py": 2534,
+    "src/adapters/ha_adapter.py": 2431,
     "src/core/fsm/engine.py": 1976,
-    "src/core/container.py": 1679,
+    "src/app/container.py": 1602,
     "src/services/device_service.py": 1475,
     "src/services/watchdog.py": 1434,
     "src/adapters/ha_websocket.py": 923,
     "src/core/metrics.py": 961,
     "src/core/fsm/factory.py": 857,
+    "src/core/models/manifest.py": 900,
+    "src/webui/routes/devices/devices.py": 900,
 }
 
 #: Временные нарушения направления зависимостей.
@@ -34,14 +36,15 @@ LEGACY_SIZE_ALLOWLIST: dict[str, int] = {
 #: Ключ — пара `(из, в)`; значение — файл → причина. Нарушение должно исчезнуть
 #: в указанной задаче, иначе тест напомнит.
 IMPORT_ALLOWLIST: dict[tuple[str, str], dict[str, str]] = {
-    ("core", "adapters"): {
-        "src/core/container.py": "composition root; переносится в src/app/ (T054)",
+    ("webui", "adapters"): {
+        "src/webui/routes/devices/sources.py": "REST-клиент discovery; вынести в сервис (T058)",
     },
 }
 
-#: Временные параллельные доменные модели.
+#: Временные параллельные доменные модели: `путь:Класс` → причина.
 PARALLEL_MODEL_ALLOWLIST: dict[str, str] = {
-    "src/webui/models.py": "дубли манифеста удаляются в T017",
+    "src/core/models/device_config.py:DeviceConfig": "метаданные прибора, не манифест",
+    "src/core/models/room.py:RoomConfig": "агрегация комнаты, не манифест",
 }
 
 #: Мёртвые production-сервисы, ожидающие решения/удаления.
