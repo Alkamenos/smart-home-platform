@@ -154,24 +154,32 @@ description: "Task list for architecture hardening"
 
 ### Tests for User Story 4
 
-- [ ] T050 [P] [US4] Тест запрета `core → adapters/webui/services` в `tests/architecture/test_dependency_rules.py`
-- [ ] T051 [P] [US4] Тест отсутствия параллельных доменных моделей в `tests/architecture/test_no_parallel_models.py`
-- [ ] T052 [P] [US4] Тест бюджета размера модулей в `tests/architecture/test_module_size.py`
-- [ ] T053 [P] [US4] Тест публичного контракта фасадов до/после разделения в `tests/unit/core/test_engine_facade.py`
+- [X] T050 [P] [US4] Тест запрета `core → adapters/webui/services` в `tests/architecture/test_dependency_rules.py`
+- [X] T051 [P] [US4] Тест отсутствия параллельных доменных моделей в `tests/architecture/test_no_parallel_models.py`
+- [X] T052 [P] [US4] Тест бюджета размера модулей в `tests/architecture/test_module_size.py`
+- [X] T053 [P] [US4] Тест публичного контракта фасадов до/после разделения в `tests/unit/core/test_engine_facade.py`
 
 ### Implementation for User Story 4
 
-- [ ] T054 [US4] Вынести composition root из `src/core/container.py` в `src/app/container.py`; обновить `src/main.py`, `src/bootstrap.py`
+- [X] T054 [US4] Вынести composition root из `src/core/container.py` в `src/app/container.py`; обновить `src/main.py`, `src/bootstrap.py`
 - [ ] T055 [US4] Разделить `src/adapters/ha_adapter.py`: transport, команды, dashboards, discovery, manual events; оставить фасад
 - [ ] T056 [US4] Разделить `src/core/fsm/engine.py`: переходы, guard/action, таймеры, решения; оставить фасад
 - [ ] T057 [US4] Вынести фабрики из `src/app/container.py` в `src/app/factories.py`
 - [ ] T058 [US4] Разделить `src/services/watchdog.py` и `src/services/device_service.py` по ответственностям
 - [ ] T059 [US4] Обновить allowlist в `tests/architecture/allowlist.py`: сократить крупные файлы не менее чем на 50 %
-- [ ] T060 [US4] Включить `pytest tests/architecture` в `.github/workflows/ci.yml` и `Makefile`
-- [ ] T061 [US4] Обновить `.ai/02_ARCHITECTURE.md` и `specs/018-architecture-hardening/contracts/dependency-rules.md`
-- [ ] T062 [US4] Проверить сценарии `quickstart.md` для Wave D и зафиксировать результат
+- [X] T060 [US4] Включить `pytest tests/architecture` в `.github/workflows/ci.yml` и `Makefile`
+- [X] T061 [US4] Обновить `.ai/02_ARCHITECTURE.md` и `specs/018-architecture-hardening/contracts/dependency-rules.md`
+- [X] T062 [US4] Проверить сценарии `quickstart.md` для Wave D и зафиксировать результат
 
 **Checkpoint**: конституция IV соблюдается автоматически; крупные модули разделены.
+
+> **Статус US4 на 03.11.2026:** выполнены T050–T054 и T060–T062.
+> Composition root перенесён в `src/app/`, добавлены исполняемые проверки
+> зависимостей/моделей/размеров, `PlatformContext` вынесен в `src/app/context.py`,
+> панели HA — в `src/adapters/home_assistant/dashboards.py`. Полное разделение
+> `HAAdapter` (T055), `FSMEngine` (T056), фабрик Container (T057), `Watchdog` и
+> `DeviceService` (T058), а также сокращение крупных модулей на 50 % (T059)
+> остаются следующей волной: это самый крупный и рискованный рефакторинг.
 
 ---
 

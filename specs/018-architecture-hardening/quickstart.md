@@ -146,7 +146,8 @@ mypy src
 | US1 (T011–T023) | единая модель, `extra=forbid`, `extensions`, удалены `manifest_schema`/`manifest_validator` и дубли WebUI |
 | US2 (T024–T037) | доверенная сеть, default deny, заголовки не повышают права, `Origin`, allowlist; пароля нет |
 | US3 (T038–T049) | `uv.lock`, digest-пиннинг, non-root 10001, read-only, Trivy/SBOM, лимиты |
-| Полный прогон | **3379 passed / 19 skipped**, покрытие **84 %** |
+| US4, первая волна (T050–T054, T060–T062) | composition root в `src/app/`, проверки зависимостей/моделей/размеров, первые выделенные модули |
+| Полный прогон | **3388 passed / 19 skipped**, покрытие **84 %** |
 | `ruff` / `mypy` | чисто |
 | Ожидаемое снижение числа тестов | −78 тестов мёртвой схемы, +22 новых проверки |
 
