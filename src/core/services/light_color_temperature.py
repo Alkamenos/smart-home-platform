@@ -82,6 +82,33 @@ def _lighting_devices(manifest: Any) -> list[tuple[str, int]]:
     return devices
 
 
+def _lighting_params(manifest: Any) -> dict[str, dict[str, Any]]:
+    """Параметры поведения ламп, участвующих в глобальном свете.
+
+    Нужны для необязательной кривой яркости: служба температуры уже обходит те
+    же лампы, и вторая служба с тем же обходом только разошлась бы с первой.
+
+    Args:
+        manifest: Манифест дома.
+
+    Returns:
+        Сущность → параметры поведения.
+    """
+    params_by_entity: dict[str, dict[str, Any]] = {}
+    for room in getattr(manifest, "rooms", []) or []:
+        for device in getattr(room, "devices", []) or []:
+            for behavior in getattr(device, "behaviors", []) or []:
+                if getattr(behavior, "template", None) not in ("lighting", "deco_light"):
+                    continue
+                params = getattr(behavior, "params", None) or {}
+                if not params.get("use_global_color_temp"):
+                    continue
+                entity_id = getattr(device, "id", None)
+                if entity_id:
+                    params_by_entity[entity_id] = dict(params)
+    return params_by_entity
+
+
 class LightColorTemperatureService:
     """Считать общую температуру света и обновлять горящие лампы.
 
@@ -113,6 +140,7 @@ class LightColorTemperatureService:
         self.interval_minutes = float(interval_minutes or configured or DEFAULT_INTERVAL_MINUTES)
         self._now = now_supplier or (lambda tz: datetime.now(tz))
         self._night_mode_supplier = night_mode_supplier
+        self._params = _lighting_params(manifest)
         self._task: asyncio.Task[None] | None = None
 
     async def check_once(self) -> None:
@@ -398,7 +426,81 @@ class LightColorTemperatureService:
                 continue
             if snapshot.get("min_color_temp_kelvin") is None and not supported:
                 continue
-            await self._submit(device_id, priority, target, snapshot)
+            params = self._params.get(device_id, {})
+            brightness_pct = await self._brightness_pct(params)
+            await self._submit(
+                device_id,
+                priority,
+                target,
+                snapshot,
+                brightness_pct=brightness_pct,
+            )
+
+    async def _brightness_pct(self, params: dict[str, Any]) -> int | None:
+        """Яркость лампы по необязательной кривой до ``dim_at``.
+
+        Кривая задаётся параметрами поведения: ``dim_to_pct`` (конечная
+        яркость), ``dim_at`` (обычно 22:00), ``dim_from`` (``sunset`` или
+        ``HH:MM``) и ``dim_start_pct`` (по умолчанию 100). Без ``dim_to_pct``
+        кривой нет и возвращается ``None`` — служба сохраняет текущую яркость.
+
+        Args:
+            params: Параметры поведения лампы.
+
+        Returns:
+            Яркость в процентах либо ``None``.
+        """
+        raw_end = params.get("dim_to_pct")
+        if raw_end is None or isinstance(raw_end, bool):
+            return None
+        try:
+            end_pct = max(0.0, min(100.0, float(raw_end)))
+            start_pct = max(0.0, min(100.0, float(params.get("dim_start_pct", 100))))
+        except (TypeError, ValueError):
+            return None
+
+        tz = self._timezone()
+        now = self._now(tz)
+        dim_at = _parse_hhmm(params.get("dim_at"), time(22, 0))
+        dim_dt = now.replace(hour=dim_at.hour, minute=dim_at.minute, second=0, microsecond=0)
+        if now >= dim_dt:
+            return int(round(end_pct))
+
+        start = await self._dim_start(params, now, tz)
+        if start is None or now <= start:
+            return int(round(start_pct))
+
+        total = (dim_dt - start).total_seconds()
+        if total <= 0:
+            return int(round(end_pct))
+        fraction = max(0.0, min(1.0, (now - start).total_seconds() / total))
+        return int(round(start_pct + (end_pct - start_pct) * fraction))
+
+    async def _dim_start(
+        self, params: dict[str, Any], now: datetime, tz: tzinfo
+    ) -> datetime | None:
+        """Начало кривой яркости: закат или явное время.
+
+        Args:
+            params: Параметры поведения.
+            now: Текущее время с часовым поясом.
+            tz: Часовой пояс дома.
+
+        Returns:
+            Момент начала или ``None``, если его не определить.
+        """
+        raw_from = params.get("dim_from")
+        if raw_from and raw_from != "sunset":
+            start_time = _parse_hhmm(raw_from, time(18, 0))
+            return now.replace(
+                hour=start_time.hour,
+                minute=start_time.minute,
+                second=0,
+                microsecond=0,
+            )
+        sun = await self._snapshot("sun.sun") or {}
+        daylight = self._daylight(sun.get("state"))
+        return self._sunset(sun, daylight, tz)
 
     async def _submit(
         self,
@@ -407,8 +509,9 @@ class LightColorTemperatureService:
         target: int,
         snapshot: dict[str, Any],
         transition_sec: int | None = None,
+        brightness_pct: int | None = None,
     ) -> None:
-        """Отправить команду температуры.
+        """Отправить команду температуры и, если задана, яркости.
 
         Args:
             device_id: Лампа.
@@ -416,20 +519,29 @@ class LightColorTemperatureService:
             target: Значение, К.
             snapshot: Снимок лампы.
             transition_sec: Переход в секундах; по умолчанию период службы.
+            brightness_pct: Яркость по кривой; ``None`` — сохранить текущую.
 
         Returns:
             Ничего.
         """
         value = self._clamp_lamp(target, snapshot)
         data: dict[str, Any] = {"color_temp_kelvin": value}
-        brightness = snapshot.get("brightness")
-        if brightness is not None:
-            data["brightness"] = brightness
+        expected_brightness: int | None = None
+        if brightness_pct is not None:
+            data["brightness_pct"] = brightness_pct
+            expected_brightness = max(0, min(255, int(round(brightness_pct * 255 / 100))))
+        else:
+            brightness = snapshot.get("brightness")
+            if brightness is not None:
+                data["brightness"] = brightness
         features = snapshot.get("supported_features")
         if isinstance(features, int) and features & TRANSITION_FEATURE:
             if transition_sec is None:
                 transition_sec = int(min(self.interval_minutes * 60.0, 300.0))
             data["transition"] = transition_sec
+        skip_if: dict[str, Any] = {"state": "on", "color_temp_kelvin": value}
+        if expected_brightness is not None:
+            skip_if["brightness"] = expected_brightness
         intent = CommandIntent(
             device_id=device_id,
             domain="light",
@@ -437,7 +549,7 @@ class LightColorTemperatureService:
             data=data,
             priority=priority,
             source="light_color_temperature",
-            skip_if={"state": "on", "color_temp_kelvin": value},
+            skip_if=skip_if,
             conflict_free=True,
             # Общая температура — настройка дома, а не спор за состояние:
             # ручная блокировка не должна оставлять лампу на прошлом оттенке

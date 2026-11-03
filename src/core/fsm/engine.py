@@ -146,6 +146,12 @@ KNOWN_BEHAVIOR_PARAM_KEYS: frozenset[str] = frozenset(
         # Вечерняя яркость без движения (B104): свет не гаснет, а тускнеет.
         "dim_when_idle",
         "dim_brightness_pct",
+        # Кривая яркости света над кроватью (B114): от dim_from до dim_at
+        # яркость идёт к dim_to_pct; читает служба световой температуры.
+        "dim_from",
+        "dim_at",
+        "dim_start_pct",
+        "dim_to_pct",
         "schedule",
         "target_temp",
         # Параметры вентиляции (спека 014, data-model.md §5).

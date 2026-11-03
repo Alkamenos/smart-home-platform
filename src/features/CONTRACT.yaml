@@ -223,7 +223,7 @@ templates:
         note: "Закрывать эту штору, когда людей нет, а собаки дома (только спальня и кабинет). Читает условие covers_should_close."
   deco_light:
     reachable: true
-    in_manifest: [sad, terassa]
+    in_manifest: [sad, spalnia, terassa]
     actions: [turn_on_light, turn_off_light]
     guards: [is_manual_override_enabled, stops_on_sleep, is_night_time, device_is_off]
     triggers:
@@ -245,6 +245,36 @@ templates:
         range: "sleep|sunrise"
         effective: true
         note: "Разводит только выключение по модификатору «мы спим». `sleep` — гаснет и по отбою, и по рассвету (гирлянда на террасе); `sunrise` — живёт до рассвета и отбоем не гасится (ночное освещение). По рассвету гаснут оба: среди бела дня декоративный свет не нужен (журнал 2026-10-10: гирлянда горела весь день, потому что рассвет для off_by=sleep был отказом guard_failed). Читает условие stops_on_sleep."
+      brightness_pct:
+        type: int
+        range: "0-100"
+        effective: true
+        note: "Яркость включения в процентах; задавать явно, иначе лампа вспомнит прошлую."
+      use_global_color_temp:
+        type: bool
+        range: "true/false"
+        effective: true
+        note: "Брать текущую цветовую температуру дома из input_number."
+      dim_from:
+        type: str
+        range: "sunset|HH:MM"
+        effective: true
+        note: "Начало кривой снижения яркости: закат или явное время. По умолчанию закат."
+      dim_at:
+        type: str
+        range: "HH:MM"
+        effective: true
+        note: "Время, к которому яркость достигает dim_to_pct; по умолчанию 22:00."
+      dim_start_pct:
+        type: int
+        range: "0-100"
+        effective: true
+        note: "Яркость в начале кривой; по умолчанию 100."
+      dim_to_pct:
+        type: int
+        range: "0-100"
+        effective: true
+        note: "Конечная яркость кривой. Задана — служба света снижает яркость каждые color_temp_update_minutes; не задана — яркость не трогается."
   generic_cover:
     reachable: false
     in_manifest: []

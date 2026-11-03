@@ -153,6 +153,20 @@ rooms:
     - template: lighting
       priority: 10
       params: {}
+  - id: light.svet_nad_krovatiu_1
+    type: light
+    name: Свет над кроватью
+    behaviors:
+    - template: deco_light
+      priority: 10
+      params:
+        off_by: sleep
+        brightness_pct: 100
+        use_global_color_temp: true
+        dim_from: sunset
+        dim_at: "22:00"
+        dim_start_pct: 100
+        dim_to_pct: 3
   - id: fan.base_smart
     type: fan
     name: Рекуператор спальни
