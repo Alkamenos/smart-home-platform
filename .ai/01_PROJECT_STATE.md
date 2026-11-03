@@ -4,6 +4,28 @@
 
 ## Последние значимые изменения
 
+### 2026-11-03: воспроизводимая поставка и минимальный runtime (US3 спеки 018)
+
+- Python-зависимости зафиксированы `uv.lock`; сборка образа идёт через
+  `uv sync --frozen --no-dev`, без разрешения версий на лету.
+- Базовые образы `python:3.12-slim` и `node:lts-slim` закреплены по digest.
+- Dockerfile разделён на стадии: фронтенд, зависимости, runtime. В runtime нет
+  `gcc`, `libffi-dev` и pip-кэша.
+- Процесс приложения работает от UID **10001**: entrypoint выравнивает права на
+  тома и сбрасывает привилегии через `setpriv`; compose добавляет только
+  `CHOWN/SETGID/SETUID` на время старта.
+- Compose: `read_only`, `tmpfs /tmp`, `cap_drop: ALL`, `no-new-privileges`,
+  `mem_limit: 1g`, `cpus: 2.0`.
+- CI: отдельный `security.yml` — `pip-audit`, Trivy (critical/high блокируют
+  выпуск), SBOM; Dependabot следит и за Docker-образами.
+- Тесты: digest-пиннинг, отсутствие root/компиляторов, hardening compose,
+  наличие lock и frozen-сборки, отпечаток зависимостей. Полный прогон —
+  **3379 passed / 19 skipped**, покрытие **84 %**; `ruff` и `mypy` чистые.
+- Образ пересобран и выкачен: контейнер healthy, `/ready: true`, процесс
+  `python -m src.main` под UID 10001, 27 автоматов.
+
+Разбор — `specs/018-architecture-hardening/` (US3), `BACKLOG.md` (F7).
+
 ### 2026-11-02: граница управления — доверенная сеть и default deny (US2 спеки 018)
 
 - Пароль приложения не вводится (решение владельца): доверие к прямому

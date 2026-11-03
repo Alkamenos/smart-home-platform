@@ -124,21 +124,21 @@ description: "Task list for architecture hardening"
 
 ### Tests for User Story 3
 
-- [ ] T038 [P] [US3] Тест отсутствия плавающих базовых образов и root в `tests/contract/test_image_hardening.py`
-- [ ] T039 [P] [US3] Тест наличия lock-файла и запрета `>=` без фиксации в `tests/contract/test_dependency_lock.py`
-- [ ] T040 [P] [US3] Скрипт проверки воспроизводимости в `tools/check_reproducible_build.py`
+- [X] T038 [P] [US3] Тест отсутствия плавающих базовых образов и root в `tests/contract/test_image_hardening.py`
+- [X] T039 [P] [US3] Тест наличия lock-файла и запрета `>=` без фиксации в `tests/contract/test_dependency_lock.py`
+- [X] T040 [P] [US3] Скрипт проверки воспроизводимости в `tools/check_reproducible_build.py`
 
 ### Implementation for User Story 3
 
-- [ ] T041 [US3] Ввести `uv` и `uv.lock`; перевести установку на `uv sync --frozen` в `pyproject.toml`, `Makefile`, `deploy/docker/Dockerfile`
-- [ ] T042 [US3] Переписать `deploy/docker/Dockerfile`: multi-stage runtime, non-root пользователь, без gcc/libffi-dev
-- [ ] T043 [US3] Захарднить `deploy/docker/docker-compose.prod.yml`: `read_only`, `tmpfs`, `cap_drop: ALL`, `no-new-privileges`, лимиты
-- [ ] T044 [US3] Закрепить базовые образы по digest в `deploy/docker/Dockerfile`
-- [ ] T045 [US3] Добавить `pip-audit`, Trivy и SBOM в `.github/workflows/security.yml`
-- [ ] T046 [US3] Добавить Docker-экосистему в `.github/dependabot.yml`
-- [ ] T047 [US3] Сделать ворота выпуска: блокировка при critical/high и при отсутствии lock
-- [ ] T048 [US3] Обновить `deploy/README.md` и `specs/018-architecture-hardening/contracts/build-artifact.md`
-- [ ] T049 [US3] Проверить сценарии `quickstart.md` для Wave C и зафиксировать результат
+- [X] T041 [US3] Ввести `uv` и `uv.lock`; перевести установку на `uv sync --frozen` в `pyproject.toml`, `Makefile`, `deploy/docker/Dockerfile`
+- [X] T042 [US3] Переписать `deploy/docker/Dockerfile`: multi-stage runtime, non-root пользователь, без gcc/libffi-dev
+- [X] T043 [US3] Захарднить `deploy/docker/docker-compose.prod.yml`: `read_only`, `tmpfs`, `cap_drop: ALL`, `no-new-privileges`, лимиты
+- [X] T044 [US3] Закрепить базовые образы по digest в `deploy/docker/Dockerfile`
+- [X] T045 [US3] Добавить `pip-audit`, Trivy и SBOM в `.github/workflows/security.yml`
+- [X] T046 [US3] Добавить Docker-экосистему в `.github/dependabot.yml`
+- [X] T047 [US3] Сделать ворота выпуска: блокировка при critical/high и при отсутствии lock
+- [X] T048 [US3] Обновить `deploy/README.md` и `specs/018-architecture-hardening/contracts/build-artifact.md`
+- [X] T049 [US3] Проверить сценарии `quickstart.md` для Wave C и зафиксировать результат
 
 **Checkpoint**: сборка воспроизводима, уязвимости видны, образ минимален.
 

@@ -83,7 +83,8 @@ docker run --rm probe:local sh -c 'which gcc || true'  # пусто
 ```
 
 **Ожидаемо:** lock не меняется; критических уязвимостей нет; процесс не root;
-компилятора в runtime нет.
+компилятора в runtime нет. Проверено 03.11.2026: `uv lock --check` проходит,
+образ запускается под UID 10001, `gcc` отсутствует.
 
 ## Wave D — локальность изменения
 
@@ -144,7 +145,8 @@ mypy src
 | Foundational (T006–T010) | классы отказов, идентичность, `trace_id`; тесты зелёные |
 | US1 (T011–T023) | единая модель, `extra=forbid`, `extensions`, удалены `manifest_schema`/`manifest_validator` и дубли WebUI |
 | US2 (T024–T037) | доверенная сеть, default deny, заголовки не повышают права, `Origin`, allowlist; пароля нет |
-| Полный прогон | **3371 passed / 19 skipped**, покрытие **84 %** |
+| US3 (T038–T049) | `uv.lock`, digest-пиннинг, non-root 10001, read-only, Trivy/SBOM, лимиты |
+| Полный прогон | **3379 passed / 19 skipped**, покрытие **84 %** |
 | `ruff` / `mypy` | чисто |
 | Ожидаемое снижение числа тестов | −78 тестов мёртвой схемы, +22 новых проверки |
 
