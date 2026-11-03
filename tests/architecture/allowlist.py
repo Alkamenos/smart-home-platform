@@ -23,7 +23,7 @@ LEGACY_SIZE_ALLOWLIST: dict[str, int] = {
     "src/core/fsm/engine.py": 1982,
     "src/app/container.py": 1602,
     "src/services/device_service.py": 1475,
-    "src/services/watchdog.py": 1434,
+    "src/services/watchdog.py": 1243,
     "src/adapters/ha_websocket.py": 923,
     "src/core/metrics.py": 961,
     "src/core/fsm/factory.py": 857,
