@@ -558,3 +558,135 @@ class TestTemperatureAlwaysApplies:
         await _service(adapter, dispatcher).apply_to_device("light.onoff")
 
         assert dispatcher.intents == []
+
+
+def _bed_manifest() -> Manifest:
+    """Манифест со светом над кроватью и кривой яркости до 22:00.
+
+    Returns:
+        Модель манифеста.
+    """
+    return Manifest(
+        version=1,
+        instance=InstanceConfig(
+            id="probe",
+            name="Probe",
+            owner="probe",
+            created_at="2026-01-01T00:00:00Z",
+            time_zone="Asia/Yekaterinburg",
+        ),
+        rooms=[
+            RoomConfig(
+                id="spalnia",
+                name="Спальня",
+                devices=[
+                    DeviceConfig(
+                        id="light.svet_nad_krovatiu_1",
+                        type="light",
+                        behaviors=[
+                            BehaviorConfig(
+                                template="deco_light",
+                                priority=10,
+                                params={
+                                    "off_by": "sleep",
+                                    "use_global_color_temp": True,
+                                    "dim_from": "18:00",
+                                    "dim_at": "22:00",
+                                    "dim_start_pct": 100,
+                                    "dim_to_pct": 3,
+                                },
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        automation_rules=AutomationRules(
+            lighting=AutomationDomainRules(
+                color_temp_day_entity="input_number.temperatura_sveta_dnem",
+                color_temp_night_entity="input_number.temperatura_sveta_nochiu",
+                color_temp_current_entity="input_number.tekushchaia_temperatura",
+                color_temp_warm_at="21:00",
+                color_temp_update_minutes=5,
+            ),
+        ),
+    )
+
+
+def _bed_adapter() -> _Adapter:
+    """Адаптер со светом над кроватью.
+
+    Returns:
+        Адаптер-двойник.
+    """
+    return _Adapter(
+        states={
+            "input_number.temperatura_sveta_dnem": "6000",
+            "input_number.temperatura_sveta_nochiu": "2000",
+        },
+        snapshots={
+            "sun.sun": {
+                "state": "below_horizon",
+                "next_setting": "2026-10-22T18:00:00+05:00",
+            },
+            "input_number.tekushchaia_temperatura": {
+                "state": "3000",
+                "min": 2000,
+                "max": 6000,
+            },
+            "light.svet_nad_krovatiu_1": {
+                "state": "on",
+                "supported_color_modes": ["color_temp"],
+                "min_color_temp_kelvin": 2000,
+                "max_color_temp_kelvin": 6535,
+                "brightness": 255,
+                "supported_features": 44,
+            },
+        },
+    )
+
+
+class TestBedsideBrightnessCurve:
+    """Яркость света над кроватью плавно идёт к 3 % к 22:00."""
+
+    @pytest.mark.parametrize(
+        ("hour", "expected"),
+        [(18, 100), (20, 52), (22, 3), (23, 3)],
+    )
+    @pytest.mark.asyncio
+    async def test_brightness_curve(self, hour: int, expected: int) -> None:
+        """В 18:00 — 100 %, в 20:00 — половина, в 22:00 и позже — 3 %."""
+        now = datetime(2026, 10, 21, hour, 0, tzinfo=TZ)
+        adapter = _bed_adapter()
+        dispatcher = _Dispatcher()
+        service = LightColorTemperatureService(
+            adapter=adapter,
+            dispatcher=dispatcher,
+            manifest=_bed_manifest(),
+            now_supplier=lambda _tz: now,
+        )
+
+        await service.check_once()
+
+        intents = [i for i in dispatcher.intents if i.device_id == "light.svet_nad_krovatiu_1"]
+        assert intents, "свет над кроватью не получил команду"
+        assert intents[0].data["brightness_pct"] == expected
+
+    @pytest.mark.asyncio
+    async def test_warm_color_is_applied_with_dim(self) -> None:
+        """Вместе с яркостью уходит тёплая температура, а не только яркость."""
+        now = datetime(2026, 10, 21, 22, 0, tzinfo=TZ)
+        adapter = _bed_adapter()
+        dispatcher = _Dispatcher()
+        service = LightColorTemperatureService(
+            adapter=adapter,
+            dispatcher=dispatcher,
+            manifest=_bed_manifest(),
+            now_supplier=lambda _tz: now,
+        )
+
+        await service.check_once()
+
+        intents = [i for i in dispatcher.intents if i.device_id == "light.svet_nad_krovatiu_1"]
+        assert intents[0].data["color_temp_kelvin"] == 2000
+        assert intents[0].data["brightness_pct"] == 3

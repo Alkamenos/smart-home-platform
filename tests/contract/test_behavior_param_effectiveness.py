@@ -36,6 +36,7 @@ HOT_PATH_FILES = (
     "src/core/fsm/factory.py",
     "src/core/action_handlers.py",
     "src/core/guards/schedule_guard.py",
+    "src/core/services/light_color_temperature.py",
 )
 """Файлы исполняемого пути.
 
