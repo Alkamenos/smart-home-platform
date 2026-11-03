@@ -1,0 +1,52 @@
+name: Security
+
+# Ворота выпуска (спека 018, US3): уязвимости и состав образа видны до
+# публикации. Проверка недоступна — не «чисто»: job падает, решение принимает
+# владелец.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Установить uv и зафиксированные зависимости
+        run: |
+          pip install uv==0.13.0
+          uv sync --frozen --no-dev
+          uv export --frozen --no-dev --format requirements-txt > requirements.lock.txt
+      - name: Проверить известные уязвимости
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.lock.txt
+
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Собрать образ
+        run: docker build -f deploy/docker/Dockerfile -t behavioral-platform:scan .
+      - name: Trivy — уязвимости образа
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: behavioral-platform:scan
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: behavioral-platform:scan
+          artifact-name: behavioral-platform-sbom.spdx.json

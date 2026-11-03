@@ -43,4 +43,11 @@ fi
 # Права на запись: каталог тома может принадлежать хостовому пользователю.
 chmod -R u+rwX "$CONFIG_PATH" 2>/dev/null || true
 
+# Права на тома: каталог тома может принадлежать другому UID (bind-mount),
+# поэтому root-этап entrypoint выравнивает владельца, а затем сбрасывает права.
+if [ "$(id -u)" = "0" ]; then
+    chown -R 10001:10001 "$CONFIG_PATH" /data/behavioral_platform 2>/dev/null || true
+    exec setpriv --reuid=10001 --regid=10001 --clear-groups "$@"
+fi
+
 exec "$@"

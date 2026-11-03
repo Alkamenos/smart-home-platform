@@ -25,6 +25,24 @@ services:
     container_name: behavioral-platform
     restart: unless-stopped
 
+    # Минимальные права (спека 018, US3): entrypoint выравнивает права на тома
+    # и сбрасывает их до UID 10001 через setpriv.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    # Нужны только для выравнивания прав на тома в entrypoint; после setpriv
+    # процесс работает от 10001 без возможностей.
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 2.0
+
     # Статус на успешный запуск контейнера
     pull_policy: if_not_present
 

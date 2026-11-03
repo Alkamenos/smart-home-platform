@@ -16,6 +16,10 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -e ".[dev,webui]"
+      - name: Проверить lock-файл
+        run: |
+          pip install uv==0.13.0
+          uv lock --check
       # Команды НЕ дублируются: make lint / make type-check — тот же источник,
       # что и локальные хуки (.githooks/pre-commit, run_checks.sh). Раньше здесь
       # стояли сырые `ruff check src/ tests/ examples/` и `mypy src/`, которые
