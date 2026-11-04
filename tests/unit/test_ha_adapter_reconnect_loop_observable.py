@@ -30,7 +30,9 @@ import re
 from pathlib import Path
 
 
-SOURCE = Path(__file__).resolve().parents[2] / "src" / "adapters" / "ha_adapter.py"
+SOURCE = (
+    Path(__file__).resolve().parents[2] / "src" / "adapters" / "home_assistant" / "connection.py"
+)
 
 
 def _source() -> str:

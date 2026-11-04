@@ -551,7 +551,9 @@ class TestHAAdapterWebSocketLifecycle:
 
         with (
             patch.object(adapter, "_get_logger", return_value=MagicMock()),
-            patch("adapters.ha_adapter.HomeAssistantWS", return_value=failing_client),
+            patch(
+                "adapters.home_assistant.connection.HomeAssistantWS", return_value=failing_client
+            ),
             patch("adapters.ha_adapter.aiohttp.ClientSession"),
             patch("adapters.ha_adapter.asyncio.sleep", new=counting_sleep),
         ):

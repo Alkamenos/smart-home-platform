@@ -19,6 +19,7 @@ import time
 import pytest
 
 import adapters.ha_adapter as ha_adapter_module
+import adapters.home_assistant.connection as connection_module
 import core.metrics as core_metrics_module
 from adapters.ha_adapter import HAAdapter
 
@@ -80,6 +81,7 @@ def fake_ws(monkeypatch: pytest.MonkeyPatch) -> type[FakeWSClient]:
     """Подменить HomeAssistantWS в модуле адаптера и сбросить состояние."""
     FakeWSClient.reset()
     monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", FakeWSClient)
+    monkeypatch.setattr(connection_module, "HomeAssistantWS", FakeWSClient)
     return FakeWSClient
 
 
@@ -213,7 +215,7 @@ async def test_disconnect_logs_attempt_number_and_backoff(
 ) -> None:
     """Обрыв — WARNING с номером попытки и задержкой, успех — INFO о сбросе backoff."""
     adapter = _make_adapter()
-    with caplog.at_level(logging.INFO, logger="adapters.ha_adapter"):
+    with caplog.at_level(logging.INFO, logger="adapters.home_assistant.connection"):
         await adapter.start()
         try:
             assert await _wait_until(lambda: fake_ws.connect_calls >= 2)

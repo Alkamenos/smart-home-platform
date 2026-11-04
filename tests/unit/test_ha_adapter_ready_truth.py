@@ -29,6 +29,7 @@ from typing import Any
 import pytest
 
 import adapters.ha_adapter as ha_adapter_module
+import adapters.home_assistant.connection as connection_module
 from adapters.ha_adapter import HAAdapter
 from webui.routes.readiness import check_home_assistant
 
@@ -89,6 +90,7 @@ def unreachable(monkeypatch: pytest.MonkeyPatch) -> type[_UnreachableClient]:
     """
     _UnreachableClient.connect_calls = 0  # noqa: SLF001
     monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _UnreachableClient)
+    monkeypatch.setattr(connection_module, "HomeAssistantWS", _UnreachableClient)
 
     real_sleep = asyncio.sleep
 

@@ -45,6 +45,7 @@ from typing import Any
 import pytest
 
 import adapters.ha_adapter as ha_adapter_module
+import adapters.home_assistant.connection as connection_module
 from adapters.ha_adapter import HAAdapter
 
 
@@ -153,6 +154,7 @@ def black_hole(monkeypatch: pytest.MonkeyPatch) -> type[_BlackHoleClient]:
     _BlackHoleClient.connect_calls = 0  # noqa: SLF001
     _BlackHoleClient.close_calls = 0  # noqa: SLF001
     monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _BlackHoleClient)
+    monkeypatch.setattr(connection_module, "HomeAssistantWS", _BlackHoleClient)
     _speed_up_loops(monkeypatch)
     return _BlackHoleClient
 

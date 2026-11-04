@@ -55,6 +55,7 @@ from unittest import mock
 
 import pytest
 
+import adapters.home_assistant.connection as connection_module
 import core.metrics as core_metrics_module
 from adapters import ha_adapter as ha_adapter_module
 from adapters.ha_adapter import HAAdapter, SimpleHAWebSocketClient
@@ -571,6 +572,7 @@ class TestAdapterWiresLiveFilter:
         adapter = instance
 
         monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _RecordingWSClient)
+        monkeypatch.setattr(connection_module, "HomeAssistantWS", _RecordingWSClient)
 
         async def _fake_loop(self: Any) -> None:
             await asyncio.sleep(3600)

@@ -31,6 +31,7 @@ from typing import Any
 import pytest
 
 import adapters.ha_adapter as ha_adapter_module
+import adapters.home_assistant.connection as connection_module
 from adapters.ha_adapter import HAAdapter
 
 
@@ -141,6 +142,7 @@ async def test_should_reconnect_when_listen_task_already_done(
     # готового объекта осталась бы незамеченной. Первая редакция проверки так и
     # делала, и падала по таймауту, разъясняя обрыв не по той причине.
     monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _DeadWebSocketClient)
+    monkeypatch.setattr(connection_module, "HomeAssistantWS", _DeadWebSocketClient)
     monkeypatch.setattr(_DeadWebSocketClient, "connect", _fake_connect, raising=True)
 
     async def _fake_loop() -> None:
@@ -178,6 +180,7 @@ async def test_should_report_disconnected_without_restart(
         monkeypatch: Подмена клиента.
     """
     monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _DeadWebSocketClient)
+    monkeypatch.setattr(connection_module, "HomeAssistantWS", _DeadWebSocketClient)
     monkeypatch.setattr(_DeadWebSocketClient, "connect", _always_true, raising=True)
     monkeypatch.setattr(HAAdapter, "_heartbeat_loop", _fake_heartbeat, raising=True)
     monkeypatch.setattr(HAAdapter, "_cleanup_websocket", _noop, raising=True)

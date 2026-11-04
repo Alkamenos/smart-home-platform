@@ -31,6 +31,7 @@ from typing import Any
 import pytest
 
 import adapters.ha_adapter as ha_adapter_module
+import adapters.home_assistant.connection as connection_module
 from adapters.ha_adapter import HAAdapter, SimpleHAWebSocketClient
 
 
@@ -134,6 +135,7 @@ def adapter(monkeypatch: pytest.MonkeyPatch) -> HAAdapter:
     # Событий не было давно: сразу попадаем в ветку «устарело».
     instance._last_event_time = time.time() - 1000
     monkeypatch.setattr(ha_adapter_module, "HomeAssistantWS", _StaleWebSocketClient)
+    monkeypatch.setattr(connection_module, "HomeAssistantWS", _StaleWebSocketClient)
     return instance
 
 
@@ -218,7 +220,11 @@ class TestStalePathIsObservable:
         прошлого расследования (Known Issue #70).
         """
         source = (
-            Path(__file__).resolve().parents[2] / "src" / "adapters" / "ha_adapter.py"
+            Path(__file__).resolve().parents[2]
+            / "src"
+            / "adapters"
+            / "home_assistant"
+            / "connection.py"
         ).read_text(encoding="utf-8")
 
         assert "closing stale connection" in source
