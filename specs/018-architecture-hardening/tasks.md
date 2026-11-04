@@ -162,7 +162,7 @@ description: "Task list for architecture hardening"
 ### Implementation for User Story 4
 
 - [X] T054 [US4] Вынести composition root из `src/core/container.py` в `src/app/container.py`; обновить `src/main.py`, `src/bootstrap.py`
-- [ ] T055 [US4] Разделить `src/adapters/ha_adapter.py`: transport, команды, dashboards, discovery, manual events; оставить фасад
+- [X] T055 [US4] Разделить `src/adapters/ha_adapter.py`: transport, команды, dashboards, discovery, manual events; оставить фасад
 - [ ] T056 [US4] Разделить `src/core/fsm/engine.py`: переходы, guard/action, таймеры, решения; оставить фасад
 - [ ] T057 [US4] Вынести фабрики из `src/app/container.py` в `src/app/factories.py`
 - [ ] T058 [US4] Разделить `src/services/watchdog.py` и `src/services/device_service.py` по ответственностям
@@ -173,16 +173,15 @@ description: "Task list for architecture hardening"
 
 **Checkpoint**: конституция IV соблюдается автоматически; крупные модули разделены.
 
-> **Статус US4 на 03.11.2026:** выполнены T050–T054 и T060–T062.
+> **Статус US4 на 04.11.2026:** выполнены T050–T055 и T060–T062.
 > Composition root перенесён в `src/app/`, добавлены исполняемые проверки
-> зависимостей/моделей/размеров, `PlatformContext` вынесен в `src/app/context.py`,
-> панели HA — в `src/adapters/home_assistant/dashboards.py`. Дополнительно
-> `HAAdapter` разделён по ответственностям (команды, единицы, discovery,
-> ручные события; 2431 → 1909 строк), модели снимка сторожа вынесены в
-> `src/services/watchdog_models.py` (`watchdog.py` 1434 → 1243).
-> Остались: транспорт соединения внутри `HAAdapter` (T055), `FSMEngine` (T056),
-> фабрики Container (T057), `DeviceService` (T058) и сокращение крупных
-> модулей на 50 % (T059).
+> зависимостей/моделей/размеров, `PlatformContext` вынесен в `src/app/context.py`.
+> `HAAdapter` разделён полностью: панели, команды, единицы, discovery, ручные
+> события и WebSocket-транспорт в отдельных модулях; **2431 → 1247 строк**.
+> Модели снимка сторожа вынесены в `src/services/watchdog_models.py`
+> (`watchdog.py` 1434 → 1243).
+> Остались: `FSMEngine` (T056), фабрики Container (T057), `DeviceService`
+> (T058) и сокращение остальных крупных модулей на 50 % (T059).
 
 ---
 
