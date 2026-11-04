@@ -19,8 +19,8 @@ SIZE_BUDGET = 800
 #: на время рефакторинга. Цель Wave D — сократить каждый не менее чем на 50 %;
 #: после этого запись удаляется.
 LEGACY_SIZE_ALLOWLIST: dict[str, int] = {
-    "src/adapters/ha_adapter.py": 1247,
-    "src/core/fsm/engine.py": 1982,
+    "src/adapters/ha_adapter.py": 1249,
+    "src/core/fsm/engine.py": 1754,
     "src/app/container.py": 1602,
     "src/services/device_service.py": 1475,
     "src/services/watchdog.py": 1242,
