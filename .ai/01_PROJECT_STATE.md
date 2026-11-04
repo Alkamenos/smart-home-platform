@@ -35,20 +35,22 @@
 - Модели снимка сторожа и виды расхождений вынесены в
   `src/services/watchdog_models.py`; `WatchdogService` остаётся фасадом,
   старые импорты сохранены.
-- Таймеры `FSMEngine` вынесены в `src/core/fsm/timers.py` (`TimerMixin`):
-  отложенные переходы, восстановленные таймеры, обработчик `timeout`.
-  Движок **1982 → 1754 строк**.
+- `FSMEngine` разделён по ответственностям: таймеры в
+  `src/core/fsm/timers.py` (`TimerMixin`), публикация событий в
+  `src/core/fsm/publishing.py` (`PublishingMixin`), журнал решений в
+  `src/core/fsm/decisions.py` (`DecisionMixin`). Движок **1982 → 1548 строк**;
+  публичные методы сохранены.
 - Добавлены исполняемые правила `tests/architecture`: запрет `core → adapters`,
   отсутствие параллельных доменных моделей, бюджет размера модулей, целостность
   фасадов.
 - `make check-architecture` добавлен в CI.
 - Найдены и описаны в allowlist ложные «дубли» (`DeviceConfig` метаданных
   прибора и `RoomConfig` агрегации комнаты — не модели манифеста).
-- Тесты: **3388 passed / 19 skipped**, покрытие **84 %**; `ruff` и `mypy` чистые.
+- Тесты: **3393 passed / 19 skipped**, покрытие **84 %**; `ruff` и `mypy` чистые.
 - Образ пересобран: контейнер healthy, `/ready: true`, процесс под UID 10001,
   27 автоматов.
 
-**Осталось по US4:** полное разделение `HAAdapter`, `FSMEngine`, фабрик
+**Осталось по US4:** в `FSMEngine` — guard/action и персистентность; фабрики
 Container, `Watchdog` и `DeviceService`; сокращение крупных модулей на 50 %.
 Это следующая волна — самый крупный и рискованный рефакторинг.
 
