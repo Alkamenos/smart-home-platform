@@ -22,27 +22,26 @@ from typing import TYPE_CHECKING, Any, Final
 from loguru import logger
 
 from core.events.fsm_events import (
-    EVENT_FSM_REJECTED,
-    EVENT_FSM_TRANSITIONED,
     GUARD_DENIAL_REASONS,
-    OUTCOME_REJECTED,
-    OUTCOME_TRANSITIONED,
     REASON_DEBOUNCED,
     REASON_GUARD_DATA_MISSING,
     REASON_GUARD_FAILED,
     REASON_NO_STATE,
     REASON_NO_TRANSITION,
     REASON_NOT_APPLICABLE,
-    REASON_TEXT,
     REASON_UNKNOWN_ENTITY,
-    build_transition_payload,
 )
+from core.fsm.decisions import DecisionMixin
 from core.fsm.models import (
     Decision,
     FSMDefinition as FSMDefinition,
     State as State,
     Transition as Transition,
     is_measurement,
+)
+from core.fsm.publishing import (
+    PUBLISH_DRAIN_TIMEOUT_SEC as PUBLISH_DRAIN_TIMEOUT_SEC,
+    PublishingMixin,
 )
 from core.fsm.timers import TimerMixin
 from core.models.manifest import AutomationDomainRules
@@ -53,10 +52,6 @@ if TYPE_CHECKING:
     from core.events.event_bus import EventBus
     from core.persistence.state_persistence import StatePersistence
 
-
-# Сколько ждать завершения задач публикации при остановке движка, прежде чем
-# отменить их (FR-012).
-PUBLISH_DRAIN_TIMEOUT_SEC = 1.0
 
 # Флаг, возвращающий прежнее поведение: каждый отказ пишется в журнал.
 ENV_LOG_REJECTIONS = "FSM_LOG_REJECTIONS"
@@ -341,7 +336,7 @@ LIGHT_OFF_ACTIONS: Final[frozenset[str]] = frozenset({"turn_off_light", "turn_of
 REFUSAL_REPEAT_WINDOW_SEC: Final[float] = 3600.0
 
 
-class FSMEngine(TimerMixin):
+class FSMEngine(TimerMixin, PublishingMixin, DecisionMixin):
     """
     Async FSM Engine for smart home entities.
 
@@ -498,111 +493,6 @@ class FSMEngine(TimerMixin):
         """
         self._dispatcher = command_dispatcher
 
-    def _schedule_publish(self, event_type: str, payload: dict[str, Any], trace_id: str) -> None:
-        """Запланировать публикацию события перехода отдельной задачей.
-
-        Доставка неблокирующая: медленный подписчик не задерживает выполнение
-        перехода (FR-014, SC-015). Задача отслеживается, чтобы остановка движка
-        не оставляла висящих задач.
-
-        Args:
-            event_type: Имя события (`fsm.transitioned` или `fsm.rejected`).
-            payload: Полезная нагрузка события.
-            trace_id: Идентификатор трассы текущего срабатывания.
-        """
-        if self._event_bus is None:
-            return
-
-        bus = self._event_bus
-        task = asyncio.create_task(bus.publish(event_type, payload, trace_id))
-        self._publish_tasks.add(task)
-        task.add_done_callback(self._publish_tasks.discard)
-
-    def _publish_transition(
-        self,
-        entity_id: str,
-        event: str,
-        from_state: str | None,
-        to_state: str,
-        trace_id: str,
-    ) -> None:
-        """Опубликовать выполненный переход.
-
-        Args:
-            entity_id: Идентификатор автомата.
-            event: Событие-триггер.
-            from_state: Предыдущее состояние.
-            to_state: Новое состояние.
-            trace_id: Идентификатор трассы.
-        """
-        definition = self._definitions.get(entity_id)
-        device_id = definition.target_device_id if definition else None
-        payload = build_transition_payload(
-            fsm_id=entity_id,
-            device_id=device_id or entity_id,
-            from_state=from_state,
-            to_state=to_state,
-            event=event,
-            outcome=OUTCOME_TRANSITIONED,
-            trace_id=trace_id,
-        )
-        self._schedule_publish(EVENT_FSM_TRANSITIONED, payload, trace_id)
-
-    def _publish_rejection(
-        self,
-        entity_id: str,
-        event: str,
-        from_state: str | None,
-        reason: str,
-        trace_id: str,
-    ) -> None:
-        """Опубликовать отказ в переходе с указанием причины (FR-004).
-
-        Args:
-            entity_id: Идентификатор автомата.
-            event: Событие-триггер.
-            from_state: Состояние, из которого переход не состоялся.
-            reason: Причина отказа.
-            trace_id: Идентификатор трассы.
-        """
-        if reason == REASON_NO_TRANSITION:
-            # «Нет подходящего перехода» — это «повода не было», а не отказ
-            # решения: событие пришло, когда автомату нечего на него ответить
-            # (свет выключен, а датчик прислал `motion_cleared`; рекуператор
-            # притока не слушает влажность). За сутки таких записей набегало 389,
-            # и утренний разбор читал «не хотел» наравне с настоящими отказами.
-            # Первый факт виден, повторы остаются в `rejection_counts()` — тот же
-            # приём, что и у повторных отказов в журнале платформы (B65).
-            key = (entity_id, event)
-            if key in self._published_noops:
-                return
-            self._published_noops.add(key)
-        else:
-            # Повтор одного и того же отказа — раз в `REFUSAL_REPEAT_WINDOW_SEC`:
-            # журнал отвечает на вопрос «что случилось», а не «сколько раз одно и
-            # то же не случилось». Объём не теряется — он в `rejection_counts()`,
-            # а ряд повторов виден почасовыми записями (B67).
-            repeat_key = (entity_id, event, reason)
-            seen_at = self._published_refusals.get(repeat_key)
-            moment = time.monotonic()
-            if seen_at is not None and moment - seen_at < REFUSAL_REPEAT_WINDOW_SEC:
-                return
-            self._published_refusals[repeat_key] = moment
-
-        definition = self._definitions.get(entity_id)
-        device_id = definition.target_device_id if definition else None
-        payload = build_transition_payload(
-            fsm_id=entity_id,
-            device_id=device_id or entity_id,
-            from_state=from_state,
-            to_state=None,
-            event=event,
-            outcome=OUTCOME_REJECTED,
-            trace_id=trace_id,
-            reason=reason,
-        )
-        self._schedule_publish(EVENT_FSM_REJECTED, payload, trace_id)
-
     def register_definition(self, definition: FSMDefinition, restore_state: bool = True) -> None:
         """Register an FSM definition for an entity.
 
@@ -746,50 +636,6 @@ class FSMEngine(TimerMixin):
             Decision record or None.
         """
         return self._decisions.get(entity_id)
-
-    def _get_reason_text(self, reason_code: str) -> str:
-        """Get human-readable text for a reason code.
-
-        Falls back to the reason_code itself if not found in REASON_TEXT dictionary.
-
-        Args:
-            reason_code: The machine-readable reason code.
-
-        Returns:
-            Human-readable reason text.
-        """
-        return REASON_TEXT.get(reason_code, reason_code)
-
-    def _record_decision(
-        self,
-        entity_id: str,
-        outcome: str,
-        reason_code: str | None,
-        reason_text: str | None,
-        trigger: str | None,
-    ) -> None:
-        """Record a decision (transition or rejection).
-
-        Args:
-            entity_id: The entity making the decision.
-            outcome: 'on', 'off', 'none', or 'denied'.
-            reason_code: Machine-readable reason code (from GUARD_DENIAL_REASONS or action name).
-            reason_text: Human-readable reason (if None, determined from reason_code).
-            trigger: The event that triggered this decision.
-        """
-        if reason_text is None and reason_code is not None:
-            reason_text = self._get_reason_text(reason_code)
-        if reason_text is None:
-            reason_text = "неизвестно"
-
-        decision = Decision(
-            at=time.time(),
-            outcome=outcome,
-            reason_code=reason_code,
-            reason_text=reason_text,
-            trigger=trigger,
-        )
-        self._decisions[entity_id] = decision
 
     def get_all_states(self) -> dict[str, State]:
         """Get all current states of all entities."""
@@ -1633,45 +1479,6 @@ class FSMEngine(TimerMixin):
         else:
             self._persistence.save_state(entity_id, to_state, new_context, wall_entered_at)
 
-    def _record_transition_decision(
-        self, entity_id: str, event: str, action: str | Callable[..., Any] | None
-    ) -> None:
-        """Записать решение о переходе (T005, FR-005).
-
-        Вид решения (включение/выключение) выводится из имени действия: так
-        журнал решений остаётся человекочитаемым без разбора интентов.
-
-        Args:
-            entity_id: Идентификатор автомата.
-            event: Событие, вызвавшее переход.
-            action: Действие перехода (имя или функция).
-
-        Returns:
-            Ничего.
-        """
-        # Record the decision (T005, FR-005)
-        action_name = action if isinstance(action, str) else None
-        outcome = "none"
-        reason_code = None
-        if action_name:
-            # Determine on/off from action name (T007)
-            if "_off" in action_name.lower():
-                outcome = "off"
-                reason_code = "action_off"
-            elif "_on" in action_name.lower() or action_name.lower().startswith("turn_on"):
-                outcome = "on"
-                reason_code = "action_on"
-            else:
-                outcome = "on"  # Assume on for unknown actions
-                reason_code = "action"
-        self._record_decision(
-            entity_id=entity_id,
-            outcome=outcome,
-            reason_code=reason_code,
-            reason_text=None,  # Will be determined
-            trigger=event,
-        )
-
     @staticmethod
     def _no_transition_reason(guard_denials: dict[str, str], not_applicable: int) -> str:
         """Назвать причину, по которой ни один переход не подошёл.
@@ -1732,19 +1539,6 @@ class FSMEngine(TimerMixin):
         self._last_transition_wall.pop(entity_id, None)
 
         logger.info(f"Unregistered FSM for entity {entity_id}")
-
-    async def _drain_publish_tasks(self) -> None:
-        """Дождаться или отменить задачи публикации событий (FR-012)."""
-        tasks = list(self._publish_tasks)
-        if not tasks:
-            return
-
-        done, pending = await asyncio.wait(tasks, timeout=PUBLISH_DRAIN_TIMEOUT_SEC)
-        for task in pending:
-            task.cancel()
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-        logger.debug(f"Drained {len(done)} publish tasks, cancelled {len(pending)}")
 
     async def shutdown(self) -> None:
         """Shutdown the engine, cancelling all pending timers."""
