@@ -6,9 +6,11 @@ registry is a separate responsibility from transport and commands.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 
 class DiscoveryMixin:

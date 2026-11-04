@@ -6,6 +6,7 @@ and the platform-command window are one responsibility.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -13,6 +14,9 @@ from adapters.ha_constants import (
     COMMAND_ECHO_WINDOW_SEC,
     DIVERGENCE_COMMAND_WINDOW_SEC,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class CommandGatewayMixin:

@@ -6,13 +6,16 @@ setpoint mirroring are a separate responsibility from transport.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, cast
 
 import aiohttp
-from loguru import logger
 
 from adapters.ha_websocket import _as_float as _as_float, _is_number as _is_number
+
+
+logger = logging.getLogger(__name__)
 
 
 class UnitsMixin:

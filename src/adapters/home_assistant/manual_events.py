@@ -6,9 +6,13 @@ delivered to the device FSMs, and the light colour service is re-applied.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from adapters.ha_constants import MANUAL_OFF_VALUES, MANUAL_ON_VALUES
+
+
+logger = logging.getLogger(__name__)
 
 
 class ManualEventsMixin:
