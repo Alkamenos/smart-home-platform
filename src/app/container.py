@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 from datetime import datetime as dt_datetime, time as dt_time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -21,6 +20,17 @@ from loguru import logger
 from adapters.ha_adapter import HAAdapter
 from adapters.mock_adapter import MockAdapter
 from app.context import PlatformContext as PlatformContext
+from app.factories import (
+    bind_global_entities,
+    create_adapter,
+    create_event_store,
+    create_external_adapter,
+    create_location_mirror,
+    create_platform_mirror,
+    create_state_persistence,
+    heater_timer_entities,
+    heater_timer_pairs,
+)
 from core.action_handlers import register_all_actions
 from core.commands.dispatcher import CommandDispatcher, HAAdapterProtocol
 from core.commands.middleware import ManualLockoutMiddleware
@@ -152,26 +162,9 @@ class Container:
         if self._fsm is None:
             self._fsm = FSMEngine(
                 event_bus=self.event_bus,
-                persistence=self._create_state_persistence(),
+                persistence=create_state_persistence(),
             )
         return self._fsm
-
-    def _create_state_persistence(self) -> Any | None:
-        """Создать хранилище состояний автоматов.
-
-        Импорт выполняется внутри метода: пакет ``core.persistence`` тянет
-        ``src.core.*``, что создаёт циклический импорт с контейнером.
-
-        Returns:
-            Экземпляр хранилища либо None, если хранилище создать не удалось.
-        """
-        try:
-            from core.persistence.state_persistence import StatePersistence
-
-            return StatePersistence()
-        except (OSError, ImportError) as e:
-            logger.warning(f"FSM state persistence unavailable: {e}")
-            return None
 
     @property
     def control_tracker(self) -> ControlTracker:
@@ -214,173 +207,25 @@ class Container:
     def adapter(self) -> HAAdapter | MockAdapter:
         """Get or create adapter instance (depends on fsm and event_router)."""
         if self._adapter is None:
-            ws_url = os.environ.get("HA_WEBSOCKET_URL", "ws://localhost:8123/api/websocket")
-            ha_token = os.environ.get("HA_TOKEN")
-
-            if ha_token:
-                self._adapter = HAAdapter(
-                    mode="websocket",
-                    engine=self.fsm,
-                    event_router=self.event_router,
-                    ws_url=ws_url,
-                    token=ha_token,
-                    deployment=self.deployment,
-                    # Ручная блокировка обязана слышать живые события дома:
-                    # адаптер вызывает record_manual_control при user_id в
-                    # конверте события, и без этого параметра вызов молчит
-                    # (в тестах #18 middleware инжектировали напрямую,
-                    # контейнер — нет; дефект вскрыт живой проверкой
-                    # 2026-10-08). Цикла нет: middleware зависит только от
-                    # манифеста и трекера.
-                    manual_lockout_middleware=self.middleware,
-                )
-                # Манифест отдаётся адаптеру для фильтра подписки: без него HA
-                # присылает все сущности дома (в бою 1502 против 6 описанных),
-                # и платформа отбивает каждое событие лишней сущности.
-                self._adapter._manifest = self.manifest
-                # Таймеры обогревателей нужны адаптеру, чтобы прочитать у них
-                # единицу измерения (боевой дефект 2026-10-11: таймер измеряется
-                # в секундах, а команда уходила минутами, и обогрев молчал сутки).
-                heater_timers = self._heater_timer_entities()
-                if heater_timers:
-                    self._adapter.heater_timers = list(heater_timers)
-                    self._adapter.heater_timer_of = self._heater_timer_pairs()
-                # Модификатор «мы спим» — сущность Home Assistant, которой
-                # владелец управляет сам (автоматизацией на своё расписание).
-                # Платформа читает состояние и по нему решает, можно ли
-                # включать яркий свет; без имени сущности условие его просто
-                # не найдёт и решит по солнцу.
-                sleep_modifier = self.manifest.automation_rules.sleep_modifier
-                if sleep_modifier:
-                    self._adapter.sleep_modifier_entity = sleep_modifier
-                    # Включение модификатора гасит свет: клиент адаптера ловит
-                    # переключение и зовёт этот колбэк («свет над столом
-                    # выключается по модификатору», требование владельца
-                    # 2026-10-09).
-                    self._adapter.on_sleep_started = self._on_sleep_started
-                    logger.info(
-                        f"Модификатор «мы спим»: {sleep_modifier} — состояние "
-                        "владелец задаёт сам, платформа только читает"
-                    )
-                # Закат и рассвет нужны декоративному свету независимо от
-                # модификатора, поэтому подключаются всегда.
-                self._adapter.on_sunset = self._on_sunset
-                self._adapter.on_sunrise = self._on_sunrise
-
-                # Уставка, сезон, потолок комфорта и выключалка вентиляции —
-                # те же глобальные признаки, только климата и вентиляции.
-                # Без них условия получают «данных нет»: до 2026-10-10 писателя
-                # не существовало, и обогрев не включался ни в одной комнате.
-                self._bind_global_entities()
-            else:
-                self._adapter = MockAdapter(engine=self.fsm)
-                self._adapter.set_event_router(self.event_router)
+            self._adapter = create_adapter(
+                engine=self.fsm,
+                event_router=self.event_router,
+                deployment=self.deployment,
+                middleware=self.middleware,
+                manifest=self.manifest,
+                heater_timers=heater_timer_entities(self.manifest),
+                heater_timer_pairs=heater_timer_pairs(self.manifest),
+                on_sleep_started=self._on_sleep_started,
+                on_sunset=self._on_sunset,
+                on_sunrise=self._on_sunrise,
+            )
         return self._adapter
 
     def _bind_global_entities(self) -> None:
-        """Передать адаптеру имена глобальных сущностей климата и вентиляции.
-
-        Имена берутся из правил дома, значения читает адаптер при подключении.
-        Роль в правилах совпадает с ролью в таблице ``GLOBAL_ENTITY_FIELDS``,
-        поэтому сопоставление не выдумывает имён: неизвестная роль молча
-        останется без сущности, и условие получит «данных нет».
-
-        Returns:
-            Ничего.
-        """
-        rules = self.manifest.automation_rules
-        adapter = self._adapter
-        if adapter is None:
+        """???????? ???????? ????? ?????????? ????????? ??????? ? ??????????."""
+        if self._adapter is None:
             return
-        for field_name in (
-            "setpoint_entity",
-            "comfort_max_entity",
-            "feature_entity",
-            "ac_gate_entity",
-        ):
-            role = field_name.removesuffix("_entity")
-            entity = getattr(rules.climate, field_name, None)
-            if entity:
-                adapter.climate_entities[role] = entity
-
-        # Сезон нужен и климату, и вентиляции: это свойство дома, а не
-        # климатического домена (аудит B76, A5).
-        season = getattr(rules, "season_entity", None)
-        if season:
-            adapter.climate_entities["season"] = season
-
-        # Термостат — свойство комнаты, а не дома (аудит B76, A6). Уставка
-        # дома одна, поэтому синхронизатор берёт первый объявленный термостат;
-        # второй — уже конфликт настройки, а не повод молча выбрать любой.
-        thermostats: list[str] = []
-        for room in self.manifest.rooms:
-            entity = getattr(room, "thermostat_entity", None)
-            if entity:
-                thermostats.append(entity)
-        if thermostats:
-            if len(thermostats) > 1:
-                logger.warning(
-                    "Термостатов в комнатах больше одного: "
-                    f"{thermostats}; синхронизация уставки идёт с {thermostats[0]}"
-                )
-            adapter.climate_entities["thermostat"] = thermostats[0]
-
-        for field_name in (
-            "feature_entity",
-            "enable_entity",
-            "airing_entity",
-            "exhaust_entity",
-            "outside_temp_entity",
-        ):
-            entity = getattr(rules.ventilation, field_name, None)
-            if not entity:
-                continue
-            # Роль `feature` занята климатом, поэтому у вентиляции она своя.
-            role = field_name.removesuffix("_entity")
-            if role == "feature":
-                role = "ventilation_feature"
-            adapter.ventilation_entities[role] = entity
-
-        # Флаги штор (спека 015). Роли совпадают с ключами GLOBAL_ENTITY_FIELDS.
-        for field_name in (
-            "feature_entity",
-            "my_doma_entity",
-            "sobaki_doma_entity",
-            "night_close_entity",
-            "emergency_entity",
-        ):
-            entity = getattr(rules.cover, field_name, None)
-            if not entity:
-                continue
-            # Роль `feature` занята климатом — у штор она своя.
-            role = field_name.removesuffix("_entity")
-            if role == "feature":
-                role = "covers_feature"
-            adapter.cover_entities[role] = entity
-
-        # Глобальная цветовая температура света: день/ночь — границы, current —
-        # значение, которое читают действия включения и обновляет служба света.
-        for field_name in (
-            "color_temp_day_entity",
-            "color_temp_night_entity",
-            "color_temp_current_entity",
-        ):
-            entity = getattr(rules.lighting, field_name, None)
-            if entity:
-                adapter.lighting_entities[field_name.removesuffix("_entity")] = entity
-
-        # Разрешение на автоматическое включение планового света. Флаг живёт
-        # на уровне дома: владелец решает, можно ли автоматике включать
-        # основное уличное освещение по закату.
-        scheduled_feature = getattr(rules, "scheduled_light_feature_entity", None)
-        if scheduled_feature:
-            adapter.lighting_entities["scheduled_feature"] = scheduled_feature
-
-        logger.info(
-            f"Глобальные сущности: климат {adapter.climate_entities}, "
-            f"вентиляция {adapter.ventilation_entities}, свет {adapter.lighting_entities}, "
-            f"шторы {adapter.cover_entities}"
-        )
+        bind_global_entities(self._adapter, self.manifest)
 
     @property
     def dispatcher(self) -> CommandDispatcher:
@@ -395,53 +240,6 @@ class Container:
             # Add middleware if available
             self._dispatcher.add_middleware(self.middleware)
         return self._dispatcher
-
-    def _heater_timer_entities(self) -> list[str]:
-        """Собрать таймеры обогревателей, объявленные в манифесте.
-
-        Нужны адаптеру, чтобы прочитать у них единицу измерения до первого
-        решения: команда в секундах вместо минут (или наоборот) выглядит
-        снаружи как исправная работа — обогреватель включается и гаснет.
-
-        Returns:
-            Идентификаторы таймеров без повторов, в порядке манифеста.
-        """
-        timers: list[str] = []
-        seen: set[str] = set()
-        for room in self.manifest.rooms:
-            for device in room.devices:
-                for behavior in device.behaviors:
-                    timer = (behavior.params or {}).get("heater_timer")
-                    if isinstance(timer, str) and timer and timer not in seen:
-                        seen.add(timer)
-                        timers.append(timer)
-        return timers
-
-    def _heater_timer_pairs(self) -> dict[str, str]:
-        """Соответствие «сущность события → таймер обогревателя».
-
-        Ключ — и сам обогреватель, и **датчик температуры его комнаты**: решение
-        обогрева принимается по событию датчика, поэтому единица измерения
-        таймера нужна именно когда приходит ``temperature_changed``. Без ключа
-        по датчику действие получало ``timer_unit = None``, угадывало минуты и
-        отправляло 15 вместо 900 секунд (боевой дефект 2026-10-11).
-
-        Returns:
-            Словарь ``{entity_id: entity_id таймера}``.
-        """
-        pairs: dict[str, str] = {}
-        for room in self.manifest.rooms:
-            sensors = room.sensors or {}
-            temperature = next(iter(role_entities(sensors, "temperature")), None)
-            for device in room.devices:
-                for behavior in device.behaviors:
-                    timer = (behavior.params or {}).get("heater_timer")
-                    if not isinstance(timer, str) or not timer:
-                        continue
-                    pairs[device.id] = timer
-                    if temperature:
-                        pairs[temperature] = timer
-        return pairs
 
     @property
     def middleware(self) -> ManualLockoutMiddleware:
@@ -535,7 +333,7 @@ class Container:
             self._watchdog = WatchdogService(
                 fsm_engine=self.fsm,
                 metrics=self.metrics,
-                adapter=self._external_adapter(),
+                adapter=create_external_adapter(self.adapter),
                 settings=settings,
                 event_bus=self.event_bus,
                 # Расхождение из-за действующего оверрайда — уступка человеку,
@@ -548,17 +346,6 @@ class Container:
                 command_recency_supplier=getattr(self.adapter, "was_commanded_recently", None),
             )
         return self._watchdog
-
-    def _external_adapter(self) -> Any:
-        """Адаптер внешней системы, если он есть.
-
-        Returns:
-            Адаптер либо ``None`` в автономном режиме.
-        """
-        from adapters.ha_adapter import HomeAssistantAdapter
-
-        adapter = self.adapter
-        return adapter if isinstance(adapter, HomeAssistantAdapter) else None
 
     def _manual_override_active(self, device_id: str) -> bool:
         """Действует ли для прибора ручная блокировка (концепция §7, п. 2).
@@ -615,24 +402,9 @@ class Container:
             self._fsm_bridge = FSMStateBridge(
                 event_bus=self.event_bus,
                 dispatcher=self.dispatcher,
-                event_store=self._create_event_store(),
+                event_store=create_event_store(),
             )
         return self._fsm_bridge
-
-    def _create_event_store(self) -> Any:
-        """Создать журнал переходов и событий.
-
-        Returns:
-            Экземпляр журнала либо None, если журнал недоступен: отсутствие
-            журнала не должно останавливать переходы автоматов (FR-003).
-        """
-        try:
-            from core.persistence.event_store import EventStore
-
-            return EventStore()
-        except Exception as e:  # noqa: BLE001 - журнал не влияет на работу платформы
-            logger.warning(f"Transition journal unavailable: {e}")
-            return None
 
     async def announce_started(self) -> None:
         """Оповестить подписчиков о завершении инициализации платформы.
@@ -1004,7 +776,7 @@ class Container:
             self._helper_cleanup = HelperCleanupService(
                 adapter=self.adapter,
                 manifest=self.manifest,
-                event_store=self._create_event_store(),
+                event_store=create_event_store(),
             )
         return self._helper_cleanup
 
@@ -1169,71 +941,13 @@ class Container:
             self.manifest, unit_provider=unit_provider, state_reader=state_reader
         )
         self._location_state.subscribe(self.event_bus)
-        self._location_mirror = self._build_location_mirror(adapter)
+        self._location_mirror = create_location_mirror(
+            state=self._location_state,
+            rules=self.manifest.automation_rules.locations,
+            adapter=adapter,
+        )
         self._location_mirror.bind(self.event_bus)
         self._schedule_location_prime()
-
-    def _mqtt_publisher(self, adapter: Any) -> Any | None:
-        """Собрать публикатор MQTT через адаптер (зеркала, FR-008).
-
-        ``core`` не импортирует ``adapters`` (`.ai/04_RULES.md`), поэтому
-        публикация идёт вызовом сервиса через адаптер.
-
-        Args:
-            adapter: Адаптер Home Assistant либо ``None``.
-
-        Returns:
-            Функция ``(topic, payload, retain) -> bool`` либо ``None``.
-        """
-        if adapter is None:
-            return None
-
-        async def _publish(topic: str, payload: str, retain: bool) -> bool:
-            """Опубликовать топик через Home Assistant.
-
-            Args:
-                topic: Топик MQTT.
-                payload: Полезная нагрузка.
-                retain: Хранить ли сообщение на брокере.
-
-            Returns:
-                True, если Home Assistant принял публикацию.
-            """
-            return bool(
-                await adapter.call_service(
-                    "mqtt",
-                    "publish",
-                    "",
-                    data={"topic": topic, "payload": payload, "retain": retain},
-                )
-            )
-
-        return _publish
-
-    def _build_location_mirror(self, adapter: Any) -> Any:
-        """Собрать зеркало локаций в Home Assistant (спека 016, FR-008).
-
-        Публикация идёт через адаптер (``mqtt.publish``): ``core`` не импортирует
-        ``adapters``. Без адаптера зеркало собирается выключенным — снимок и
-        журнал от этого не страдают (FR-009).
-
-        Args:
-            adapter: Адаптер Home Assistant либо ``None``.
-
-        Returns:
-            Зеркало локаций.
-        """
-        from core.services.location_mirror import LocationMirror
-
-        rules = self.manifest.automation_rules.locations
-        publisher = self._mqtt_publisher(adapter)
-
-        return LocationMirror(
-            state=self._location_state,
-            publish=publisher,
-            prefix=rules.mqtt_prefix,
-            enabled=rules.mirror_enabled,
-        )
 
     def _platform_problems_publisher(self) -> Any | None:
         """Собрать доставку сводки проблем в дом (B79, карточка тревог).
@@ -1248,17 +962,9 @@ class Container:
             Асинхронная функция ``report -> None`` либо ``None``.
         """
         rules = self.manifest.automation_rules.locations
-        publisher = self._mqtt_publisher(self._adapter) if rules.mirror_enabled else None
-        if publisher is None:
+        mirror = create_platform_mirror(rules=rules, adapter=self._adapter)
+        if mirror is None:
             return None
-
-        from core.services.platform_mirror import PlatformMirror
-
-        mirror = PlatformMirror(
-            publish=publisher,
-            prefix=rules.mqtt_prefix,
-            enabled=rules.mirror_enabled,
-        )
         self._platform_mirror = mirror
 
         async def _publish_report(report: dict[str, Any]) -> None:

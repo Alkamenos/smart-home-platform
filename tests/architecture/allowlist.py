@@ -21,7 +21,7 @@ SIZE_BUDGET = 800
 LEGACY_SIZE_ALLOWLIST: dict[str, int] = {
     "src/adapters/ha_adapter.py": 1249,
     "src/core/fsm/engine.py": 576,
-    "src/app/container.py": 1602,
+    "src/app/container.py": 1308,
     "src/services/device_service.py": 1475,
     "src/services/watchdog.py": 1242,
     "src/adapters/ha_websocket.py": 923,
