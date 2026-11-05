@@ -93,7 +93,7 @@ class TestRealStorageFormat:
             monkeypatch: Подмена часов на управляемые.
         """
         frozen = 1_700_000_000.0
-        monkeypatch.setattr("core.fsm.engine.time.time", lambda: frozen)
+        monkeypatch.setattr("core.fsm.transitions.time.time", lambda: frozen)
 
         persistence = StatePersistence(storage_path=str(state_file))
         engine = FSMEngine(persistence=persistence)
@@ -120,7 +120,7 @@ class TestRealStorageFormat:
             monkeypatch: Подмена часов на управляемые.
         """
         written_at = 1_700_000_000.0
-        monkeypatch.setattr("core.fsm.engine.time.time", lambda: written_at)
+        monkeypatch.setattr("core.fsm.transitions.time.time", lambda: written_at)
 
         persistence = StatePersistence(storage_path=str(state_file))
         engine = FSMEngine(persistence=persistence)
@@ -128,7 +128,8 @@ class TestRealStorageFormat:
         await engine.trigger(ENTITY_ID, "motion_detected")
 
         # Перезапуск: новый движок, тот же файл, часы сдвинуты на 25 секунд.
-        monkeypatch.setattr("core.fsm.engine.time.time", lambda: written_at + 25)
+        monkeypatch.setattr("core.fsm.transitions.time.time", lambda: written_at + 25)
+        monkeypatch.setattr("core.fsm.timers.time.time", lambda: written_at + 25)
 
         restarted = FSMEngine(persistence=StatePersistence(storage_path=str(state_file)))
         restarted.register_definition(_lighting_definition())
