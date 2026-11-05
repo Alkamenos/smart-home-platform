@@ -40,8 +40,9 @@
   `src/core/fsm/publishing.py` (`PublishingMixin`), журнал решений в
   `src/core/fsm/decisions.py` (`DecisionMixin`), условия в
   `src/core/fsm/guards.py` (`GuardMixin`), действия в
-  `src/core/fsm/actions.py` (`ActionMixin`). Движок **1982 → 1288 строк
-  (−35 %)**; публичные методы сохранены.
+  `src/core/fsm/actions.py` (`ActionMixin`), переходы в
+  `src/core/fsm/transitions.py` (`TransitionMixin`). В движке остались реестр,
+  запросы состояния и жизненный цикл; **1982 → 576 строк (−71 %)**.
 - Добавлены исполняемые правила `tests/architecture`: запрет `core → adapters`,
   отсутствие параллельных доменных моделей, бюджет размера модулей, целостность
   фасадов.
@@ -52,9 +53,9 @@
 - Образ пересобран: контейнер healthy, `/ready: true`, процесс под UID 10001,
   27 автоматов.
 
-**Осталось по US4:** в `FSMEngine` — переходы и персистентность; фабрики
-Container, `Watchdog` и `DeviceService`; сокращение крупных модулей на 50 %.
-Это следующая волна — самый крупный и рискованный рефакторинг.
+**Осталось по US4:** фабрики Container, `Watchdog` и `DeviceService`;
+сокращение крупных модулей на 50 %. Это следующая волна — самый крупный и
+рискованный рефакторинг.
 
 Разбор — `specs/018-architecture-hardening/` (US4), `BACKLOG.md` (F7).
 

@@ -163,7 +163,7 @@ description: "Task list for architecture hardening"
 
 - [X] T054 [US4] Вынести composition root из `src/core/container.py` в `src/app/container.py`; обновить `src/main.py`, `src/bootstrap.py`
 - [X] T055 [US4] Разделить `src/adapters/ha_adapter.py`: transport, команды, dashboards, discovery, manual events; оставить фасад
-- [ ] T056 [US4] Разделить `src/core/fsm/engine.py`: переходы, guard/action, таймеры, решения; оставить фасад
+- [X] T056 [US4] Разделить `src/core/fsm/engine.py`: переходы, guard/action, таймеры, решения; оставить фасад
 - [ ] T057 [US4] Вынести фабрики из `src/app/container.py` в `src/app/factories.py`
 - [ ] T058 [US4] Разделить `src/services/watchdog.py` и `src/services/device_service.py` по ответственностям
 - [ ] T059 [US4] Обновить allowlist в `tests/architecture/allowlist.py`: сократить крупные файлы не менее чем на 50 %
@@ -173,17 +173,17 @@ description: "Task list for architecture hardening"
 
 **Checkpoint**: конституция IV соблюдается автоматически; крупные модули разделены.
 
-> **Статус US4 на 04.11.2026:** выполнены T050–T055 и T060–T062.
+> **Статус US4 на 05.11.2026:** выполнены T050–T056 и T060–T062.
 > Composition root перенесён в `src/app/`, добавлены исполняемые проверки
 > зависимостей/моделей/размеров, `PlatformContext` вынесен в `src/app/context.py`.
 > `HAAdapter` разделён полностью: панели, команды, единицы, discovery, ручные
-> события и WebSocket-транспорт в отдельных модулях; **2431 → 1247 строк**.
+> события и WebSocket-транспорт в отдельных модулях; **2431 → 1249 строк**.
+> `FSMEngine` разделён: таймеры, публикация, журнал решений, guard, action и
+> переходы в отдельных модулях; **1982 → 576 строк**.
 > Модели снимка сторожа вынесены в `src/services/watchdog_models.py`
 > (`watchdog.py` 1434 → 1243).
-> Остались: `FSMEngine` — таймеры, публикация, журнал решений, guard и action
-> вынесены (1982 → 1288), но переходы и персистентность ещё внутри; фабрики
-> Container (T057), `DeviceService` (T058) и сокращение остальных крупных
-> модулей на 50 % (T059).
+> Остались: фабрики Container (T057), `DeviceService` (T058) и сокращение
+> остальных крупных модулей на 50 % (T059).
 
 ---
 
