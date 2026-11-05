@@ -203,7 +203,7 @@ class TestSnapshot:
 
         with (
             patch.object(engine, "get_all_states", side_effect=RuntimeError("boom")),
-            patch("services.watchdog.logger") as mock_logger,
+            patch("services.watchdog_checks.logger") as mock_logger,
         ):
             snapshot = await watchdog.check_once()
 

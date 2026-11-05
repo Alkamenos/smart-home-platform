@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 
 DEFAULT_INTERVAL_SEC = 60.0
@@ -229,3 +230,12 @@ class FsmSnapshot:
             },
             ensure_ascii=False,
         )
+
+
+def _now_timestamp() -> str:
+    """Текущее настенное время в формате интерфейса.
+
+    Returns:
+        Время ISO-8601 без часового пояса.
+    """
+    return datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
