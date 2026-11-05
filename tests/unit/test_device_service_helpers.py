@@ -355,7 +355,7 @@ class TestConfigAndCacheInvalidation:
         await service.add_device(known)
         service.event_bus.publish = AsyncMock()
 
-        with patch("services.device_service.logger") as mock_logger:
+        with patch("services.device_state.logger") as mock_logger:
             await service.handle_state_change(
                 {
                     "event_type": "state_changed",

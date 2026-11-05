@@ -234,7 +234,7 @@ class TestCommandsIntegration:
             observed.append(timeout)
             return await real_wait_for(awaitable, timeout)
 
-        with patch("services.device_service.asyncio.wait_for", new=recording_wait_for):
+        with patch("services.device_commands.asyncio.wait_for", new=recording_wait_for):
             await service.execute_command(
                 device_id=device.id,
                 command_name="set_temperature",
@@ -282,7 +282,7 @@ class TestCommandsIntegration:
             observed.append(timeout)
             return await real_wait_for(awaitable, timeout)
 
-        with patch("services.device_service.asyncio.wait_for", new=recording_wait_for):
+        with patch("services.device_commands.asyncio.wait_for", new=recording_wait_for):
             await service.execute_command(
                 device_id=device.id,
                 command_name="set_temperature",
