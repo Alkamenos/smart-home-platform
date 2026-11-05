@@ -38,8 +38,10 @@
 - `FSMEngine` разделён по ответственностям: таймеры в
   `src/core/fsm/timers.py` (`TimerMixin`), публикация событий в
   `src/core/fsm/publishing.py` (`PublishingMixin`), журнал решений в
-  `src/core/fsm/decisions.py` (`DecisionMixin`). Движок **1982 → 1548 строк**;
-  публичные методы сохранены.
+  `src/core/fsm/decisions.py` (`DecisionMixin`), условия в
+  `src/core/fsm/guards.py` (`GuardMixin`), действия в
+  `src/core/fsm/actions.py` (`ActionMixin`). Движок **1982 → 1288 строк
+  (−35 %)**; публичные методы сохранены.
 - Добавлены исполняемые правила `tests/architecture`: запрет `core → adapters`,
   отсутствие параллельных доменных моделей, бюджет размера модулей, целостность
   фасадов.
@@ -50,7 +52,7 @@
 - Образ пересобран: контейнер healthy, `/ready: true`, процесс под UID 10001,
   27 автоматов.
 
-**Осталось по US4:** в `FSMEngine` — guard/action и персистентность; фабрики
+**Осталось по US4:** в `FSMEngine` — переходы и персистентность; фабрики
 Container, `Watchdog` и `DeviceService`; сокращение крупных модулей на 50 %.
 Это следующая волна — самый крупный и рискованный рефакторинг.
 
