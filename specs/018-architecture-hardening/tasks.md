@@ -165,7 +165,7 @@ description: "Task list for architecture hardening"
 - [X] T055 [US4] Разделить `src/adapters/ha_adapter.py`: transport, команды, dashboards, discovery, manual events; оставить фасад
 - [X] T056 [US4] Разделить `src/core/fsm/engine.py`: переходы, guard/action, таймеры, решения; оставить фасад
 - [X] T057 [US4] Вынести фабрики из `src/app/container.py` в `src/app/factories.py`
-- [ ] T058 [US4] Разделить `src/services/watchdog.py` и `src/services/device_service.py` по ответственностям
+- [X] T058 [US4] Разделить `src/services/watchdog.py` и `src/services/device_service.py` по ответственностям
 - [ ] T059 [US4] Обновить allowlist в `tests/architecture/allowlist.py`: сократить крупные файлы не менее чем на 50 %
 - [X] T060 [US4] Включить `pytest tests/architecture` в `.github/workflows/ci.yml` и `Makefile`
 - [X] T061 [US4] Обновить `.ai/02_ARCHITECTURE.md` и `specs/018-architecture-hardening/contracts/dependency-rules.md`
@@ -173,7 +173,7 @@ description: "Task list for architecture hardening"
 
 **Checkpoint**: конституция IV соблюдается автоматически; крупные модули разделены.
 
-> **Статус US4 на 05.11.2026:** выполнены T050–T057 и T060–T062.
+> **Статус US4 на 05.11.2026:** выполнены T050–T058 и T060–T062.
 > Composition root перенесён в `src/app/`, добавлены исполняемые проверки
 > зависимостей/моделей/размеров, `PlatformContext` вынесен в `src/app/context.py`.
 > `HAAdapter` разделён полностью: панели, команды, единицы, discovery, ручные
@@ -182,12 +182,12 @@ description: "Task list for architecture hardening"
 > переходы в отдельных модулях; **1982 → 576 строк**.
 > Фабрики вынесены из `Container` в `src/app/factories.py`;
 > **1602 → 1308 строк**.
-> В T058 `DeviceService` разделён: доступ, команды, события, кэш и состояния
-> в отдельных mixin-модулях; **1475 → 572 строки**. Остаётся `watchdog.py`.
-> Модели снимка сторожа вынесены в `src/services/watchdog_models.py`
-> (`watchdog.py` 1434 → 1243).
-> Остались: `watchdog.py` (T058) и сокращение остальных крупных модулей
-> на 50 % (T059).
+> `DeviceService` разделён: доступ, команды, события, кэш и состояния в
+> отдельных mixin-модулях; **1475 → 572 строки**.
+> `WatchdogService` разделён: жизненный цикл, проверки, повтор решений и
+> проблемы в отдельных модулях; **1242 → 302 строки**.
+> Модели снимка сторожа вынесены в `src/services/watchdog_models.py`.
+> Осталось: сокращение остальных крупных модулей на 50 % (T059).
 
 ---
 
