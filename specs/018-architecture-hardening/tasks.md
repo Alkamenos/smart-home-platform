@@ -187,7 +187,10 @@ description: "Task list for architecture hardening"
 > `WatchdogService` разделён: жизненный цикл, проверки, повтор решений и
 > проблемы в отдельных модулях; **1242 → 302 строки**.
 > Модели снимка сторожа вынесены в `src/services/watchdog_models.py`.
-> Осталось: сокращение остальных крупных модулей на 50 % (T059).
+> В T059 `MetricsCollector` разделён: определения, FSM/сторож, события и
+> устройства в отдельных модулях; **961 → 231 строка**.
+> Осталось: `container.py`, `ha_websocket.py`, `fsm/factory.py`, `manifest.py`,
+> `webui/routes/devices/devices.py`.
 
 ---
 
