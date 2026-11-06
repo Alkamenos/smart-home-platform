@@ -34,6 +34,7 @@ CONTRACT_PATH = ROOT / "src" / "features" / "CONTRACT.yaml"
 
 HOT_PATH_FILES = (
     "src/core/fsm/factory.py",
+    "src/core/fsm/factory_loading.py",
     "src/core/action_handlers.py",
     "src/core/guards/schedule_guard.py",
     "src/core/services/light_color_temperature.py",
