@@ -30,6 +30,8 @@ from services.watchdog import (
 
 LIGHT_FSM = "light.stol_lighting_10"
 LIGHT_DEVICE = "light.stol"
+SWITCH_LIGHT_FSM = "switch.podsvetka_zerkala_deco_light_10"
+SWITCH_LIGHT_DEVICE = "switch.podsvetka_zerkala"
 COVER_FSM = "cover.shtora_cover_modes_10"
 COVER_DEVICE = "cover.shtora"
 DIVERGED = "device_state_diverged"
@@ -140,6 +142,17 @@ class TestStartupLightCleanup:
         assert snapshot.entries[0].mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
         assert off_calls == [LIGHT_DEVICE], "стартовая сверка не погасила лампу"
         assert engine.triggered == [], "команда выключения должна идти напрямую"
+
+    @pytest.mark.asyncio
+    async def test_startup_clears_switch_based_light(self) -> None:
+        """Подсветка зеркала — домен switch, но шаблон света: её тоже гасим."""
+        engine = _Engine({SWITCH_LIGHT_FSM: "OFF"}, {SWITCH_LIGHT_FSM: SWITCH_LIGHT_DEVICE})
+        adapter = _Adapter({SWITCH_LIGHT_DEVICE: "on"})
+        off_calls: list[str] = []
+
+        await _watchdog(engine, adapter, off_calls=off_calls).check_once(startup=True)
+
+        assert off_calls == [SWITCH_LIGHT_DEVICE]
 
     @pytest.mark.asyncio
     async def test_regular_check_still_respects_manual_override(self) -> None:

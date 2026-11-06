@@ -27,6 +27,18 @@ class _Watchdog:
         self.calls.append(startup)
 
 
+class _Dispatcher:
+    """Диспетчер-двойник: запоминает намерения."""
+
+    def __init__(self) -> None:
+        self.intents: list[object] = []
+
+    async def submit(self, intent: object) -> bool:
+        """Запомнить намерение и подтвердить доставку."""
+        self.intents.append(intent)
+        return True
+
+
 @pytest.mark.asyncio
 async def test_startup_cleanup_runs_once_after_ha_connected() -> None:
     """Первое подключение запускает стартовую сверку ровно один раз."""
@@ -55,3 +67,21 @@ async def test_startup_cleanup_waits_for_connection() -> None:
 
     assert watchdog.calls == []
     assert container._startup_light_cleanup_done is False  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_startup_light_off_bypasses_lockout() -> None:
+    """Стартовое выключение идёт через диспетчер с обходом блокировки."""
+    container = object.__new__(Container)
+    dispatcher = _Dispatcher()
+    container._dispatcher = dispatcher  # type: ignore[assignment]  # noqa: SLF001
+
+    await container._turn_off_startup_light("light.stol")  # noqa: SLF001
+
+    assert len(dispatcher.intents) == 1
+    intent = dispatcher.intents[0]
+    assert getattr(intent, "device_id") == "light.stol"
+    assert getattr(intent, "domain") == "light"
+    assert getattr(intent, "service") == "turn_off"
+    assert getattr(intent, "bypass_lockout") is True
+    assert getattr(intent, "source") == "startup_cleanup"

@@ -87,6 +87,26 @@ DEVICE_DIVERGED_TRIGGER = "device_state_diverged"
 #: сторожа: после нескольких повторов остаётся тревога, а не поток команд.
 DIVERGENCE_REASSERT_ATTEMPTS = 3
 
+#: Шаблоны света в идентификаторе автомата.
+#:
+#: Идентификатор собирается как ``{устройство}_{шаблон}_{приоритет}``, и по нему
+#: видно, что автомат управляет светом. Домен прибора при этом может быть
+#: ``switch`` (подсветка зеркала), поэтому проверять только ``light.`` нельзя.
+LIGHT_FSM_MARKERS = ("_lighting_", "_deco_light_", "_night_light_", "_scheduled_light_")
+
+
+def is_light_fsm(entity_id: str) -> bool:
+    """Управляет ли автомат светом.
+
+    Args:
+        entity_id: Идентификатор автомата.
+
+    Returns:
+        True, если в имени автомата есть шаблон света.
+    """
+    return any(marker in entity_id for marker in LIGHT_FSM_MARKERS)
+
+
 # Значение метки, которым помечаются активные зависшие автоматы в показателях.
 STUCK_LABEL_VALUE = "1"
 

@@ -23,6 +23,7 @@ from services.watchdog_models import (
     MISMATCH_DEVICE_ON_DECISION_OFF,
     MISMATCH_MANUAL_OVERRIDE,
     FsmSnapshotEntry,
+    is_light_fsm,
 )
 
 
@@ -58,7 +59,7 @@ class WatchdogReassertMixin:
         for entry in entries:
             startup_light_cleanup = (
                 startup
-                and str(entry.device or "").startswith("light.")
+                and is_light_fsm(entry.entity_id)
                 and entry.mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
             )
             if entry.device_moving:

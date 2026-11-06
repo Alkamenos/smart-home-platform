@@ -25,6 +25,7 @@ from services.watchdog_models import (
     FsmSnapshot,
     FsmSnapshotEntry,
     _now_timestamp,
+    is_light_fsm,
 )
 
 
@@ -378,7 +379,7 @@ class WatchdogChecksMixin:
                 reason = None
             startup_light_cleanup = (
                 startup
-                and str(entry.device or "").startswith("light.")
+                and is_light_fsm(entry.entity_id)
                 and reason == MISMATCH_DEVICE_ON_DECISION_OFF
             )
             if (
