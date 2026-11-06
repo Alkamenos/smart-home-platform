@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -31,9 +32,9 @@ class _Dispatcher:
     """Диспетчер-двойник: запоминает намерения."""
 
     def __init__(self) -> None:
-        self.intents: list[object] = []
+        self.intents: list[Any] = []
 
-    async def submit(self, intent: object) -> bool:
+    async def submit(self, intent: Any) -> bool:
         """Запомнить намерение и подтвердить доставку."""
         self.intents.append(intent)
         return True
@@ -80,8 +81,8 @@ async def test_startup_light_off_bypasses_lockout() -> None:
 
     assert len(dispatcher.intents) == 1
     intent = dispatcher.intents[0]
-    assert getattr(intent, "device_id") == "light.stol"
-    assert getattr(intent, "domain") == "light"
-    assert getattr(intent, "service") == "turn_off"
-    assert getattr(intent, "bypass_lockout") is True
-    assert getattr(intent, "source") == "startup_cleanup"
+    assert intent.device_id == "light.stol"
+    assert intent.domain == "light"
+    assert intent.service == "turn_off"
+    assert intent.bypass_lockout is True
+    assert intent.source == "startup_cleanup"
