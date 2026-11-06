@@ -26,7 +26,7 @@ SOURCE = Path(__file__).resolve().parents[2] / "src" / "adapters" / "ha_adapter.
 #: Транспорт WebSocket живёт отдельным модулем (BACKLOG B80): записи о закрытии
 #: сокета и задачи чтения — там. Проверка читает оба модуля: важно, что запись
 #: есть в коде адаптера, а не в каком именно файле она лежит.
-TRANSPORT = Path(__file__).resolve().parents[2] / "src" / "adapters" / "ha_websocket.py"
+TRANSPORT = Path(__file__).resolve().parents[2] / "src" / "adapters" / "ha_ws_connection.py"
 
 
 def _lines() -> list[str]:
