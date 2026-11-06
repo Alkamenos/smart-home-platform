@@ -190,8 +190,13 @@ class WatchdogChecksMixin:
 
     _last_snapshot: FsmSnapshot | None
 
-    async def check_once(self) -> FsmSnapshot:
+    async def check_once(self, startup: bool = False) -> FsmSnapshot:
         """Выполнить одну проверку и вернуть снимок.
+
+        Args:
+            startup: Первая проверка после запуска платформы. В этом режиме
+                лампа, включившаяся от появления питания, гасится по решению
+                автомата даже при активной ручной блокировке.
 
         Returns:
             Снимок состояний. При сбое чтения состояний возвращается снимок с
@@ -207,8 +212,8 @@ class WatchdogChecksMixin:
             self._record_metrics(snapshot)
             return snapshot
 
-        entries = await self._with_device_states(entries)
-        await self._reassert_decisions(entries)
+        entries = await self._with_device_states(entries, startup=startup)
+        await self._reassert_decisions(entries, startup=startup)
         snapshot = self._with_connection(entries)
         self._last_snapshot = snapshot
         self._record_metrics(snapshot)
@@ -280,7 +285,7 @@ class WatchdogChecksMixin:
         return (now - entered_at) > expected_sec + self.settings.stuck_grace_sec
 
     async def _with_device_states(
-        self, entries: tuple[FsmSnapshotEntry, ...]
+        self, entries: tuple[FsmSnapshotEntry, ...], startup: bool = False
     ) -> tuple[FsmSnapshotEntry, ...]:
         """Дополнить снимок фактическим состоянием приборов (концепция §7, п. 4).
 
@@ -292,6 +297,9 @@ class WatchdogChecksMixin:
 
         Args:
             entries: Записи снимка по автоматам.
+            startup: Первая проверка после запуска платформы. Для лампы,
+                включившейся от появления питания, ручная блокировка не
+                считается уступкой человеку: её нужно погасить.
 
         Returns:
             Записи с фактическим состоянием прибора и названным расхождением.
@@ -368,10 +376,16 @@ class WatchdogChecksMixin:
             # решено держать горящей, нечего.
             if not _agrees_with_device(own.get(entry.entity_id), expected):
                 reason = None
+            startup_light_cleanup = (
+                startup
+                and str(entry.device or "").startswith("light.")
+                and reason == MISMATCH_DEVICE_ON_DECISION_OFF
+            )
             if (
                 reason is not None
                 and reason != MISMATCH_DEVICE_UNAVAILABLE
                 and self._manual_override_active(entry.device)
+                and not startup_light_cleanup
             ):
                 # Человек вмешался: автоматика уступает по правилу оверрайда.
                 # Это расхождение, но не отказ — прибора чинить нечего. Так

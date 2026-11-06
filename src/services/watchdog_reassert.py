@@ -32,7 +32,9 @@ logger = get_logger(__name__)
 class WatchdogReassertMixin:
     """Repeat our own decisions when the device diverged from them."""
 
-    async def _reassert_decisions(self, entries: tuple[FsmSnapshotEntry, ...]) -> None:
+    async def _reassert_decisions(
+        self, entries: tuple[FsmSnapshotEntry, ...], startup: bool = False
+    ) -> None:
         """Повторить решение для приборов, разошедшихся с ним (B64).
 
         Сторож не выдумывает команду: он говорит автомату «прибор разошёлся с
@@ -46,17 +48,25 @@ class WatchdogReassertMixin:
 
         Args:
             entries: Записи снимка с фактическим состоянием приборов.
+            startup: Первая проверка после запуска платформы. Лампу, которая
+                горит после появления питания, гасим по решению автомата даже
+                при ручной блокировке: питание — не действие человека.
         """
         trigger = getattr(self.fsm_engine, "trigger", None)
         if not callable(trigger):
             return
         for entry in entries:
+            startup_light_cleanup = (
+                startup
+                and str(entry.device or "").startswith("light.")
+                and entry.mismatch_reason == MISMATCH_DEVICE_ON_DECISION_OFF
+            )
             if entry.device_moving:
                 # Штора ещё едет: итоговое положение неизвестно, повтор
                 # посреди хода только дёргал бы мотор.
                 self._divergence_attempts.pop(entry.entity_id, None)
                 continue
-            if not entry.mismatch_is_fault:
+            if not entry.mismatch_is_fault and not startup_light_cleanup:
                 # Прибор согласился или уступил человеку — счётчик повторов
                 # начинается заново: следующий отказ снова получит повторы.
                 self._divergence_attempts.pop(entry.entity_id, None)
@@ -79,7 +89,7 @@ class WatchdogReassertMixin:
             attempts = self._divergence_attempts.get(entry.entity_id, 0)
             if attempts >= DIVERGENCE_REASSERT_ATTEMPTS:
                 continue
-            if not self._commanded_recently(entry.device):
+            if not startup_light_cleanup and not self._commanded_recently(entry.device):
                 # Прибора мы не трогали — значит его изменил кто-то другой. Своё
                 # решение не повторяем: спорить с человеком хуже, чем оставить
                 # расхождение (в журнале оно названо, в тревогах видно). Но и
@@ -93,6 +103,17 @@ class WatchdogReassertMixin:
                 )
                 await self._tell_device_truth(entry, trigger)
                 continue
+            if startup_light_cleanup:
+                turn_off = getattr(self, "startup_light_off", None)
+                if callable(turn_off):
+                    try:
+                        await turn_off(entry.device)
+                    except Exception as exc:  # noqa: BLE001 — сверка не должна ронять сторож
+                        logger.warning(
+                            f"Стартовое выключение света {entry.device} не удалось: {exc}"
+                        )
+                    self._divergence_attempts[entry.entity_id] = attempts + 1
+                    continue
             self._divergence_attempts[entry.entity_id] = attempts + 1
             logger.warning(
                 f"Повтор решения для {entry.device}: прибор {entry.device_state!r} "
@@ -100,7 +121,13 @@ class WatchdogReassertMixin:
                 f"попытка {attempts + 1} из {DIVERGENCE_REASSERT_ATTEMPTS}"
             )
             try:
-                await trigger(entry.entity_id, DEVICE_DIVERGED_TRIGGER, respect_debounce=False)
+                context = {"bypass_lockout": True} if startup_light_cleanup else None
+                await trigger(
+                    entry.entity_id,
+                    DEVICE_DIVERGED_TRIGGER,
+                    context,
+                    respect_debounce=False,
+                )
             except Exception as exc:  # noqa: BLE001 — повтор не должен ронять проверку
                 logger.warning(f"Повтор решения для {entry.entity_id} не удался: {exc}")
 
@@ -256,7 +283,7 @@ class WatchdogReassertMixin:
             device_on = True
         else:
             name = state.strip().upper()
-            if name in IDLE_LIKE_STATES:
+            if name.startswith("OFF") or name in IDLE_LIKE_STATES:
                 device_on = False
             elif name.startswith("ON") or name in ACTIVE_STATES:
                 device_on = True

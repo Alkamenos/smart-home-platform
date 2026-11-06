@@ -165,6 +165,18 @@ class ManualLockoutMiddleware(Middleware):
         self._control_tracker.record(device_id, TriggerSource.MANUAL, "manual_control")
         logger.info(f"Recorded manual control for device {device_id} via ControlTracker")
 
+    def clear_manual_control(self, device_id: str) -> None:
+        """Снять ручную блокировку с прибора.
+
+        Оставлено для сценариев, где вмешательство человека заведомо не было:
+        стартовая сверка света использует отдельную команду с `bypass_lockout`.
+
+        Args:
+            device_id: Сущность прибора.
+        """
+        self._control_tracker.clear(device_id)
+        logger.info(f"Cleared manual control for device {device_id}")
+
     def _is_in_lockout_period(self, device_id: str, domain: str) -> bool:
         """
         Check if a device is currently in a manual lockout period.

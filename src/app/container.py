@@ -32,13 +32,13 @@ from app.factories import (
     heater_timer_pairs,
 )
 from core.action_handlers import register_all_actions
-from core.commands.dispatcher import CommandDispatcher, HAAdapterProtocol
+from core.commands.dispatcher import CommandDispatcher, CommandIntent, HAAdapterProtocol
 from core.commands.middleware import ManualLockoutMiddleware
 from core.control_tracker import ControlTracker
 from core.deployment_manager import DeploymentManager
 from core.events.event_bus import EventBus
 from core.events.event_router import EventRouter
-from core.events.fsm_events import EVENT_PLATFORM_STARTED
+from core.events.fsm_events import EVENT_HA_CONNECTED, EVENT_PLATFORM_STARTED
 from core.fsm.engine import FSMEngine
 from core.fsm.factory import FSMFactory
 from core.guards.builtin import register_all_guards
@@ -133,6 +133,9 @@ class Container:
         self._registry: Registry | None = None
         self._factory: FSMFactory | None = None
         self._deployment: DeploymentManager | None = None
+        #: Стартовая сверка света выполняется один раз — после первого
+        #: подключения к Home Assistant.
+        self._startup_light_cleanup_done = False
 
     @property
     def manifest(self) -> Manifest:
@@ -344,6 +347,9 @@ class Container:
                 # без нашего приказа значит чьё-то действие, и повторять своё
                 # решение было бы спором с человеком.
                 command_recency_supplier=getattr(self.adapter, "was_commanded_recently", None),
+                # Стартовая сверка гасит лампу, включившуюся от появления
+                # питания: это не действие человека.
+                startup_light_off=self._turn_off_startup_light,
             )
         return self._watchdog
 
@@ -420,6 +426,69 @@ class Container:
             EVENT_PLATFORM_STARTED,
             {"manifest": str(self._manifest_path) if self._manifest_path else ""},
         )
+        await self._reconcile_startup_lights()
+
+    async def _on_ha_connected(
+        self, event_type: str, payload: dict[str, Any], trace_id: str | None = None
+    ) -> None:
+        """Выполнить стартовую сверку света после подключения к HA.
+
+        Args:
+            event_type: Имя события.
+            payload: Полезная нагрузка.
+            trace_id: Идентификатор трассы.
+        """
+        del event_type, payload, trace_id
+        await self._reconcile_startup_lights()
+
+    async def _reconcile_startup_lights(self) -> None:
+        """Погасить лампы, включившиеся от появления питания.
+
+        После перезапуска Home Assistant может прислать «лампа горит» без
+        действия человека — прибор включился сам при возврате питания. Сторож
+        видит расхождение с решением автомата, но обычная проверка уступает
+        ручной блокировке. Здесь выполняется одна стартовая проверка: для лампы
+        с решением «выключено» блокировка снимается, и команда выключения идёт
+        обычным путём через автомат.
+
+        Returns:
+            Ничего. Неудача сверки не мешает платформе работать.
+        """
+        if self._startup_light_cleanup_done:
+            return
+        adapter = self._adapter
+        if adapter is None or not getattr(adapter, "is_connected", False):
+            return
+        self._startup_light_cleanup_done = True
+        try:
+            await self.watchdog.check_once(startup=True)
+        except Exception as exc:  # noqa: BLE001 — стартовая сверка не должна ронять запуск
+            logger.warning(f"Стартовая сверка света не удалась: {exc}")
+
+    async def _turn_off_startup_light(self, device_id: str) -> None:
+        """Погасить лампу, включившуюся от появления питания.
+
+        Команда идёт через диспетчер, но с `bypass_lockout`: ручная блокировка,
+        сохранившаяся до перезапуска, не должна оставлять свет горящим.
+        Состояние автомата уже «выключено», поэтому переход не нужен — команда
+        приводит прибор к принятому решению.
+
+        Args:
+            device_id: Сущность лампы.
+
+        Returns:
+            Ничего.
+        """
+        intent = CommandIntent(
+            device_id=device_id,
+            domain=device_id.split(".", 1)[0],
+            service="turn_off",
+            data={},
+            priority=50,
+            source="startup_cleanup",
+            bypass_lockout=True,
+        )
+        await self.dispatcher.submit(intent)
 
     def build(self) -> PlatformContext:
         """
@@ -432,6 +501,9 @@ class Container:
         """
         # Access properties in dependency order to ensure proper initialization
         _ = self.event_bus  # No dependencies
+        # Стартовая сверка света ждёт первого подключения к Home Assistant:
+        # adapter.start() не блокирует, и сразу после запуска связи ещё нет.
+        self.event_bus.subscribe(EVENT_HA_CONNECTED, self._on_ha_connected)
         # Метрики и подписчик — до всего остального: сборщик нужен адаптеру и
         # сервису устройств, поэтому первые же события не должны потеряться
         # (R-01).
@@ -1305,4 +1377,5 @@ class Container:
         self._middleware = None
         self._registry = None
         self._factory = None
+        self._startup_light_cleanup_done = False
         # Don't reset manifest as it's expensive to reload
