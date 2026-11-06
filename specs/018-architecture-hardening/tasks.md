@@ -191,8 +191,9 @@ description: "Task list for architecture hardening"
 > устройства в отдельных модулях; **961 → 231 строка**.
 > `SimpleHAWebSocketClient` разделён: фильтры, доставка событий, соединение и
 > числовые помощники; **923 → 300 строк**.
-> Осталось: `container.py`, `fsm/factory.py`, `manifest.py`,
-> `webui/routes/devices/devices.py`.
+> `FSMFactory` разделён: модели, загрузка шаблонов и создание из манифеста;
+> **857 → 115 строк**.
+> Осталось: `container.py`, `manifest.py`, `webui/routes/devices/devices.py`.
 
 ---
 

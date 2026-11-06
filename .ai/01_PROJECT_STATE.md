@@ -51,7 +51,10 @@
   `ha_ws_filters.py`, доставка событий — `ha_ws_events.py`, соединение и
   подписка — `ha_ws_connection.py`, числовые помощники — `ha_ws_values.py`;
   **923 → 300 строк**.
-- Осталось по T059: `container.py`, `fsm/factory.py`, `manifest.py`,
+- `FSMFactory` разделён: модели и ошибки — `factory_models.py`, загрузка и
+  преобразование шаблонов — `factory_loading.py`, создание из манифеста —
+  `factory_creation.py`; **857 → 115 строк**.
+- Осталось по T059: `container.py`, `manifest.py`,
   `webui/routes/devices/devices.py`.
 
 ### 2026-11-03: свет над кроватью плавно снижается до 3 % к 22:00 (B114)
