@@ -187,6 +187,42 @@ class TestAiringStartsOnModifier:
         )
 
 
+class TestHotRoomStaysInAiring:
+    """Автоматическое проветривание не выключается по таймеру, пока жарко."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_does_not_leave_max_supply_while_room_is_hot(self) -> None:
+        """При жаре таймер AIRING не возвращает низкую «Рекуперацию»."""
+        engine, router, _ = _build()
+
+        await router.route_state_change(
+            entity_id=SENSOR,
+            new_state="30.0",
+            old_state="29.0",
+            context={
+                "temperature": 30.0,
+                "comfort_max": 22.0,
+                "outside_temperature": 1.0,
+                "is_winter": False,
+                "ventilation_on": True,
+                "ventilation_enabled": True,
+                "airing_on": False,
+            },
+        )
+        state = engine.get_state(FSM_ID)
+        assert state is not None
+        assert state.current_state == "AIRING"
+
+        await engine.trigger(FSM_ID, "timeout", respect_debounce=False)
+
+        state = engine.get_state(FSM_ID)
+        assert state is not None
+        assert state.current_state == "AIRING", (
+            "при 30 °C и потолке 22 °C таймер вернул низкую рекуперацию: "
+            "дом останется жарким до следующего изменения датчика"
+        )
+
+
 class TestAiringTimeoutRestoresMode:
     """По таймеру проветривание **возвращает обычный режим**, а не повторяет MAX.
 
