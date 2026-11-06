@@ -189,7 +189,9 @@ description: "Task list for architecture hardening"
 > Модели снимка сторожа вынесены в `src/services/watchdog_models.py`.
 > В T059 `MetricsCollector` разделён: определения, FSM/сторож, события и
 > устройства в отдельных модулях; **961 → 231 строка**.
-> Осталось: `container.py`, `ha_websocket.py`, `fsm/factory.py`, `manifest.py`,
+> `SimpleHAWebSocketClient` разделён: фильтры, доставка событий, соединение и
+> числовые помощники; **923 → 300 строк**.
+> Осталось: `container.py`, `fsm/factory.py`, `manifest.py`,
 > `webui/routes/devices/devices.py`.
 
 ---

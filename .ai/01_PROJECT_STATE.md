@@ -33,8 +33,12 @@
 - Публичный `MetricsCollector` и глобальный `get_metrics_collector()` сохранены;
   поведение и имена метрик не менялись.
 - `src/core/metrics.py` удалён из allowlist крупных модулей.
-- Осталось по T059: `container.py`, `ha_websocket.py`, `fsm/factory.py`,
-  `manifest.py`, `webui/routes/devices/devices.py`.
+- `SimpleHAWebSocketClient` разделён: фильтры и глобальные значения —
+  `ha_ws_filters.py`, доставка событий — `ha_ws_events.py`, соединение и
+  подписка — `ha_ws_connection.py`, числовые помощники — `ha_ws_values.py`;
+  **923 → 300 строк**.
+- Осталось по T059: `container.py`, `fsm/factory.py`, `manifest.py`,
+  `webui/routes/devices/devices.py`.
 
 ### 2026-11-03: свет над кроватью плавно снижается до 3 % к 22:00 (B114)
 
