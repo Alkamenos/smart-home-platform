@@ -71,6 +71,19 @@ flowchart TB
     style Actions fill:#5c6bc0,stroke:#333,stroke-width:2px,color:#fff
 ```
 
+### Слои и composition root
+
+- `core/` — домен: FSM, guards, actions, events, persistence; не импортирует
+  адаптеры и WebUI.
+- `adapters/` — Home Assistant: WebSocket, команды, discovery.
+- `services/` — устройства, синхронизация, сторож.
+- `webui/` — FastAPI, ingress, доступ и ответы.
+- `app/` — composition root: `container.py`, `factories.py`, `lifecycle.py`,
+  `house_services.py`, `context.py`.
+
+Границы проверяются `tests/architecture`: зависимости, модели манифеста и
+бюджет размера модулей. Ошибки API — единый JSON-конверт с `trace_id`.
+
 ### Data Flow
 
 1. **Event Source**: Home Assistant entity changes state (e.g., motion sensor triggers)

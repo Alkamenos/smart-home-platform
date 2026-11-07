@@ -255,13 +255,13 @@ description: "Task list for architecture hardening"
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [ ] T082 [P] Обновить `.ai/02_ARCHITECTURE.md`: целевые границы, composition root, правила зависимостей
-- [ ] T083 [P] Добавить в `README.md`/`CONTRIBUTING.md` правила архитектуры и проверки
-- [ ] T084 Прогнать полный набор: `pytest -q`, `ruff check`, `ruff format --check`, `mypy src`
-- [ ] T085 Включить coverage-gate не ниже 84 % в `pyproject.toml`/CI
-- [ ] T086 Проверить `quickstart.md` целиком и отметить выполненные сценарии
-- [ ] T087 Пересобрать образ, проверить `/ready`, `problems: 0`, отсутствие регрессий поведения
-- [ ] T088 Обновить `specs/018-architecture-hardening/spec.md`: статус срезов и фактические результаты
+- [X] T082 [P] Обновить `.ai/02_ARCHITECTURE.md`: целевые границы, composition root, правила зависимостей
+- [X] T083 [P] Добавить в `README.md`/`CONTRIBUTING.md` правила архитектуры и проверки
+- [X] T084 Прогнать полный набор: `pytest -q`, `ruff check`, `ruff format --check`, `mypy src`
+- [X] T085 Включить coverage-gate не ниже 84 % в `pyproject.toml`/CI
+- [X] T086 Проверить `quickstart.md` целиком и отметить выполненные сценарии
+- [X] T087 Пересобрать образ, проверить `/ready`, `problems: 0`, отсутствие регрессий поведения
+- [X] T088 Обновить `specs/018-architecture-hardening/spec.md`: статус срезов и фактические результаты
 
 ---
 

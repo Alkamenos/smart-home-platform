@@ -23,6 +23,26 @@
                         └──────────────┘
 ```
 
+## Слои и composition root (2026-11-07)
+
+- `core/` — домен: FSM, guards, actions, events, persistence. Не импортирует
+  `adapters/` и `webui/`.
+- `adapters/` — Home Assistant: WebSocket-транспорт, команды, discovery.
+- `services/` — прикладные службы: устройства, синхронизация, сторож.
+- `webui/` — FastAPI, ingress, доступ и ответы.
+- `app/` — composition root: `container.py` (ленивое создание),
+  `factories.py` (сборка), `lifecycle.py` и `house_services.py` (запуск служб),
+  `context.py` (публичный срез компонентов).
+
+Границы проверяются `tests/architecture/test_dependency_rules.py`: `core` не
+импортирует адаптеры, а модели манифеста существуют только в каноническом
+наборе `core/models/manifest*.py`.
+
+**Граница управления:** доверенная локальная сеть и Home Assistant ingress.
+Пароля приложения нет; клиентские заголовки не повышают права, `X-Is-Admin`
+может только понизить. Источник истины — `webui/security/identity.py` и
+`middleware_auth.py`.
+
 ## Ключевые компоненты
 
 ### 1. FSM Engine (`core/fsm.py`)

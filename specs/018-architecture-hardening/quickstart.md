@@ -156,8 +156,12 @@ ruff format --check src tests
 mypy src
 ```
 
-**Ожидаемо:** не менее 3418 passed / 19 skipped, покрытие не ниже 84 %;
+**Ожидаемо:** не менее 3379 passed / 19 skipped, покрытие не ниже 84 %;
 `ruff` и `mypy` чистые; архитектурные проверки входят в общий прогон.
+
+**Результат 07.11.2026:** 3379 passed / 19 skipped, покрытие 85 %; `ruff`,
+`ruff format --check`, `mypy src`, `pytest tests/architecture` — зелёные.
+Coverage-gate 84 % включён в `pyproject.toml` и CI.
 
 ## Результаты проверки (02.11.2026)
 
@@ -171,6 +175,7 @@ mypy src
 | US4, первая и вторая волны (T050-T058, T060-T062) | composition root в `src/app/`, проверки зависимостей/моделей/размеров, `HAAdapter` разделён (2431 → 1249), `FSMEngine` разделён (1982 → 576), фабрики Container вынесены (1602 → 1308), `DeviceService` разделён (1475 → 572), `WatchdogService` разделён (1242 → 302), `MetricsCollector` разделён (961 → 231), `SimpleHAWebSocketClient` разделён (923 → 300), `FSMFactory` разделён (857 → 115), `Container` разделён (1381 → 603), `manifest` разделён (855 → 310), маршруты устройств разделены (844 → 365), модели сторожа вынесены; T059 закрыта |
 | US5 (T063–T073) | единый конверт ошибок, таксономия отказов, `trace_id` в теле и заголовке, JSON-логи, DTO маршрутов, аудит широких `except`, приёмка Wave E |
 | US6 (T074–T081) | инвентаризация мёртвого кода, удалены `bootstrap.py`, `backup_service.py`, `room.py`, `state_snapshot.py`, проверены CLI и `ConfigWatcher`, приёмка Wave F |
+| Живая проверка 07.11 | `/ready: true`, `failed: []`, watchdog `problems: 0`, HA подключён, 27 автоматов; `/health: ok` |
 | Полный прогон | **3379 passed / 19 skipped**, покрытие **85 %** |
 | `ruff` / `mypy` | чисто |
 | Ожидаемое снижение числа тестов | −78 тестов мёртвой схемы, +22 новых проверки |

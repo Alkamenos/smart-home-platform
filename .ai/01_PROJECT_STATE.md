@@ -51,6 +51,19 @@
 
 Разбор — `BACKLOG.md` (B117).
 
+### 2026-11-07: спека 018 закрыта — финальная приёмка (T082–T088)
+
+- `.ai/02_ARCHITECTURE.md` дополнен слоями, composition root и границей
+  управления.
+- README и CONTRIBUTING содержат разделы об архитектуре и quality gates.
+- Coverage-gate 84 % включён в `pyproject.toml` и CI.
+- Финальный прогон: **3379 passed / 19 skipped**, покрытие **85 %**;
+  `ruff`, `ruff format --check`, `mypy src`, `pytest tests/architecture` —
+  зелёные.
+- Живьём: `/ready: true`, `failed: []`, watchdog `problems: 0`, HA подключён,
+  27 автоматов; `/health: ok`.
+- `spec.md` переведён в статус **Implemented**.
+
 ### 2026-11-07: US6 — мёртвый код и чистота (T074–T081)
 
 - Инвентаризация: `tools/dead_code_inventory.py`; отчёт `dead-code.md`.

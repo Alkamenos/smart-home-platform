@@ -201,6 +201,24 @@ logger.info("Processing event: {event}", event=event_name)
 logger.error("Failed to process: {error}", error=str(e))
 ```
 
+## Architecture and quality gates
+
+Перед PR проверяются:
+
+```bash
+make lint
+make format
+make type-check
+make test
+pytest tests/architecture -q
+```
+
+- `core/` не импортирует `adapters/` и `webui/`.
+- Модели манифеста живут только в `core/models/manifest*.py`.
+- Новый модуль — не больше 800 строк; крупные модули сокращаются, а не растут.
+- Ошибки API возвращаются единым конвертом с `trace_id`.
+- Покрытие не ниже 84 % (`--cov-fail-under=84`).
+
 ## Testing
 
 ### Running Tests
