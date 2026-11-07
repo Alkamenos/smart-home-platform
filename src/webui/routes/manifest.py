@@ -44,7 +44,7 @@ def _store(request: Request) -> Any:
     return store
 
 
-@router.get("/api/v1/manifest/schema", response_class=JSONResponse)
+@router.get("/api/v1/manifest/schema", response_class=JSONResponse, response_model=dict[str, Any])
 async def get_manifest_schema() -> JSONResponse:
     """JSON Schema манифеста из модели ядра.
 
@@ -60,7 +60,7 @@ async def get_manifest_schema() -> JSONResponse:
     return JSONResponse(Manifest.model_json_schema())
 
 
-@router.get("/api/v1/manifest/hints", response_class=JSONResponse)
+@router.get("/api/v1/manifest/hints", response_class=JSONResponse, response_model=dict[str, Any])
 async def get_manifest_hints(request: Request) -> JSONResponse:
     """Справочник для автокомплита редактора манифеста.
 
@@ -102,7 +102,7 @@ async def get_manifest_hints(request: Request) -> JSONResponse:
     )
 
 
-@router.get("/api/v1/manifest", response_class=JSONResponse)
+@router.get("/api/v1/manifest", response_class=JSONResponse, response_model=dict[str, Any])
 async def get_manifest(request: Request) -> JSONResponse:
     """Отдать текущий манифест.
 
@@ -130,7 +130,7 @@ async def get_manifest(request: Request) -> JSONResponse:
     )
 
 
-@router.put("/api/v1/manifest", response_class=JSONResponse)
+@router.put("/api/v1/manifest", response_class=JSONResponse, response_model=dict[str, Any])
 async def put_manifest(request: Request, allow_removal: bool = Query(False)) -> JSONResponse:
     """Проверить и сохранить манифест.
 

@@ -51,7 +51,7 @@ async def _report(request: Request) -> dict[str, Any]:
     return service.last_report or await service.sweep()
 
 
-@router.get("/api/v1/health")
+@router.get("/api/v1/health", response_model=dict[str, Any])
 async def health(request: Request) -> JSONResponse:
     """Проблемы дома: что не отвечает, что молчит, что на исходе.
 
@@ -71,7 +71,7 @@ async def health(request: Request) -> JSONResponse:
     )
 
 
-@router.get("/api/v1/observation")
+@router.get("/api/v1/observation", response_model=dict[str, Any])
 async def observation(request: Request) -> JSONResponse:
     """Реестр показаний по локациям и комнатам.
 

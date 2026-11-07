@@ -221,12 +221,12 @@ description: "Task list for architecture hardening"
 ### Implementation for User Story 5
 
 - [X] T067 [US5] Расширить `src/core/errors.py`: ожидаемый отказ, дефект, авария; маппинг в HTTP-коды
-- [ ] T068 [US5] Ввести DTO ответов и `response_model` для `src/webui/routes/manifest.py`, `devices`, `locations`, `health`
+- [X] T068 [US5] Ввести DTO ответов и `response_model` для `src/webui/routes/manifest.py`, `devices`, `locations`, `health`
 - [X] T069 [US5] Ввести единый обработчик ошибок в `src/webui/errors.py` и подключить в `src/webui/app.py`
 - [X] T070 [US5] Добавить JSON-режим журнала и обязательные поля корреляции в `src/core/logging_setup.py`
-- [ ] T071 [US5] Заменить широкие `except Exception` на границах на классифицированные; оставить широкие только там, где это обосновано
-- [ ] T072 [US5] Обновить `specs/018-architecture-hardening/contracts/api-responses.md` и `quickstart.md`
-- [ ] T073 [US5] Проверить сценарии `quickstart.md` для Wave E и зафиксировать результат
+- [X] T071 [US5] Заменить широкие `except Exception` на границах на классифицированные; оставить широкие только там, где это обосновано
+- [X] T072 [US5] Обновить `specs/018-architecture-hardening/contracts/api-responses.md` и `quickstart.md`
+- [X] T073 [US5] Проверить сценарии `quickstart.md` для Wave E и зафиксировать результат
 
 **Checkpoint**: отказы различимы, контракты описаны, журнал коррелирован.
 
@@ -301,7 +301,7 @@ description: "Task list for architecture hardening"
 - US2: тесты T024–T027 параллельны; реализация T028–T037 — последовательно.
 - US3: тесты T038–T040 параллельны; реализация T041–T049 — последовательно.
 - US4: тесты T050–T053 параллельны; T055–T058 можно делить по модулям после T054.
-- US5: тесты T063–T066 выполнены; T067, T069–T070 сделаны; остались T068 (DTO остальных маршрутов), T071–T073.
+- US5: T063–T073 выполнены.
 - US6: T074–T079 параллельны после инвентаризации.
 
 ---

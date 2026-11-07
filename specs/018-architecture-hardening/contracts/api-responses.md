@@ -64,3 +64,16 @@
 - Отдавать HTML-страницу ошибки вместо JSON для API.
 - Логировать тело запроса с токеном или паролем.
 - Вводить разные форматы ошибок для разных маршрутов.
+
+## Реализация
+
+- `src/webui/errors.py` — обработчики `HTTPException`,
+  `RequestValidationError`, `PlatformError` и неожиданных исключений.
+- `trace_id` приходит из `RequestIdMiddleware` и возвращается в теле и
+  заголовке `X-Trace-ID`.
+- `src/core/errors.py` — категории отказов и их HTTP-статусы.
+- DTO `response_model` объявлены для маршрутов устройств, манифеста, локаций и
+  здоровья.
+- JSON-формат структурных логов проверяется `tests/unit/core/test_structured_logging.py`.
+- Контрактные проверки: `tests/contract/test_error_contract.py`,
+  `tests/contract/test_trace_correlation.py`.

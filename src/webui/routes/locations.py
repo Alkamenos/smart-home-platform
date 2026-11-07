@@ -94,7 +94,7 @@ def _parse_moment(value: str | None) -> float | None:
     return moment.timestamp()
 
 
-@router.get("/api/v1/locations", response_class=JSONResponse)
+@router.get("/api/v1/locations", response_class=JSONResponse, response_model=dict[str, Any])
 async def list_locations(request: Request) -> JSONResponse:
     """Перечислить локации: кто это и сколько у них датчиков.
 
@@ -323,7 +323,9 @@ def _validate_sensors(sensors: dict[str, Any]) -> None:
             )
 
 
-@router.put("/api/v1/locations/{location_id}", response_class=JSONResponse)
+@router.put(
+    "/api/v1/locations/{location_id}", response_class=JSONResponse, response_model=dict[str, Any]
+)
 async def update_location(location_id: str, request: Request, body: LocationUpdate) -> JSONResponse:
     """Изменить место: имя, вид, родителя и роли датчиков (B93).
 
@@ -389,7 +391,9 @@ async def update_location(location_id: str, request: Request, body: LocationUpda
     )
 
 
-@router.post("/api/v1/locations", status_code=201, response_class=JSONResponse)
+@router.post(
+    "/api/v1/locations", status_code=201, response_class=JSONResponse, response_model=dict[str, Any]
+)
 async def create_location(request: Request, body: PlaceCreate) -> JSONResponse:
     """Завести новое место — комнату или локацию (B93).
 
@@ -457,7 +461,9 @@ async def create_location(request: Request, body: PlaceCreate) -> JSONResponse:
     )
 
 
-@router.delete("/api/v1/locations/{location_id}", response_class=JSONResponse)
+@router.delete(
+    "/api/v1/locations/{location_id}", response_class=JSONResponse, response_model=dict[str, Any]
+)
 async def delete_location(location_id: str, request: Request) -> JSONResponse:
     """Удалить пустое место.
 
@@ -516,7 +522,11 @@ async def delete_location(location_id: str, request: Request) -> JSONResponse:
     return JSONResponse({"status": "deleted", "location_id": location_id, "warnings": warnings})
 
 
-@router.post("/api/v1/locations/{location_id}/devices", response_class=JSONResponse)
+@router.post(
+    "/api/v1/locations/{location_id}/devices",
+    response_class=JSONResponse,
+    response_model=dict[str, Any],
+)
 async def move_device(location_id: str, request: Request, body: DeviceMove) -> JSONResponse:
     """Перенести прибор в это место (B93).
 
@@ -588,7 +598,11 @@ async def move_device(location_id: str, request: Request, body: DeviceMove) -> J
     )
 
 
-@router.get("/api/v1/locations/{location_id}/state", response_class=JSONResponse)
+@router.get(
+    "/api/v1/locations/{location_id}/state",
+    response_class=JSONResponse,
+    response_model=dict[str, Any],
+)
 async def get_location_state(location_id: str, request: Request) -> JSONResponse:
     """Отдать снимок локации: показания и производные.
 
@@ -610,7 +624,11 @@ async def get_location_state(location_id: str, request: Request) -> JSONResponse
     return JSONResponse(snapshot.model_dump(mode="json"))
 
 
-@router.get("/api/v1/locations/{location_id}/history", response_class=JSONResponse)
+@router.get(
+    "/api/v1/locations/{location_id}/history",
+    response_class=JSONResponse,
+    response_model=dict[str, Any],
+)
 async def get_location_history(
     location_id: str,
     request: Request,
