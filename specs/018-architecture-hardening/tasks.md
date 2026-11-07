@@ -193,7 +193,9 @@ description: "Task list for architecture hardening"
 > числовые помощники; **923 → 300 строк**.
 > `FSMFactory` разделён: модели, загрузка шаблонов и создание из манифеста;
 > **857 → 115 строк**.
-> Осталось: `container.py`, `manifest.py`, `webui/routes/devices/devices.py`.
+> `Container` разделён: жизненный цикл служб и службы дома;
+> **1381 → 603 строки**.
+> Осталось: `manifest.py`, `webui/routes/devices/devices.py`.
 
 ---
 
