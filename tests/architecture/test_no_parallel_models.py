@@ -27,15 +27,21 @@ MANIFEST_CLASSES = frozenset(
     }
 )
 
-CANONICAL = "src/core/models/manifest.py"
+CANONICAL_MODULES = frozenset(
+    {
+        "src/core/models/manifest.py",
+        "src/core/models/manifest_base.py",
+        "src/core/models/manifest_rules.py",
+    }
+)
 
 
 def test_manifest_classes_are_defined_only_in_canonical_model() -> None:
-    """Классы описания дома объявлены только в канонической модели."""
+    """Классы описания дома объявлены только в каноническом наборе модулей."""
     duplicates: list[str] = []
     for path in python_files():
         relative = relative_path(path)
-        if relative == CANONICAL:
+        if relative in CANONICAL_MODULES:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in tree.body:
