@@ -137,6 +137,16 @@ pytest tests/architecture/test_no_dead_services.py -q
 есть production-вызов, либо пометка «экспериментально» с условием включения.
 Проверить, что Known Issues, Roadmap и BACKLOG соответствуют коду.
 
+**Результат 2026-11-07:** выполнено.
+
+- Инвентаризация: `python tools/dead_code_inventory.py` — кандидатов нет;
+  отчёт `dead-code.md`.
+- Удалены `bootstrap.py`, `backup_service.py`, `room.py`, `state_snapshot.py`.
+- Guard'ы сверены с контрактом; неиспользуемые в шаблонах имена оставлены
+  осознанно как строительные блоки с отдельными тестами.
+- CLI и `ConfigWatcher` проверены: `service-audit.md`.
+- BACKLOG/ROADMAP/PROJECT_STATE обновлены.
+
 ## Полная проверка перед выпуском
 
 ```bash
@@ -160,7 +170,8 @@ mypy src
 | US3 (T038–T049) | `uv.lock`, digest-пиннинг, non-root 10001, read-only, Trivy/SBOM, лимиты |
 | US4, первая и вторая волны (T050-T058, T060-T062) | composition root в `src/app/`, проверки зависимостей/моделей/размеров, `HAAdapter` разделён (2431 → 1249), `FSMEngine` разделён (1982 → 576), фабрики Container вынесены (1602 → 1308), `DeviceService` разделён (1475 → 572), `WatchdogService` разделён (1242 → 302), `MetricsCollector` разделён (961 → 231), `SimpleHAWebSocketClient` разделён (923 → 300), `FSMFactory` разделён (857 → 115), `Container` разделён (1381 → 603), `manifest` разделён (855 → 310), маршруты устройств разделены (844 → 365), модели сторожа вынесены; T059 закрыта |
 | US5 (T063–T073) | единый конверт ошибок, таксономия отказов, `trace_id` в теле и заголовке, JSON-логи, DTO маршрутов, аудит широких `except`, приёмка Wave E |
-| Полный прогон | **3413 passed / 19 skipped**, покрытие **85 %** |
+| US6 (T074–T081) | инвентаризация мёртвого кода, удалены `bootstrap.py`, `backup_service.py`, `room.py`, `state_snapshot.py`, проверены CLI и `ConfigWatcher`, приёмка Wave F |
+| Полный прогон | **3379 passed / 19 skipped**, покрытие **85 %** |
 | `ruff` / `mypy` | чисто |
 | Ожидаемое снижение числа тестов | −78 тестов мёртвой схемы, +22 новых проверки |
 

@@ -240,14 +240,14 @@ description: "Task list for architecture hardening"
 
 **Dependencies**: US1, US3, US4 (после удаления параллельных схем и разделения).
 
-- [ ] T074 [P] [US6] Прогнать `tools/dead_code_inventory.py` и сохранить отчёт в `specs/018-architecture-hardening/dead-code.md`
-- [ ] T075 [P] [US6] Удалить legacy `src/bootstrap.py` или свести к вызову `src/app/container.py`
-- [ ] T076 [P] [US6] Удалить `src/services/backup_service.py` и `tests/test_backup_service.py`; оставить `deploy.sh backup` как единственный путь
-- [ ] T077 [P] [US6] Удалить или пометить неиспользуемые guard'ы в `src/core/guards/context.py`, `src/core/guards/builtin.py`, `src/features/CONTRACT.yaml`
-- [ ] T078 [P] [US6] Объединить CLI-деревья `src/cli/health_check.py` и `src/smart_home/cli/`
-- [ ] T079 [P] [US6] Пометить `ConfigWatcher` экспериментальным: условие включения, риски, тесты, документация
-- [ ] T080 [US6] Синхронизировать `Known Issues`, `.ai/03_ROADMAP.md`, `.ai/BACKLOG.md` с фактическим кодом
-- [ ] T081 [US6] Проверить сценарии `quickstart.md` для Wave F и зафиксировать результат
+- [X] T074 [P] [US6] Прогнать `tools/dead_code_inventory.py` и сохранить отчёт в `specs/018-architecture-hardening/dead-code.md`
+- [X] T075 [P] [US6] Удалить legacy `src/bootstrap.py` или свести к вызову `src/app/container.py`
+- [X] T076 [P] [US6] Удалить `src/services/backup_service.py` и `tests/test_backup_service.py`; оставить `deploy.sh backup` как единственный путь
+- [X] T077 [P] [US6] Удалить или пометить неиспользуемые guard'ы в `src/core/guards/context.py`, `src/core/guards/builtin.py`, `src/features/CONTRACT.yaml`
+- [X] T078 [P] [US6] Объединить CLI-деревья `src/cli/health_check.py` и `src/smart_home/cli/`
+- [X] T079 [P] [US6] Пометить `ConfigWatcher` экспериментальным: условие включения, риски, тесты, документация
+- [X] T080 [US6] Синхронизировать `Known Issues`, `.ai/03_ROADMAP.md`, `.ai/BACKLOG.md` с фактическим кодом
+- [X] T081 [US6] Проверить сценарии `quickstart.md` для Wave F и зафиксировать результат
 
 **Checkpoint**: состояние кода однозначно; документация не врёт.
 

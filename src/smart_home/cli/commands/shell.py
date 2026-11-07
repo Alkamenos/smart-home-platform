@@ -35,10 +35,10 @@ def create_repl_context(manifest_path: str) -> dict[str, Any]:
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
 
-    from bootstrap import bootstrap_platform
+    from app.container import Container
 
-    # Bootstrap the platform
-    ctx = bootstrap_platform(manifest_path)
+    # Bootstrap the platform through the canonical composition root
+    ctx = Container(manifest_path=manifest_path).build()
 
     # Create the REPL context with all important components
     repl_context: dict[str, Any] = {

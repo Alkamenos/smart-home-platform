@@ -51,6 +51,19 @@
 
 Разбор — `BACKLOG.md` (B117).
 
+### 2026-11-07: US6 — мёртвый код и чистота (T074–T081)
+
+- Инвентаризация: `tools/dead_code_inventory.py`; отчёт `dead-code.md`.
+- Удалены `src/bootstrap.py`, `src/services/backup_service.py`,
+  `tests/test_backup_service.py`, `src/core/models/room.py`,
+  `src/core/services/state_snapshot.py`.
+- `shp shell` собирает платформу через `Container(...).build()`.
+- Guard'ы сверены с контрактом: неиспользуемые в шаблонах имена оставлены
+  осознанно как строительные блоки с отдельными тестами.
+- CLI и `ConfigWatcher` проверены (`service-audit.md`); Known Issues, BACKLOG
+  и приёмка Wave F синхронизированы.
+- Полный прогон — **3379 passed / 19 skipped**, покрытие **85 %**.
+
 ### 2026-11-07: US5 — единый конверт ошибок и trace_id (T063–T067, T069–T070)
 
 - `src/webui/errors.py` устанавливает обработчики `HTTPException`,

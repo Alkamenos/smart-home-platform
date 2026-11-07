@@ -21,8 +21,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pathlib import Path
 
-from bootstrap import PlatformContext, bootstrap_platform
+from app.container import Container, PlatformContext
 from core import ManualLockoutMiddleware
+
+
+def bootstrap_platform(path: str) -> PlatformContext:
+    """Собрать платформу через канонический composition root."""
+    return Container(manifest_path=path).build()
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

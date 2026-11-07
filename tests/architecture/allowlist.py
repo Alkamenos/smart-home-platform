@@ -35,10 +35,7 @@ IMPORT_ALLOWLIST: dict[tuple[str, str], dict[str, str]] = {
 #: Временные параллельные доменные модели: `путь:Класс` → причина.
 PARALLEL_MODEL_ALLOWLIST: dict[str, str] = {
     "src/core/models/device_config.py:DeviceConfig": "метаданные прибора, не манифест",
-    "src/core/models/room.py:RoomConfig": "агрегация комнаты, не манифест",
 }
 
 #: Мёртвые production-сервисы, ожидающие решения/удаления.
-DEAD_SERVICE_ALLOWLIST: dict[str, str] = {
-    "src/services/backup_service.py": "удаляется в T076 (B14)",
-}
+DEAD_SERVICE_ALLOWLIST: dict[str, str] = {}
