@@ -27,7 +27,7 @@ _MANUAL_FSM_EVENTS: dict[str, str] = {
 }
 
 
-@router.post("/{device_id}/command", status_code=status.HTTP_200_OK)
+@router.post("/{device_id}/command", status_code=status.HTTP_200_OK, response_model=CommandResponse)
 async def execute_device_command(
     device_id: UUID,
     http_request: Request,
@@ -147,7 +147,11 @@ async def execute_device_command(
 # ============ T056: GET /api/v1/devices/{id}/command/{command_id} ============
 
 
-@router.get("/{device_id}/command/{command_id}", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{device_id}/command/{command_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=dict[str, Any] | None,
+)
 async def get_command_status(
     device_id: UUID,
     command_id: UUID,

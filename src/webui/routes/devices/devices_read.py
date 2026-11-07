@@ -119,7 +119,7 @@ async def get_devices(
         ) from e
 
 
-@router.get("/{device_id}", status_code=status.HTTP_200_OK)
+@router.get("/{device_id}", status_code=status.HTTP_200_OK, response_model=DeviceResponse)
 async def get_device(request: Request, device_id: UUID) -> DeviceResponse:
     """T033: Получает информацию об устройстве с полной конфигурацией.
 
@@ -159,7 +159,9 @@ async def get_device(request: Request, device_id: UUID) -> DeviceResponse:
     )
 
 
-@router.get("/{device_id}/events", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{device_id}/events", status_code=status.HTTP_200_OK, response_model=list[DeviceEventResponse]
+)
 async def get_device_events(
     device_id: UUID,
     request: Request,

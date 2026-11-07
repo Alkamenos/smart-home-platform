@@ -125,8 +125,8 @@ class TestSourceValidationMessages:
         response = client.post("/api/v1/devices/sources", json=payload)
 
         assert response.status_code == 422
-        detail = response.json()["detail"]
-        assert any(item["loc"][-1] == field for item in detail), (
+        detail = response.json()["error"]["fields"]
+        assert any(item["field"].split(".")[-1] == field for item in detail), (
             f"в ошибке нет имени поля `{field}`: показать подсказку не у чего — {detail}"
         )
-        assert any(item.get("msg") for item in detail), "у ошибки нет текста подсказки"
+        assert any(item.get("message") for item in detail), "у ошибки нет текста подсказки"

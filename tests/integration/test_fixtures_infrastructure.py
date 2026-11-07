@@ -110,7 +110,7 @@ class TestExternalSystemStub:
         with stub_ha(mode=HAUnavailable.REFUSED):
             response = isolated_client.post(f"/api/v1/devices/sources/{ha_unavailable}/sync")
         assert response.status_code == 500, response.text
-        assert "unreachable.invalid" in response.json()["detail"], (
+        assert "unreachable.invalid" in response.json()["error"]["message"], (
             f"сообщение должно называть адрес: {response.text}"
         )
 

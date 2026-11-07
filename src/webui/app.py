@@ -514,6 +514,10 @@ def create_app(
 
     app.add_middleware(IngressMiddleware)
 
+    from .errors import install_error_handlers
+
+    install_error_handlers(app)
+
     return app
 
 

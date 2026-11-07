@@ -25,6 +25,7 @@ class PlatformError(Exception):
 
     code = "platform_error"
     is_fault = False
+    http_status = 500
 
     def __init__(self, message: str, *, code: str | None = None) -> None:
         super().__init__(message)
@@ -50,6 +51,7 @@ class ExpectedConditionError(PlatformError):
 
     code = "expected_condition"
     is_fault = False
+    http_status = 400
 
 
 class DomainDefectError(PlatformError):
@@ -64,3 +66,4 @@ class SafetyViolationError(PlatformError):
 
     code = "safety_violation"
     is_fault = True
+    http_status = 409

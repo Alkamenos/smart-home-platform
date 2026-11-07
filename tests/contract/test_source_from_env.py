@@ -157,7 +157,7 @@ class TestCreatingFromEnvironment:
         assert response.status_code == 409, (
             f"ожидался 409 с указанием на HA_URL, получен {response.status_code}"
         )
-        assert "HA_URL" in response.json()["detail"]
+        assert "HA_URL" in response.json()["error"]["message"]
 
     def test_requires_admin(self, env_configured: None) -> None:
         """Создание источника — операция администратора."""

@@ -143,7 +143,7 @@ class TestSyncFailure:
             response = isolated_client.post(f"/api/v1/devices/sources/{ha_unavailable}/sync")
 
         assert response.status_code == 500, f"ожидался отказ синхронизации: {response.text}"
-        detail = response.json()["detail"]
+        detail = response.json()["error"]["message"]
         assert "unreachable.invalid" in detail, f"сообщение должно называть адрес: {detail}"
 
     def test_failed_sync_keeps_previously_synced_devices(

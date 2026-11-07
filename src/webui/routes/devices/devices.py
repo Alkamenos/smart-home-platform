@@ -62,7 +62,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 router.include_router(read_router)
 router.include_router(delete_router)
-router.add_api_route("", get_devices, methods=["GET"], status_code=status.HTTP_200_OK)
+router.add_api_route(
+    "",
+    get_devices,
+    methods=["GET"],
+    status_code=status.HTTP_200_OK,
+    response_model=list[DeviceResponse],
+)
 router.include_router(commands_router)
 
 # Требуемые роли на операции (contracts §1, data-model иерархия)
@@ -71,7 +77,7 @@ router.include_router(commands_router)
 # ============ T033-T057: Управление устройствами (полная реализация) ============
 
 
-@router.put("/{device_id}/config", status_code=status.HTTP_200_OK)
+@router.put("/{device_id}/config", status_code=status.HTTP_200_OK, response_model=DeviceResponse)
 async def update_device_config(
     device_id: UUID, http_request: Request, request: UpdateDeviceConfigRequest
 ) -> DeviceResponse:
@@ -172,7 +178,7 @@ async def update_device_config(
         ) from e
 
 
-@router.post("/apply", status_code=status.HTTP_201_CREATED)
+@router.post("/apply", status_code=status.HTTP_201_CREATED, response_model=ApplyDevicesResponse)
 async def apply_devices(
     request: Request,
     body: ApplyDevicesRequest,
@@ -282,7 +288,9 @@ async def apply_devices(
 # ============ Пункт 4: правка поведений устройства ============
 
 
-@router.put("/{device_id}/behaviors", response_class=JSONResponse)  # type: ignore[untyped-decorator]
+@router.put(
+    "/{device_id}/behaviors", response_class=JSONResponse, response_model=BehaviorsUpdateResponse
+)  # type: ignore[untyped-decorator]
 async def update_device_behaviors(
     device_id: UUID,
     body: BehaviorsUpdateRequest,
