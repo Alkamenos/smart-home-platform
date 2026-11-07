@@ -20,9 +20,6 @@ SIZE_BUDGET = 800
 #: после этого запись удаляется.
 LEGACY_SIZE_ALLOWLIST: dict[str, int] = {
     "src/adapters/ha_adapter.py": 1249,
-    "src/core/fsm/engine.py": 576,
-    "src/services/device_service.py": 572,
-    "src/services/watchdog.py": 306,
 }
 
 #: Временные нарушения направления зависимостей.
