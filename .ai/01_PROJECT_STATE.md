@@ -72,7 +72,10 @@
 - `manifest.py` разделён: базовые модели и помощники датчиков —
   `manifest_base.py`, правила автоматизации — `manifest_rules.py`;
   **855 → 310 строк**.
-- Осталось по T059: `webui/routes/devices/devices.py`.
+- `webui/routes/devices/devices.py` разделён: чтение — `devices_read.py`,
+  команды — `devices_commands.py`, удаление — `devices_delete.py`, общие
+  проверки — `devices_common.py`; **844 → 365 строк**.
+- T059 закрыта: все крупные модули сокращены не менее чем вдвое.
 
 ### 2026-11-03: свет над кроватью плавно снижается до 3 % к 22:00 (B114)
 

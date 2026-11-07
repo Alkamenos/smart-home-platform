@@ -166,7 +166,7 @@ description: "Task list for architecture hardening"
 - [X] T056 [US4] Разделить `src/core/fsm/engine.py`: переходы, guard/action, таймеры, решения; оставить фасад
 - [X] T057 [US4] Вынести фабрики из `src/app/container.py` в `src/app/factories.py`
 - [X] T058 [US4] Разделить `src/services/watchdog.py` и `src/services/device_service.py` по ответственностям
-- [ ] T059 [US4] Обновить allowlist в `tests/architecture/allowlist.py`: сократить крупные файлы не менее чем на 50 %
+- [X] T059 [US4] Обновить allowlist в `tests/architecture/allowlist.py`: сократить крупные файлы не менее чем на 50 %
 - [X] T060 [US4] Включить `pytest tests/architecture` в `.github/workflows/ci.yml` и `Makefile`
 - [X] T061 [US4] Обновить `.ai/02_ARCHITECTURE.md` и `specs/018-architecture-hardening/contracts/dependency-rules.md`
 - [X] T062 [US4] Проверить сценарии `quickstart.md` для Wave D и зафиксировать результат
@@ -197,7 +197,9 @@ description: "Task list for architecture hardening"
 > **1381 → 603 строки**.
 > `manifest.py` разделён: базовые модели и правила автоматизации;
 > **855 → 310 строк**.
-> Осталось: `webui/routes/devices/devices.py`.
+> `webui/routes/devices/devices.py` разделён: чтение, команды, удаление и общие
+> проверки; **844 → 365 строк**.
+> T059 закрыта: все крупные модули сокращены не менее чем вдвое.
 
 ---
 
