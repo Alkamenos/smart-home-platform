@@ -69,7 +69,10 @@
   `factory_creation.py`; **857 → 115 строк**.
 - `Container` разделён: запуск служб — `app/lifecycle.py`, здоровье, проблемы,
   локации и помощники — `app/house_services.py`; **1381 → 603 строки**.
-- Осталось по T059: `manifest.py`, `webui/routes/devices/devices.py`.
+- `manifest.py` разделён: базовые модели и помощники датчиков —
+  `manifest_base.py`, правила автоматизации — `manifest_rules.py`;
+  **855 → 310 строк**.
+- Осталось по T059: `webui/routes/devices/devices.py`.
 
 ### 2026-11-03: свет над кроватью плавно снижается до 3 % к 22:00 (B114)
 

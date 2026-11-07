@@ -195,7 +195,9 @@ description: "Task list for architecture hardening"
 > **857 → 115 строк**.
 > `Container` разделён: жизненный цикл служб и службы дома;
 > **1381 → 603 строки**.
-> Осталось: `manifest.py`, `webui/routes/devices/devices.py`.
+> `manifest.py` разделён: базовые модели и правила автоматизации;
+> **855 → 310 строк**.
+> Осталось: `webui/routes/devices/devices.py`.
 
 ---
 
