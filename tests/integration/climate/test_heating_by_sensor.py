@@ -78,18 +78,19 @@ class _RecordingDispatcher:
         return [intent.service for intent in self.intents]
 
 
-def _manifest(*, managed_by_hardware: bool = False) -> Manifest:
+def _manifest(*, managed_by_hardware: bool = False, run_minutes: int = 15) -> Manifest:
     """Манифест из одной комнаты: датчик температуры и обогреватель.
 
     Args:
         managed_by_hardware: Пометить комнату как управляемую штатным термостатом.
+        run_minutes: Сколько минут работает обогреватель за один цикл.
 
     Returns:
         Модель манифеста.
     """
     params: dict[str, Any] = {
         "hysteresis": HYSTERESIS,
-        "run_minutes": 15,
+        "run_minutes": run_minutes,
         "heater_timer": HEATER_TIMER,
     }
     if managed_by_hardware:
@@ -530,4 +531,75 @@ class TestTimerIsArmed:
             f"со временем работы обогревателя ({DEFAULT_HEATER_RUN_MINUTES * 60} с): "
             "истекло устройство — истекло и ожидание автомата, иначе решение "
             "приходит позже, чем свет уже погас"
+        )
+
+
+class TestSafetyTimerAndManualOff:
+    """Срок страховки и уступка ручному выключению (живая находка 08.11)."""
+
+    @pytest.mark.asyncio
+    async def test_guest_room_timer_follows_twenty_minutes(self) -> None:
+        """`run_minutes: 20` даёт автомату 1200 с, а не 900 из шаблона."""
+        engine, _, _ = _build(_manifest(run_minutes=20))
+
+        await engine.trigger(
+            "switch.obogrevatel_spalnia_climate_control_10",
+            "temperature_changed",
+            {**_context("20.0"), "temperature": 20.0},
+            respect_debounce=False,
+        )
+
+        assert (
+            engine.expected_timeout_sec("switch.obogrevatel_spalnia_climate_control_10") == 1200.0
+        ), "автомат выключит обогрев раньше срока, который задал владелец"
+
+    @pytest.mark.asyncio
+    async def test_manual_off_holds_heating_until_lockout_ends(self) -> None:
+        """Физическое выключение уводит в OFF_MANUAL, затем возвращает в IDLE."""
+        engine, _, dispatcher = _build(_manifest(run_minutes=20))
+        fsm_id = "switch.obogrevatel_spalnia_climate_control_10"
+
+        await engine.trigger(
+            fsm_id,
+            "temperature_changed",
+            {**_context("20.0"), "temperature": 20.0},
+            respect_debounce=False,
+        )
+        assert engine.get_state(fsm_id).current_state == "HEATING"  # type: ignore[union-attr]
+
+        await engine.trigger(
+            fsm_id,
+            "manual_switch_off",
+            {"entity_id": HEATER, "new_state": "off"},
+            respect_debounce=False,
+        )
+
+        assert engine.get_state(fsm_id).current_state == "OFF_MANUAL"  # type: ignore[union-attr]
+        assert engine.expected_timeout_sec(fsm_id) == 3600.0, (
+            "уступка человеку должна длиться столько же, сколько ручная блокировка"
+        )
+        commands_before = len(dispatcher.intents)
+
+        await engine.trigger(
+            fsm_id,
+            "temperature_changed",
+            {**_context("19.9"), "temperature": 19.9},
+            respect_debounce=False,
+        )
+        assert engine.get_state(fsm_id).current_state == "OFF_MANUAL"  # type: ignore[union-attr]
+        assert len(dispatcher.intents) == commands_before, (
+            "автоматика включила обогрев во время уступки человеку"
+        )
+
+        await engine.trigger(fsm_id, "timeout", trace_id="manual-end", respect_debounce=False)
+        assert engine.get_state(fsm_id).current_state == "IDLE"  # type: ignore[union-attr]
+
+        await engine.trigger(
+            fsm_id,
+            "temperature_changed",
+            {**_context("20.0"), "temperature": 20.0},
+            respect_debounce=False,
+        )
+        assert engine.get_state(fsm_id).current_state == "HEATING", (  # type: ignore[union-attr]
+            "после срока уступки холодная комната снова не получила обогрев"
         )

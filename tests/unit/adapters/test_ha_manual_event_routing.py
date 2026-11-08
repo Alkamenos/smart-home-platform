@@ -40,6 +40,21 @@ class _Engine:
         return True
 
 
+class _ClimateEngine(_Engine):
+    """Движок-двойник климата: у прибора автомат обогревателя."""
+
+    def get_entities_by_device(self, device_id: str) -> list[str]:
+        """Автоматы устройства.
+
+        Args:
+            device_id: Прибор.
+
+        Returns:
+            Имя климатического автомата.
+        """
+        return ["switch.maslianyi_radiator_climate_control_10"]
+
+
 class _Middleware:
     """Трекер-двойник: помнит ручные записи."""
 
@@ -219,6 +234,55 @@ async def test_own_cover_movement_is_not_manual() -> None:
     assert middleware.recorded == [], (
         f"наша команда засчитана ручным движением: {middleware.recorded}"
     )
+
+
+@pytest.mark.asyncio
+async def test_physical_climate_switch_off_is_manual() -> None:
+    """Физическое выключение обогревателя — ручное, с локкаутом (живая находка 08.11).
+
+    Розетка масляного радиатора выключилась сама/рукой без `user_id` и
+    `parent_id`. Прежде это не доходило до климата: автомат оставался в HEATING
+    с выключенным прибором, сторож считал расхождение проблемой каждую минуту,
+    а греть было нечем. Теперь событие уходит автомату, тот уступает человеку
+    на срок ручной блокировки.
+    """
+    engine = _ClimateEngine()
+    middleware = _Middleware()
+
+    await _adapter(engine, middleware).on_state_change("switch.maslianyi_radiator", "off", "on", {})
+
+    assert middleware.recorded == ["switch.maslianyi_radiator"], (
+        f"выключение обогревателя не включило локкаут: {middleware.recorded}"
+    )
+    assert [call[1] for call in engine.calls] == ["manual_switch_off"], (
+        f"автомат климата не узнал о выключении: {engine.calls}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_own_climate_switch_off_is_not_manual() -> None:
+    """Выключение обогревателя нашей командой не считается ручным."""
+    engine = _ClimateEngine()
+    middleware = _Middleware()
+    adapter = _adapter(engine, middleware)
+    adapter._recent_commands["switch.maslianyi_radiator"] = time.monotonic()  # noqa: SLF001
+
+    await adapter.on_state_change("switch.maslianyi_radiator", "off", "on", {})
+
+    assert middleware.recorded == []
+    assert engine.calls == []
+
+
+@pytest.mark.asyncio
+async def test_physical_switch_off_of_non_climate_is_not_manual() -> None:
+    """Выключение обычного переключателя по-прежнему только наблюдение (B91)."""
+    engine = _Engine()
+    middleware = _Middleware()
+
+    await _adapter(engine, middleware).on_state_change("switch.rozetka", "off", "on", {})
+
+    assert middleware.recorded == []
+    assert engine.calls == []
 
 
 @pytest.mark.asyncio
