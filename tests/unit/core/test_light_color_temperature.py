@@ -303,6 +303,7 @@ def _service(
     adapter: _Adapter,
     dispatcher: _Dispatcher,
     night_mode_supplier: Any = None,
+    automation_on_supplier: Any = None,
 ) -> LightColorTemperatureService:
     """Собрать службу с фиксированным временем 19:30.
 
@@ -310,6 +311,7 @@ def _service(
         adapter: Адаптер-двойник.
         dispatcher: Диспетчер-двойник.
         night_mode_supplier: Признак ночного режима; по умолчанию нет.
+        automation_on_supplier: Признак «автоматика разрешает держать лампу».
 
     Returns:
         Служба.
@@ -320,6 +322,7 @@ def _service(
         manifest=_manifest(),
         now_supplier=lambda _tz: NOW,
         night_mode_supplier=night_mode_supplier,
+        automation_on_supplier=automation_on_supplier,
     )
 
 
@@ -690,3 +693,45 @@ class TestBedsideBrightnessCurve:
         intents = [i for i in dispatcher.intents if i.device_id == "light.svet_nad_krovatiu_1"]
         assert intents[0].data["color_temp_kelvin"] == 2000
         assert intents[0].data["brightness_pct"] == 3
+
+
+class TestAutomationDecision:
+    """Служба температуры не зажигает лампу, которую автомат погасил."""
+
+    @pytest.mark.asyncio
+    async def test_skips_burning_lamp_when_automation_decided_off(self) -> None:
+        """Лампа `on` в HA, но автомат `OFF` — команды `turn_on` нет.
+
+        Живая находка 08.11: кровать погасла по «мы спим», `turn_off` HA
+        приняла, но состояние осталось `on`; служба температуры через пять
+        минут отправила `turn_on` с яркостью 14 % и зажгла её обратно.
+        """
+        adapter = _adapter(current="6000")
+        dispatcher = _Dispatcher()
+        service = _service(
+            adapter,
+            dispatcher,
+            automation_on_supplier=lambda _device: False,
+        )
+
+        await service.check_once()
+
+        assert dispatcher.intents == [], (
+            "служба температуры зажгла лампу вопреки решению автомата: "
+            f"{[(i.device_id, i.service) for i in dispatcher.intents]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_applies_when_automation_allows_the_lamp(self) -> None:
+        """Автомат не в `OFF*` — температура применяется как раньше."""
+        adapter = _adapter(current="6000")
+        dispatcher = _Dispatcher()
+        service = _service(
+            adapter,
+            dispatcher,
+            automation_on_supplier=lambda device: device == "light.table",
+        )
+
+        await service.check_once()
+
+        assert [i.device_id for i in dispatcher.intents] == ["light.table"]

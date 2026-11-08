@@ -4,11 +4,13 @@
 #  SPDX-License-Identifier: Apache-2.0
 
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.container import Container, PlatformContext
+from app.house_services import light_automation_on
 from core.models.manifest import Manifest
 
 
@@ -408,3 +410,80 @@ class TestErrorHandling:
         container = Container(manifest=mock_manifest)
 
         assert container.manifest is mock_manifest
+
+
+class _EngineDouble:
+    """Движок-двойник: карта «прибор → автоматы» и их состояния."""
+
+    def __init__(self, automata: dict[str, list[str]], states: dict[str, str]) -> None:
+        """Запомнить автоматы и состояния.
+
+        Args:
+            automata: Прибор → имена автоматов.
+            states: Автомат → состояние.
+        """
+        self._automata = automata
+        self._states = states
+
+    def get_entities_by_device(self, device_id: str) -> list[str]:
+        """Автоматы прибора.
+
+        Args:
+            device_id: Прибор.
+
+        Returns:
+            Список имён автоматов.
+        """
+        return self._automata.get(device_id, [])
+
+    def get_state(self, entity_id: str) -> SimpleNamespace | None:
+        """Состояние автомата.
+
+        Args:
+            entity_id: Автомат.
+
+        Returns:
+            Состояние либо None.
+        """
+        value = self._states.get(entity_id)
+        return SimpleNamespace(current_state=value) if value is not None else None
+
+
+class TestLightAutomationDecision:
+    """Служба температуры спрашивает у автомата, можно ли трогать лампу."""
+
+    def test_all_off_states_forbid_turning_on(self) -> None:
+        """Все автоматы лампы в `OFF*` — служба не должна её зажигать."""
+        engine = _EngineDouble(
+            {"light.krovat": ["light.krovat_deco_light_10"]},
+            {"light.krovat_deco_light_10": "OFF"},
+        )
+
+        assert light_automation_on(engine, "light.krovat") is False
+
+    def test_active_state_allows_temperature(self) -> None:
+        """Хотя бы один автомат не в `OFF*` — температура применяется."""
+        engine = _EngineDouble(
+            {"light.krovat": ["light.krovat_deco_light_10"]},
+            {"light.krovat_deco_light_10": "ON_DECO"},
+        )
+
+        assert light_automation_on(engine, "light.krovat") is True
+
+    def test_second_automaton_on_keeps_lamp_allowed(self) -> None:
+        """Свет и ночник — разные автоматы; включённый ночник важнее OFF света."""
+        engine = _EngineDouble(
+            {"light.stol": ["light.stol_lighting_10", "light.stol_night_light_20"]},
+            {
+                "light.stol_lighting_10": "OFF",
+                "light.stol_night_light_20": "ON_NIGHT",
+            },
+        )
+
+        assert light_automation_on(engine, "light.stol") is True
+
+    def test_device_without_automata_keeps_previous_behaviour(self) -> None:
+        """Прибор без автомата служба решает по фактическому состоянию."""
+        engine = _EngineDouble({}, {})
+
+        assert light_automation_on(engine, "light.unknown") is True
