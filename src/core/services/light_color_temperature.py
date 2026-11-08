@@ -121,6 +121,10 @@ class LightColorTemperatureService:
         now_supplier: Источник времени; подменяется в тестах.
         night_mode_supplier: Признак «лампа сейчас ночник»; такие лампы не
             трогаем, иначе красный ночной свет станет белым.
+        automation_on_supplier: Разрешает ли автоматика держать лампу
+            включённой. Если решение «выключено», служба не отправляет
+            ``turn_on`` — иначе поддержание общей температуры само зажигало бы
+            погашенный свет (живая находка 2026-11-08: кровать после отбоя).
     """
 
     def __init__(
@@ -131,6 +135,7 @@ class LightColorTemperatureService:
         interval_minutes: float | None = None,
         now_supplier: Callable[[tzinfo], datetime] | None = None,
         night_mode_supplier: Callable[[str], bool] | None = None,
+        automation_on_supplier: Callable[[str], bool] | None = None,
     ) -> None:
         self._adapter = adapter
         self._dispatcher = dispatcher
@@ -140,6 +145,7 @@ class LightColorTemperatureService:
         self.interval_minutes = float(interval_minutes or configured or DEFAULT_INTERVAL_MINUTES)
         self._now = now_supplier or (lambda tz: datetime.now(tz))
         self._night_mode_supplier = night_mode_supplier
+        self._automation_on_supplier = automation_on_supplier
         self._params = _lighting_params(manifest)
         self._task: asyncio.Task[None] | None = None
 
@@ -420,6 +426,15 @@ class LightColorTemperatureService:
                 continue
             snapshot = await self._snapshot(device_id)
             if not snapshot or str(snapshot.get("state")).lower() != "on":
+                continue
+            if self._automation_on_supplier and not self._automation_on_supplier(device_id):
+                # Лампа горит, но автомат решил «выключено»: поддержание
+                # температуры не имеет права зажигать её обратно. Пишем это в
+                # журнал — иначе утренний разбор не отличит «служба не трогала»
+                # от «служба не заметила» (кровать после отбоя, 08.11).
+                logger.info(
+                    f"Цветовая температура: {device_id} горит при решении «выключено» — не трогаю"
+                )
                 continue
             supported = snapshot.get("supported_color_modes") or []
             if supported and "color_temp" not in supported:

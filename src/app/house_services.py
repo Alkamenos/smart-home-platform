@@ -19,6 +19,37 @@ from app.factories import create_event_store, create_location_mirror, create_pla
 from core.models.manifest import role_entities
 
 
+def light_automation_on(engine: Any, device_id: str) -> bool:
+    """Разрешает ли автоматика держать лампу включённой.
+
+    Служба общей цветовой температуры обходит «горящие» лампы по факту и
+    отправляет ``turn_on`` с температурой. Если автомат уже решил «выключено»,
+    такая команда зажигает погашенный свет (живая находка 2026-11-08: кровать
+    после включения «мы спим»). Поэтому решение спрашивается у движка: лампа
+    участвует, только когда хотя бы один её автомат не в ``OFF*``.
+
+    Args:
+        engine: Движок автоматов.
+        device_id: Сущность лампы.
+
+    Returns:
+        True, если лампу можно трогать. Если автоматов у прибора нет, поведение
+        прежнее — служба решает по фактическому состоянию.
+    """
+    get_fsms = getattr(engine, "get_entities_by_device", None)
+    get_state = getattr(engine, "get_state", None)
+    if not callable(get_fsms) or not callable(get_state):
+        return True
+    current = [
+        state.current_state.upper()
+        for fsm_id in get_fsms(device_id)
+        if (state := get_state(fsm_id)) is not None
+    ]
+    if not current:
+        return True
+    return any(not name.startswith("OFF") for name in current)
+
+
 class ContainerHouseMixin:
     """Wire health, problem, location and helper services."""
 
@@ -204,11 +235,16 @@ class ContainerHouseMixin:
                     return True
             return False
 
+        def _automation_on(device_id: str) -> bool:
+            # Поддержание температуры не зажигает лампу, которую автомат погасил.
+            return light_automation_on(self.fsm, device_id)
+
         service = LightColorTemperatureService(
             adapter=self.adapter,
             dispatcher=self.dispatcher,
             manifest=self.manifest,
             night_mode_supplier=_night_mode,
+            automation_on_supplier=_automation_on,
         )
         self._light_color_temperature = service
         try:
