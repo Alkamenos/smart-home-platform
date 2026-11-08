@@ -510,19 +510,18 @@ class HAAdapter(
             and not own_action
             and not human_action
         )
-        # B89: физический/настенный выключатель света не оставляет
-        # `parent_id` (автоматизация оставляет его). `user_id` может быть
-        # пользователем интеграции — решает отсутствие родителя и нашей
-        # команды. Для лампы это доказательство человека, а не команда
-        # платформы: иначе выключенный рукой свет следующее движение включало
-        # бы снова, а включённый вне платформы прибор оставался бы расхождением.
-        state_value = str(new_state).strip().lower()
-        physical_light = (
-            entity_id.startswith("light.")
-            and not own_action
-            and not human_action
-            and not automation_id
-            and (state_value in MANUAL_ON_VALUES or state_value in MANUAL_OFF_VALUES)
+        # Физическое/настенное действие без родителя и нашей команды —
+        # доказательство человека. Для света это выключатель (B89), для климата
+        # — выключение розетки обогревателя (живая находка 2026-11-08).
+        # Классификация и запись блокировки живут в ManualEventsMixin.
+        physical_manual = self._note_physical_manual(
+            entity_id,
+            new_state,
+            user_id,
+            automation_id,
+            context,
+            own_action,
+            human_action,
         )
         if human_action and self._manual_lockout_middleware:
             # Диагностика, а не догадка: если команда платформы всё-таки
@@ -543,15 +542,6 @@ class HAAdapter(
             logger.warning(
                 f"HAAdapter: ручное движение шторы — {entity_id}, "
                 f"user={user_id or '-'}, автоматизация={automation_id or '-'}, "
-                f"context={context.get('ha_context_id')}, "
-                f"своя команда этому прибору: "
-                f"{'была' if self._is_recent_command(entity_id) else 'не найдена'}"
-            )
-            self._manual_lockout_middleware.record_manual_control(entity_id)
-        elif physical_light and self._manual_lockout_middleware:
-            logger.warning(
-                f"HAAdapter: внешнее действие света — {entity_id}, "
-                f"user={user_id or '-'}, автоматизация=-, "
                 f"context={context.get('ha_context_id')}, "
                 f"своя команда этому прибору: "
                 f"{'была' if self._is_recent_command(entity_id) else 'не найдена'}"
@@ -684,9 +674,10 @@ class HAAdapter(
         # Физический пульт шторы не оставляет user_id, но движение уже
         # опознано выше (`cover_movement`): автомат должен уйти в MANUAL, иначе
         # ручное положение не удержится до смены флагов дома (B104).
-        # Физический выключатель света (`physical_light`) — тот же класс:
-        # событие должно дойти до автомата, чтобы тот уступил человеку (B89).
-        if human_action or cover_movement or physical_light:
+        # Физический выключатель света (`physical_manual`) и выключение розетки
+        # обогревателя — тот же класс: событие должно дойти до автомата, чтобы
+        # тот уступил человеку (B89, живая находка 2026-11-08).
+        if human_action or cover_movement or physical_manual:
             await self._route_manual_event(entity_id, new_state, log)
 
         # Переключатели вентиляции (владелец, фиче-флаг, сезон, проветривание и

@@ -20,7 +20,94 @@ class ManualEventsMixin:
 
     if TYPE_CHECKING:
         _engine: Any
+        _manual_lockout_middleware: Any
+        _is_recent_command: Any
         on_light_turned_on: Any
+
+    def _note_physical_manual(
+        self,
+        entity_id: str,
+        new_state: str,
+        user_id: Any,
+        automation_id: Any,
+        context: dict[str, Any],
+        own_action: bool,
+        human_action: bool,
+    ) -> bool:
+        """Отметить физическое действие прибора без ``user_id``/``parent_id``.
+
+        Настенный выключатель света и розетка/выключатель обогревателя не
+        оставляют в Home Assistant ни пользователя, ни автоматизации. Это
+        доказательство человека, а не команда платформы: иначе выключенный рукой
+        свет следующее движение включало бы снова (B89), а обогреватель остался
+        бы в HEATING с выключенным прибором (живая находка 2026-11-08).
+
+        Включение обогревателя сюда не входит: включённый мимо платформы прибор
+        при решении «не греть» остаётся проблемой дома (B113), а не уступкой.
+
+        Args:
+            entity_id: Сущность, изменившая состояние.
+            new_state: Новое состояние.
+            user_id: Пользователь из контекста Home Assistant.
+            automation_id: Родительская автоматизация/сценарий.
+            context: Контекст события.
+            own_action: Изменение вызвано командой платформы.
+            human_action: Человек уже опознан по пользователю или автоматизации.
+
+        Returns:
+            True, если физическое действие опознано и его нужно отдать автомату.
+        """
+        if own_action or human_action or automation_id:
+            return False
+
+        value = str(new_state).strip().lower()
+        is_light = entity_id.startswith("light.") and (
+            value in MANUAL_ON_VALUES or value in MANUAL_OFF_VALUES
+        )
+        is_climate_off = (
+            entity_id.startswith("switch.")
+            and value in MANUAL_OFF_VALUES
+            and self._is_climate_actuator(entity_id)
+        )
+        if not (is_light or is_climate_off):
+            return False
+
+        kind = "света" if is_light else "обогревателя"
+        logger.warning(
+            f"HAAdapter: внешнее действие {kind} — {entity_id}, "
+            f"user={user_id or '-'}, автоматизация=-, "
+            f"context={context.get('ha_context_id')}, "
+            f"своя команда этому прибору: "
+            f"{'была' if self._is_recent_command(entity_id) else 'не найдена'}"
+        )
+        if self._manual_lockout_middleware:
+            self._manual_lockout_middleware.record_manual_control(entity_id)
+        return True
+
+    def _is_climate_actuator(self, entity_id: str) -> bool:
+        """Является ли переключатель исполнительным прибором климата.
+
+        Физическое выключение обогревателя (розетка, выключатель) не оставляет
+        в Home Assistant ни ``user_id``, ни ``parent_id``. Для климата это
+        доказательство человека: автомат должен уйти в ручное состояние, иначе
+        он останется в HEATING с выключенным прибором, а сторож будет считать
+        это проблемой каждую минуту (живая находка 2026-11-08).
+
+        Args:
+            entity_id: Сущность, изменившая состояние.
+
+        Returns:
+            True, если у прибора есть автомат шаблона ``climate_control``.
+        """
+        get_fsms = getattr(self._engine, "get_entities_by_device", None)
+        if not callable(get_fsms):
+            return False
+        try:
+            automata = get_fsms(entity_id)
+        except Exception as e:  # noqa: BLE001 — классификация не должна ронять приём
+            logger.warning(f"HAAdapter: не удалось найти автоматы {entity_id}: {e}")
+            return False
+        return any("_climate_control_" in str(fsm) for fsm in automata)
 
     async def _route_manual_event(self, entity_id: str, new_state: str, log: Any) -> None:
         """Отправить автоматам устройства ручное событие (BACKLOG B57).

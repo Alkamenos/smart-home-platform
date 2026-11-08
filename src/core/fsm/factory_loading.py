@@ -34,6 +34,26 @@ _TIMEOUT_OVERRIDE_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _timeout_param_seconds(name: str, value: float) -> float:
+    """Перевести значение параметра поведения в секунды.
+
+    Имя параметра — единственное, что говорит о единицах: ``run_minutes`` и
+    ``manual_lockout_min`` заданы в минутах, ``motion_timeout_sec`` и
+    ``airing_seconds`` — в секундах. Без перевода ``run_minutes: 20`` давал бы
+    срок автомата 20 секунд вместо 1200, и обогреватель выключался бы мгновенно.
+
+    Args:
+        name: Имя параметра из манифеста.
+        value: Его числовое значение.
+
+    Returns:
+        Значение в секундах.
+    """
+    if name.endswith("_minutes") or name.endswith("_min"):
+        return float(value) * 60.0
+    return float(value)
+
+
 def _timeout_from_params(
     yaml_transition: YAMLTransition,
     params: dict | None,
@@ -79,7 +99,7 @@ def _timeout_from_params(
             and not isinstance(candidate, bool)
             and candidate > 0
         ):
-            return float(candidate)
+            return _timeout_param_seconds(key, float(candidate))
         return default
 
     # Прежнее правило: параметр, которым поведение переопределяет таймер, зависит
@@ -141,8 +161,9 @@ _DOMAIN_RULE_NAMES: dict[str, tuple[str, ...]] = {
     ),
     # A7: диапазон уставки задан схемой шаблона (target_temp, 5–35), а не
     # манифестом. Второй набор setpoint_min/max не читался и только вводил
-    # в заблуждение.
-    "climate": (),
+    # в заблуждение. `manual_lockout_min` нужен состоянию OFF_MANUAL: срок
+    # уступки человеку совпадает со сроком ручной блокировки домена (B12).
+    "climate": ("manual_lockout_min",),
     "ventilation": ("manual_lockout_min", "airing_entity", "exhaust_entity"),
 }
 
@@ -357,6 +378,7 @@ class FsmFactoryLoadingMixin:
             guard=guard_fn,
             action=action_fn,
             timeout_sec=_timeout_from_params(yaml_transition, params, timeout_params_declared),
+            extends_timeout=yaml_transition.extends_timeout,
         )
 
     def _yaml_to_fsm_definition(

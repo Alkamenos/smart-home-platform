@@ -159,6 +159,8 @@ templates:
       temperature_changed: sensor
       timeout: engine
       humidity_changed: sensor
+      manual_switch_off: platform
+      manual_switch_on: platform
     unproduced_triggers: []
     gaps:
       - Условие «греть» составное (may_heat), потому что движок допускает на переход ровно одно имя guard'а: перечислить проверки по отдельности шаблон не может, и менять это — значит менять структуру FSMDefinition (конституция I — только по явному согласованию).

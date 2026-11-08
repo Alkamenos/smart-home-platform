@@ -84,6 +84,10 @@ class Transition:
         reason: Optional human-readable reason for the transition.
         attributes: Optional dict of attributes to attach to the transition.
         manual_lockout_min: Optional lockout time in minutes for manual transitions.
+        extends_timeout: Whether a self-transition restarts the state timeout.
+            Default True preserves hold semantics (light motion, ventilation
+            re-check). False keeps the original deadline: the state timer is a
+            safety limit, not a hold (heater HEATING, B12).
     """
 
     from_state: str
@@ -96,6 +100,7 @@ class Transition:
     reason: str | None = None
     attributes: dict[str, Any] | None = None
     manual_lockout_min: float | None = None
+    extends_timeout: bool = True
 
 
 @dataclass(frozen=True)

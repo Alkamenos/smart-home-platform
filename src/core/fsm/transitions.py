@@ -651,17 +651,37 @@ class TransitionMixin:
         # выполненном переходе, а не на каждом событии. Отмена означает
         # «ожидание прежнего состояния больше не действует», и только
         # сменившееся состояние делает его недействующим.
-        await self._cancel_timers(entity_id, log)
+        #
+        # Исключение — само-переход с ``extends_timeout: false``. Такой переход
+        # не меняет состояние и не продлевает срок: таймер страховки должен
+        # сработать в момент, отсчитанный от входа в состояние, а не от
+        # последнего показания датчика (B12: иначе обогреватель не выключался
+        # по своему сроку никогда). Поэтому прежний таймер остаётся взведённым,
+        # а время входа и сохранённая метка не сдвигаются.
+        keeps_deadline = (
+            transition.from_state == transition.to_state and not transition.extends_timeout
+        )
+        if not keeps_deadline:
+            await self._cancel_timers(entity_id, log)
 
         # Create new state
-        new_state = State(current_state=transition.to_state, entered_at=now, context=new_context)
+        entered_at = current_state.entered_at if keeps_deadline else now
+        new_state = State(
+            current_state=transition.to_state, entered_at=entered_at, context=new_context
+        )
 
         # Update state
         self._states[entity_id] = new_state
         self._last_transition_time[entity_id] = now
         self.note_transition(entity_id)
 
-        await self._persist_transition(entity_id, transition.to_state, new_context)
+        # Сохранённая метка входа тоже остаётся исходной: после перезапуска
+        # остаток таймера считается от неё, и само-переход не должен дарить
+        # состоянию новый срок.
+        persisted_at = (
+            time.time() - max(0.0, now - current_state.entered_at) if keeps_deadline else None
+        )
+        await self._persist_transition(entity_id, transition.to_state, new_context, persisted_at)
 
         log.info(
             f"Entity {entity_id}: Transition '{current_state.current_state}' -> '{transition.to_state}' "
@@ -678,12 +698,17 @@ class TransitionMixin:
             entity_id, event, current_state.current_state, transition.to_state, trace_id
         )
 
-        self._schedule_transition_timeout(
-            entity_id, definition, transition, new_context, trace_id, log
-        )
+        if not keeps_deadline:
+            self._schedule_transition_timeout(
+                entity_id, definition, transition, new_context, trace_id, log
+            )
 
     async def _persist_transition(
-        self, entity_id: str, to_state: str, new_context: dict[str, Any]
+        self,
+        entity_id: str,
+        to_state: str,
+        new_context: dict[str, Any],
+        wall_entered_at: float | None = None,
     ) -> None:
         """Сохранить состояние, если сохранение включено.
 
@@ -700,13 +725,17 @@ class TransitionMixin:
             entity_id: Идентификатор автомата.
             to_state: Новое состояние.
             new_context: Контекст нового состояния.
+            wall_entered_at: Настенное время входа, если оно не совпадает с
+                текущим моментом. Нужно само-переходам, которые не продлевают
+                срок состояния: иначе перезапуск подарил бы им новый срок.
 
         Returns:
             Ничего.
         """
         if self._persistence is None:
             return
-        wall_entered_at = time.time()
+        if wall_entered_at is None:
+            wall_entered_at = time.time()
         saver = getattr(self._persistence, "save_state_async", None)
         if saver is not None:
             await saver(entity_id, to_state, new_context, wall_entered_at)
