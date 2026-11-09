@@ -313,6 +313,59 @@ class TestSleepDoesNotRelight:
         )
 
 
+class TestManualOnIsRespected:
+    """Ручное включение не отменяется сверкой в тот же день.
+
+    Боевой случай 09.11: настольную лампу включали вручную в 10:08 и 10:14,
+    а сверка через 5–15 минут отправляла `sunrise_started`, и автомат гасил её.
+    Ручное решение должно жить свой срок (60 минут), а не до ближайшего прохода
+    сверки.
+    """
+
+    @pytest.mark.asyncio
+    async def test_manual_on_in_daylight_is_not_turned_off(self) -> None:
+        """Днём ручное включение остаётся, сверка молчит."""
+        engine, watcher, dispatcher = _build(daylight=True)
+        fsm = "light.girlianda_terassa_deco_light_10"
+
+        await engine.trigger(
+            fsm,
+            "manual_switch_on",
+            {"entity_id": GARLAND, "new_state": "on"},
+            respect_debounce=False,
+        )
+        assert engine.get_state(fsm).current_state == "ON_MANUAL"  # type: ignore[union-attr]
+        dispatcher.intents.clear()
+
+        await watcher.check_once()
+
+        assert "turn_off" not in [intent.service for intent in dispatcher.intents], (
+            f"сверка погасила свет сразу после ручного включения: {dispatcher.intents}"
+        )
+        assert engine.get_state(fsm).current_state == "ON_MANUAL"  # type: ignore[union-attr]
+
+    @pytest.mark.asyncio
+    async def test_manual_on_still_yields_to_sleep_at_night(self) -> None:
+        """Ночью «мы спим» по-прежнему сильнее ручного включения."""
+        engine, watcher, dispatcher = _build(daylight=False, sleeping=True)
+        fsm = "light.girlianda_terassa_deco_light_10"
+
+        await engine.trigger(
+            fsm,
+            "manual_switch_on",
+            {"entity_id": GARLAND, "new_state": "on"},
+            respect_debounce=False,
+        )
+        dispatcher.intents.clear()
+
+        await watcher.check_once()
+
+        assert "turn_off" in [intent.service for intent in dispatcher.intents], (
+            f"гирлянда горит при отбое после ручного включения: {dispatcher.intents}"
+        )
+        assert engine.get_state(fsm).current_state == "OFF"  # type: ignore[union-attr]
+
+
 class TestWatcherDescribe:
     """Описание сверки — для журнала и готовности."""
 
