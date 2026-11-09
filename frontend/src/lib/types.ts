@@ -70,6 +70,37 @@ export interface Alert {
     severity: string;
     detail: string;
     at: string | null;
+    level?: ProblemLevel;
+    first_seen?: string;
+}
+
+export type ProblemLevel = "info" | "warning" | "critical";
+
+export interface ProblemReason {
+    id: string;
+    kind: string;
+    detail: string;
+    level: ProblemLevel;
+    first_seen: string;
+    last_seen: string;
+}
+
+export interface Problem {
+    id: string;
+    subject: string | null;
+    name: string;
+    area: string;
+    level: ProblemLevel;
+    first_seen: string;
+    last_seen: string;
+    reasons: ProblemReason[];
+}
+
+export interface ProblemsSnapshot {
+    generated_at: string | null;
+    count: number;
+    levels: Record<ProblemLevel, number>;
+    problems: Problem[];
 }
 
 export interface Overview {
