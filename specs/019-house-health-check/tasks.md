@@ -28,10 +28,10 @@
 
 **Purpose**: модели, конфигурация и хранилище, общие для всех историй.
 
-- [ ] T001 [P] Добавить в `src/core/models/manifest_rules.py` поля `check_interval_minutes`, `stale_min_hours`, `battery_low_percent`, `battery_silent_hours`, `command_grace_minutes`, `notification_repeat_hours` в `SensorHealthRules` с валидацией: `battery_low_percent` 0–100, `stale_min_hours >= 1`, `battery_silent_hours >= 24`, `command_grace_minutes >= 1`, `notification_repeat_hours >= 1`; round-trip тест `tests/unit/webui/test_manifest_rules_roundtrip.py`
-- [ ] T002 [P] Создать `src/core/models/health.py`: enum `ProblemKind` (`stale`, `low_battery`, `battery_silent`, `unavailable`, `missing_entity`, `house_unreadable`, `command_not_applied`, `device_mismatch`, `fsm_stuck`, `ha_disconnected`), `ProblemLevel` (`info`, `warning`, `critical`), dataclass `HouseProblem` с полями из `data-model.md` и валидацией `first_seen <= last_seen`, `closed_at >= first_seen`
-- [ ] T003 [P] Создать `src/core/persistence/health_store.py`: атомарная запись `health_problems.json` (временный файл + `os.replace`), версия схемы, чтение с предупреждением при повреждении; тесты `tests/unit/core/test_health_store.py`
-- [ ] T004 [P] Создать `src/core/services/health_registry.py`: открытие/закрытие проблем, `last_seen`, группировка по `subject`, стабильный `fingerprint` (хэш отсортированных `(kind, subject, detail)`), хранение закрытых 30 дней; тесты `tests/unit/services/test_health_registry.py`
+- [X] T001 [P] Добавить в `src/core/models/manifest_rules.py` поля `check_interval_minutes`, `stale_min_hours`, `battery_low_percent`, `battery_silent_hours`, `command_grace_minutes`, `notification_repeat_hours` в `SensorHealthRules` с валидацией: `battery_low_percent` 0–100, `stale_min_hours >= 1`, `battery_silent_hours >= 24`, `command_grace_minutes >= 1`, `notification_repeat_hours >= 1`; round-trip тест `tests/unit/webui/test_manifest_rules_roundtrip.py`
+- [X] T002 [P] Создать `src/core/models/health.py`: enum `ProblemKind` (`stale`, `low_battery`, `battery_silent`, `unavailable`, `missing_entity`, `house_unreadable`, `command_not_applied`, `device_mismatch`, `fsm_stuck`, `ha_disconnected`), `ProblemLevel` (`info`, `warning`, `critical`), dataclass `HouseProblem` с полями из `data-model.md` и валидацией `first_seen <= last_seen`, `closed_at >= first_seen`
+- [X] T003 [P] Создать `src/core/persistence/health_store.py`: атомарная запись `health_problems.json` (временный файл + `os.replace`), версия схемы, чтение с предупреждением при повреждении; тесты `tests/unit/core/test_health_store.py`
+- [X] T004 [P] Создать `src/core/services/health_registry.py`: открытие/закрытие проблем, `last_seen`, группировка по `subject`, стабильный `fingerprint` (хэш отсортированных `(kind, subject, detail)`), хранение закрытых 30 дней; тесты `tests/unit/services/test_health_registry.py`
 
 **Checkpoint**: модели и хранилище готовы, но обход ещё не использует их.
 
@@ -44,10 +44,10 @@
 
 **⚠️ CRITICAL**: без этого этапа истории не начинать.
 
-- [ ] T005 Подключить `HealthStore` и `HealthRegistry` в `src/app/house_services.py` и `src/app/container.py`: загрузка при сборке, передача в `HouseHealthService`, сохранение после каждого обхода; тест `tests/integration/test_health_registry_wiring.py`
-- [ ] T006 Расширить `compose_report` в `src/core/services/problems.py`: принимать реестр и отдавать `count`, `levels`, `problems` с `id`, `first_seen`, `last_seen`, `reasons`; старый плоский список сохранить; тесты `tests/unit/services/test_problems_compose.py`
-- [ ] T007 Перевести `HouseHealthService.sweep()` в `src/core/services/house_health.py` на реестр: открывать проблемы, обновлять `last_seen`, закрывать исчезнувшие с `close_reason = recovered`; поведение старых видов проблем не менять; тесты `tests/unit/services/test_house_health_registry.py`
-- [ ] T008 [P] Добавить конфигурационные значения из `T001` в загрузку `HouseHealthService` (интервал, порог, батарейки, команды, уведомления) с fallback на текущие константы; тест `tests/unit/services/test_health_config.py`
+- [X] T005 Подключить `HealthStore` и `HealthRegistry` в `src/app/house_services.py` и `src/app/container.py`: загрузка при сборке, передача в `HouseHealthService`, сохранение после каждого обхода; тест `tests/integration/test_health_registry_wiring.py`
+- [X] T006 Расширить `compose_report` в `src/core/services/problems.py`: принимать реестр и отдавать `count`, `levels`, `problems` с `id`, `first_seen`, `last_seen`, `reasons`; старый плоский список сохранить; тесты `tests/unit/services/test_problems_compose.py`
+- [X] T007 Перевести `HouseHealthService.sweep()` в `src/core/services/house_health.py` на реестр: открывать проблемы, обновлять `last_seen`, закрывать исчезнувшие с `close_reason = recovered`; поведение старых видов проблем не менять; тесты `tests/unit/services/test_house_health_registry.py`
+- [X] T008 [P] Добавить конфигурационные значения из `T001` в загрузку `HouseHealthService` (интервал, порог, батарейки, команды, уведомления) с fallback на текущие константы; тест `tests/unit/services/test_health_config.py`
 
 **Checkpoint**: обход по-прежнему работает, но проблемы уже имеют историю и уровни.
 
@@ -63,18 +63,18 @@
 
 ### Tests for User Story 1
 
-- [ ] T009 [P] [US1] Контрактный тест `GET /api/v1/problems` в `tests/contract/test_health_api.py`: поля `generated_at`, `count`, `levels`, `problems[]`, сортировка `critical → warning → info`
-- [ ] T010 [P] [US1] Интеграционный тест единого списка в `tests/integration/test_health_problems_api.py`: обход + сторож + неприменённая команда сводятся в один ответ без дублей по `subject`
+- [X] T009 [P] [US1] Контрактный тест `GET /api/v1/problems` в `tests/contract/test_health_api.py`: поля `generated_at`, `count`, `levels`, `problems[]`, сортировка `critical → warning → info`
+- [X] T010 [P] [US1] Интеграционный тест единого списка в `tests/integration/test_health_problems_api.py`: обход + сторож + неприменённая команда сводятся в один ответ без дублей по `subject`
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Добавить `GET /api/v1/problems` в `src/webui/routes/health.py`, собирающий `compose_report` из обхода и сторожа; ошибка дома — не 500, а `ha_disconnected` в списке
-- [ ] T012 [US1] Расширить `GET /api/v1/health` в `src/webui/routes/health.py` полями `count`, `levels`, `problems` (совместимо со старым ответом)
-- [ ] T013 [P] [US1] Добавить типы `Problem`, `ProblemLevel`, `ProblemReason` в `frontend/src/lib/types.ts`
-- [ ] T014 [US1] Создать страницу `frontend/src/app/problems/page.tsx`: список проблем, фильтры по уровню и месту, пустое состояние «проблем нет», ссылка на комнату/локацию
-- [ ] T015 [US1] Расширить `frontend/src/features/home/alerts-panel.tsx`: уровень, причина, `first_seen`, ссылка на `/problems`
-- [ ] T016 [P] [US1] Vitest-тесты страницы и панели в `frontend/src/features/home/__tests__/` и `frontend/src/app/problems/__tests__/`
-- [ ] T017 [US1] Добавить журналирование открытия/закрытия проблем в `src/core/services/health_registry.py` (WARNING/INFO, причина и `subject`)
+- [X] T011 [US1] Добавить `GET /api/v1/problems` в `src/webui/routes/health.py`, собирающий `compose_report` из обхода и сторожа; ошибка дома — не 500, а `ha_disconnected` в списке
+- [X] T012 [US1] Расширить `GET /api/v1/health` в `src/webui/routes/health.py` полями `count`, `levels`, `problems` (совместимо со старым ответом)
+- [X] T013 [P] [US1] Добавить типы `Problem`, `ProblemLevel`, `ProblemReason` в `frontend/src/lib/types.ts`
+- [X] T014 [US1] Создать страницу `frontend/src/app/problems/page.tsx`: список проблем, фильтры по уровню и месту, пустое состояние «проблем нет», ссылка на комнату/локацию
+- [X] T015 [US1] Расширить `frontend/src/features/home/alerts-panel.tsx`: уровень, причина, `first_seen`, ссылка на `/problems`
+- [X] T016 [P] [US1] Vitest-тесты страницы и панели в `frontend/src/features/home/__tests__/` и `frontend/src/app/problems/__tests__/`
+- [X] T017 [US1] Добавить журналирование открытия/закрытия проблем в `src/core/services/health_registry.py` (WARNING/INFO, причина и `subject`)
 
 **Checkpoint**: MVP — единый список и API работают, даже если новые пороги ещё не включены.
 
