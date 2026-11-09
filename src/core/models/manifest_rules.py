@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator
 
@@ -203,6 +203,32 @@ class SensorHealthRules(StrictModel):
     для датчиков вне манифеста — например, уличного датчика на террасе: он не
     участвует в автоматике, но его батарейку всё равно надо менять, а узнать
     заранее можно только отсюда."""
+
+    check_interval_minutes: Annotated[float, Field(ge=1)] = 15.0
+    """Как часто обходить дом, минут.
+
+    Пятнадцать минут — компромисс: пропавший датчик заметен быстро, а нагрузка
+    на Home Assistant остаётся незаметной. Значение можно изменить в манифесте.
+    """
+
+    stale_min_hours: Annotated[float, Field(ge=1)] = 2.0
+    """Минимальный порог молчания датчика, часов.
+
+    Порог считается как ``max(2 × обычный интервал, это значение)``: датчик,
+    который шлёт показания часто, не должен объявляться молчащим через минуту.
+    """
+
+    battery_low_percent: Annotated[float, Field(ge=0, le=100)] = 20.0
+    """Ниже этого заряда батарейка считается на исходе, %."""
+
+    battery_silent_hours: Annotated[float, Field(ge=24)] = 48.0
+    """Сколько часов без отчёта о заряде считать молчанием батарейки."""
+
+    command_grace_minutes: Annotated[float, Field(ge=1)] = 5.0
+    """Сколько минут ждать применения команды прибором, прежде чем сообщить."""
+
+    notification_repeat_hours: Annotated[float, Field(ge=1)] = 24.0
+    """Не чаще одного обновления persistent-уведомления при неизменном составе."""
 
 
 class AutomationClimateRules(AutomationDomainRules):

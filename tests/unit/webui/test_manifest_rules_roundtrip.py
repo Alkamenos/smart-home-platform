@@ -42,6 +42,12 @@ MANIFEST = {
         },
         "sensor_health": {
             "battery_watch_entities": ["sensor.battery"],
+            "check_interval_minutes": 15,
+            "stale_min_hours": 2,
+            "battery_low_percent": 20,
+            "battery_silent_hours": 48,
+            "command_grace_minutes": 5,
+            "notification_repeat_hours": 24,
         },
         "lighting": {
             "quiet_from": "23:00",
@@ -108,6 +114,12 @@ def test_house_rules_should_survive_roundtrip() -> None:
     assert rules["schedule"]["night_off_at"] == "23:00"
     assert rules["schedule"]["morning_at"] == "07:00"
     assert rules["sensor_health"]["battery_watch_entities"] == ["sensor.battery"]
+    assert rules["sensor_health"]["check_interval_minutes"] == 15
+    assert rules["sensor_health"]["stale_min_hours"] == 2
+    assert rules["sensor_health"]["battery_low_percent"] == 20
+    assert rules["sensor_health"]["battery_silent_hours"] == 48
+    assert rules["sensor_health"]["command_grace_minutes"] == 5
+    assert rules["sensor_health"]["notification_repeat_hours"] == 24
     assert "night_off_at" not in rules["lighting"]
     assert "morning_at" not in rules["lighting"]
     assert "sleep_modifier" not in rules["lighting"]
