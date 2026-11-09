@@ -17,8 +17,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from typing import Any
+
+from core.models.health import ProblemLevel, level_for_kind
 
 
 #: Зависание автомата: состояние держится дольше ожидаемого.
@@ -146,12 +149,29 @@ def watchdog_problems(
     return problems
 
 
+def levels_for(problems: list[dict[str, Any]] | None) -> dict[str, int]:
+    """Число проблем по уровням важности.
+
+    Args:
+        problems: Плоский список проблем.
+
+    Returns:
+        Словарь ``info``/``warning``/``critical`` с числами.
+    """
+    levels = {level.value: 0 for level in ProblemLevel}
+    for problem in problems or []:
+        level = str(problem.get("level") or level_for_kind(str(problem.get("kind") or "")))
+        levels[level] = levels.get(level, 0) + 1
+    return levels
+
+
 def compose_report(
     health_report: dict[str, Any] | None,
     snapshot: Any,
     *,
     device_names: dict[str, str] | None = None,
     areas: dict[str, tuple[str, str]] | None = None,
+    registry: Any | None = None,
 ) -> dict[str, Any]:
     """Свести проблемы дома и проблем автоматов в один снимок.
 
@@ -160,17 +180,29 @@ def compose_report(
         snapshot: Последний снимок сторожа либо None.
         device_names: Прибор → человеческое имя.
         areas: Прибор → (вид места, имя места).
+        registry: Реестр проблем; если задан, снимок попадает в историю.
 
     Returns:
-        Снимок: ``generated_at``, ``sensor_count``, ``count`` и ``problems``.
+        Снимок: ``generated_at``, ``sensor_count``, ``count``, ``levels`` и
+        ``problems``.
     """
     health = health_report or {}
     problems = list(health.get("problems") or [])
     problems += watchdog_problems(snapshot, device_names=device_names, areas=areas)
+    generated_at = health.get("generated_at") or getattr(snapshot, "taken_at", None)
+    if registry is not None and generated_at:
+        with contextlib.suppress(Exception):
+            registry.observe_report(
+                problems,
+                str(generated_at),
+                close_missing=bool(health.get("generated_at"))
+                and bool(health.get("readable", True)),
+            )
     return {
-        "generated_at": health.get("generated_at") or getattr(snapshot, "taken_at", None),
+        "generated_at": generated_at,
         "sensor_count": health.get("sensor_count", 0),
         "count": len(problems),
+        "levels": levels_for(problems),
         "problems": problems,
     }
 

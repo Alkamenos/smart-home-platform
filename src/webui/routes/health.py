@@ -19,6 +19,8 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from core.services.problems import levels_for
+
 
 router = APIRouter(tags=["health"])
 
@@ -62,13 +64,33 @@ async def health(request: Request) -> JSONResponse:
         JSON с проблемами и числом датчиков в обходе.
     """
     report = await _report(request)
+    problems = report.get("problems", [])
     return JSONResponse(
         {
             "generated_at": report.get("generated_at"),
             "sensor_count": report.get("sensor_count", 0),
-            "problems": report.get("problems", []),
+            "count": len(problems),
+            "levels": levels_for(problems),
+            "problems": problems,
         }
     )
+
+
+@router.get("/api/v1/problems", response_model=dict[str, Any])
+async def problems(request: Request) -> JSONResponse:
+    """Единый список проблем: обход дома, сторож и неприменённые команды.
+
+    Args:
+        request: Входящий HTTP-запрос.
+
+    Returns:
+        JSON с ``generated_at``, ``count``, ``levels`` и группами проблем.
+    """
+    container = getattr(request.app.state, "container", None)
+    snapshot = getattr(container, "problems_snapshot", None)
+    if not callable(snapshot):
+        return JSONResponse({"generated_at": None, "count": 0, "levels": {}, "problems": []})
+    return JSONResponse(snapshot())
 
 
 @router.get("/api/v1/observation", response_model=dict[str, Any])

@@ -56,6 +56,7 @@ class ContainerHouseMixin:
     _ventilation_watchdog: Any
     _light_color_temperature: Any
     _house_health: Any
+    _problem_registry: Any
     _helper_cleanup: Any
     _location_state: Any
     _location_prime_task: Any
@@ -69,6 +70,24 @@ class ContainerHouseMixin:
     _sensor_health: Any
 
     @property
+    def problem_registry(self) -> Any:
+        """Реестр проблем дома: first_seen, закрытые и уведомления.
+
+        Создаётся один раз и переживает перезапуск: файл
+        ``health_problems.json`` в DATA_PATH. Пустой файл — нормальный первый
+        запуск.
+
+        Returns:
+            Реестр проблем.
+        """
+        if self._problem_registry is None:
+            from core.persistence.health_store import HealthStore
+            from core.services.health_registry import HealthRegistry
+
+            self._problem_registry = HealthRegistry(HealthStore())
+        return self._problem_registry
+
+    @property
     def house_health(self) -> Any:
         """Обход дома: проблемы и реестр показаний (BACKLOG F6).
 
@@ -79,12 +98,33 @@ class ContainerHouseMixin:
             Служба обхода.
         """
         if self._house_health is None:
-            from core.services.house_health import HouseHealthService
+            from core.services.house_health import (
+                DEFAULT_LOW_BATTERY_PERCENT,
+                DEFAULT_STALE_AFTER_SEC,
+                HouseHealthService,
+            )
 
+            rules = getattr(self.manifest.automation_rules, "sensor_health", None)
+            stale_hours = getattr(rules, "stale_min_hours", None)
+            stale_after = (
+                float(stale_hours) * 3600.0
+                if isinstance(stale_hours, (int, float))
+                else DEFAULT_STALE_AFTER_SEC
+            )
+            low_battery = getattr(rules, "battery_low_percent", None)
+            interval = getattr(rules, "check_interval_minutes", None)
             self._house_health = HouseHealthService(
                 adapter=self.adapter,
                 areas=self._health_areas(),
                 battery_types=dict(getattr(self.manifest, "battery_types", {}) or {}),
+                stale_after_sec=stale_after,
+                low_battery_percent=(
+                    float(low_battery)
+                    if isinstance(low_battery, (int, float))
+                    else DEFAULT_LOW_BATTERY_PERCENT
+                ),
+                interval_minutes=(float(interval) if isinstance(interval, (int, float)) else 30.0),
+                registry=self.problem_registry,
                 on_report=self._platform_problems_publisher(),
             )
             if self._house_health.start():
@@ -359,12 +399,35 @@ class ContainerHouseMixin:
             getattr(self._watchdog, "last_snapshot", None),
             device_names=self._device_names(),
             areas=self._health_areas(),
+            registry=self.problem_registry,
         )
         signature = (report.get("count"), tuple(report.get("problems") or []))
         if signature == self._problems_signature:
             return
         self._problems_signature = signature
         await mirror.publish_report(report)
+
+    def problems_snapshot(self) -> dict[str, Any]:
+        """Единый снимок проблем для API и страницы.
+
+        Обход и сторож сводятся в один список, реестр дополняет его историей:
+        ``first_seen``, уровни и причины одной сущности в одной группе.
+
+        Returns:
+            Снимок с ``generated_at``, ``count``, ``levels`` и ``problems``.
+        """
+        from core.services.problems import compose_report
+
+        report = compose_report(
+            getattr(self._house_health, "last_report", None),
+            getattr(self._watchdog, "last_snapshot", None),
+            device_names=self._device_names(),
+            areas=self._health_areas(),
+            registry=self.problem_registry,
+        )
+        snapshot = self.problem_registry.snapshot()
+        snapshot["generated_at"] = report.get("generated_at")
+        return snapshot
 
     def _start_problems_watch(self) -> None:
         """Следить за проблемами автоматов и обновлять карточку тревог (B79).

@@ -110,6 +110,8 @@ class Container(ContainerLifecycleMixin, ContainerHouseMixin):
         self._light_color_temperature: Any | None = None
         #: Обход дома (BACKLOG F6): проблемы и реестр показаний.
         self._house_health: Any | None = None
+        #: Реестр проблем: first_seen, закрытые и состояние уведомления.
+        self._problem_registry: Any | None = None
         #: Чистка мусора во вспомогательных элементах (BACKLOG B77).
         self._helper_cleanup: Any | None = None
         # Наблюдение за локациями (спека 016): снимки и история.

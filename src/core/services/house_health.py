@@ -136,6 +136,8 @@ class HouseHealthService:
         on_report: Кому отдать снимок обхода (зеркало проблем в Home Assistant).
             Отказ подписчика не отменяет обход: публикация в MQTT — доставка, а
             не условие работы.
+        registry: Реестр проблем: сохраняет историю и first_seen. Необязателен,
+            чтобы старые тесты и локальный запуск без файла работали.
     """
 
     def __init__(
@@ -148,6 +150,7 @@ class HouseHealthService:
         interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
         clock: Any | None = None,
         on_report: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        registry: Any | None = None,
     ) -> None:
         self._adapter = adapter
         self.areas = dict(areas or {})
@@ -159,6 +162,7 @@ class HouseHealthService:
         self._task: asyncio.Task[None] | None = None
         self._report: dict[str, Any] | None = None
         self._on_report = on_report
+        self._registry = registry
 
     @property
     def last_report(self) -> dict[str, Any] | None:
@@ -260,7 +264,18 @@ class HouseHealthService:
             "problems": problems,
             "areas": areas,
             "sensor_count": sum(len(items) for items in areas.values()),
+            "readable": bool(states),
         }
+        if self._registry is not None:
+            try:
+                self._registry.observe_report(
+                    problems,
+                    now.isoformat(),
+                    source="health",
+                    close_missing=bool(states),
+                )
+            except Exception as exc:  # noqa: BLE001 — история не отменяет обход
+                logger.warning(f"Обход дома: реестр проблем не обновлён: {exc}")
         await self._notify(self._report)
         return self._report
 
