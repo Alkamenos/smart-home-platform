@@ -206,6 +206,15 @@ class DecorativeLightWatcher:
         # каждые 15 минут видит «темно, а света нет» и зажигает гирлянду снова.
         if state.current_state.upper() == "OFF_MANUAL":
             return None
+        # Человек включил свет вручную днём — это тоже решение, и сверка не
+        # должна гасить его ближайшим `sunrise_started`. Боевой случай 09.11:
+        # настольную лампу включали в 10:08 и 10:14, а сверка через 5–15 минут
+        # снова отправляла `sunrise_started`, и автомат гасил её. Срок ручного
+        # включения (60 минут) истекает сам и возвращает автоматику.
+        # Ночью уступка остаётся: «мы спим» по-прежнему сильнее ручного
+        # включения, если свет гаснет по отбою (`off_by: sleep`).
+        if state.current_state.upper() == "ON_MANUAL" and daylight:
+            return None
         is_on = state.current_state.upper().startswith("ON")
         if daylight:
             return "sunrise_started" if is_on else None
