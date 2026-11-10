@@ -78,6 +78,25 @@ async def test_applied_command_is_not_a_problem() -> None:
 
 
 @pytest.mark.asyncio
+async def test_unapplied_command_stays_for_next_report() -> None:
+    """Проблема не закрывается через минуту: ожидание живёт до смены состояния."""
+    tracker = _tracker()
+    tracker.record("light.probe", "light", "turn_on")
+    service = _service(_Adapter("off"), tracker)
+
+    first = await service.sweep()
+    second = await service.sweep()
+
+    assert [p["kind"] for p in first["problems"]] == ["command_not_applied"]
+    assert [p["kind"] for p in second["problems"]] == ["command_not_applied"]
+    assert len(tracker.pending(NOW.timestamp())) == 1
+
+    applied = await _service(_Adapter("on"), tracker).sweep()
+    assert applied["problems"] == []
+    assert tracker.pending(NOW.timestamp()) == ()
+
+
+@pytest.mark.asyncio
 async def test_external_change_after_applied_is_not_problem() -> None:
     """Команда сработала, а потом прибор выключили снаружи — это не отказ."""
     tracker = _tracker()
