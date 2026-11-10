@@ -187,11 +187,11 @@
 
 **Purpose**: документация, приёмка, качество.
 
-- [ ] T047 [P] Обновить `.ai/01_PROJECT_STATE.md` (логика порогов, уведомления, команды), `.ai/02_ARCHITECTURE.md` (реестр проблем и трекер ожиданий), `.ai/BACKLOG.md` (F6 закрыт)
-- [ ] T048 [P] Обновить `docs/` и `README` разделами о `/api/v1/problems` и уведомлении
+- [X] T047 [P] Обновить `.ai/01_PROJECT_STATE.md` (логика порогов, уведомления, команды), `.ai/02_ARCHITECTURE.md` (реестр проблем и трекер ожиданий), `.ai/BACKLOG.md` (F6 закрыт)
+- [X] T048 [P] Обновить `docs/` и `README` разделами о `/api/v1/problems` и уведомлении
 - [ ] T049 Прогнать `specs/019-house-health-check/quickstart.md` на тестовом стенде: молчащий датчик, батарейка, команда, антиспам, перезапуск, недоступный HA
-- [ ] T050 Полный прогон `make test`, `make lint`, `make type-check`, `make check-architecture` по `pyproject.toml`; покрытие новых файлов ≥80 %
-- [ ] T051 Пересобрать образ `deploy/docker/docker-compose.prod.yml`, выкатить, проверить `/ready`, `/api/v1/problems`, уведомление в HA, `problem_count`
+- [X] T050 Полный прогон `make test`, `make lint`, `make type-check`, `make check-architecture` по `pyproject.toml`; покрытие новых файлов ≥80 %
+- [X] T051 Пересобрать образ `deploy/docker/docker-compose.prod.yml`, выкатить, проверить `/ready`, `/api/v1/problems`, уведомление в HA, `problem_count`
 - [ ] T052 Живая проверка по `specs/019-house-health-check/quickstart.md`: один реальный молчащий/недоступный датчик и одна батарейка; убедиться, что проблема появилась и снялась, уведомление не спамит
 
 ---

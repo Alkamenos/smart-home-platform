@@ -108,6 +108,7 @@ flowchart TB
 - **Middleware System**: Global rules applied to all commands automatically
 - **Migrations**: Automatic manifest updates for backward compatibility
 - **FSM Visualization**: Export FSM diagrams in Mermaid and Graphviz formats for documentation and debugging
+- **House Health Check**: Sensor silence with per-sensor expectations, battery/warnings, command-not-applied detection, `/api/v1/problems`, `/problems` page and one anti-spam persistent notification in Home Assistant
 
 ## 📚 Documentation
 
