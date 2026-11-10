@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from typing import Any
 
 from loguru import logger
@@ -115,6 +116,7 @@ class ContainerHouseMixin:
             )
             low_battery = getattr(rules, "battery_low_percent", None)
             battery_silent = getattr(rules, "battery_silent_hours", None)
+            command_grace = getattr(rules, "command_grace_minutes", None)
             interval = getattr(rules, "check_interval_minutes", None)
             self._house_health = HouseHealthService(
                 adapter=self.adapter,
@@ -135,6 +137,10 @@ class ContainerHouseMixin:
                 stale_min_hours=stale_min_hours,
                 battery_silent_hours=(
                     float(battery_silent) if isinstance(battery_silent, (int, float)) else 48.0
+                ),
+                command_expectations=self.command_expectations,
+                command_grace_minutes=(
+                    float(command_grace) if isinstance(command_grace, (int, float)) else 5.0
                 ),
                 on_report=self._platform_problems_publisher(),
             )
@@ -389,6 +395,60 @@ class ContainerHouseMixin:
                 names[str(device.id)] = str(device.name or device.id)
         return names
 
+    async def _command_problems(self) -> list[dict[str, Any]]:
+        """Проверить ожидания команд по фактическому состоянию приборов.
+
+        Обход дома идёт раз в 15 минут, а команда должна быть замечена
+        неприменённой за минуты. Здесь читаются только те приборы, по которым
+        есть ожидание, — это дешевле полного обхода.
+
+        Returns:
+            Список проблем ``command_not_applied``.
+        """
+        tracker = self.command_expectations
+        now = time.time()
+        pending = tracker.pending(now)
+        if not pending:
+            return []
+        reader = getattr(self.adapter, "get_entity_state", None)
+        if not callable(reader):
+            return []
+        names = self._device_names()
+        places = self._health_areas()
+        rules = getattr(self.manifest.automation_rules, "sensor_health", None)
+        raw_grace = getattr(rules, "command_grace_minutes", 5.0)
+        grace = float(raw_grace) if isinstance(raw_grace, (int, float)) else 5.0
+        problems: list[dict[str, Any]] = []
+        for expectation in pending:
+            if expectation.age_sec(now) < grace * 60.0:
+                continue
+            try:
+                actual = await reader(expectation.device_id)
+            except Exception:  # noqa: BLE001 — чтение прибора не роняет сводку
+                actual = None
+            if actual is None:
+                tracker.clear(expectation.device_id)
+                continue
+            if tracker.is_applied(expectation, actual):
+                tracker.clear(expectation.device_id)
+                continue
+            if tracker.is_transitional(actual):
+                if str(actual).lower() in ("unavailable", "unknown"):
+                    tracker.clear(expectation.device_id)
+                continue
+            area = (places.get(expectation.device_id) or ("", ""))[1]
+            problems.append(
+                tracker.problem(
+                    expectation,
+                    actual=actual,
+                    area=area,
+                    name=names.get(expectation.device_id, expectation.device_id),
+                    now=now,
+                )
+            )
+            tracker.clear(expectation.device_id)
+        return problems
+
     async def _publish_problems(self) -> None:
         """Опубликовать сводку проблем, если она изменилась.
 
@@ -411,6 +471,7 @@ class ContainerHouseMixin:
             device_names=self._device_names(),
             areas=self._health_areas(),
             registry=self.problem_registry,
+            extra_problems=await self._command_problems(),
         )
         signature = (report.get("count"), tuple(report.get("problems") or []))
         if signature == self._problems_signature:

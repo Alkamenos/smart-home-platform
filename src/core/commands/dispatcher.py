@@ -211,6 +211,7 @@ class CommandDispatcher:
         ha_adapter: HAAdapterProtocol,
         middlewares: list[MiddlewareProtocol] | None = None,
         cleanup_interval: float = 300.0,
+        expectations: Any | None = None,
     ) -> None:
         """
         Initialize CommandDispatcher.
@@ -219,6 +220,8 @@ class CommandDispatcher:
             ha_adapter: HAAdapter instance for calling Home Assistant services.
             middlewares: Optional list of middleware instances to process intents.
             cleanup_interval: Seconds between background TTL cleanup passes.
+            expectations: Трекер ожиданий применения команд; если задан,
+                запоминает, чего платформа ждёт от прибора после вызова.
         """
         self._active_intents: dict[str, CommandIntent] = {}
         self._ha_adapter = ha_adapter
@@ -226,6 +229,7 @@ class CommandDispatcher:
         self._cleanup_interval = cleanup_interval
         self._lock = asyncio.Lock()
         self._cleanup_task: asyncio.Task[None] | None = None
+        self._expectations = expectations
 
     @property
     def active_intents(self) -> dict[str, CommandIntent]:
@@ -369,6 +373,12 @@ class CommandDispatcher:
                 self.release(device_id, processed_intent.source)
                 return False
 
+            if self._expectations is not None:
+                self._expectations.record(
+                    device_id,
+                    processed_intent.domain,
+                    processed_intent.service,
+                )
             return True
         except Exception as e:
             logger.error(f"Error submitting CommandIntent: {e}")

@@ -101,6 +101,8 @@ class Container(ContainerLifecycleMixin, ContainerHouseMixin):
         self._event_router: EventRouter | None = None
         self._adapter: HAAdapter | MockAdapter | None = None
         self._dispatcher: CommandDispatcher | None = None
+        #: Ожидания применения команд: сверяет обход дома с фактом.
+        self._command_expectations: Any | None = None
         self._middleware: ManualLockoutMiddleware | None = None
         # Суточный цикл света создаётся при сборке по правилам манифеста.
         self._day_cycle: DayCycleService | None = None
@@ -231,6 +233,19 @@ class Container(ContainerLifecycleMixin, ContainerHouseMixin):
         bind_global_entities(self._adapter, self.manifest)
 
     @property
+    def command_expectations(self) -> Any:
+        """Трекер ожиданий применения команд.
+
+        Returns:
+            Трекер; создаётся один раз.
+        """
+        if self._command_expectations is None:
+            from core.commands.expectations import CommandExpectationTracker
+
+            self._command_expectations = CommandExpectationTracker()
+        return self._command_expectations
+
+    @property
     def dispatcher(self) -> CommandDispatcher:
         """Get or create CommandDispatcher instance (depends on adapter)."""
         if self._dispatcher is None:
@@ -238,7 +253,9 @@ class Container(ContainerLifecycleMixin, ContainerHouseMixin):
             # dispatcher результат вызова игнорирует (dispatcher.py:192), поэтому
             # расхождение безвредно. cast() ничего не меняет во время выполнения.
             self._dispatcher = CommandDispatcher(
-                ha_adapter=cast(HAAdapterProtocol, self.adapter), middlewares=[]
+                ha_adapter=cast(HAAdapterProtocol, self.adapter),
+                middlewares=[],
+                expectations=self.command_expectations,
             )
             # Add middleware if available
             self._dispatcher.add_middleware(self.middleware)

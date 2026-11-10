@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 from core.models.health import ProblemLevel, level_for_kind
@@ -40,6 +41,7 @@ PROBLEM_REASONS: dict[str, str] = {
     "stale": "молчит",
     "low_battery": "батарейка на исходе",
     "battery_silent": "батарейка молчит",
+    "command_not_applied": "команда не применена",
     "missing_entity": "нет в доме",
     "house_unreadable": "дом не прочитан",
     PROBLEM_FSM_STUCK: "автомат завис",
@@ -173,6 +175,7 @@ def compose_report(
     device_names: dict[str, str] | None = None,
     areas: dict[str, tuple[str, str]] | None = None,
     registry: Any | None = None,
+    extra_problems: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Свести проблемы дома и проблем автоматов в один снимок.
 
@@ -182,6 +185,8 @@ def compose_report(
         device_names: Прибор → человеческое имя.
         areas: Прибор → (вид места, имя места).
         registry: Реестр проблем; если задан, снимок попадает в историю.
+        extra_problems: Проблемы от других проверок (например, неприменённые
+            команды), уже в форме обхода.
 
     Returns:
         Снимок: ``generated_at``, ``sensor_count``, ``count``, ``levels`` и
@@ -190,7 +195,12 @@ def compose_report(
     health = health_report or {}
     problems = list(health.get("problems") or [])
     problems += watchdog_problems(snapshot, device_names=device_names, areas=areas)
-    generated_at = health.get("generated_at") or getattr(snapshot, "taken_at", None)
+    problems += list(extra_problems or [])
+    generated_at = (
+        health.get("generated_at")
+        or getattr(snapshot, "taken_at", None)
+        or datetime.now(UTC).isoformat()
+    )
     if registry is not None and generated_at:
         with contextlib.suppress(Exception):
             registry.observe_report(

@@ -144,6 +144,8 @@ class HouseHealthService:
         stale_min_hours: Минимальный порог молчания, часов.
         battery_silent_hours: Сколько часов без отчёта о заряде считать
             молчанием батарейки.
+        command_expectations: Трекер ожиданий применения команд.
+        command_grace_minutes: Сколько минут ждать применения команды.
     """
 
     def __init__(
@@ -160,6 +162,8 @@ class HouseHealthService:
         expectations: Any | None = None,
         stale_min_hours: float = 2.0,
         battery_silent_hours: float = 48.0,
+        command_expectations: Any | None = None,
+        command_grace_minutes: float = 5.0,
     ) -> None:
         self._adapter = adapter
         self.areas = dict(areas or {})
@@ -175,6 +179,8 @@ class HouseHealthService:
         self._expectations = expectations
         self._stale_min_sec = max(0.0, float(stale_min_hours) * 3600.0)
         self.battery_silent_hours = max(1.0, float(battery_silent_hours))
+        self._command_expectations = command_expectations
+        self._command_grace_minutes = max(0.0, float(command_grace_minutes))
 
     @property
     def last_report(self) -> dict[str, Any] | None:
@@ -258,6 +264,8 @@ class HouseHealthService:
             problem = self._problem(reading)
             if problem is not None:
                 problems.append(problem)
+        if states and self._command_expectations is not None:
+            problems.extend(self._command_problems(states, now))
         if states:
             # Сущности, которых дом не отдал. Только когда дом вообще отвечал:
             # иначе пустой ответ превращался бы в тревогу на каждую сущность
@@ -385,6 +393,64 @@ class HouseHealthService:
             ),
             "expectation_source": expectation.source if expectation is not None else None,
         }
+
+    def _command_problems(
+        self, states: list[dict[str, Any]], now: datetime
+    ) -> list[dict[str, Any]]:
+        """Проверить, применились ли отправленные команды.
+
+        Ожидание создаёт диспетчер в момент успешного вызова Home Assistant.
+        Здесь оно сверяется с фактическим состоянием прибора: совпало — команда
+        применена; прошло больше допуска, а состояние другое — проблема.
+        Переходные состояния (штора едет, прибор недоступен) не считаются
+        провалом: ждём дальше или отдаём эту причину другим проверкам.
+
+        Args:
+            states: Состояния сущностей из текущего обхода.
+            now: Время обхода.
+
+        Returns:
+            Список проблем ``command_not_applied``.
+        """
+        tracker = self._command_expectations
+        if tracker is None:
+            return []
+        by_entity: dict[str, Any] = {}
+        names: dict[str, str] = {}
+        for item in states:
+            entity_id = item.get("entity_id")
+            if not isinstance(entity_id, str):
+                continue
+            by_entity[entity_id] = item.get("state")
+            attributes = item.get("attributes") or {}
+            names[entity_id] = str(attributes.get("friendly_name") or entity_id)
+        problems: list[dict[str, Any]] = []
+        grace_sec = self._command_grace_minutes * 60.0
+        for expectation in tracker.pending(now.timestamp()):
+            if expectation.age_sec(now.timestamp()) < grace_sec:
+                continue
+            actual = by_entity.get(expectation.device_id)
+            if actual is None:
+                tracker.clear(expectation.device_id)
+                continue
+            if tracker.is_applied(expectation, actual):
+                tracker.clear(expectation.device_id)
+                continue
+            if tracker.is_transitional(actual):
+                if str(actual).lower() in ("unavailable", "unknown"):
+                    tracker.clear(expectation.device_id)
+                continue
+            area = self.areas.get(expectation.device_id, ("", ""))[1]
+            problem = tracker.problem(
+                expectation,
+                actual=actual,
+                area=area,
+                name=names.get(expectation.device_id, expectation.device_id),
+                now=now.timestamp(),
+            )
+            problems.append(problem)
+            tracker.clear(expectation.device_id)
+        return problems
 
     def _problem(self, reading: dict[str, Any]) -> dict[str, Any] | None:
         """Требует ли показание внимания.
