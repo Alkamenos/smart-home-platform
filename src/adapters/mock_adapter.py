@@ -278,6 +278,34 @@ class MockAdapter:
             result.append(call)
         return result
 
+    async def create_persistent_notification(
+        self, title: str, message: str, notification_id: str
+    ) -> bool:
+        """Заглушка уведомления: в mock-режиме Home Assistant нет.
+
+        Args:
+            title: Заголовок.
+            message: Текст.
+            notification_id: Идентификатор.
+
+        Returns:
+            True.
+        """
+        del title, message, notification_id
+        return True
+
+    async def dismiss_persistent_notification(self, notification_id: str) -> bool:
+        """Заглушка снятия уведомления.
+
+        Args:
+            notification_id: Идентификатор.
+
+        Returns:
+            True.
+        """
+        del notification_id
+        return True
+
     def count_service_calls(
         self,
         domain: str | None = None,

@@ -227,6 +227,46 @@ class CommandGatewayMixin:
             return False
         return True
 
+    async def create_persistent_notification(
+        self, title: str, message: str, notification_id: str
+    ) -> bool:
+        """Создать или обновить persistent-уведомление в Home Assistant.
+
+        Args:
+            title: Заголовок.
+            message: Текст.
+            notification_id: Идентификатор уведомления (обновляется по нему).
+
+        Returns:
+            True, если Home Assistant принял вызов.
+        """
+        return await self.call_service(
+            "persistent_notification",
+            "create",
+            "",
+            {
+                "title": title,
+                "message": message,
+                "notification_id": notification_id,
+            },
+        )
+
+    async def dismiss_persistent_notification(self, notification_id: str) -> bool:
+        """Снять persistent-уведомление.
+
+        Args:
+            notification_id: Идентификатор уведомления.
+
+        Returns:
+            True, если Home Assistant принял вызов.
+        """
+        return await self.call_service(
+            "persistent_notification",
+            "dismiss",
+            "",
+            {"notification_id": notification_id},
+        )
+
     async def _call_service_websocket(
         self,
         domain: str,

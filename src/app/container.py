@@ -28,6 +28,7 @@ from app.factories import (
     heater_timer_entities,
     heater_timer_pairs,
 )
+from app.health_services import ContainerHealthMixin
 from app.house_services import ContainerHouseMixin
 from app.lifecycle import ContainerLifecycleMixin
 from core.action_handlers import register_all_actions
@@ -54,7 +55,7 @@ if TYPE_CHECKING:
     from core.services.deco_light_watcher import DecorativeLightWatcher
 
 
-class Container(ContainerLifecycleMixin, ContainerHouseMixin):
+class Container(ContainerLifecycleMixin, ContainerHouseMixin, ContainerHealthMixin):
     """
     Lightweight Dependency Injection Container with lazy initialization.
 
@@ -114,6 +115,8 @@ class Container(ContainerLifecycleMixin, ContainerHouseMixin):
         self._house_health: Any | None = None
         #: Реестр проблем: first_seen, закрытые и состояние уведомления.
         self._problem_registry: Any | None = None
+        #: Persistent-уведомление Home Assistant о проблемах дома.
+        self._health_notifier: Any | None = None
         #: Чистка мусора во вспомогательных элементах (BACKLOG B77).
         self._helper_cleanup: Any | None = None
         # Наблюдение за локациями (спека 016): снимки и история.

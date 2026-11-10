@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import time
 from typing import Any
 
 from loguru import logger
@@ -58,6 +57,7 @@ class ContainerHouseMixin:
     _light_color_temperature: Any
     _house_health: Any
     _problem_registry: Any
+    _health_notifier: Any
     _helper_cleanup: Any
     _location_state: Any
     _location_prime_task: Any
@@ -395,60 +395,6 @@ class ContainerHouseMixin:
                 names[str(device.id)] = str(device.name or device.id)
         return names
 
-    async def _command_problems(self) -> list[dict[str, Any]]:
-        """Проверить ожидания команд по фактическому состоянию приборов.
-
-        Обход дома идёт раз в 15 минут, а команда должна быть замечена
-        неприменённой за минуты. Здесь читаются только те приборы, по которым
-        есть ожидание, — это дешевле полного обхода.
-
-        Returns:
-            Список проблем ``command_not_applied``.
-        """
-        tracker = self.command_expectations
-        now = time.time()
-        pending = tracker.pending(now)
-        if not pending:
-            return []
-        reader = getattr(self.adapter, "get_entity_state", None)
-        if not callable(reader):
-            return []
-        names = self._device_names()
-        places = self._health_areas()
-        rules = getattr(self.manifest.automation_rules, "sensor_health", None)
-        raw_grace = getattr(rules, "command_grace_minutes", 5.0)
-        grace = float(raw_grace) if isinstance(raw_grace, (int, float)) else 5.0
-        problems: list[dict[str, Any]] = []
-        for expectation in pending:
-            if expectation.age_sec(now) < grace * 60.0:
-                continue
-            try:
-                actual = await reader(expectation.device_id)
-            except Exception:  # noqa: BLE001 — чтение прибора не роняет сводку
-                actual = None
-            if actual is None:
-                tracker.clear(expectation.device_id)
-                continue
-            if tracker.is_applied(expectation, actual):
-                tracker.clear(expectation.device_id)
-                continue
-            if tracker.is_transitional(actual):
-                if str(actual).lower() in ("unavailable", "unknown"):
-                    tracker.clear(expectation.device_id)
-                continue
-            area = (places.get(expectation.device_id) or ("", ""))[1]
-            problems.append(
-                tracker.problem(
-                    expectation,
-                    actual=actual,
-                    area=area,
-                    name=names.get(expectation.device_id, expectation.device_id),
-                    now=now,
-                )
-            )
-            tracker.clear(expectation.device_id)
-        return problems
-
     async def _publish_problems(self) -> None:
         """Опубликовать сводку проблем, если она изменилась.
 
@@ -460,9 +406,6 @@ class ContainerHouseMixin:
         Returns:
             Ничего.
         """
-        mirror = self._platform_mirror
-        if mirror is None:
-            return
         from core.services.problems import compose_report
 
         report = compose_report(
@@ -473,6 +416,10 @@ class ContainerHouseMixin:
             registry=self.problem_registry,
             extra_problems=await self._command_problems(),
         )
+        await self.health_notifier.publish(report)
+        mirror = self._platform_mirror
+        if mirror is None:
+            return
         signature = (report.get("count"), tuple(report.get("problems") or []))
         if signature == self._problems_signature:
             return
