@@ -199,8 +199,8 @@ async def test_low_battery_is_a_problem() -> None:
 
 
 @pytest.mark.asyncio
-async def test_silent_battery_is_not_a_problem() -> None:
-    """Батарейка молчит сутками — это норма: у неё важен заряд, а не регулярность."""
+async def test_silent_battery_is_reported_as_battery_silent() -> None:
+    """Батарейка 89 часов без отчёта — отдельная проблема, не общий stale."""
     adapter = FakeAdapter(
         [
             _state(
@@ -216,8 +216,10 @@ async def test_silent_battery_is_not_a_problem() -> None:
 
     report = await _service(adapter, areas).sweep()
 
-    assert report["problems"] == []
-    assert report["areas"]["комната:Кабинет"][0]["stale"] is True, "молчание видно в реестре"
+    kinds = [problem["kind"] for problem in report["problems"]]
+    assert kinds == ["battery_silent"], kinds
+    assert "stale" not in kinds
+    assert report["areas"]["комната:Кабинет"][0]["stale"] is True, "показание всё равно старое"
 
 
 @pytest.mark.asyncio
