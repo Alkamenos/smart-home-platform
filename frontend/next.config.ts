@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
     output: "export",
     trailingSlash: true,
     images: { unoptimized: true },
+    experimental: {
+        agentUpgrade: "security",
+    },
     turbopack: {
         rules: {
             "*.css": {
