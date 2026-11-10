@@ -115,15 +115,15 @@
 
 ### Tests for User Story 3
 
-- [ ] T025 [P] [US3] Тест низкого заряда в `tests/unit/services/test_health_battery.py`: 15 % → `low_battery`, 20 % → нет (строгое `<`), 35 % → нет
-- [ ] T026 [P] [US3] Тест молчания батарейки: 47 часов → нет, 49 часов → `battery_silent`; батарейка не попадает в общий `stale`
-- [ ] T027 [P] [US3] Интеграционный тест суточной проверки в `tests/integration/test_health_battery_daily.py`: второй обход в те же сутки не дублирует проблему
+- [X] T025 [P] [US3] Тест низкого заряда в `tests/unit/services/test_health_battery.py`: 15 % → `low_battery`, 20 % → нет (строгое `<`), 35 % → нет
+- [X] T026 [P] [US3] Тест молчания батарейки: 47 часов → нет, 49 часов → `battery_silent`; батарейка не попадает в общий `stale`
+- [X] T027 [P] [US3] Интеграционный тест суточной проверки в `tests/integration/test_health_battery_daily.py`: второй обход в те же сутки не дублирует проблему
 
 ### Implementation for User Story 3
 
-- [ ] T028 [US3] Добавить вид `battery_silent` и текст причины в `src/core/services/problems.py`
-- [ ] T029 [US3] Реализовать суточную проверку батареек в `src/core/services/house_health.py`: `battery_low_percent`, `battery_silent_hours`, отметка последней проверки в реестре/состоянии
-- [ ] T030 [US3] Добавить `battery_watch_entities` и пороги из `SensorHealthRules` в обход через `src/app/house_services.py`; тест конфигурации `tests/unit/services/test_health_config.py`
+- [X] T028 [US3] Добавить вид `battery_silent` и текст причины в `src/core/services/problems.py`
+- [X] T029 [US3] Реализовать суточную проверку батареек в `src/core/services/house_health.py`: `battery_low_percent`, `battery_silent_hours`, отметка последней проверки в реестре/состоянии
+- [X] T030 [US3] Добавить `battery_watch_entities` и пороги из `SensorHealthRules` в обход через `src/app/house_services.py`; тест конфигурации `tests/unit/services/test_health_config.py`
 
 **Checkpoint**: батарейки видны, но не шумят каждые 15 минут.
 
