@@ -156,7 +156,7 @@ class TestCommandIsExecuted:
 
         call = ha_adapter.call_service.await_args
         assert call is not None
-        assert call.kwargs["transition"] == 5
+        assert call.kwargs["data"] == {"transition": 5}
 
 
 class TestCommandReportsRealOutcome:
