@@ -114,6 +114,30 @@ class CommandExpectationTracker:
         """
         self._pending.pop(device_id, None)
 
+    def observe_state(self, device_id: str, old_state: str, new_state: str) -> None:
+        """Снять ожидание, если прибор уже показал нужное состояние.
+
+        Ожидание снимается и когда прибор **дошёл** до нужного состояния, и
+        когда он **ушёл** из него. Второй случай важен из-за гонки: событие
+        смены состояния может прийти раньше, чем диспетчер запишет ожидание.
+        Если прибор был в нужном состоянии и потом изменился, команда
+        применилась, а текущее расхождение — уже другое событие (например,
+        человек выключил свет), и это не «команда не применена».
+
+        Args:
+            device_id: Прибор.
+            old_state: Состояние до события.
+            new_state: Состояние после события.
+
+        Returns:
+            Ничего.
+        """
+        expectation = self._pending.get(device_id)
+        if expectation is None:
+            return
+        if self.is_applied(expectation, new_state) or self.is_applied(expectation, old_state):
+            self._pending.pop(device_id, None)
+
     def pending(self, now: float | None = None) -> tuple[CommandExpectation, ...]:
         """Ожидания, которые ещё имеют смысл.
 

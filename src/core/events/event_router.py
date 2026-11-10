@@ -9,6 +9,7 @@ Same sensor entity can trigger events in multiple rooms.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from loguru import logger
@@ -134,9 +135,18 @@ class EventRouter:
         "vehicle": ["vehicle_detected", "vehicle_cleared"],
     }
 
-    def __init__(self, manifest: Manifest, engine: FSMEngine) -> None:
+    def __init__(
+        self,
+        manifest: Manifest,
+        engine: FSMEngine,
+        on_state_change: Callable[[str, str, str], None] | None = None,
+    ) -> None:
         self._manifest = manifest
         self._engine = engine
+        #: Наблюдатель каждого события состояния: нужен проверке «команда
+        #: применилась?». Получает сущность, старое и новое состояние, в том
+        #: числе для сущностей без автоматов.
+        self._on_state_change = on_state_change
         self._sensor_to_fsms: dict[str, list[tuple[str, str]]] = {}
         #: Приборы вентиляции и их автоматы: изменение состояния прибора —
         #: такой же повод пересмотреть решение, как показание датчика.
@@ -326,6 +336,12 @@ class EventRouter:
         """Route a state change event to all registered FSMs."""
         if context is None:
             context = {}
+
+        if self._on_state_change is not None:
+            try:
+                self._on_state_change(entity_id, old_state, new_state)
+            except Exception:  # noqa: BLE001 — наблюдатель не должен ломать маршрутизацию
+                logger.exception(f"State observer failed for {entity_id}")
 
         mappings = self._sensor_to_fsms.get(entity_id, [])
         if not mappings:

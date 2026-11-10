@@ -47,6 +47,23 @@ class ContainerHealthMixin:
     command_expectations: Any
     problem_registry: Any
 
+    def _observe_entity_state_change(self, entity_id: str, old_state: str, new_state: str) -> None:
+        """Снять ожидание команды, если прибор уже показал нужное состояние.
+
+        Событие приходит на каждое изменение в Home Assistant, в том числе для
+        приборов без автоматов. Это закрывает ложное «команда не применена»,
+        когда команда сработала, а потом прибор изменили снаружи.
+
+        Args:
+            entity_id: Сущность Home Assistant.
+            old_state: Состояние до события.
+            new_state: Состояние после события.
+
+        Returns:
+            Ничего.
+        """
+        self.command_expectations.observe_state(entity_id, old_state, new_state)
+
     if TYPE_CHECKING:
 
         def _device_names(self) -> dict[str, str]:

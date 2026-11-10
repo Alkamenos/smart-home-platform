@@ -196,7 +196,11 @@ class Container(ContainerLifecycleMixin, ContainerHouseMixin, ContainerHealthMix
     def event_router(self) -> EventRouter:
         """Get or create EventRouter instance (depends on manifest and fsm)."""
         if self._event_router is None:
-            self._event_router = EventRouter(manifest=self.manifest, engine=self.fsm)
+            self._event_router = EventRouter(
+                manifest=self.manifest,
+                engine=self.fsm,
+                on_state_change=self._observe_entity_state_change,
+            )
         return self._event_router
 
     @property
