@@ -114,6 +114,7 @@ class ContainerHouseMixin:
                 else DEFAULT_STALE_AFTER_SEC
             )
             low_battery = getattr(rules, "battery_low_percent", None)
+            battery_silent = getattr(rules, "battery_silent_hours", None)
             interval = getattr(rules, "check_interval_minutes", None)
             self._house_health = HouseHealthService(
                 adapter=self.adapter,
@@ -132,6 +133,9 @@ class ContainerHouseMixin:
                     stale_min_sec=stale_min_hours * 3600.0,
                 ),
                 stale_min_hours=stale_min_hours,
+                battery_silent_hours=(
+                    float(battery_silent) if isinstance(battery_silent, (int, float)) else 48.0
+                ),
                 on_report=self._platform_problems_publisher(),
             )
             if self._house_health.start():

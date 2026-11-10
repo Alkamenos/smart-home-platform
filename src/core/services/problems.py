@@ -39,6 +39,7 @@ PROBLEM_REASONS: dict[str, str] = {
     "unavailable": "не отвечает",
     "stale": "молчит",
     "low_battery": "батарейка на исходе",
+    "battery_silent": "батарейка молчит",
     "missing_entity": "нет в доме",
     "house_unreadable": "дом не прочитан",
     PROBLEM_FSM_STUCK: "автомат завис",

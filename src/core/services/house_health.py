@@ -91,6 +91,7 @@ BATTERY_SUFFIX = "_battery"
 PROBLEM_UNAVAILABLE = "unavailable"
 PROBLEM_STALE = "stale"
 PROBLEM_LOW_BATTERY = "low_battery"
+PROBLEM_BATTERY_SILENT = "battery_silent"
 
 #: Дом не прочитался: обход не состоялся.
 #:
@@ -141,6 +142,8 @@ class HouseHealthService:
         expectations: Расчёт ожидаемого интервала датчика. Если не задан,
             действует общий порог ``stale_after_sec``.
         stale_min_hours: Минимальный порог молчания, часов.
+        battery_silent_hours: Сколько часов без отчёта о заряде считать
+            молчанием батарейки.
     """
 
     def __init__(
@@ -156,6 +159,7 @@ class HouseHealthService:
         registry: Any | None = None,
         expectations: Any | None = None,
         stale_min_hours: float = 2.0,
+        battery_silent_hours: float = 48.0,
     ) -> None:
         self._adapter = adapter
         self.areas = dict(areas or {})
@@ -170,6 +174,7 @@ class HouseHealthService:
         self._registry = registry
         self._expectations = expectations
         self._stale_min_sec = max(0.0, float(stale_min_hours) * 3600.0)
+        self.battery_silent_hours = max(1.0, float(battery_silent_hours))
 
     @property
     def last_report(self) -> dict[str, Any] | None:
@@ -414,6 +419,15 @@ class HouseHealthService:
             kind = self.battery_types.get(str(reading.get("entity_id") or ""))
             need = f" — нужна {kind}" if kind else ""
             return self._named(PROBLEM_LOW_BATTERY, reading, f"заряд {battery:g} %{need}")
+        if self._is_battery(reading):
+            age_sec = float(reading.get("age_sec") or 0)
+            if age_sec > self.battery_silent_hours * 3600.0:
+                ages = round(age_sec / 3600.0, 1)
+                return self._named(
+                    PROBLEM_BATTERY_SILENT,
+                    reading,
+                    f"батарейка не отчитывалась {ages} ч",
+                )
         return None
 
     def _reports_by_itself(self, reading: dict[str, Any]) -> bool:
@@ -431,6 +445,19 @@ class HouseHealthService:
         device_class = str(reading.get("device_class") or "").lower()
         return device_class in ACTIVELY_REPORTING_CLASSES
 
+    def _is_battery(self, reading: dict[str, Any]) -> bool:
+        """Является ли показание зарядом батарейки.
+
+        Args:
+            reading: Запись показания.
+
+        Returns:
+            True, если это батарейка.
+        """
+        if str(reading.get("device_class") or "") == "battery":
+            return True
+        return str(reading.get("entity_id") or "").endswith(BATTERY_SUFFIX)
+
     def _battery_percent(self, reading: dict[str, Any]) -> float | None:
         """Заряд батарейки числом, если это батарейка.
 
@@ -440,9 +467,7 @@ class HouseHealthService:
         Returns:
             Проценты либо ``None``.
         """
-        if str(reading.get("device_class") or "") != "battery" and not str(
-            reading.get("entity_id") or ""
-        ).endswith(BATTERY_SUFFIX):
+        if not self._is_battery(reading):
             return None
         raw = reading.get("value")
         if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):

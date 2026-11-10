@@ -34,6 +34,7 @@ KIND_HEALTH = "health_problem"
 HEALTH_SEVERITY = {
     "unavailable": "warning",
     "low_battery": "warning",
+    "battery_silent": "warning",
     # Дом не прочитался: обход не состоялся. Это «вмешаться», а не «знать»:
     # молчание обхода не должно выглядеть как порядок в доме (аудит К-3).
     "house_unreadable": "warning",

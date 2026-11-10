@@ -55,6 +55,7 @@ WARNING_KINDS = frozenset(
     {
         ProblemKind.STALE.value,
         ProblemKind.LOW_BATTERY.value,
+        ProblemKind.BATTERY_SILENT.value,
         ProblemKind.UNAVAILABLE.value,
         ProblemKind.COMMAND_NOT_APPLIED.value,
         ProblemKind.DEVICE_MISMATCH.value,
