@@ -91,16 +91,16 @@
 
 ### Tests for User Story 2
 
-- [ ] T018 [P] [US2] Тест расчёта медианы и fallback в `tests/unit/services/test_health_expectations.py`: 10 интервалов → p50, пустая история → класс, битые события игнорируются
-- [ ] T019 [P] [US2] Тест порогов в `tests/unit/services/test_house_health_stale.py`: `stale_after = max(2 × p50, 2 ч)`, граница ровно 2 часа, событийные датчики без heartbeat не тревожат
-- [ ] T020 [P] [US2] Интеграционный тест «пропал датчик» в `tests/integration/test_health_silent_sensor.py`: показание пропало → проблема; вернулось → закрыта
+- [X] T018 [P] [US2] Тест расчёта медианы и fallback в `tests/unit/services/test_health_expectations.py`: 10 интервалов → p50, пустая история → класс, битые события игнорируются
+- [X] T019 [P] [US2] Тест порогов в `tests/unit/services/test_house_health_stale.py`: `stale_after = max(2 × p50, 2 ч)`, граница ровно 2 часа, событийные датчики без heartbeat не тревожат
+- [X] T020 [P] [US2] Интеграционный тест «пропал датчик» в `tests/integration/test_health_silent_sensor.py`: показание пропало → проблема; вернулось → закрыта
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Создать `src/core/services/health_expectations.py`: чтение событий из `EventStore` за 7 дней, медиана интервалов, fallback по `device_class`, кэш на обход
-- [ ] T022 [US2] Использовать `SensorExpectation` в `HouseHealthService._reading`/`_problem` (`src/core/services/house_health.py`): порог на сущность вместо общего 6 часов, исключения для событийных и батарейных датчиков
-- [ ] T023 [US2] Добавить `EventStore.intervals_since()` в `src/core/persistence/event_store.py` (SQL по `events`, индекс `entity_id` уже есть) и тест `tests/unit/core/test_event_store_intervals.py`
-- [ ] T024 [US2] Логировать причину порога: «молчит 2.4 ч при ожидании 20 мин (история)» в `src/core/services/house_health.py`
+- [X] T021 [US2] Создать `src/core/services/health_expectations.py`: чтение событий из `EventStore` за 7 дней, медиана интервалов, fallback по `device_class`, кэш на обход
+- [X] T022 [US2] Использовать `SensorExpectation` в `HouseHealthService._reading`/`_problem` (`src/core/services/house_health.py`): порог на сущность вместо общего 6 часов, исключения для событийных и батарейных датчиков
+- [X] T023 [US2] Добавить `EventStore.intervals_since()` в `src/core/persistence/event_store.py` (SQL по `events`, индекс `entity_id` уже есть) и тест `tests/unit/core/test_event_store_intervals.py`
+- [X] T024 [US2] Логировать причину порога: «молчит 2.4 ч при ожидании 20 мин (история)» в `src/core/services/house_health.py`
 
 **Checkpoint**: молчание считается по-настоящему, ложные тревоги событийных датчиков исключены.
 
