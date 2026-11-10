@@ -167,17 +167,17 @@
 
 ### Tests for User Story 5
 
-- [ ] T039 [P] [US5] Контрактный тест уведомления в `tests/contract/test_health_notification.py`: `notification_id`, заголовок с числом, текст из `summary_text`
-- [ ] T040 [P] [US5] Тест антиспама в `tests/unit/services/test_health_notifier.py`: тот же fingerprint → молчание; новый → отправка; 24 часа → одно обновление; пусто → dismiss; HA недоступен → `dirty`
-- [ ] T041 [P] [US5] Тест перезапуска в `tests/integration/test_health_notification_restart.py`: `first_seen` сохранён, повторного уведомления нет
+- [X] T039 [P] [US5] Контрактный тест уведомления в `tests/contract/test_health_notification.py`: `notification_id`, заголовок с числом, текст из `summary_text`
+- [X] T040 [P] [US5] Тест антиспама в `tests/unit/services/test_health_notifier.py`: тот же fingerprint → молчание; новый → отправка; 24 часа → одно обновление; пусто → dismiss; HA недоступен → `dirty`
+- [X] T041 [P] [US5] Тест перезапуска в `tests/integration/test_health_notification_restart.py`: `first_seen` сохранён, повторного уведомления нет
 
 ### Implementation for User Story 5
 
-- [ ] T042 [US5] Добавить в `src/adapters/home_assistant/notifications.py` методы `create_persistent_notification` и `dismiss_persistent_notification`; в `MockAdapter` — no-op
-- [ ] T043 [US5] Создать `src/core/services/health_notifier.py`: fingerprint, `last_sent_at`, `dirty`, `repeat_hours`, вызов через протокол/колбэк (без импорта адаптера)
-- [ ] T044 [US5] Подключить notifier в `src/app/house_services.py` к `on_report` обхода и к `_publish_problems`; при изменении состава — обновить, при пустом — снять
-- [ ] T045 [US5] Сохранять `NotificationState` в `health_problems.json` через `HealthStore`; восстановление после перезапуска
-- [ ] T046 [US5] Логировать уведомления: создано/обновлено/снято, число проблем, причина в `src/core/services/health_notifier.py`
+- [X] T042 [US5] Добавить в `src/adapters/home_assistant/notifications.py` методы `create_persistent_notification` и `dismiss_persistent_notification`; в `MockAdapter` — no-op
+- [X] T043 [US5] Создать `src/core/services/health_notifier.py`: fingerprint, `last_sent_at`, `dirty`, `repeat_hours`, вызов через протокол/колбэк (без импорта адаптера)
+- [X] T044 [US5] Подключить notifier в `src/app/house_services.py` к `on_report` обхода и к `_publish_problems`; при изменении состава — обновить, при пустом — снять
+- [X] T045 [US5] Сохранять `NotificationState` в `health_problems.json` через `HealthStore`; восстановление после перезапуска
+- [X] T046 [US5] Логировать уведомления: создано/обновлено/снято, число проблем, причина в `src/core/services/health_notifier.py`
 
 **Checkpoint**: владелец получает одно осмысленное уведомление, а не поток.
 
