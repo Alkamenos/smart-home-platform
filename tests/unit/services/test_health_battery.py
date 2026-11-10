@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from core.models.health import level_for_kind
 from core.persistence.health_store import HealthStore
 from core.services.health_registry import HealthRegistry
 from core.services.house_health import HouseHealthService
@@ -105,3 +106,8 @@ async def test_repeated_sweep_does_not_duplicate_battery_problem(tmp_path) -> No
 
     assert registry.snapshot()["count"] == 1
     assert registry.snapshot()["problems"][0]["reasons"][0]["kind"] == "low_battery"
+
+
+def test_battery_silent_is_a_warning_not_critical() -> None:
+    """Молчание батарейки — предупреждение, а не авария дома."""
+    assert level_for_kind("battery_silent") == "warning"

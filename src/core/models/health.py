@@ -46,7 +46,6 @@ CRITICAL_KINDS = frozenset(
     {
         ProblemKind.HOUSE_UNREADABLE.value,
         ProblemKind.HA_DISCONNECTED.value,
-        ProblemKind.BATTERY_SILENT.value,
     }
 )
 
