@@ -99,7 +99,9 @@ class _Engine:
         return True
 
 
-def _router() -> tuple[EventRouter, _Engine]:
+def _router(
+    on_state_change: Any | None = None,
+) -> tuple[EventRouter, _Engine]:
     """Маршрутизатор с одной комнатой: вентилятор, лампа и два датчика.
 
     Returns:
@@ -131,7 +133,10 @@ def _router() -> tuple[EventRouter, _Engine]:
         ],
     )
     engine = _Engine()
-    return EventRouter(manifest, engine), engine
+    return (
+        EventRouter(manifest, engine, on_state_change=on_state_change),
+        engine,
+    )
 
 
 @pytest.mark.asyncio
@@ -195,3 +200,14 @@ async def test_light_change_should_not_review_ventilation() -> None:
         "изменение лампы разослано как пересмотр вентиляции: маршрут прибора "
         "обязан ограничиваться шаблоном вентиляции"
     )
+
+
+@pytest.mark.asyncio
+async def test_state_observer_called_even_for_unmapped_entity() -> None:
+    """Наблюдатель состояния видит и те сущности, для которых нет FSM."""
+    seen: list[tuple[str, str, str]] = []
+    router, _ = _router(lambda entity_id, old, new: seen.append((entity_id, old, new)))
+
+    await router.route_state_change("sensor.unknown", new_state="on", old_state="off")
+
+    assert seen == [("sensor.unknown", "off", "on")]

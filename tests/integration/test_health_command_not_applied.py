@@ -78,6 +78,22 @@ async def test_applied_command_is_not_a_problem() -> None:
 
 
 @pytest.mark.asyncio
+async def test_external_change_after_applied_is_not_problem() -> None:
+    """Команда сработала, а потом прибор выключили снаружи — это не отказ."""
+    tracker = _tracker()
+    tracker.record("light.probe", "light", "turn_on")
+    # Событие «включился» могло прийти раньше записи ожидания; уход из
+    # ожидаемого состояния всё равно доказывает, что команда применилась.
+    tracker.observe_state("light.probe", "on", "off")
+    service = _service(_Adapter("off"), tracker)
+
+    report = await service.sweep()
+
+    assert report["problems"] == []
+    assert tracker.pending(NOW.timestamp()) == ()
+
+
+@pytest.mark.asyncio
 async def test_transitional_state_waits() -> None:
     """Штора ещё едет — это не провал команды."""
     tracker = _tracker()

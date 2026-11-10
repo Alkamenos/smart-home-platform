@@ -70,6 +70,40 @@ def test_expired_expectation_is_dropped() -> None:
     assert tracker.pending() == ()
 
 
+def test_reaching_expected_state_clears_expectation() -> None:
+    """Прибор дошёл до ожидаемого состояния — ожидание снято."""
+    tracker = CommandExpectationTracker(clock=lambda: NOW)
+    tracker.record("light.x", "light", "turn_on")
+
+    tracker.observe_state("light.x", "off", "on")
+
+    assert tracker.pending(NOW) == ()
+
+
+def test_leaving_expected_state_clears_stale_expectation() -> None:
+    """Прибор был в ожидаемом состоянии и ушёл из него — это не отказ команды.
+
+    Событие ``on`` могло прийти до записи ожидания; уход ``on`` → ``off``
+    всё равно доказывает, что команда когда-то применилась.
+    """
+    tracker = CommandExpectationTracker(clock=lambda: NOW)
+    tracker.record("light.x", "light", "turn_on")
+
+    tracker.observe_state("light.x", "on", "off")
+
+    assert tracker.pending(NOW) == ()
+
+
+def test_unrelated_state_change_keeps_expectation() -> None:
+    """Постороннее изменение состояния не снимает ожидание."""
+    tracker = CommandExpectationTracker(clock=lambda: NOW)
+    tracker.record("light.x", "light", "turn_on")
+
+    tracker.observe_state("light.x", "unavailable", "off")
+
+    assert len(tracker.pending(NOW)) == 1
+
+
 def test_problem_names_command_and_actual_state() -> None:
     """Проблема объясняет, какая команда и что ответил прибор."""
     tracker = CommandExpectationTracker(clock=lambda: NOW)
