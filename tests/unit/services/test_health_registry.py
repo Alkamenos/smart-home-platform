@@ -116,6 +116,31 @@ def test_two_reasons_of_one_subject_are_grouped(tmp_path) -> None:
     assert len(grouped[0]["reasons"]) == 2
 
 
+def test_health_report_does_not_close_command_problem(tmp_path) -> None:
+    """Снимок здоровья закрывает только свои проблемы, не чужие."""
+    clock = _Clock(BASE)
+    registry = _registry(tmp_path, clock)
+    command = _problem("command_not_applied", "light.probe")
+    command["source"] = "command"
+    registry.observe_report([_problem()], BASE.isoformat(), source="health")
+    registry.observe_report([command], BASE.isoformat(), source="command")
+
+    clock.advance(minutes=1)
+    registry.observe_report([_problem()], clock().isoformat(), source="health")
+
+    kinds = {
+        reason["kind"] for group in registry.snapshot()["problems"] for reason in group["reasons"]
+    }
+    assert "stale" in kinds
+    assert "command_not_applied" in kinds
+
+    clock.advance(minutes=1)
+    registry.observe_report([_problem()], clock().isoformat())
+
+    kinds = {group["reasons"][0]["kind"] for group in registry.snapshot()["problems"]}
+    assert "command_not_applied" not in kinds
+
+
 def test_fingerprint_is_stable_and_changes_with_set(tmp_path) -> None:
     """Отпечаток не зависит от порядка и меняется при новой проблеме."""
     registry = _registry(tmp_path, _Clock(BASE))

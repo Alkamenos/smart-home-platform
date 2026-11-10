@@ -77,6 +77,18 @@ async def test_applied_command_is_not_a_problem() -> None:
     assert tracker.pending(NOW.timestamp()) == ()
 
 
+def test_missing_state_keeps_expectation() -> None:
+    """Прибор не попал в снимок — ожидание не теряем."""
+    tracker = _tracker()
+    tracker.record("light.probe", "light", "turn_on")
+    service = _service(_Adapter("off"), tracker)
+
+    problems = service._command_problems([], NOW)
+
+    assert problems == []
+    assert len(tracker.pending(NOW.timestamp())) == 1
+
+
 @pytest.mark.asyncio
 async def test_unapplied_command_stays_for_next_report() -> None:
     """Проблема не закрывается через минуту: ожидание живёт до смены состояния."""
