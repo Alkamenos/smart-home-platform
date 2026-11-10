@@ -345,6 +345,32 @@ async def test_startup_reapply_turns_light_off_when_feature_disabled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_startup_reapply_does_not_extinguish_manual_light() -> None:
+    """Рестарт не гасит свет, включённый вручную при выключенном флаге."""
+    engine, dispatcher = _build()
+    await engine.trigger(
+        GROUP_FSM,
+        "manual_switch_on",
+        external_ctx=_ctx(enabled=False),
+        respect_debounce=False,
+    )
+    dispatcher.intents.clear()
+
+    await engine.trigger(
+        GROUP_FSM,
+        "settings_changed",
+        external_ctx=_ctx(enabled=False, startup=True),
+        respect_debounce=False,
+    )
+
+    assert engine.get_state(GROUP_FSM).current_state == "ON_MANUAL"
+    assert dispatcher.intents == [], (
+        "перезапуск погасил ручное включение: стартовая сверка не должна "
+        "спорить с человеком, только реальное выключение флага"
+    )
+
+
+@pytest.mark.asyncio
 async def test_watcher_does_not_repeat_sunset_when_feature_disabled() -> None:
     """Сверка молчит, когда флаг выключен: это штатное «света нет»."""
     engine, dispatcher = _build()

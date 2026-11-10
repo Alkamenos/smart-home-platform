@@ -559,10 +559,15 @@ def make_scheduled_light_should_turn_off() -> Callable[[Any, dict[str, Any]], bo
 
     def scheduled_light_should_turn_off(state: Any, context: dict[str, Any]) -> bool:
         """Разрешить выключение, если флаг выключен и изменился именно он."""
-        del state
         if context.get("scheduled_light_enabled") is not False:
             return False
         changed_role = context.get("_changed_role")
+        if str(getattr(state, "current_state", "")).upper() == "ON_MANUAL":
+            # Ручное включение живёт своей жизнью: его гасит только реальное
+            # выключение флага владельцем, а не первый пересмотр после
+            # перезапуска. Иначе контейнер, поднявшись, гасит свет, который
+            # человек только что включил (боевая находка 2026-11-10).
+            return changed_role == "scheduled_feature"
         return changed_role == "scheduled_feature" or context.get("_startup_reapply") is True
 
     def deny_reason(state: Any, context: dict[str, Any]) -> str | None:
