@@ -449,7 +449,10 @@ class HouseHealthService:
                 now=now.timestamp(),
             )
             problems.append(problem)
-            tracker.clear(expectation.device_id)
+            # Ожидание не снимаем: проблема должна жить, пока прибор не
+            # покажет нужное состояние (наблюдатель состояния) или пока не
+            # истечёт TTL. Иначе она закрывалась бы через минуту, и владелец
+            # видел бы только мигание уведомления.
         return problems
 
     def _problem(self, reading: dict[str, Any]) -> dict[str, Any] | None:

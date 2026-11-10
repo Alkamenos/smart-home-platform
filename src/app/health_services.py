@@ -149,5 +149,6 @@ class ContainerHealthMixin:
                     now=now,
                 )
             )
-            tracker.clear(expectation.device_id)
+            # Ожидание остаётся: проблема живёт до смены состояния прибора
+            # или до TTL, а не один цикл опроса.
         return problems
