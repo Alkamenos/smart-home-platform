@@ -98,6 +98,7 @@ class ContainerHouseMixin:
             Служба обхода.
         """
         if self._house_health is None:
+            from core.services.health_expectations import HealthExpectations
             from core.services.house_health import (
                 DEFAULT_LOW_BATTERY_PERCENT,
                 DEFAULT_STALE_AFTER_SEC,
@@ -106,8 +107,9 @@ class ContainerHouseMixin:
 
             rules = getattr(self.manifest.automation_rules, "sensor_health", None)
             stale_hours = getattr(rules, "stale_min_hours", None)
+            stale_min_hours = float(stale_hours) if isinstance(stale_hours, (int, float)) else 2.0
             stale_after = (
-                float(stale_hours) * 3600.0
+                stale_min_hours * 3600.0
                 if isinstance(stale_hours, (int, float))
                 else DEFAULT_STALE_AFTER_SEC
             )
@@ -125,6 +127,11 @@ class ContainerHouseMixin:
                 ),
                 interval_minutes=(float(interval) if isinstance(interval, (int, float)) else 30.0),
                 registry=self.problem_registry,
+                expectations=HealthExpectations(
+                    event_store=create_event_store(),
+                    stale_min_sec=stale_min_hours * 3600.0,
+                ),
+                stale_min_hours=stale_min_hours,
                 on_report=self._platform_problems_publisher(),
             )
             if self._house_health.start():

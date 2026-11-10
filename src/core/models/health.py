@@ -105,6 +105,39 @@ def problem_id(kind: str, subject: str | None) -> str:
 
 
 @dataclass(frozen=True)
+class SensorExpectation:
+    """Ожидание по датчику: как часто он обычно присылает показания.
+
+    Attributes:
+        entity_id: Сущность.
+        expected_interval_sec: Типичный интервал между показаниями, сек.
+        stale_after_sec: С какого возраста показание считается молчащим.
+        source: Откуда взят интервал: ``history``, ``class`` или ``manifest``.
+        samples: Сколько интервалов легло в расчёт.
+    """
+
+    entity_id: str
+    expected_interval_sec: float
+    stale_after_sec: float
+    source: str
+    samples: int = 0
+
+    def as_dict(self) -> dict[str, Any]:
+        """Превратить ожидание в словарь для состояния и API.
+
+        Returns:
+            Словарь с полями ожидания.
+        """
+        return {
+            "entity_id": self.entity_id,
+            "expected_interval_sec": self.expected_interval_sec,
+            "stale_after_sec": self.stale_after_sec,
+            "source": self.source,
+            "samples": self.samples,
+        }
+
+
+@dataclass(frozen=True)
 class HouseProblem:
     """Одна причина по одной сущности.
 

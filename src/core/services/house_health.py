@@ -138,6 +138,9 @@ class HouseHealthService:
             не условие работы.
         registry: Реестр проблем: сохраняет историю и first_seen. Необязателен,
             чтобы старые тесты и локальный запуск без файла работали.
+        expectations: Расчёт ожидаемого интервала датчика. Если не задан,
+            действует общий порог ``stale_after_sec``.
+        stale_min_hours: Минимальный порог молчания, часов.
     """
 
     def __init__(
@@ -151,6 +154,8 @@ class HouseHealthService:
         clock: Any | None = None,
         on_report: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         registry: Any | None = None,
+        expectations: Any | None = None,
+        stale_min_hours: float = 2.0,
     ) -> None:
         self._adapter = adapter
         self.areas = dict(areas or {})
@@ -163,6 +168,8 @@ class HouseHealthService:
         self._report: dict[str, Any] | None = None
         self._on_report = on_report
         self._registry = registry
+        self._expectations = expectations
+        self._stale_min_sec = max(0.0, float(stale_min_hours) * 3600.0)
 
     @property
     def last_report(self) -> dict[str, Any] | None:
@@ -342,18 +349,36 @@ class HouseHealthService:
         updated = self._parse_time(item.get("last_updated") or item.get("last_changed"))
         age = None if updated is None else (now - updated).total_seconds()
         kind, name = self.areas.get(entity_id, ("без места", ""))
+        device_class = attributes.get("device_class")
+        expectation = None
+        if self._expectations is not None:
+            try:
+                expectation = self._expectations.expectation(
+                    entity_id,
+                    device_class,
+                    now_ts=now.timestamp(),
+                )
+            except Exception:  # noqa: BLE001 — ожидание не отменяет обход
+                expectation = None
+        threshold = expectation.stale_after_sec if expectation is not None else self.stale_after_sec
+        threshold = max(float(threshold), self._stale_min_sec)
         return {
             "entity_id": entity_id,
             "name": str(attributes.get("friendly_name") or entity_id),
             "value": item.get("state"),
             "unit": attributes.get("unit_of_measurement"),
-            "device_class": attributes.get("device_class"),
+            "device_class": device_class,
             "area_kind": kind,
             "area": name,
             "battery_type": self.battery_types.get(entity_id),
             "at": updated.isoformat() if updated else None,
             "age_sec": round(age, 1) if age is not None else None,
-            "stale": age is not None and age > self.stale_after_sec,
+            "stale": age is not None and age > threshold,
+            "stale_after_sec": round(threshold, 1),
+            "expected_interval_sec": (
+                round(expectation.expected_interval_sec, 1) if expectation is not None else None
+            ),
+            "expectation_source": expectation.source if expectation is not None else None,
         }
 
     def _problem(self, reading: dict[str, Any]) -> dict[str, Any] | None:
@@ -377,7 +402,13 @@ class HouseHealthService:
             return self._named(PROBLEM_UNAVAILABLE, reading, "датчик не отвечает")
         if reading.get("stale") and self._reports_by_itself(reading):
             hours = round(float(reading.get("age_sec") or 0) / 3600, 1)
-            return self._named(PROBLEM_STALE, reading, f"молчит {hours} ч")
+            expected = reading.get("expected_interval_sec")
+            if isinstance(expected, (int, float)) and expected > 0:
+                waiting = f"{expected / 3600:g} ч" if expected >= 3600 else f"{expected / 60:g} мин"
+                detail = f"молчит {hours} ч при ожидании {waiting}"
+            else:
+                detail = f"молчит {hours} ч"
+            return self._named(PROBLEM_STALE, reading, detail)
         battery = self._battery_percent(reading)
         if battery is not None and battery < self.low_battery_percent:
             kind = self.battery_types.get(str(reading.get("entity_id") or ""))

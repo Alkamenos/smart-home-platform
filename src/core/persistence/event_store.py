@@ -252,6 +252,38 @@ class EventStore:
         conn.commit()
         conn.close()
 
+    def event_timestamps_since(
+        self, entity_id: str, since_ts: float, limit: int = 5000
+    ) -> list[float]:
+        """Времена событий одной сущности за период.
+
+        Нужны службе здоровья, чтобы понять обычный интервал датчика: медиана
+        разностей между событиями устойчива к паузам и редким всплескам.
+
+        Args:
+            entity_id: Сущность.
+            since_ts: Начало периода (Unix-время).
+            limit: Максимум событий.
+
+        Returns:
+            Отсортированные по времени метки; пустой список, если событий нет.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT timestamp FROM events
+                WHERE entity_id = ? AND timestamp >= ?
+                ORDER BY timestamp ASC
+                LIMIT ?
+                """,
+                (entity_id, since_ts, limit),
+            )
+            return [float(row["timestamp"]) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
     def get_events(
         self,
         entity_id: str | None = None,
