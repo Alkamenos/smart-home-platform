@@ -140,17 +140,17 @@
 
 ### Tests for User Story 4
 
-- [ ] T031 [P] [US4] Тест трекера в `tests/unit/core/test_command_expectations.py`: запись, замена новой командой, `applied`, `failed` после допуска, `unknown` при нечитаемом состоянии
-- [ ] T032 [P] [US4] Тест сводки: `command_not_applied` попадает в `/api/v1/problems` с прибором, сервисом и временем
-- [ ] T033 [P] [US4] Интеграционный тест «принято, но не применено» в `tests/integration/test_health_command_not_applied.py`
+- [X] T031 [P] [US4] Тест трекера в `tests/unit/core/test_command_expectations.py`: запись, замена новой командой, `applied`, `failed` после допуска, `unknown` при нечитаемом состоянии
+- [X] T032 [P] [US4] Тест сводки: `command_not_applied` попадает в `/api/v1/problems` с прибором, сервисом и временем
+- [X] T033 [P] [US4] Интеграционный тест «принято, но не применено» в `tests/integration/test_health_command_not_applied.py`
 
 ### Implementation for User Story 4
 
-- [ ] T034 [US4] Создать `src/core/commands/expectations.py`: `CommandExpectationTracker` с `record`, `pending`, `apply`, `fail`, `clear`, TTL 10 минут; только реально отправленные команды
-- [ ] T035 [US4] Подключить трекер в `src/core/commands/dispatcher.py` (после успешной отправки) и в `src/app/container.py`; не записывать заблокированные локкаутом команды
-- [ ] T036 [US4] Проверять ожидания в `HouseHealthService.sweep()`: через `command_grace_minutes` сравнить с фактическим состоянием, создать `command_not_applied`, закрыть при совпадении
-- [ ] T037 [US4] Исключить переходные состояния (штора `opening`/`closing`, лампа в переходе, климат `HEATING`) из провала; тест на каждый случай
-- [ ] T038 [US4] Логировать команду и её судьбу: отправлена, применена, не применена (с прибором и временем) в `src/core/commands/expectations.py` и `src/core/services/house_health.py`
+- [X] T034 [US4] Создать `src/core/commands/expectations.py`: `CommandExpectationTracker` с `record`, `pending`, `apply`, `fail`, `clear`, TTL 10 минут; только реально отправленные команды
+- [X] T035 [US4] Подключить трекер в `src/core/commands/dispatcher.py` (после успешной отправки) и в `src/app/container.py`; не записывать заблокированные локкаутом команды
+- [X] T036 [US4] Проверять ожидания в `HouseHealthService.sweep()`: через `command_grace_minutes` сравнить с фактическим состоянием, создать `command_not_applied`, закрыть при совпадении
+- [X] T037 [US4] Исключить переходные состояния (штора `opening`/`closing`, лампа в переходе, климат `HEATING`) из провала; тест на каждый случай
+- [X] T038 [US4] Логировать команду и её судьбу: отправлена, применена, не применена (с прибором и временем) в `src/core/commands/expectations.py` и `src/core/services/house_health.py`
 
 **Checkpoint**: «команда выполнена» больше не значит «прибор сделал».
 
