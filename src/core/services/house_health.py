@@ -431,7 +431,8 @@ class HouseHealthService:
                 continue
             actual = by_entity.get(expectation.device_id)
             if actual is None:
-                tracker.clear(expectation.device_id)
+                # Прибор не попал в снимок — это не доказательство отказа.
+                # Ожидание оставляем: следующий обход или TTL решат судьбу.
                 continue
             if tracker.is_applied(expectation, actual):
                 tracker.clear(expectation.device_id)

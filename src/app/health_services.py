@@ -130,7 +130,8 @@ class ContainerHealthMixin:
             except Exception:  # noqa: BLE001 — чтение прибора не роняет сводку
                 actual = None
             if actual is None:
-                tracker.clear(expectation.device_id)
+                # Прибор не прочитался — это не доказательство отказа.
+                # Ожидание оставляем до следующего чтения или TTL.
                 continue
             if tracker.is_applied(expectation, actual):
                 tracker.clear(expectation.device_id)

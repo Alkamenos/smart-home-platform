@@ -206,7 +206,7 @@ class HealthRegistry:
             seen.add(problem.problem_id)
 
         if close_missing:
-            self._close_missing(seen, generated_at)
+            self._close_missing(seen, generated_at, source=source)
         self._prune_closed()
         self.save()
         return self.grouped()
@@ -226,18 +226,25 @@ class HealthRegistry:
                 return True
         return False
 
-    def _close_missing(self, seen: set[str], generated_at: str) -> None:
+    def _close_missing(self, seen: set[str], generated_at: str, source: str | None = None) -> None:
         """Закрыть активные проблемы, которых не было в снимке.
+
+        Если снимок пришёл от одного источника (``source``), закрываются
+        только его проблемы: иначе обход дома, не знающий о неприменённых
+        командах, закрывал бы их каждый раз.
 
         Args:
             seen: Идентификаторы, подтверждённые в этом обходе.
             generated_at: Время закрытия.
+            source: Источник снимка; ``None`` — сводный снимок по всем.
 
         Returns:
             Ничего.
         """
         for identifier, problem in list(self._active.items()):
             if identifier in seen:
+                continue
+            if source is not None and problem.source != source:
                 continue
             closed = HouseProblem(
                 kind=problem.kind,
