@@ -177,7 +177,10 @@ class DeviceCommandMixin:
 
         # Вызываем через адаптер
         result = await self.ha_adapter.call_service(
-            domain=domain, service=service, entity_id=device.ha_entity_id, **parameters
+            domain=domain,
+            service=service,
+            entity_id=device.ha_entity_id,
+            data=parameters,
         )
 
         # CommandExecutionResponse.result ожидает dict. Раньше здесь стояло `result or {}`,
