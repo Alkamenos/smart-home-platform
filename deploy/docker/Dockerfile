@@ -1,6 +1,6 @@
 # Стадия сборки фронтенда (спека 017): статический экспорт в out/.
 # Закрепляем базовый образ по digest: тег lts-slim может смениться между сборками.
-FROM node:lts-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS frontend
+FROM node:lts-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS frontend
 WORKDIR /frontend
 # Node 26+ больше не поставляет corepack. Ставим pnpm явно — версия совпадает
 # с packageManager в frontend/package.json (pnpm@10.0.0).
