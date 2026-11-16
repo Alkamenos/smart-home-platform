@@ -12,7 +12,7 @@ RUN pnpm build
 
 
 # Стадия зависимостей: lock-файл, без сборочного инструментария в runtime.
-FROM python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 AS deps
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS deps
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=copy \
@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir uv==0.13.0 \
 
 
 # Production-образ: минимальные права, без компиляторов и pip-кэша.
-FROM python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 
 ARG BUILD_ENV=production
 
